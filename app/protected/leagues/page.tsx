@@ -44,7 +44,7 @@ export default async function LeaguesPage() {
     const leagueIds = userAdmins.map(admin => admin.league_id);
     
     // Get the full league data
-    const { data: leagues, error: leaguesError } = await (await supabase)
+    const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
       .select('*')
       .in('id', leagueIds);

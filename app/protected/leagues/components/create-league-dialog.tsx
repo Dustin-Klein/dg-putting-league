@@ -29,25 +29,30 @@ export function CreateLeagueDialog() {
       const data = await response.json().catch(() => ({}));
       
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create league');
+        throw new Error(data?.error || 'Failed to create league');
+      }
+
+      if (!data?.id) {
+        throw new Error('Missing league ID in response');
       }
       
       toast({
         title: 'Success',
-        description: 'League created successfully!',
+        description: 'Your new league has been created successfully!',
       });
 
       setOpen(false);
-      if (data.id) {
-        router.push(`/leagues/${data.id}`);
-      }
+      router.push(`/leagues/${data.id}`);
       router.refresh();
-    } catch (error: any) {
+      
+      return data;
+    } catch (error) {
       console.error('Error creating league:', error);
       toast({
         title: 'Error',
-        description: error?.message || 'Failed to create league. Please try again.'
+        description: error instanceof Error ? error.message : 'Failed to create league. Please try again.'
       });
+      throw error;
     } finally {
       setIsLoading(false);
     }

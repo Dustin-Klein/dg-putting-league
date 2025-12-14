@@ -19,7 +19,8 @@ import { Textarea } from '@/components/ui/textarea';
 export const formSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),
   city: z.string().min(2, 'City is required'),
-  description: z.string().optional(),});
+  description: z.string().optional(),
+});
 
 export type FormValues = z.infer<typeof formSchema>;
 
