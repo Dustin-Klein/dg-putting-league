@@ -22,7 +22,7 @@ export default function Error({
           We couldn't load the leagues. Please try again or contact support if the problem persists.
         </p>
         <div className="flex space-x-4">
-          <Button variant="outline" onClick={() => window.location.reload()}>
+          <Button variant="outline" onClick={() => reset()}>
             Try again
           </Button>
           <Button variant="outline" asChild>

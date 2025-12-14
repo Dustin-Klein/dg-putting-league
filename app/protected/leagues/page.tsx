@@ -4,10 +4,10 @@ import { LeagueWithRole } from './types';
 import { CreateLeagueDialog } from './components/create-league-dialog';
 
 export default async function LeaguesPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Check if user is authenticated
-  const { data: { user }, error: userError } = await (await supabase).auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
   
   if (userError || !user) {
     redirect('/auth/sign-in');
@@ -15,7 +15,7 @@ export default async function LeaguesPage() {
 
   try {
     // First, get the user's admin records
-    const { data: userAdmins, error: adminError } = await (await supabase)
+    const { data: userAdmins, error: adminError } = await supabase
       .from('league_admins')
       .select('*')
       .eq('user_id', user.id);
