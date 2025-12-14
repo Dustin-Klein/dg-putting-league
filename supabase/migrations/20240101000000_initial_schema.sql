@@ -1,9 +1,4 @@
--- Supabase schema DDL for Disc Golf Putting League
--- Run with: supabase db remote commit / psql against your project
-
--- Extensions (uncomment if not already enabled)
--- create extension if not exists "uuid-ossp";
--- create extension if not exists pgcrypto; -- for gen_random_uuid
+-- Extensions
 create extension if not exists pg_trgm;
 
 -- ENUMS ------------------------------------------------------
@@ -31,6 +26,7 @@ create table public.leagues (
   name text not null,
   city text,
   created_at timestamptz not null default now(),
+  updated_at timestamptz default now(),
   unique (name, city)
 );
 
@@ -197,42 +193,193 @@ create table public.league_stats (
   unique (league_id, stat_type, computed_at)
 );
 
--- OPTIONAL AUDIT TABLE ---------------------------------------
-create table public.audit_events (
-  id uuid primary key default gen_random_uuid(),
-  league_id uuid references public.leagues(id) on delete cascade,
-  event_id uuid references public.events(id) on delete cascade,
-  user_id uuid references auth.users(id),
-  action text not null,
-  payload jsonb,
-  created_at timestamptz not null default now()
+-- Custom Functions -------------------------------------------
+
+-- Function to get league event counts
+CREATE OR REPLACE FUNCTION public.get_league_event_counts(league_ids uuid[])
+RETURNS TABLE (league_id uuid, count bigint)
+LANGUAGE sql
+AS $$
+  SELECT league_id, count(*) 
+  FROM events 
+  WHERE league_id = ANY(league_ids)
+  GROUP BY league_id;
+$$;
+
+-- Function to get active event counts for leagues
+CREATE OR REPLACE FUNCTION public.get_league_active_event_counts(league_ids uuid[], status_filter text)
+RETURNS TABLE (league_id uuid, count bigint)
+LANGUAGE sql
+AS $$
+  SELECT e.league_id, count(*) 
+  FROM events e
+  WHERE e.league_id = ANY(league_ids) 
+    AND (e.status IS NULL OR e.status::text != status_filter)
+  GROUP BY e.league_id;
+$$;
+
+-- Function to create a league and admin record in a single transaction
+CREATE OR REPLACE FUNCTION public.create_league_with_admin(
+  p_name text,
+  p_city text,
+  p_user_id uuid
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_league_id uuid;
+  result json;
+BEGIN
+  -- Insert the new league
+  INSERT INTO public.leagues (name, city)
+  VALUES (p_name, p_city)
+  RETURNING id INTO new_league_id;
+
+  -- Create the admin record
+  INSERT INTO public.league_admins (league_id, user_id, role)
+  VALUES (new_league_id, p_user_id, 'owner');
+
+  -- Return the created league with admin info
+  SELECT json_build_object(
+    'id', l.id,
+    'name', l.name,
+    'city', l.city,
+    'created_at', l.created_at,
+    'role', 'owner',
+    'eventCount', 0,
+    'activeEventCount', 0
+  ) INTO result
+  FROM public.leagues l
+  WHERE l.id = new_league_id;
+
+  RETURN result;
+END;
+$$;
+
+-- ROW LEVEL SECURITY -----------------------------------------
+
+-- Enable RLS on all tables
+ALTER TABLE public.leagues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.league_admins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qualification_rounds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qualification_frames ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lanes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match_lanes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match_frames ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.frame_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.player_statistics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.league_stats ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for leagues
+CREATE POLICY "Enable insert for authenticated users" 
+ON public.leagues
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+CREATE POLICY "Enable read access for league admins" 
+ON public.leagues
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = leagues.id
+    AND league_admins.user_id = auth.uid()
+  )
 );
-create index idx_audit_event on public.audit_events(league_id, event_id, created_at desc);
 
--- INDEXES FOR LOOKUPS ----------------------------------------
-create index idx_event_players_player on public.event_players(player_id);
-create index idx_match_frames_match on public.match_frames(match_id);
-create index idx_frame_results_player on public.frame_results(event_player_id);
-create index idx_player_stats_player on public.player_statistics(player_id);
+CREATE POLICY "Enable update for league admins" 
+ON public.leagues
+FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = leagues.id
+    AND league_admins.user_id = auth.uid()
+    AND league_admins.role IN ('owner', 'admin')
+  )
+);
 
--- RLS PLACEHOLDER POLICIES -----------------------------------
--- Enable RLS
-alter table public.leagues enable row level security;
-alter table public.events enable row level security;
-alter table public.event_players enable row level security;
-alter table public.matches enable row level security;
+CREATE POLICY "Enable delete for league owners" 
+ON public.leagues
+FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = leagues.id
+    AND league_admins.user_id = auth.uid()
+    AND league_admins.role = 'owner'
+  )
+);
 
--- Example policy: league admins can manage their league data
-create policy "league admins manage leagues" on public.leagues
-  using (exists (
-    select 1 from public.league_admins la
-    where la.league_id = id and la.user_id = auth.uid()
-  ));
+-- Create a security definer function to check admin status without RLS
+CREATE OR REPLACE FUNCTION public.is_league_admin(league_id_param uuid, user_id_param uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_id = league_id_param
+    AND user_id = user_id_param
+    AND role IN ('owner', 'admin')
+  );
+$$;
 
-create policy "league admins manage events" on public.events
-  using (exists (
-    select 1 from public.league_admins la
-    where la.league_id = events.league_id and la.user_id = auth.uid()
-  ));
+-- RLS Policies for league_admins
+-- Enable read access for users who are admins of the league
+CREATE POLICY "Enable read access for league admins" 
+ON public.league_admins
+FOR SELECT
+USING (
+  user_id = auth.uid()
+  OR public.is_league_admin(league_id, auth.uid())
+);
 
--- Additional policies should be added per table as needed.
+-- Enable insert for authenticated users with a special check for the first admin
+CREATE POLICY "Enable insert for first league admin" 
+ON public.league_admins
+FOR INSERT
+WITH CHECK (
+  -- Allow if there are no admins for this league yet (first admin)
+  NOT EXISTS (
+    SELECT 1 FROM public.league_admins 
+    WHERE league_id = league_admins.league_id
+  )
+  OR 
+  -- Or if the user is an existing admin of this league
+  public.is_league_admin(league_admins.league_id, auth.uid())
+);
+
+-- Enable update for admins to update their own records
+CREATE POLICY "Enable update for own record"
+ON public.league_admins
+FOR UPDATE
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- Enable delete for admins to remove themselves (but not others)
+CREATE POLICY "Enable delete for own record"
+ON public.league_admins
+FOR DELETE
+USING (user_id = auth.uid() OR public.is_league_admin(league_id, auth.uid()));
+
+-- GRANTS -----------------------------------------------------
+
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, service_role;
+
+-- Add indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_league_admins_league_id ON public.league_admins(league_id);
+CREATE INDEX IF NOT EXISTS idx_league_admins_user_id ON public.league_admins(user_id);
+CREATE INDEX IF NOT EXISTS idx_leagues_created_at ON public.leagues(created_at);
