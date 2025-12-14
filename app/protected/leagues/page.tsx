@@ -94,12 +94,26 @@ export default async function LeaguesPage() {
       });
       activeEventCounts = activeEventCountsData || [];
 
-      // Get most recent event date for each league
+      // Get most recent event date for each league using a subquery
       const { data: lastEventsData } = await (await supabase)
         .from('events')
         .select('league_id, event_date')
         .in('league_id', leagueIds)
-        .order('event_date', { ascending: false });
+        .order('event_date', { ascending: false })
+        .select('league_id, event_date')
+        .not('event_date', 'is', null)
+        .limit(1000) // Set a reasonable limit
+        .then(({ data, error }) => {
+          if (error) throw error;
+          // Group by league_id and keep only the first (most recent) event for each league
+          const latestEvents = new Map<string, { league_id: string; event_date: string }>();
+          data?.forEach(event => {
+            if (!latestEvents.has(event.league_id)) {
+              latestEvents.set(event.league_id, event);
+            }
+          });
+          return { data: Array.from(latestEvents.values()) };
+        });
       lastEvents = lastEventsData || [];
     } catch (error) {
       console.error('Error fetching league statistics:', error);
