@@ -115,7 +115,8 @@ export default async function LeaguesPage() {
             return null;
           }
           
-          const { league, ...admin } = adminWithLeague;
+          const league = adminWithLeague.league;
+          const role = adminWithLeague.role;
           const eventCount = eventCounts?.find((ec) => ec.league_id === league.id)?.count || 0;
           const activeEventCount = activeEventCounts?.find((aec) => aec.league_id === league.id)?.count || 0;
           const lastEvent = lastEvents?.find((le) => le.league_id === league.id)?.event_date || null;
@@ -125,13 +126,13 @@ export default async function LeaguesPage() {
             name: league.name || 'Unnamed League',
             city: league.city || '',
             created_at: league.created_at || new Date().toISOString(),
-            role: admin.role,
+            role: role,
             eventCount,
             activeEventCount,
             lastEventDate: lastEvent
           } as LeagueWithRole;
         } catch (error) {
-          console.error('Error processing league admin:', admin, error);
+          console.error('Error processing league admin:', adminWithLeague, error);
           return null;
         }
       })

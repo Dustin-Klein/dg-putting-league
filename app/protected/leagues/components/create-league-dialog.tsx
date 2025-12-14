@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-// Simple toast implementation using browser's alert
-const useToast = () => ({
-  toast: ({ title, description }: { title: string; description: string }) => {
-    alert(`${title}: ${description}`);
-  }
-});
+import { useToast } from '@/components/ui/use-toast';
 
 export function CreateLeagueDialog() {
   const [open, setOpen] = useState(false);
@@ -41,7 +36,7 @@ export function CreateLeagueDialog() {
       
       toast({
         title: 'Success',
-        description: 'League created successfully!',
+        description: 'League created successfully!'
       });
 
       setOpen(false);
