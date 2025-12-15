@@ -1,3 +1,5 @@
+"use client";
+
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -8,6 +10,10 @@ interface LeaguesListProps {
 }
 
 export default function LeaguesList({ leagues }: LeaguesListProps) {
+  const handleCardClick = (leagueId: string) => {
+    window.location.href = `/protected/leagues/${leagueId}/events`;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end mb-4">
@@ -29,7 +35,11 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {leagues.map((league) => (
-            <div key={league.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div 
+              key={league.id} 
+              onClick={() => handleCardClick(league.id)}
+              className="border rounded-lg p-4 hover:shadow-md transition-shadow hover:border-primary cursor-pointer"
+            >
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-semibold text-lg">{league.name}</h3>
@@ -59,12 +69,9 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
                 </div>
               </div>
               
-              <div className="mt-4 flex space-x-2">
+              <div className="mt-4" onClick={(e) => e.stopPropagation()}>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/leagues/${league.id}`}>View Details</Link>
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/leagues/${league.id}/events`}>View Events</Link>
                 </Button>
               </div>
             </div>
