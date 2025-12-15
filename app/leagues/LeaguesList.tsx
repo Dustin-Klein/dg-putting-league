@@ -12,7 +12,7 @@ interface LeaguesListProps {
 
 export default function LeaguesList({ leagues }: LeaguesListProps) {
   const handleCardClick = (leagueId: string) => {
-    window.location.href = `/protected/leagues/${leagueId}/events`;
+    window.location.href = `/league/${leagueId}`;
   };
 
   return (
@@ -68,7 +68,7 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
               
               <div className="mt-4" onClick={(e) => e.stopPropagation()}>
                 <Button variant="outline" size="sm" asChild>
-                  <Link href={`/leagues/${league.id}`}>View Details</Link>
+                  <Link href={`/league/${league.id}`}>View Details</Link>
                 </Button>
               </div>
             </div>
