@@ -18,11 +18,11 @@ export function EventsContent({ league, events, isAdmin, leagueId }: EventsConte
     <div className="container mx-auto p-4">
       <div className="mb-6">
         <Link 
-          href={`/leagues/${leagueId}`} 
+          href={`/leagues`} 
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
-          Back to league
+          Back to other leagues
         </Link>
         
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
