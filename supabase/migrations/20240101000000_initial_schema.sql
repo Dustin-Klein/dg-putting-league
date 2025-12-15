@@ -372,6 +372,62 @@ ON public.league_admins
 FOR DELETE
 USING (user_id = auth.uid() OR public.is_league_admin(league_id, auth.uid()));
 
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+-- Create policy to allow league admins to insert events
+CREATE POLICY "Enable insert for league admins" 
+ON public.events
+FOR INSERT 
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = events.league_id
+    AND league_admins.user_id = auth.uid()
+    AND league_admins.role IN ('owner', 'admin')
+  )
+);
+
+-- Create policy to allow reading events for league members
+CREATE POLICY "Enable read access for league members" 
+ON public.events
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = events.league_id
+    AND league_admins.user_id = auth.uid()
+  )
+);
+
+-- Enable update for league admins
+CREATE POLICY "Enable update for league admins"
+ON public.events
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = events.league_id
+    AND league_admins.user_id = auth.uid()
+    AND league_admins.role IN ('owner', 'admin')
+  )
+);
+
+-- Enable delete for league owners
+CREATE POLICY "Enable delete for league owners"
+ON public.events
+FOR DELETE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = events.league_id
+    AND league_admins.user_id = auth.uid()
+    AND league_admins.role = 'owner'
+  )
+);
+
 -- GRANTS -----------------------------------------------------
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;

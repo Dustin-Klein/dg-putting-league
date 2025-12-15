@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { LeagueWithRole } from './types';
+import { CreateLeagueDialog } from './components/create-league-dialog';
 
 interface LeaguesListProps {
   leagues: LeagueWithRole[];
@@ -17,9 +18,7 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end mb-4">
-        <Button asChild>
-          <Link href="/leagues/new">Create League</Link>
-        </Button>
+        <CreateLeagueDialog />
       </div>
 
       {leagues.length === 0 ? (
@@ -28,9 +27,7 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
           <p className="text-muted-foreground mt-2 mb-4">
             You don't have access to any leagues yet.
           </p>
-          <Button asChild>
-            <Link href="/leagues/new">Create your first league</Link>
-          </Button>
+          <CreateLeagueDialog />
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
