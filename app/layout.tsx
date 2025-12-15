@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
+import { MainNav } from "@/components/main-nav";
+import { Suspense } from "react";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -25,7 +27,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <Suspense>
+            <MainNav />
+          </Suspense>
+          <main className="flex-1">
+            {children}
+          </main>
           <Toaster />
         </ThemeProvider>
       </body>
