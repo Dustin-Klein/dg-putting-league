@@ -12,8 +12,11 @@ const eventSchema = z.object({
 
 export async function POST(
   request: Request,
-  { params }: { params: { leagueId: string } }
+  { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
 ) {
+  // Ensure params is resolved if it's a Promise
+  const params = await Promise.resolve(paramsPromise);
+  const leagueId = params.leagueId;
   try {
     const supabase = await createClient();
 
@@ -31,7 +34,7 @@ export async function POST(
     const { data: leagueAdmin, error: adminError } = await supabase
       .from('league_admins')
       .select('*')
-      .eq('league_id', params.leagueId)
+      .eq('league_id', leagueId)
       .eq('user_id', user.id)
       .single();
 
@@ -109,8 +112,11 @@ export async function POST(
 
 export async function GET(
   request: Request,
-  { params }: { params: { leagueId: string } }
+  { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
 ) {
+  // Ensure params is resolved if it's a Promise
+  const params = await Promise.resolve(paramsPromise);
+  const leagueId = params.leagueId;
   try {
     const supabase = await createClient();
 
@@ -128,7 +134,7 @@ export async function GET(
     const { data: leagueAdmin, error: adminError } = await supabase
       .from('league_admins')
       .select('*')
-      .eq('league_id', params.leagueId)
+      .eq('league_id', leagueId)
       .eq('user_id', user.id)
       .single();
 
@@ -143,7 +149,7 @@ export async function GET(
     const { data: events, error: eventsError } = await supabase
       .from('events')
       .select('*')
-      .eq('league_id', params.leagueId)
+      .eq('league_id', leagueId)
       .order('event_date', { ascending: false });
 
     if (eventsError) {
