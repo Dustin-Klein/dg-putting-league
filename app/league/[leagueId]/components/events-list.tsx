@@ -77,7 +77,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
             
             <div className="mt-4 flex justify-end">
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/leagues/${leagueId}/events/${event.id}`}>
+                <Link href={`/event/${event.id}`}>
                   View Details
                 </Link>
               </Button>
