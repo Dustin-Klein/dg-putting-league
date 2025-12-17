@@ -20,7 +20,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/leagues/${leagueId}/events`, {
+      const response = await fetch(`/api/league/${leagueId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
