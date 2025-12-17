@@ -325,6 +325,7 @@ CREATE OR REPLACE FUNCTION public.is_league_admin(league_id_param uuid, user_id_
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.league_admins
@@ -426,6 +427,59 @@ USING (
     AND league_admins.user_id = auth.uid()
     AND league_admins.role = 'owner'
   )
+);
+
+-- Create RLS policies for event_players table
+
+CREATE OR REPLACE FUNCTION public.is_league_admin_for_event(
+  event_id_param uuid
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.events e
+    JOIN public.league_admins la
+      ON la.league_id = e.league_id
+    WHERE e.id = event_id_param
+      AND la.user_id = auth.uid()
+      AND la.role IN ('owner', 'admin')
+  );
+$$;
+
+CREATE POLICY "Enable read access for league admins"
+ON public.event_players
+FOR SELECT
+USING (
+  public.is_league_admin_for_event(event_players.event_id)
+);
+
+
+CREATE POLICY "Enable insert for league admins"
+ON public.event_players
+FOR INSERT
+WITH CHECK (
+  public.is_league_admin_for_event(event_players.event_id)
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.event_players
+FOR UPDATE
+USING (
+  public.is_league_admin_for_event(event_players.event_id)
+)
+WITH CHECK (
+  public.is_league_admin_for_event(event_players.event_id)
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.event_players
+FOR DELETE
+USING (
+  public.is_league_admin_for_event(event_players.event_id)
 );
 
 -- GRANTS -----------------------------------------------------
