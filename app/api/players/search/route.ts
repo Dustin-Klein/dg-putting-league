@@ -25,8 +25,8 @@ export async function GET(request: Request) {
 
     const { data: players, error } = await supabase
       .from('players')
-      .select('id, name, identifier')
-      .or(`name.ilike.%${query}%,identifier.ilike.%${query}%`)
+      .select('id, full_name')
+      .or(`full_name.ilike.%${query}%`)
       .limit(10);
 
     if (error) {

@@ -51,7 +51,13 @@ export function PlayerManagement({
       }
 
       const data = await response.json();
-      setSearchResults(data.results || []);
+      // Map the API response to match the expected format
+      const mappedResults = (data.results || []).map((player: any) => ({
+        id: player.id,
+        name: player.full_name || 'Unknown Player',
+        identifier: player.display_identifier || ''
+      }));
+      setSearchResults(mappedResults);
     } catch (error) {
       console.error('Search error:', error);
       toast({
