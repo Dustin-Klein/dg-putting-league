@@ -71,30 +71,30 @@ export function PlayerManagement({
 
   // Handle adding a player to the event
   const handleAddPlayer = async (playerId: string) => {
-    try {
-      setIsAddingPlayer(true);
-      const response = await fetch(`/api/event/${event.id}/players`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add player');
-      }
-
-      // Refresh the page to show the updated player list
-      window.location.reload();
-    } catch (error) {
-      console.error('Error adding player:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to add player to event',
-      });
-    } finally {
-      setIsAddingPlayer(false);
+  try {
+    setIsAddingPlayer(true);
+    const response = await fetch(`/api/event/${event.id}/players`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId }),
+    });
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to add player');
     }
-  };
+    // Refresh the page to show the updated player list
+    window.location.reload();
+  } catch (error) {
+    console.error('Error adding player:', error);
+    toast({
+      title: 'Error',
+      description: error instanceof Error ? error.message : 'Failed to add player to event'
+    });
+  } finally {
+    setIsAddingPlayer(false);
+  }
+};
 
   // Reset form when dialog is closed
   const handleDialogOpenChange = (open: boolean) => {
