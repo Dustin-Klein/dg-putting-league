@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { EventsContent } from './events-content';
+import { getLeagueEventsWithParticipantCounts} from '@/lib/league-events';
 
 export default async function LeagueEventsPage({ 
   params: paramsPromise 
@@ -45,32 +46,7 @@ export default async function LeagueEventsPage({
     redirect('/leagues');
   }
 
-  // Fetch events for this league
-  const { data: events, error: eventsError } = await supabase
-    .from('events')
-    .select('*')
-    .eq('league_id', params.leagueId)
-    .order('event_date', { ascending: false });
-
-  if (eventsError) {
-    console.error('Error fetching events:', eventsError);
-    redirect('/leagues');
-  }
-
-  // Get participant count for each event
-  const eventsWithParticipantCount = await Promise.all(
-    (events || []).map(async (event: any) => {
-      const { count, error: countError } = await supabase
-        .from('event_players')
-        .select('*', { count: 'exact', head: true })
-        .eq('event_id', event.id);
-
-      return {
-        ...event,
-        participant_count: count || 0,
-      };
-    })
-  );
+  const eventsWithParticipantCount = await getLeagueEventsWithParticipantCounts(leagueId)
 
   return (
     <EventsContent 
