@@ -75,11 +75,11 @@ export async function POST(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ eventId: string }> }
+  { params }: { params: { eventId: string } }
 ) {
   try {
     const { playerId, hasPaid } = await request.json();
-    const { eventId } = await params;
+    const { eventId } = params;
 
     if (playerId === undefined || hasPaid === undefined) {
       return NextResponse.json(

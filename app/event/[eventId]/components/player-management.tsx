@@ -223,8 +223,7 @@ export function PlayerManagement({
       console.error('Error updating payment status:', error);
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update payment status',
-        className: 'bg-destructive text-destructive-foreground',
+        description: error instanceof Error ? error.message : 'Failed to update payment status'
       });
     }
   };
