@@ -9,11 +9,13 @@ const updateEventSchema = z.object({
 
 export async function GET(
   request: Request,
-  { params }: { params: { eventId: string } }
+  context: { params: { eventId: string } }
 ) {
+  // Ensure params is resolved if it's a Promise
+  const params = await Promise.resolve(context.params);
+  const eventId = params.eventId;
   try {
     const supabase = await createClient();
-    const eventId = params.eventId;
 
     // Get the event with player details
     const { data: event, error: eventError } = await supabase
@@ -75,13 +77,103 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+export async function DELETE(
   request: Request,
-  { params }: { params: { eventId: string } }
+  context: { params: { eventId: string } }
 ) {
+  // Ensure params is resolved if it's a Promise
+  const params = await Promise.resolve(context.params);
+  const eventId = params.eventId;
+  
   try {
     const supabase = await createClient();
-    const eventId = params.eventId;
+    
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Check if the event exists
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      return NextResponse.json(
+        { error: 'Event not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if user is an admin of the league
+    const { data: leagueAdmin, error: adminError } = await supabase
+      .from('league_admins')
+      .select('*')
+      .eq('league_id', event.league_id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (adminError || !leagueAdmin) {
+      return NextResponse.json(
+        { error: 'Forbidden - Not an admin of this league' },
+        { status: 403 }
+      );
+    }
+
+    // Delete all related records first (event_players, etc.)
+    const { error: deletePlayersError } = await supabase
+      .from('event_players')
+      .delete()
+      .eq('event_id', eventId);
+
+    if (deletePlayersError) {
+      console.error('Error deleting event players:', deletePlayersError);
+      return NextResponse.json(
+        { error: 'Failed to delete event participants' },
+        { status: 500 }
+      );
+    }
+
+    // Delete the event
+    const { error: deleteError } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId);
+
+    if (deleteError) {
+      console.error('Error deleting event:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete event' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error in event DELETE API route:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: { eventId: string } }
+) {
+  // Ensure params is resolved if it's a Promise
+  const params = await Promise.resolve(context.params);
+  const eventId = params.eventId;
+  try {
+    const supabase = await createClient();
     
     // Check if user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser();
