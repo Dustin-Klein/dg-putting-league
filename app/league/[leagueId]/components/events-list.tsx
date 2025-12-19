@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Event } from '../types';
 import { CreateEventDialog } from './create-event-dialog';
+import { Trash2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 interface EventsListProps {
   events: Event[] | null;
@@ -13,6 +16,45 @@ interface EventsListProps {
 }
 
 export function EventsList({ events = [], leagueId, isAdmin = false }: EventsListProps) {
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingEventId(eventId);
+    
+    try {
+      const response = await fetch(`/api/event/${eventId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete event');
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Event deleted successfully',
+      });
+
+      // Refresh the page to update the list
+      window.location.reload();
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete event',
+      });
+    } finally {
+      setDeletingEventId(null);
+    }
+  };
+
   if (!events || events.length === 0) {
     return (
       <div className="text-center py-12 border-2 border-dashed rounded-lg">
@@ -75,12 +117,24 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
               </div>
             </div>
             
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex justify-between items-center">
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/event/${event.id}`}>
                   View Details
                 </Link>
               </Button>
+              {isAdmin && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => handleDeleteEvent(event.id)}
+                  disabled={deletingEventId === event.id}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="sr-only">Delete event</span>
+                </Button>
+              )}
             </div>
           </div>
         ))}
