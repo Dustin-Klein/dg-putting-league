@@ -25,14 +25,11 @@ export function EventsContent({ league, events, isAdmin, leagueId }: EventsConte
           Back to my leagues
         </Link>
         
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">{league.name}</h1>
-            {league.city && (
-              <p className="text-muted-foreground">{league.city}</p>
-            )}
-          </div>
-          <CreateEventDialog leagueId={leagueId} />
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">{league.name}</h1>
+          {league.city && (
+            <p className="text-muted-foreground">{league.city}</p>
+          )}
         </div>
 
         <EventsList 
