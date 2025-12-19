@@ -16,6 +16,7 @@ export interface EventPlayer {
   id: string;
   event_id: string;
   player_id: string;
+  has_paid: boolean;
   created_at: string;
   player: Player;
 }

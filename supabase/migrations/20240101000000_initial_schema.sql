@@ -80,10 +80,9 @@ create table public.event_players (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events(id) on delete cascade,
   player_id uuid not null references public.players(id),
-  registration_status registration_status not null default 'registered',
+  has_paid boolean not null default false,
   pool pool_type,
   qualification_seed integer,
-  paid_amount numeric(8,2),
   created_at timestamptz not null default now(),
   unique (event_id, player_id)
 );
