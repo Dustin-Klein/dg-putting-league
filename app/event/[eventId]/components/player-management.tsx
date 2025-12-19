@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useDebounce } from 'use-debounce';
-import { Search, Plus, X, Loader2, UserPlus } from 'lucide-react';
+import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -187,6 +187,48 @@ export function PlayerManagement({
     }
   };
 
+  // Handle toggling payment status
+  const handleTogglePayment = async (eventPlayerId: string, playerId: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch(`/api/event/${event.id}/players`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          playerId,
+          hasPaid: !currentStatus
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update payment status');
+      }
+
+      // Update the UI without refreshing
+      const updatedPlayers = event.players.map(player => 
+        player.id === eventPlayerId 
+          ? { ...player, has_paid: !currentStatus } 
+          : player
+      );
+      
+      // Update the event object to reflect the change
+      event.players = updatedPlayers;
+      
+      toast({
+        title: 'Success',
+        description: `Payment status updated to ${!currentStatus ? 'paid' : 'unpaid'}`,
+      });
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update payment status',
+        className: 'bg-destructive text-destructive-foreground',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -367,6 +409,7 @@ export function PlayerManagement({
               <TableHead>Name</TableHead>
               <TableHead>Identifier</TableHead>
               <TableHead>Registered</TableHead>
+              <TableHead>Paid</TableHead>
               {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -384,6 +427,24 @@ export function PlayerManagement({
                   </TableCell>
                   <TableCell>
                     {format(new Date(eventPlayer.created_at), 'MMM d, yyyy')}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleTogglePayment(eventPlayer.id, eventPlayer.player.id, eventPlayer.has_paid)}
+                      disabled={!isAdmin}
+                      className="p-0 h-auto"
+                    >
+                      {eventPlayer.has_paid ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <span className="sr-only">
+                        {eventPlayer.has_paid ? 'Mark as unpaid' : 'Mark as paid'}
+                      </span>
+                    </Button>
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
