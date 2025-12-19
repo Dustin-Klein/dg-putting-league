@@ -214,11 +214,6 @@ export function PlayerManagement({
       
       // Update the event object to reflect the change
       event.players = updatedPlayers;
-      
-      toast({
-        title: 'Success',
-        description: `Payment status updated to ${!currentStatus ? 'paid' : 'unpaid'}`,
-      });
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
