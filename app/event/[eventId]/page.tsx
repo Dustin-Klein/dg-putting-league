@@ -39,7 +39,8 @@ export default async function EventPage({
           nickname,
           email,
           created_at,
-          default_pool
+          default_pool,
+          player_number
         )
       )
     `)

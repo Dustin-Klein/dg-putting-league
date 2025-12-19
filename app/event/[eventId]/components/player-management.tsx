@@ -55,7 +55,8 @@ export function PlayerManagement({
       const mappedResults = (data.results || []).map((player: any) => ({
         id: player.id,
         name: player.full_name || 'Unknown Player',
-        identifier: player.display_identifier || ''
+        identifier: player.player_number ? `#${player.player_number}` : '',
+        player_number: player.player_number
       }));
       setSearchResults(mappedResults);
     } catch (error) {
@@ -378,7 +379,7 @@ export function PlayerManagement({
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {eventPlayer.player.display_identifier}
+                      {eventPlayer.player.player_number ? `#${eventPlayer.player.player_number}` : 'N/A'}
                     </Badge>
                   </TableCell>
                   <TableCell>
