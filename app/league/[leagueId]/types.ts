@@ -12,17 +12,3 @@ export interface Event {
   participant_count?: number;
 }
 
-export interface LeagueWithEvents {
-  id: string;
-  name: string;
-  city: string | null;
-  events: Event[];
-}
-
-export interface CreateEventFormValues {
-  event_date: string;
-  location: string;
-  lane_count: number;
-  putt_distance_ft: number;
-  access_code: string;
-}
