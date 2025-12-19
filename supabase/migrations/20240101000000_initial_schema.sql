@@ -39,8 +39,12 @@ create table public.league_admins (
   unique (league_id, user_id)
 );
 
+-- Create sequence for player numbers
+create sequence public.player_number_seq;
+
 create table public.players (
   id uuid primary key default gen_random_uuid(),
+  player_number integer unique not null default nextval('public.player_number_seq'),
   full_name text not null,
   nickname text,
   email text,
@@ -48,6 +52,14 @@ create table public.players (
   default_pool pool_type,
   constraint uq_players_email unique nulls not distinct (email)
 );
+
+-- Set sequence to start after the highest existing player number if any
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.players) THEN
+    PERFORM setval('public.player_number_seq', COALESCE((SELECT max(player_number) FROM public.players), 0) + 1);
+  END IF;
+END $$;
 create index idx_players_full_name on public.players using gin (full_name gin_trgm_ops);
 
 create table public.events (

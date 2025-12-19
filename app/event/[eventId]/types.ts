@@ -7,6 +7,7 @@ export interface Player {
   email?: string | null;
   created_at: string;
   default_pool?: 'A' | 'B' | null;
+  player_number?: number | null;
   // Computed display field (not in database)
   display_identifier?: string;
 }

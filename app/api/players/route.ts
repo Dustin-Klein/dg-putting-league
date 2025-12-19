@@ -56,6 +56,8 @@ export async function POST(request: Request) {
     // Add optional fields if they exist
     if (nickname) playerData.nickname = nickname;
     if (defaultPool) playerData.default_pool = defaultPool;
+    
+    // Player number will be automatically assigned by the database sequence
 
     const { data: newPlayer, error } = await supabase
       .from('players')
