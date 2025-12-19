@@ -3,7 +3,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 const eventSchema = z.object({
-  event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  event_date: z.string().refine((val) => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(val) && !isNaN(Date.parse(val));
+  }, {
+    message: 'Event date must be a valid date in YYYY-MM-DD format',
+  }),
   location: z.string().nullable(),
   lane_count: z.number().int().positive(),
   putt_distance_ft: z.number().positive(),
@@ -77,12 +81,15 @@ export async function POST(
       );
     }
 
-    // Create the event
+    // Parse and format the date to ensure it's stored correctly
+    const eventDate = new Date(body.event_date);
+    const formattedDate = eventDate.toISOString().split('T')[0];
+    
     const { data: event, error: eventError } = await supabase
       .from('events')
       .insert({
         league_id: params.leagueId,
-        event_date: body.event_date,
+        event_date: formattedDate,
         location: body.location,
         lane_count: body.lane_count,
         putt_distance_ft: body.putt_distance_ft,

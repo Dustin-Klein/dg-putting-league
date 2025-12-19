@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { formatDisplayDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Event } from '../types';
 import { CreateEventDialog } from './create-event-dialog';
@@ -41,7 +41,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-semibold text-lg">
-                  {format(new Date(event.event_date), 'MMMM d, yyyy')}
+                  {formatDisplayDate(event.event_date)}
                 </h3>
                 {event.location && (
                   <p className="text-muted-foreground">{event.location}</p>

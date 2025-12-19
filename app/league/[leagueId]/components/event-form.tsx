@@ -14,15 +14,15 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { format } from 'date-fns';
+import { formatDisplayDate, formatForDatabase, isFutureOrToday } from '@/lib/date-utils';
 import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 // Generate a random alphanumeric code
 const generateRandomCode = (length = 6): string => {
@@ -35,8 +35,8 @@ const generateRandomCode = (length = 6): string => {
 
 export const eventFormSchema = z.object({
   event_date: z.date()
-    .refine((date) => date >= new Date(), {
-      message: 'Event date must be in the future',
+    .refine((date) => isFutureOrToday(date), {
+      message: 'Event date must be today or in the future',
     }),
   location: z.string().min(2, 'Location must be at least 2 characters').optional(),
   lane_count: z.coerce.number().int().positive('Must have at least 1 lane').default(1),
@@ -115,7 +115,7 @@ export function EventForm({
                       )}
                     >
                       {field.value ? (
-                        format(field.value, 'PPP')
+                        formatDisplayDate(field.value)
                       ) : (
                         <span>Pick a date</span>
                       )}
@@ -128,7 +128,7 @@ export function EventForm({
                     mode="single"
                     selected={field.value}
                     onSelect={field.onChange}
-                    disabled={(date: Date) => date < new Date()}
+                    disabled={(date) => !isFutureOrToday(date)}
                     initialFocus
                   />
                 </PopoverContent>

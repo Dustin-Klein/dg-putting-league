@@ -1,20 +1,21 @@
 'use client';
 
-import { format } from 'date-fns';
+import { CalendarDays, Loader2, MapPin } from 'lucide-react';
+import { useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/components/ui/use-toast';
-import { EventWithDetails, UpdateEventStatusValues } from '../types';
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
 } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
+import { formatDisplayDate } from '@/lib/date-utils';
+import { EventWithDetails, UpdateEventStatusValues } from '../types';
 
 const statusVariantMap = {
   registration: 'outline',
@@ -63,7 +64,7 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
         title: 'Error',
         description: 'Failed to update event status',
         variant: 'destructive',
-      });
+      } as any);
     } finally {
       setIsUpdating(false);
     }
@@ -75,7 +76,7 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-2xl font-bold">
-              {format(new Date(event.event_date), 'MMMM d, yyyy')}
+              {formatDisplayDate(event.event_date)}
             </CardTitle>
             <p className="text-muted-foreground">
               {event.location || 'Location not specified'}

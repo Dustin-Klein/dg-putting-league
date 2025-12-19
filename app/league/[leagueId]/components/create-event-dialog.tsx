@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatForDatabase } from '@/lib/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -24,7 +25,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_date: values.event_date.toISOString().split('T')[0],
+          event_date: formatForDatabase(values.event_date),
           location: values.location || null,
           lane_count: values.lane_count,
           putt_distance_ft: values.putt_distance_ft,
