@@ -90,7 +90,7 @@ export async function POST(
         putt_distance_ft: body.putt_distance_ft,
         access_code: body.access_code,
         qualification_round_enabled: body.qualification_round_enabled ?? false,
-        status: 'registration',
+        status: 'created',
       })
       .select()
       .single();

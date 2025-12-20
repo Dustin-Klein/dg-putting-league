@@ -93,11 +93,11 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                   event.status === 'completed' 
                     ? 'bg-green-100 text-green-800' 
-                    : event.status === 'registration' 
+                    : event.status === 'created' 
                       ? 'bg-blue-100 text-blue-800' 
                       : 'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                  {event.status === 'pre-bracket' ? 'Pre-Bracket' : event.status.charAt(0).toUpperCase() + event.status.slice(1)}
                 </span>
                 {event.qualification_round_enabled && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
