@@ -74,10 +74,9 @@ export function PlayerManagement({
   const handleAddPlayer = async (playerId: string) => {
   try {
     setIsAddingPlayer(true);
-    const response = await fetch(`/api/event/${event.id}/players`, {
+    const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId }),
+      headers: { 'Content-Type': 'application/json' }
     });
     const data = await response.json();
     
@@ -190,13 +189,9 @@ export function PlayerManagement({
   // Handle toggling payment status
   const handleTogglePayment = async (eventPlayerId: string, playerId: string, currentStatus: boolean) => {
     try {
-      const response = await fetch(`/api/event/${event.id}/players`, {
+      const response = await fetch(`/api/event/${event.id}/players/${playerId}?hasPaid=${!currentStatus}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          playerId,
-          hasPaid: !currentStatus
-        }),
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const data = await response.json();
