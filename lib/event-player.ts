@@ -84,7 +84,6 @@ export async function removePlayerFromEvent(
     .eq('event_id', eventId);
 
   if (error) {
-    console.error('Error removing player from event:', error);
     throw new InternalError('Failed to remove player from event');
   }
 
