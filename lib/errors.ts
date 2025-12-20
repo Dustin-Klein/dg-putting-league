@@ -25,3 +25,10 @@ export class InternalError extends Error {
     this.name = 'InternalError';
   }
 }
+
+export class BadRequestError extends Error {
+  constructor(message = 'Bad Request error') {
+    super(message);
+    this.name = 'BadRequestError';
+  }
+}
