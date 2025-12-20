@@ -71,6 +71,7 @@ create table public.events (
   putt_distance_ft numeric(5,2) not null,
   access_code text not null unique,
   bonus_point_enabled boolean not null default true,
+  qualification_round_enabled boolean not null default false,
   status event_status not null default 'registration',
   created_at timestamptz not null default now()
 );

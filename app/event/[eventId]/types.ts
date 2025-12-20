@@ -30,6 +30,7 @@ export interface EventWithDetails {
   putt_distance_ft: number;
   access_code: string;
   bonus_point_enabled: boolean;
+  qualification_round_enabled: boolean;
   created_at: string;
   players: EventPlayer[];
   participant_count: number;

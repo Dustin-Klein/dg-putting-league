@@ -4,9 +4,11 @@ Web app to be used to manage and score disc golf putting league.
 
 ## Play
 
-1. 5 frame qualification round
+1. There is an optional 5 frame qualification round
     - A frame is 3 putts where each putt is worth one point. If "bonus point" is turned on in league settings, if all three putts are made, 4 points are earned instead of 3
-2. Players are split into A pool or B pool in which A pool is the top half or qualification scores and B pool is the lower half
+2. Players are split into A pool or B pool in which 
+    - If qualification round is enabled, A pool is the top half or qualification scores and B pool is the lower half
+    - If qualification round is not enabled, A pool is the top half of the event signups per frame average of previous events and B pool is the lower half. If there is a new player, league admin will have to manually place them in a pool.
 3. Doubles are then created with 1 person from each pool.  Thier cumalitve qualification scores are then ordered to determine seeds.
 4. Double elemination bracket is created and played to completion.
     - Each bracket play match is 5 frames per person. If scores are tied after 5 frames, the match continues in sudden death until a winner is determined. This can be after only half a frame, both players on a team are not guaranteed a putt in overtime.
@@ -28,6 +30,7 @@ Web app to be used to manage and score disc golf putting league.
         - Zero to many players
         - Custom access code
         - Bonus point (y/n) - defaults to yes
+        - Qualification round (y/n) - defaults to no
 - During registration the league admin will collect payment and add "players" to the event
     - A player does not sign into the webapp, but could exist in the database.
     - If a player does not already exist, adding a new player to the league event will create their identifier and add them to the system
