@@ -105,7 +105,7 @@ export async function getEventsByLeagueId(leagueId: string) {
 /**
  * Ensure the current user is an admin of the event’s league
  */
-async function requireEventAdmin(eventId: string) {
+export async function requireEventAdmin(eventId: string) {
   const supabase = await createClient();
   const user = await requireAuthenticatedUser();
 
