@@ -1,11 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { LeagueWithRole } from '@/app/leagues/types';
-import {
-  UnauthorizedError,
-  ForbiddenError,
-  InternalError,
-} from '@/lib/errors';
 
 export async function getLeague(
   leagueId: string
