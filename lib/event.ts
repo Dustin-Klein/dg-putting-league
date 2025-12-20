@@ -1,14 +1,51 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { EventWithDetails } from '@/app/event/[eventId]/types';
 import {
   UnauthorizedError,
   ForbiddenError,
   InternalError,
 } from '@/lib/errors';
 
-export async function getLeagueEventsWithParticipantCounts(
-  leagueId: string
-) {
+export async function getEventWithPlayers(eventId: string) {
+  if (!eventId) {
+    console.error('No eventId provided');
+    redirect('/leagues');
+  }
+
+  const supabase = await createClient();
+
+  const { data: event, error } = await supabase
+    .from('events')
+    .select(`
+      *,
+      players:event_players(
+        id,
+        created_at,
+        player:players(
+          id,
+          full_name,
+          nickname,
+          email,
+          created_at,
+          default_pool,
+          player_number
+        )
+      )
+    `)
+    .eq('id', eventId)
+    .maybeSingle();
+
+  if (error || !event) {
+    console.error('Error fetching event:', error);
+    redirect('/leagues');
+  }
+
+  return event as unknown as EventWithDetails;
+}
+
+export async function getEventsByLeagueId(leagueId: string) {
   const supabase = await createClient();
 
   // Auth check
