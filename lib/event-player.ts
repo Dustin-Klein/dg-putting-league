@@ -8,9 +8,7 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin } from './event';
 
-/**
- * Add a player to an event
- */
+
 export async function addPlayerToEvent(eventId: string, playerId: string) {
   const { supabase } = await requireEventAdmin(eventId);
 
@@ -42,9 +40,6 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
   return data[0];
 }
 
-/**
- * Update a player's payment status in an event
- */
 export async function updatePlayerPayment(eventId: string, playerId: string, hasPaid: boolean) {
   const { supabase } = await requireEventAdmin(eventId);
 
