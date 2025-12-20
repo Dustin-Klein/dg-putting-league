@@ -44,7 +44,11 @@ export function PlayerManagement({
 
     try {
       setIsSearching(true);
-      const response = await fetch(`/api/players/search?query=${encodeURIComponent(query)}`);
+      const searchParams = new URLSearchParams({
+        query,
+        excludeEventId: event.id
+      });
+      const response = await fetch(`/api/players/search?${searchParams.toString()}`);
       
       if (!response.ok) {
         throw new Error('Search failed');

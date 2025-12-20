@@ -78,7 +78,7 @@ export type PlayerSearchResult = {
   player_number: number | null;
 };
 
-export async function searchPlayers(query: string | null) {
+export async function searchPlayers(query: string | null, excludeEventId?: string) {
   if (!query) {
     return [];
   }
@@ -89,7 +89,8 @@ export async function searchPlayers(query: string | null) {
   const numericQuery = Number(query);
   const isNumeric = !Number.isNaN(numericQuery);
 
-  const { data: players, error } = await supabase
+  // First, get the base query for player search
+  let queryBuilder = supabase
     .from('players')
     .select('id, full_name, player_number')
     .or(
@@ -101,6 +102,28 @@ export async function searchPlayers(query: string | null) {
         .join(',')
     )
     .limit(10);
+
+  // If we need to exclude players already in an event
+  if (excludeEventId) {
+    // Get players already in the event
+    const { data: eventPlayers, error: eventPlayersError } = await supabase
+      .from('event_players')
+      .select('player_id')
+      .eq('event_id', excludeEventId);
+
+    if (eventPlayersError) {
+      console.error('Error fetching event players:', eventPlayersError);
+      throw new InternalError('Failed to fetch event players');
+    }
+
+    // Exclude players already in the event
+    const playerIdsToExclude = eventPlayers.map(ep => ep.player_id);
+    if (playerIdsToExclude.length > 0) {
+      queryBuilder = queryBuilder.not('id', 'in', `(${playerIdsToExclude.join(',')})`);
+    }
+  }
+
+  const { data: players, error } = await queryBuilder;
 
   if (error) {
     console.error('Error searching players:', error);
