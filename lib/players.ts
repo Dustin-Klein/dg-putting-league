@@ -86,26 +86,52 @@ export async function searchPlayers(query: string | null, excludeEventId?: strin
   const supabase = await createClient();
   const user = await requireAuthenticatedUser();
 
-  const numericQuery = Number(query);
-  const isNumeric = !Number.isNaN(numericQuery);
+  // Sanitize and validate input to prevent filter injection
+  const trimmed = query.trim();
+  // Escape % and _ used by LIKE to avoid unintended wildcards
+  const escaped = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
 
-  // First, get the base query for player search
-  let queryBuilder = supabase
+  // Build a safe base query using structured filters (no string concatenated OR)
+  const fullNameQuery = supabase
     .from('players')
     .select('id, full_name, player_number')
-    .or(
-      [
-        `full_name.ilike.%${query}%`,
-        isNumeric ? `player_number.eq.${numericQuery}` : null,
-      ]
-        .filter(Boolean)
-        .join(',')
-    )
+    .ilike('full_name', `%${escaped}%`)
     .limit(10);
+
+  // If numeric, perform a separate exact-number match and merge results client-side
+  const numericQuery = Number(trimmed);
+  const isNumeric = !Number.isNaN(numericQuery);
+
+  let players: PlayerSearchResult[] = [];
+  let errorAgg: any = null;
+
+  const [{ data: byName, error: nameErr }] = await Promise.all([
+    fullNameQuery,
+  ]);
+
+  if (nameErr) errorAgg = nameErr;
+  if (byName) players = byName as PlayerSearchResult[];
+
+  if (isNumeric) {
+    const { data: byNumber, error: numErr } = await supabase
+      .from('players')
+      .select('id, full_name, player_number')
+      .eq('player_number', numericQuery)
+      .limit(10);
+    if (numErr) errorAgg = errorAgg ?? numErr;
+    if (byNumber) {
+      const seen = new Set(players.map((p) => p.id));
+      for (const p of byNumber as PlayerSearchResult[]) {
+        if (!seen.has(p.id)) players.push(p);
+      }
+    }
+  }
+
+  // Start a queryBuilder-like path using the merged list; exclusion happens below
+  let initialResults = players;
 
   // If we need to exclude players already in an event
   if (excludeEventId) {
-    // Get players already in the event
     const { data: eventPlayers, error: eventPlayersError } = await supabase
       .from('event_players')
       .select('player_id')
@@ -116,19 +142,14 @@ export async function searchPlayers(query: string | null, excludeEventId?: strin
       throw new InternalError('Failed to fetch event players');
     }
 
-    // Exclude players already in the event
-    const playerIdsToExclude = eventPlayers.map(ep => ep.player_id);
-    if (playerIdsToExclude.length > 0) {
-      queryBuilder = queryBuilder.not('id', 'in', `(${playerIdsToExclude.join(',')})`);
-    }
+    const exclude = new Set((eventPlayers ?? []).map((ep: any) => ep.player_id));
+    initialResults = initialResults.filter((p) => !exclude.has(p.id));
   }
 
-  const { data: players, error } = await queryBuilder;
-
-  if (error) {
-    console.error('Error searching players:', error);
+  if (errorAgg) {
+    console.error('Error searching players:', errorAgg);
     throw new InternalError('Failed to search players');
   }
 
-  return players ?? [];
+  return initialResults ?? [];
 }
