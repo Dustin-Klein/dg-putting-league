@@ -6,7 +6,9 @@ import {
   UnauthorizedError,
   ForbiddenError,
   InternalError,
+  NotFoundError
 } from '@/lib/errors';
+import { requireAuthenticatedUser } from './league-auth';
 
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
@@ -98,4 +100,84 @@ export async function getEventsByLeagueId(leagueId: string) {
   );
 
   return eventsWithParticipantCount;
+}
+
+/**
+ * Ensure the current user is an admin of the event’s league
+ */
+async function requireEventAdmin(eventId: string) {
+  const supabase = await createClient();
+  const user = await requireAuthenticatedUser();
+
+  const { data: event } = await supabase
+    .from('events')
+    .select('league_id')
+    .eq('id', eventId)
+    .single();
+
+  if (!event) {
+    throw new NotFoundError('Event not found');
+  }
+
+  const { data: leagueAdmin } = await supabase
+    .from('league_admins')
+    .select('id')
+    .eq('league_id', event.league_id)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!leagueAdmin) {
+    throw new ForbiddenError();
+  }
+
+  return { supabase };
+}
+
+
+/**
+ * Delete an event and all related records
+ */
+export async function deleteEvent(eventId: string) {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const { error: deletePlayersError } = await supabase
+    .from('event_players')
+    .delete()
+    .eq('event_id', eventId);
+
+  if (deletePlayersError) {
+    throw new InternalError('Failed to delete event participants');
+  }
+
+  const { error: deleteEventError } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', eventId);
+
+  if (deleteEventError) {
+    throw new InternalError('Failed to delete event');
+  }
+}
+
+/**
+ * Update an event
+ */
+export async function updateEvent(
+  eventId: string,
+  data: Record<string, unknown>
+) {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const { data: updatedEvent, error } = await supabase
+    .from('events')
+    .update(data)
+    .eq('id', eventId)
+    .select()
+    .single();
+
+  if (error || !updatedEvent) {
+    throw new InternalError('Failed to update event');
+  }
+
+  return updatedEvent;
 }

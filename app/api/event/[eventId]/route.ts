@@ -1,251 +1,92 @@
-import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  getEventWithPlayers,
+  deleteEvent,
+  updateEvent,
+} from '@/lib/event';
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+} from '@/lib/errors';
 
 const updateEventSchema = z.object({
-  status: z.enum(['registration', 'qualification', 'bracket', 'completed']).optional(),
-  // Add other fields that can be updated here
+  status: z.enum([
+    'registration',
+    'qualification',
+    'bracket',
+    'completed',
+  ]).optional(),
 });
 
+function handleError(error: unknown) {
+  if (error instanceof UnauthorizedError) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (error instanceof ForbiddenError) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (error instanceof NotFoundError) {
+    return NextResponse.json({ error: error.message }, { status: 404 });
+  }
+
+  console.error(error);
+  return NextResponse.json(
+    { error: 'Internal server error' },
+    { status: 500 }
+  );
+}
+
 export async function GET(
-  request: Request,
-  context: { params: { eventId: string } }
+  _req: Request,
+  { params }: { params: { eventId: string } }
 ) {
-  // Ensure params is resolved if it's a Promise
-  const params = await Promise.resolve(context.params);
-  const eventId = params.eventId;
   try {
-    const supabase = await createClient();
-
-    // Get the event with player details
-    const { data: event, error: eventError } = await supabase
-      .from('events')
-      .select(`
-        *,
-        players:event_players(
-          id,
-          created_at,
-          player:players(
-            id,
-            name,
-            email,
-            pdga_number,
-            phone_number,
-            created_at,
-            display_identifier
-          )
-        )
-      `)
-      .eq('id', eventId)
-      .single();
-
-    if (eventError) {
-      console.error('Error fetching event:', eventError);
-      return NextResponse.json(
-        { error: 'Failed to fetch event' },
-        { status: 500 }
-      );
-    }
-
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    // Get participant count
-    const { count, error: countError } = await supabase
-      .from('event_players')
-      .select('*', { count: 'exact', head: true })
-      .eq('event_id', eventId);
-
-    if (countError) {
-      console.error('Error counting participants:', countError);
-    }
-
-    return NextResponse.json({
-      ...event,
-      participant_count: count || 0,
-    });
-  } catch (error) {
-    console.error('Error in event API route:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    const event = await getEventWithPlayers(params.eventId);
+    return NextResponse.json(event);
+  } catch (e) {
+    return handleError(e);
   }
 }
 
 export async function DELETE(
-  request: Request,
-  context: { params: { eventId: string } }
+  req: Request,
+  context: { params: { eventId: string } | Promise<{ eventId: string }> }
 ) {
-  // Ensure params is resolved if it's a Promise
-  const params = await Promise.resolve(context.params);
-  const eventId = params.eventId;
+  const { eventId } = await Promise.resolve(context.params);
   
   try {
-    const supabase = await createClient();
-    
-    // Check if user is authenticated
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Check if the event exists
-    const { data: event, error: eventError } = await supabase
-      .from('events')
-      .select('*')
-      .eq('id', eventId)
-      .single();
-
-    if (eventError || !event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if user is an admin of the league
-    const { data: leagueAdmin, error: adminError } = await supabase
-      .from('league_admins')
-      .select('*')
-      .eq('league_id', event.league_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (adminError || !leagueAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden - Not an admin of this league' },
-        { status: 403 }
-      );
-    }
-
-    // Delete all related records first (event_players, etc.)
-    const { error: deletePlayersError } = await supabase
-      .from('event_players')
-      .delete()
-      .eq('event_id', eventId);
-
-    if (deletePlayersError) {
-      console.error('Error deleting event players:', deletePlayersError);
-      return NextResponse.json(
-        { error: 'Failed to delete event participants' },
-        { status: 500 }
-      );
-    }
-
-    // Delete the event
-    const { error: deleteError } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', eventId);
-
-    if (deleteError) {
-      console.error('Error deleting event:', deleteError);
-      return NextResponse.json(
-        { error: 'Failed to delete event' },
-        { status: 500 }
-      );
-    }
-
+    await deleteEvent(eventId);
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in event DELETE API route:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (e) {
+    return handleError(e);
   }
 }
 
+
 export async function PATCH(
-  request: Request,
-  context: { params: { eventId: string } }
+  req: Request,
+  { params }: { params: { eventId: string } }
 ) {
-  // Ensure params is resolved if it's a Promise
-  const params = await Promise.resolve(context.params);
-  const eventId = params.eventId;
   try {
-    const supabase = await createClient();
-    
-    // Check if user is authenticated
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const body = await req.json();
+    const parsed = updateEventSchema.safeParse(body);
 
-    // Parse and validate request body
-    const body = await request.json();
-    const validation = updateEventSchema.safeParse(body);
-
-    if (!validation.success) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid request data', details: validation.error.issues },
+        { error: 'Invalid request data', details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    // Check if user is an admin of this event's league
-    const { data: event, error: eventError } = await supabase
-      .from('events')
-      .select('league_id')
-      .eq('id', eventId)
-      .single();
-
-    if (eventError || !event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    const { data: leagueAdmin, error: adminError } = await supabase
-      .from('league_admins')
-      .select('*')
-      .eq('league_id', event.league_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (adminError || !leagueAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
-
-    // Update the event
-    const { data: updatedEvent, error: updateError } = await supabase
-      .from('events')
-      .update(validation.data)
-      .eq('id', eventId)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating event:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update event' },
-        { status: 500 }
-      );
-    }
+    const updatedEvent = await updateEvent(
+      params.eventId,
+      parsed.data
+    );
 
     return NextResponse.json(updatedEvent);
-  } catch (error) {
-    console.error('Error in event update API route:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (e) {
+    return handleError(e);
   }
 }

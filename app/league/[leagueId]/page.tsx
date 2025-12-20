@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { EventsContent } from './events-content';
 import { getEventsByLeagueId} from '@/lib/event';
