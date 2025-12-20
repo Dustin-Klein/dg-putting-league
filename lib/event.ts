@@ -25,6 +25,7 @@ export async function getEventWithPlayers(eventId: string) {
       players:event_players(
         id,
         created_at,
+        has_paid,
         player:players(
           id,
           full_name,
@@ -84,20 +85,29 @@ export async function getEventsByLeagueId(leagueId: string) {
     throw new InternalError('Failed to fetch events');
   }
 
-  // Participant counts
-  const eventsWithParticipantCount = await Promise.all(
-    (events ?? []).map(async (event) => {
-      const { count } = await supabase
-        .from('event_players')
-        .select('*', { count: 'exact', head: true })
-        .eq('event_id', event.id);
+  // Participant counts - optimized to avoid N+1 queries
+  const eventIds = (events ?? []).map((e) => e.id);
+  let countsByEvent: Record<string, number> = {};
+  if (eventIds.length > 0) {
+    const { data: epRows, error: epError } = await supabase
+      .from('event_players')
+      .select('event_id')
+      .in('event_id', eventIds);
 
-      return {
-        ...event,
-        participant_count: count ?? 0,
-      };
-    })
-  );
+    if (epError) {
+      console.error(epError);
+      throw new InternalError('Failed to fetch participant counts');
+    }
+
+    for (const row of epRows ?? []) {
+      // @ts-ignore - event_id exists on the selected rows
+      countsByEvent[row.event_id] = (countsByEvent[row.event_id] ?? 0) + 1;
+    }
+  }
+  const eventsWithParticipantCount = (events ?? []).map((event) => ({
+    ...event,
+    participant_count: countsByEvent[event.id] ?? 0,
+  }));
 
   return eventsWithParticipantCount;
 }
@@ -140,21 +150,13 @@ export async function requireEventAdmin(eventId: string) {
 export async function deleteEvent(eventId: string) {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { error: deletePlayersError } = await supabase
-    .from('event_players')
-    .delete()
-    .eq('event_id', eventId);
-
-  if (deletePlayersError) {
-    throw new InternalError('Failed to delete event participants');
-  }
-
-  const { error: deleteEventError } = await supabase
+  // Rely on ON DELETE CASCADE from events to related tables
+  const { error } = await supabase
     .from('events')
     .delete()
     .eq('id', eventId);
 
-  if (deleteEventError) {
+  if (error) {
     throw new InternalError('Failed to delete event');
   }
 }

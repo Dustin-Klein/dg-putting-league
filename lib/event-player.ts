@@ -1,7 +1,5 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import {
-  UnauthorizedError,
   NotFoundError,
   BadRequestError,
   InternalError,
@@ -27,17 +25,45 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
   // Insert player
   const { data, error } = await supabase
     .from('event_players')
-    .insert([{
-      event_id: eventId,
-      player_id: playerId,
-      has_paid: false,
-      created_at: new Date().toISOString(),
-    }])
+    .insert([
+      {
+        event_id: eventId,
+        player_id: playerId,
+        has_paid: false,
+        created_at: new Date().toISOString(),
+      },
+    ])
     .select('id');
 
-  if (error) throw new InternalError('Failed to add player to event');
+  if (error || !data || !data[0]?.id) throw new InternalError('Failed to add player to event');
 
-  return data[0];
+  const insertedId = data[0].id as string;
+
+  // Fetch the inserted row with nested player info for client state updates
+  const { data: inserted, error: fetchError } = await supabase
+    .from('event_players')
+    .select(`
+      id,
+      event_id,
+      player_id,
+      has_paid,
+      created_at,
+      player:players(
+        id,
+        full_name,
+        nickname,
+        email,
+        created_at,
+        default_pool,
+        player_number
+      )
+    `)
+    .eq('id', insertedId)
+    .single();
+
+  if (fetchError || !inserted) throw new InternalError('Failed to fetch added player');
+
+  return inserted;
 }
 
 
@@ -49,13 +75,7 @@ export async function removePlayerFromEvent(
     throw new BadRequestError('Event Player ID is required');
   }
 
-  const supabase = await createClient();
-
-  // Verify user is authenticated
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    throw new UnauthorizedError();
-  }
+  const { supabase } = await requireEventAdmin(eventId);
 
   const { error } = await supabase
     .from('event_players')

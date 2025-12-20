@@ -14,9 +14,9 @@ export async function POST(
       throw new BadRequestError('Player ID is required')
     }
 
-    await addPlayerToEvent(eventId, playerId);
+    const newEventPlayer = await addPlayerToEvent(eventId, playerId);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, data: newEventPlayer });
   } catch (error) {
     return handleError(error);
   }

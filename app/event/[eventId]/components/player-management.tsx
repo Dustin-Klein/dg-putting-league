@@ -26,6 +26,7 @@ export function PlayerManagement({
   isAdmin: boolean;
 }) {
   const { toast } = useToast();
+  const [players, setPlayers] = useState(event.players ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 300);
   const [isSearching, setIsSearching] = useState(false);
@@ -87,8 +88,10 @@ export function PlayerManagement({
     if (!response.ok) {
       throw new Error(data.error || 'Failed to add player');
     }
-    // Refresh the page to show the updated player list
-    window.location.reload();
+    // Update state with returned event player
+    if (data?.data) {
+      setPlayers((prev) => [...prev, data.data]);
+    }
   } catch (error) {
     console.error('Error adding player:', error);
     toast({
@@ -180,7 +183,8 @@ export function PlayerManagement({
         throw new Error('Failed to remove player');
       }
 
-      window.location.reload();
+      // Update UI without refresh
+      setPlayers((prev) => prev.filter((p) => p.id !== eventPlayerId));
     } catch (error) {
       console.error('Error removing player:', error);
       toast({
@@ -193,9 +197,10 @@ export function PlayerManagement({
   // Handle toggling payment status
   const handleTogglePayment = async (eventPlayerId: string, playerId: string, currentStatus: boolean) => {
     try {
-      const response = await fetch(`/api/event/${event.id}/players/${playerId}?hasPaid=${!currentStatus}`, {
+      const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hasPaid: !currentStatus })
       });
 
       const data = await response.json();
@@ -205,14 +210,12 @@ export function PlayerManagement({
       }
 
       // Update the UI without refreshing
-      const updatedPlayers = event.players.map(player => 
+      const updatedPlayers = players.map(player => 
         player.id === eventPlayerId 
           ? { ...player, has_paid: !currentStatus } 
           : player
       );
-      
-      // Update the event object to reflect the change
-      event.players = updatedPlayers;
+      setPlayers(updatedPlayers);
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -407,8 +410,8 @@ export function PlayerManagement({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {event.players && event.players.length > 0 ? (
-              event.players.map((eventPlayer) => (
+            {players && players.length > 0 ? (
+              players.map((eventPlayer) => (
                 <TableRow key={eventPlayer.id}>
                   <TableCell className="font-medium">
                     {eventPlayer.player.full_name}
