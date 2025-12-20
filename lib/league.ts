@@ -1,6 +1,11 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { LeagueWithRole } from '@/app/leagues/types';
+import {
+  UnauthorizedError,
+  BadRequestError,
+  InternalError,
+} from '@/lib/errors';
 
 export async function getLeague(
   leagueId: string
@@ -77,4 +82,52 @@ export async function getUserAdminLeagues(userId: string): Promise<LeagueWithRol
       };
     })
   );
+}
+
+type CreateLeagueInput = {
+  name: string;
+  city?: string | null;
+};
+
+export async function createLeague(input: CreateLeagueInput) {
+  const supabase = await createClient();
+
+  // Auth check
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new UnauthorizedError('Authentication required');
+  }
+
+  const { name, city } = input;
+
+  if (!name || typeof name !== 'string') {
+    throw new BadRequestError('League name is required');
+  }
+
+  const { data: league, error } = await supabase.rpc(
+    'create_league_with_admin',
+    {
+      p_name: name,
+      p_city: city ?? null,
+      p_user_id: user.id,
+    }
+  );
+
+  if (error) {
+    throw new InternalError(`Failed to create league: ${error.message}`);
+  }
+
+  // RPC may return JSON or stringified JSON
+  const parsed = typeof league === 'string' ? JSON.parse(league) : league;
+
+  if (!parsed?.id) {
+    throw new InternalError('Invalid response from create_league_with_admin');
+  }
+
+  return parsed as {
+    id: string;
+    name: string;
+    city: string | null;
+    created_at: string;
+  };
 }

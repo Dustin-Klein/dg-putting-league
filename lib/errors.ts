@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+
 export class UnauthorizedError extends Error {
   constructor(message = 'Unauthorized') {
     super(message);
@@ -31,4 +33,18 @@ export class BadRequestError extends Error {
     super(message);
     this.name = 'BadRequestError';
   }
+}
+
+export function handleError(error: unknown) {
+  if (error instanceof UnauthorizedError) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (error instanceof BadRequestError) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (error instanceof NotFoundError) {
+    return NextResponse.json({ error: error.message }, { status: 404 });
+  }
+  console.error(error);
+  return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
 }

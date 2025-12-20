@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  handleError,
+  UnauthorizedError,
+  ForbiddenError,
+  BadRequestError,
+  InternalError,
+  NotFoundError
+} from '@/lib/errors';
 
 const eventSchema = z.object({
   event_date: z.string().refine((val) => {
@@ -18,20 +26,18 @@ export async function POST(
   request: Request,
   { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
 ) {
-  // Ensure params is resolved if it's a Promise
-  const params = await Promise.resolve(paramsPromise);
-  const leagueId = params.leagueId;
   try {
+    // Ensure params is resolved if it's a Promise
+    const params = await Promise.resolve(paramsPromise);
+    const leagueId = params.leagueId;
+    
     const supabase = await createClient();
 
     // Check if user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      throw new UnauthorizedError('Authentication required');
     }
 
     // Check if user is an admin of this league
@@ -43,10 +49,7 @@ export async function POST(
       .single();
 
     if (adminError || !leagueAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden' },
-        { status: 403 }
-      );
+      throw new ForbiddenError('Insufficient permissions');
     }
 
     // Validate request body
@@ -54,10 +57,7 @@ export async function POST(
     const validation = eventSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: 'Invalid request body', details: validation.error.issues },
-        { status: 400 }
-      );
+      throw new BadRequestError('Invalid request body');
     }
 
     const { data: existingEvent, error: existingEventError } = await supabase
@@ -68,17 +68,11 @@ export async function POST(
 
     if (existingEventError) {
       console.error('Error checking for existing event:', existingEventError);
-      return NextResponse.json(
-        { error: 'Error checking for existing event' },
-        { status: 500 }
-      );
+      throw new InternalError('Error checking for existing event');
     }
 
     if (existingEvent) {
-      return NextResponse.json(
-        { error: 'An event with this access code already exists' },
-        { status: 409 }
-      );
+      throw new BadRequestError('An event with this access code already exists');
     }
 
     // Parse and format the date to ensure it's stored correctly
@@ -101,18 +95,11 @@ export async function POST(
 
     if (eventError) {
       console.error('Error creating event:', eventError);
-      return NextResponse.json(
-        { error: 'Failed to create event' },
-        { status: 500 }
-      );
+      throw new InternalError('Failed to create event');
     }
 
-    return NextResponse.json(event);
+    return NextResponse.json(event, { status: 201 });
   } catch (error) {
-    console.error('Error in events API route:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleError(error);
   }
 }
