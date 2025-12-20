@@ -40,6 +40,37 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
   return data[0];
 }
 
+
+export async function removePlayerFromEvent(
+  eventId: string,
+  eventPlayerId: string
+) {
+  if (!eventPlayerId) {
+    throw new BadRequestError('Event Player ID is required');
+  }
+
+  const supabase = await createClient();
+
+  // Verify user is authenticated
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new UnauthorizedError();
+  }
+
+  const { error } = await supabase
+    .from('event_players')
+    .delete()
+    .eq('id', eventPlayerId)
+    .eq('event_id', eventId);
+
+  if (error) {
+    console.error('Error removing player from event:', error);
+    throw new InternalError('Failed to remove player from event');
+  }
+
+  return { success: true };
+}
+
 export async function updatePlayerPayment(eventId: string, playerId: string, hasPaid: boolean) {
   const { supabase } = await requireEventAdmin(eventId);
 
