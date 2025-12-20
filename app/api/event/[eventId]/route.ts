@@ -15,8 +15,8 @@ import {
 
 const updateEventSchema = z.object({
   status: z.enum([
-    'registration',
-    'qualification',
+    'created',
+    'pre-bracket',
     'bracket',
     'completed',
   ]).optional(),

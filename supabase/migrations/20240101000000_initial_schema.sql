@@ -5,7 +5,7 @@ create extension if not exists pg_trgm;
 create type league_admin_role as enum ('owner','admin','scorer');
 create type registration_status as enum ('registered','paid','withdrawn');
 create type pool_type as enum ('A','B');
-create type event_status as enum ('registration','qualification','bracket','completed');
+create type event_status as enum ('created','pre-bracket','bracket','completed');
 create type qualification_status as enum ('not_started','in_progress','completed');
 create type match_status as enum ('pending','ready','in_progress','completed');
 create type lane_status as enum ('idle','occupied','maintenance');
@@ -72,7 +72,7 @@ create table public.events (
   access_code text not null unique,
   bonus_point_enabled boolean not null default true,
   qualification_round_enabled boolean not null default false,
-  status event_status not null default 'registration',
+  status event_status not null default 'created',
   created_at timestamptz not null default now()
 );
 create index idx_events_league_date on public.events(league_id, event_date desc);

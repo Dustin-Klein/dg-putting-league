@@ -18,17 +18,17 @@ import { formatDisplayDate } from '@/lib/date-utils';
 import { EventWithDetails, UpdateEventStatusValues } from '../types';
 
 const statusVariantMap = {
-  registration: 'outline',
-  qualification: 'secondary',
-  bracket: 'default',
-  completed: 'destructive',
+  'created': 'outline',
+  'pre-bracket': 'secondary',
+  'bracket': 'default',
+  'completed': 'destructive',
 } as const;
 
 const statusLabelMap = {
-  registration: 'Registration',
-  qualification: 'Qualification',
-  bracket: 'Bracket',
-  completed: 'Completed',
+  'created': 'Created',
+  'pre-bracket': 'Pre-Bracket',
+  'bracket': 'Bracket',
+  'completed': 'Completed',
 } as const;
 
 export function EventHeader({ event }: { event: EventWithDetails }) {
