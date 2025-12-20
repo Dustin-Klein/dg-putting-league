@@ -20,6 +20,7 @@ const eventSchema = z.object({
   lane_count: z.number().int().positive(),
   putt_distance_ft: z.number().positive(),
   access_code: z.string().min(4),
+  qualification_round_enabled: z.boolean().optional().default(false),
 });
 
 export async function POST(
@@ -88,6 +89,7 @@ export async function POST(
         lane_count: body.lane_count,
         putt_distance_ft: body.putt_distance_ft,
         access_code: body.access_code,
+        qualification_round_enabled: body.qualification_round_enabled ?? false,
         status: 'registration',
       })
       .select()

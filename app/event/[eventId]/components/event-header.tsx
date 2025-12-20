@@ -151,6 +151,13 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
               {event.bonus_point_enabled ? 'Enabled' : 'Disabled'}
             </p>
           </div>
+          
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Qualification Round</h3>
+            <p className="text-lg font-medium">
+              {event.qualification_round_enabled ? 'Enabled' : 'Disabled'}
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
