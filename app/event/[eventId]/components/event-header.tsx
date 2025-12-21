@@ -1,21 +1,14 @@
 'use client';
 
-import { CalendarDays, Loader2, MapPin } from 'lucide-react';
+import { CalendarDays, MapPin } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { useToast } from '@/components/ui/use-toast';
+import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/date-utils';
-import { EventWithDetails, UpdateEventStatusValues } from '../types';
+import { EventWithDetails } from '../types';
 
 const statusVariantMap = {
   'created': 'outline',
@@ -32,42 +25,10 @@ const statusLabelMap = {
 } as const;
 
 export function EventHeader({ event }: { event: EventWithDetails }) {
-  const { toast } = useToast();
-  const [status, setStatus] = useState<EventWithDetails['status']>(event.status);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [currentEvent, setCurrentEvent] = useState(event);
 
-  const handleStatusChange = async (newStatus: EventWithDetails['status']) => {
-    try {
-      setIsUpdating(true);
-      setStatus(newStatus);
-      
-      const response = await fetch(`/api/event/${event.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus } as UpdateEventStatusValues),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update status');
-      }
-
-      toast({
-        title: 'Success',
-        description: 'Event status updated successfully',
-      });
-    } catch (error) {
-      console.error('Error updating status:', error);
-      setStatus(event.status); // Revert on error
-      toast({
-        title: 'Error',
-        description: 'Failed to update event status',
-        variant: 'destructive',
-      } as any);
-    } finally {
-      setIsUpdating(false);
-    }
+  const handleStatusUpdate = (newStatus: EventWithDetails['status']) => {
+    setCurrentEvent(prev => ({ ...prev, status: newStatus }));
   };
 
   return (
@@ -76,32 +37,20 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-2xl font-bold">
-              {formatDisplayDate(event.event_date)}
+              {formatDisplayDate(currentEvent.event_date)}
             </CardTitle>
             <p className="text-muted-foreground">
-              {event.location || 'Location not specified'}
+              {currentEvent.location || 'Location not specified'}
             </p>
           </div>
           <div className="flex items-center space-x-2">
-            <Badge variant={statusVariantMap[status]}>
-              {statusLabelMap[status]}
+            <Badge variant={statusVariantMap[currentEvent.status]}>
+              {statusLabelMap[currentEvent.status]}
             </Badge>
-            <Select
-              value={status}
-              onValueChange={handleStatusChange}
-              disabled={isUpdating}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Change status" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(statusLabelMap).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <NextStatusButton 
+              event={currentEvent} 
+              onStatusUpdate={handleStatusUpdate}
+            />
           </div>
         </div>
       </CardHeader>
@@ -111,18 +60,15 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
             <h3 className="text-sm font-medium text-muted-foreground">Access Code</h3>
             <div className="flex items-center mt-1">
               <code className="font-mono bg-muted px-2 py-1 rounded">
-                {event.access_code}
+                {currentEvent.access_code}
               </code>
               <Button
                 variant="ghost"
                 size="sm"
                 className="ml-2"
                 onClick={() => {
-                  navigator.clipboard.writeText(event.access_code);
-                  toast({
-                    title: 'Copied!',
-                    description: 'Access code copied to clipboard',
-                  });
+                  navigator.clipboard.writeText(currentEvent.access_code);
+                  // You could add a toast here if needed
                 }}
               >
                 Copy
@@ -132,30 +78,30 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
           
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Putt Distance</h3>
-            <p className="text-lg font-medium">{event.putt_distance_ft} ft</p>
+            <p className="text-lg font-medium">{currentEvent.putt_distance_ft} ft</p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Lanes</h3>
-            <p className="text-lg font-medium">{event.lane_count}</p>
+            <p className="text-lg font-medium">{currentEvent.lane_count}</p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
-            <p className="text-lg font-medium">{event.participant_count}</p>
+            <p className="text-lg font-medium">{currentEvent.participant_count}</p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Bonus Points</h3>
             <p className="text-lg font-medium">
-              {event.bonus_point_enabled ? 'Enabled' : 'Disabled'}
+              {currentEvent.bonus_point_enabled ? 'Enabled' : 'Disabled'}
             </p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Qualification Round</h3>
             <p className="text-lg font-medium">
-              {event.qualification_round_enabled ? 'Enabled' : 'Disabled'}
+              {currentEvent.qualification_round_enabled ? 'Enabled' : 'Disabled'}
             </p>
           </div>
         </div>
