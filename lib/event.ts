@@ -6,7 +6,8 @@ import {
   UnauthorizedError,
   ForbiddenError,
   InternalError,
-  NotFoundError
+  NotFoundError,
+  BadRequestError
 } from '@/lib/errors';
 import { requireAuthenticatedUser } from './league-auth';
 
@@ -158,6 +159,83 @@ export async function deleteEvent(eventId: string) {
 
   if (error) {
     throw new InternalError('Failed to delete event');
+  }
+}
+
+/**
+ * Validate event status transition and business rules
+ */
+export async function validateEventStatusTransition(
+  eventId: string,
+  newStatus: string,
+  currentEvent: EventWithDetails
+) {
+  const currentStatus = currentEvent.status;
+  
+  // Validate status flow
+  const statusFlow: Record<string, string[]> = {
+    'created': ['pre-bracket'],
+    'pre-bracket': ['bracket'],
+    'bracket': ['completed'],
+    'completed': []
+  };
+  
+  if (!statusFlow[currentStatus]?.includes(newStatus)) {
+    throw new BadRequestError(`Invalid status transition from ${currentStatus} to ${newStatus}`);
+  }
+  
+  // Validation for pre-bracket to bracket transition
+  if (currentStatus === 'pre-bracket' && newStatus === 'bracket') {
+    if (currentEvent.qualification_round_enabled) {
+      // Check if all players have completed qualifying rounds
+      const supabase = await createClient();
+      
+      // Get the qualification round for this event
+      const { data: qualificationRound } = await supabase
+        .from('qualification_rounds')
+        .select('frame_count')
+        .eq('event_id', eventId)
+        .single();
+        
+      if (!qualificationRound) {
+        throw new BadRequestError(
+          'No qualification round found for this event'
+        );
+      }
+      
+      // Get frame counts for each player
+      const { data: playerFrames } = await supabase
+        .from('qualification_frames')
+        .select('event_player_id')
+        .eq('event_id', eventId);
+        
+      // Count frames per player
+      const frameCounts: Record<string, number> = {};
+      playerFrames?.forEach(frame => {
+        frameCounts[frame.event_player_id] = (frameCounts[frame.event_player_id] || 0) + 1;
+      });
+      
+      // Check if all players have completed the required number of frames
+      const incompletePlayers = currentEvent.players.filter(
+        (player) => (frameCounts[player.id] || 0) < qualificationRound.frame_count
+      );
+      
+      if (incompletePlayers.length > 0) {
+        throw new BadRequestError(
+          `All players must complete ${qualificationRound.frame_count} qualifying frames before starting bracket play`
+        );
+      }
+    } else {
+      // Check if all players have paid
+      const unpaidPlayers = currentEvent.players.filter(
+        (player) => !player.has_paid
+      );
+      if (unpaidPlayers.length > 0) {
+        throw new BadRequestError(
+          'All players must be marked as paid before starting bracket play'
+        );
+      }
+    }
   }
 }
 
