@@ -26,6 +26,11 @@ export function PlayerManagement({
   isAdmin: boolean;
 }) {
   const { toast } = useToast();
+  
+  console.log('PlayerManagement - isAdmin:', isAdmin);
+  console.log('PlayerManagement - event.status:', event.status);
+  console.log('PlayerManagement - should show button:', isAdmin && event.status === 'pre-bracket');
+  
   const [players, setPlayers] = useState(event.players ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 300);
@@ -229,7 +234,7 @@ export function PlayerManagement({
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Players</h2>
-        {isAdmin && (
+        {isAdmin && event.status === 'pre-bracket' && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -429,7 +434,7 @@ export function PlayerManagement({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleTogglePayment(eventPlayer.id, eventPlayer.player.id, eventPlayer.has_paid)}
-                      disabled={!isAdmin}
+                      disabled={!isAdmin || event.status !== 'pre-bracket'}
                       className="p-0 h-auto"
                     >
                       {eventPlayer.has_paid ? (
@@ -442,7 +447,7 @@ export function PlayerManagement({
                       </span>
                     </Button>
                   </TableCell>
-                  {isAdmin && (
+                  {isAdmin && event.status === 'pre-bracket' && (
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -459,7 +464,7 @@ export function PlayerManagement({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 4 : 3} className="h-24 text-center">
+                <TableCell colSpan={isAdmin && event.status === 'pre-bracket' ? 4 : 3} className="h-24 text-center">
                   No players registered yet.
                 </TableCell>
               </TableRow>

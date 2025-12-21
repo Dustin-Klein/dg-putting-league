@@ -1,6 +1,6 @@
 import 'server-only';
-import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
 
 export async function requireAuthenticatedUser() {
     const supabase = await createClient();
@@ -11,7 +11,7 @@ export async function requireAuthenticatedUser() {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-        redirect('/auth/sign-in');
+        throw new UnauthorizedError('Authentication required');
     }
 
     return user;
@@ -29,7 +29,7 @@ export async function requireLeagueAdmin(leagueId: string) {
         .single();
 
     if (!leagueAdmin) {
-        redirect('/leagues');
+        throw new ForbiddenError('Insufficient permissions');
     }
 
     return {

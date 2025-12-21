@@ -4,11 +4,17 @@ import {
   BadRequestError,
   InternalError,
 } from '@/lib/errors';
-import { requireEventAdmin } from './event';
+import { requireEventAdmin, getEventWithPlayers } from './event';
 
 
 export async function addPlayerToEvent(eventId: string, playerId: string) {
   const { supabase } = await requireEventAdmin(eventId);
+
+  // Check event status - players can only be added when event is in pre-bracket status
+  const event = await getEventWithPlayers(eventId);
+  if (event.status !== 'pre-bracket') {
+    throw new BadRequestError('Players can only be added to events in pre-bracket status');
+  }
 
   // Check if the player is already in the event
   const { data: existingPlayer, error: checkError } = await supabase
@@ -76,6 +82,12 @@ export async function removePlayerFromEvent(
   }
 
   const { supabase } = await requireEventAdmin(eventId);
+
+  // Check event status - players can only be removed when event is in pre-bracket status
+  const event = await getEventWithPlayers(eventId);
+  if (event.status !== 'pre-bracket') {
+    throw new BadRequestError('Players can only be removed from events in pre-bracket status');
+  }
 
   const { error } = await supabase
     .from('event_players')
