@@ -6,6 +6,8 @@ import {
   updateEvent,
   validateEventStatusTransition,
 } from '@/lib/event';
+import { splitPlayersIntoPools } from '@/lib/event-player';
+import { generateTeams } from '@/lib/team';
 import {
   handleError,
   BadRequestError,
@@ -75,6 +77,37 @@ export async function PATCH(
         parsed.data.status,
         currentEvent
       );
+      
+      // If transitioning from pre-bracket to bracket, split players into pools and generate teams
+      if (currentEvent.status === 'pre-bracket' && parsed.data.status === 'bracket') {
+        try {
+          // Try to split players into pools (might fail if already done)
+          await splitPlayersIntoPools(resolvedParams.eventId);
+        } catch (error) {
+          // If pools are already assigned, that's okay - continue to team generation
+          if (!(error instanceof BadRequestError && error.message.includes('Players have already been assigned to pools'))) {
+            throw error;
+          }
+        }
+        
+        // Generate teams first (this will fail if teams already exist, which is okay)
+        try {
+          await generateTeams(resolvedParams.eventId);
+        } catch (error) {
+          // If teams already exist, that's okay - just continue
+          if (!(error instanceof BadRequestError && error.message.includes('Teams have already been generated for this event'))) {
+            throw error;
+          }
+        }
+        
+        // Only update event status after team generation succeeds
+        const updatedEvent = await updateEvent(
+          resolvedParams.eventId,
+          parsed.data
+        );
+        
+        return NextResponse.json(updatedEvent);
+      }
     }
 
     const updatedEvent = await updateEvent(

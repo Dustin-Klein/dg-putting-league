@@ -27,6 +27,7 @@ export async function getEventWithPlayers(eventId: string) {
         id,
         created_at,
         has_paid,
+        pool,
         player:players(
           id,
           full_name,
@@ -36,6 +37,33 @@ export async function getEventWithPlayers(eventId: string) {
           default_pool,
           player_number
         )
+      ),
+      teams:teams(
+        id,
+        seed,
+        pool_combo,
+        created_at,
+        team_members(
+          team_id,
+          event_player_id,
+          role,
+          joined_at,
+          event_player:event_players(
+            id,
+            created_at,
+            has_paid,
+            pool,
+            player:players(
+              id,
+              full_name,
+              nickname,
+              email,
+              created_at,
+              default_pool,
+              player_number
+            )
+          )
+        )
       )
     `)
     .eq('id', eventId)
@@ -43,7 +71,7 @@ export async function getEventWithPlayers(eventId: string) {
 
   if (error || !event) {
     console.error('Error fetching event:', error);
-    redirect('/leagues');
+    throw new NotFoundError('Event not found');
   }
 
   return event as unknown as EventWithDetails;
