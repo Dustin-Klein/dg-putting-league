@@ -136,29 +136,68 @@ create table public.lanes (
   unique (event_id, label)
 );
 
-create table public.matches (
+create table public.match (
   id uuid primary key default gen_random_uuid(),
-  event_id uuid not null references public.events(id) on delete cascade,
+
+  -- Event relationship
+  event_id uuid not null
+    references public.events(id)
+    on delete cascade,
+
+  -- Display / ordering
   round_name text not null,
+  round_number integer not null default 1,
   match_order integer not null,
+
+  -- Bracket metadata
+  bracket_side text
+    check (bracket_side in ('upper','lower','final')),
+
+  is_reset_final boolean not null default false,
+
+  -- Teams
   team_one_id uuid references public.teams(id),
   team_two_id uuid references public.teams(id),
   winner_team_id uuid references public.teams(id),
+
+  -- Bracket progression
+  next_match_win_id uuid references public.match(id),
+
+  next_match_lose_id uuid references public.match(id),
+
+  -- Match state
   status match_status not null default 'pending',
+
+  -- Lane scheduling
   lane_id uuid references public.lanes(id),
   scheduled_at timestamptz,
   completed_at timestamptz,
+
+  -- Constraints
   unique (event_id, match_order)
 );
-create index idx_matches_event_status on public.matches(event_id, status);
-create index idx_matches_lane on public.matches(lane_id);
+
+create index idx_match_event_bracket
+  on public.match(event_id, bracket_side, round_number);
+
+create index idx_match_next_match_win
+  on public.match(next_match_win_id);
+
+create index idx_match_next_match_lose
+  on public.match(next_match_lose_id);
+
+create index idx_match_lane
+  on public.match(lane_id);
+
 
 alter table public.lanes
-  add constraint lanes_current_match_id_fkey foreign key (current_match_id) references public.matches(id);
+  add constraint lanes_current_match_id_fkey foreign key (current_match_id) references public.match
+(id);
 
 create table public.match_lanes (
   id uuid primary key default gen_random_uuid(),
-  match_id uuid not null references public.matches(id) on delete cascade,
+  match_id uuid not null references public.match
+(id) on delete cascade,
   lane_id uuid not null references public.lanes(id) on delete cascade,
   assigned_at timestamptz not null default now(),
   released_at timestamptz,
@@ -167,7 +206,8 @@ create table public.match_lanes (
 
 create table public.match_frames (
   id uuid primary key default gen_random_uuid(),
-  match_id uuid not null references public.matches(id) on delete cascade,
+  match_id uuid not null references public.match
+(id) on delete cascade,
   frame_number integer not null,
   is_overtime boolean not null default false,
   created_at timestamptz not null default now(),
@@ -283,7 +323,7 @@ ALTER TABLE public.qualification_frames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lanes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.match ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.match_lanes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.match_frames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.frame_results ENABLE ROW LEVEL SECURITY;
