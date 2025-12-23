@@ -8,12 +8,10 @@ import {
 } from '@/lib/event';
 import { splitPlayersIntoPools } from '@/lib/event-player';
 import { generateTeams } from '@/lib/team';
+import { createBracket, bracketExists } from '@/lib/bracket';
 import {
   handleError,
   BadRequestError,
-  UnauthorizedError,
-  ForbiddenError,
-  NotFoundError,
 } from '@/lib/errors';
 import { createClient } from '@/lib/supabase/server';
 
@@ -99,13 +97,26 @@ export async function PATCH(
             throw error;
           }
         }
-        
-        // Only update event status after team generation succeeds
+
+        // Update event status first so bracket creation can check status
         const updatedEvent = await updateEvent(
           resolvedParams.eventId,
           parsed.data
         );
-        
+
+        // Generate bracket after teams are created
+        try {
+          const hasBracket = await bracketExists(resolvedParams.eventId);
+          if (!hasBracket) {
+            await createBracket(resolvedParams.eventId);
+          }
+        } catch (error) {
+          // If bracket already exists, that's okay - just continue
+          if (!(error instanceof BadRequestError && error.message.includes('Bracket has already been created'))) {
+            throw error;
+          }
+        }
+
         return NextResponse.json(updatedEvent);
       }
     }
