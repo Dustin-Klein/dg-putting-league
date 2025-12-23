@@ -21,6 +21,8 @@
     "@radix-ui/react-toast": "^1.2.15",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "brackets-manager": "^1.8.1",
+    "brackets-model": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cssnano": "^7.1.2",
