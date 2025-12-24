@@ -1,0 +1,103 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import {
+  getMatchForScoring,
+  recordScore,
+  completeMatchPublic,
+} from '@/lib/public-scoring';
+import { handleError, BadRequestError } from '@/lib/errors';
+
+const getMatchSchema = z.object({
+  access_code: z.string().min(1),
+});
+
+const recordScoreSchema = z.object({
+  access_code: z.string().min(1),
+  frame_number: z.number().min(1),
+  event_player_id: z.string().uuid(),
+  putts_made: z.number().min(0).max(3),
+  bonus_point_enabled: z.boolean(),
+});
+
+const completeMatchSchema = z.object({
+  access_code: z.string().min(1),
+});
+
+/**
+ * POST: Get match details for scoring
+ */
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ matchId: string }> }
+) {
+  try {
+    const { matchId } = await params;
+    const body = await req.json();
+    const parsed = getMatchSchema.safeParse(body);
+
+    if (!parsed.success) {
+      throw new BadRequestError('Access code is required');
+    }
+
+    const match = await getMatchForScoring(parsed.data.access_code, matchId);
+    return NextResponse.json(match);
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/**
+ * PUT: Record a score
+ */
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ matchId: string }> }
+) {
+  try {
+    const { matchId } = await params;
+    const body = await req.json();
+    const parsed = recordScoreSchema.safeParse(body);
+
+    if (!parsed.success) {
+      throw new BadRequestError('Invalid score data');
+    }
+
+    await recordScore(
+      parsed.data.access_code,
+      matchId,
+      parsed.data.frame_number,
+      parsed.data.event_player_id,
+      parsed.data.putts_made,
+      parsed.data.bonus_point_enabled
+    );
+
+    // Return updated match
+    const match = await getMatchForScoring(parsed.data.access_code, matchId);
+    return NextResponse.json(match);
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/**
+ * PATCH: Complete match
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ matchId: string }> }
+) {
+  try {
+    const { matchId } = await params;
+    const body = await req.json();
+    const parsed = completeMatchSchema.safeParse(body);
+
+    if (!parsed.success) {
+      throw new BadRequestError('Access code is required');
+    }
+
+    const match = await completeMatchPublic(parsed.data.access_code, matchId);
+    return NextResponse.json(match);
+  } catch (error) {
+    return handleError(error);
+  }
+}

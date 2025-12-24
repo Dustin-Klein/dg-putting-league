@@ -98,17 +98,12 @@ export async function PATCH(
           }
         }
 
-        // Update event status first so bracket creation can check status
-        const updatedEvent = await updateEvent(
-          resolvedParams.eventId,
-          parsed.data
-        );
-
-        // Generate bracket after teams are created
+        // Generate bracket BEFORE updating status (allowPreBracketStatus=true)
+        // This ensures status only changes if bracket creation succeeds
         try {
           const hasBracket = await bracketExists(resolvedParams.eventId);
           if (!hasBracket) {
-            await createBracket(resolvedParams.eventId);
+            await createBracket(resolvedParams.eventId, true);
           }
         } catch (error) {
           // If bracket already exists, that's okay - just continue
@@ -116,6 +111,12 @@ export async function PATCH(
             throw error;
           }
         }
+
+        // Only update event status AFTER successful bracket creation
+        const updatedEvent = await updateEvent(
+          resolvedParams.eventId,
+          parsed.data
+        );
 
         return NextResponse.json(updatedEvent);
       }

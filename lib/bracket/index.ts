@@ -39,12 +39,15 @@ export interface MatchWithTeams extends Match {
 
 /**
  * Create a double elimination bracket for an event
+ * @param eventId - The event ID
+ * @param allowPreBracketStatus - If true, allows creation when status is 'pre-bracket' (for transactional status changes)
  */
-export async function createBracket(eventId: string): Promise<BracketData> {
+export async function createBracket(eventId: string, allowPreBracketStatus = false): Promise<BracketData> {
   const { supabase } = await requireEventAdmin(eventId);
   const event = await getEventWithPlayers(eventId);
 
-  if (event.status !== 'bracket') {
+  const validStatuses = allowPreBracketStatus ? ['bracket', 'pre-bracket'] : ['bracket'];
+  if (!validStatuses.includes(event.status)) {
     throw new BadRequestError('Bracket can only be created for events in bracket status');
   }
 
