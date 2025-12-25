@@ -180,6 +180,7 @@ BEGIN
   END IF;
 
   -- Create new match record
+  -- Use bracket_match_id as match_order since it's unique across the event
   INSERT INTO public.match (
     event_id,
     round_name,
@@ -194,7 +195,7 @@ BEGIN
     p_event_id,
     v_round_name,
     v_bracket_match.round_number,
-    v_bracket_match.number,
+    p_bracket_match_id,  -- Use bracket_match_id instead of number
     v_bracket_side,
     v_team_one_id,
     v_team_two_id,
