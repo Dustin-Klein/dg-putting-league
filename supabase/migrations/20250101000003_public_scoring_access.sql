@@ -62,13 +62,13 @@ END;
 $$;
 
 -- Add RLS policies for public scoring access
--- These allow anon users to read data needed for scoring when they have a valid access code
+-- These allow anon AND authenticated users to read data needed for scoring when they have a valid access code
 
--- Policy for bracket_match: allow anon to read matches for events in bracket status
+-- Policy for bracket_match: allow public read for matches in events with bracket status
 CREATE POLICY "Enable public read for bracket scoring"
 ON public.bracket_match
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -77,11 +77,11 @@ USING (
   )
 );
 
--- Policy for match table: allow anon to read/write matches for events in bracket status
+-- Policy for match table: allow public read/write for matches in events with bracket status
 CREATE POLICY "Enable public read for match scoring"
 ON public.match
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -93,7 +93,7 @@ USING (
 CREATE POLICY "Enable public insert for match scoring"
 ON public.match
 FOR INSERT
-TO anon
+TO anon, authenticated
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -105,7 +105,7 @@ WITH CHECK (
 CREATE POLICY "Enable public update for match scoring"
 ON public.match
 FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -114,11 +114,11 @@ USING (
   )
 );
 
--- Policy for match_frames: allow anon to read/write frames for bracket matches
+-- Policy for match_frames: allow public read/write for frames in bracket matches
 CREATE POLICY "Enable public read for frame scoring"
 ON public.match_frames
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.match m
@@ -131,7 +131,7 @@ USING (
 CREATE POLICY "Enable public insert for frame scoring"
 ON public.match_frames
 FOR INSERT
-TO anon
+TO anon, authenticated
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.match m
@@ -141,11 +141,11 @@ WITH CHECK (
   )
 );
 
--- Policy for frame_results: allow anon to read/write results for bracket matches
+-- Policy for frame_results: allow public read/write for results in bracket matches
 CREATE POLICY "Enable public read for result scoring"
 ON public.frame_results
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
@@ -159,7 +159,7 @@ USING (
 CREATE POLICY "Enable public insert for result scoring"
 ON public.frame_results
 FOR INSERT
-TO anon
+TO anon, authenticated
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
@@ -173,7 +173,7 @@ WITH CHECK (
 CREATE POLICY "Enable public update for result scoring"
 ON public.frame_results
 FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
@@ -184,11 +184,11 @@ USING (
   )
 );
 
--- Policy for teams: allow anon to read teams for events in bracket status
+-- Policy for teams: allow public read for teams in events with bracket status
 CREATE POLICY "Enable public read for teams in bracket"
 ON public.teams
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -197,11 +197,11 @@ USING (
   )
 );
 
--- Policy for team_members: allow anon to read team members for events in bracket status
+-- Policy for team_members: allow public read for team members in events with bracket status
 CREATE POLICY "Enable public read for team members in bracket"
 ON public.team_members
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.teams t
@@ -211,11 +211,11 @@ USING (
   )
 );
 
--- Policy for event_players: allow anon to read event players for events in bracket status
+-- Policy for event_players: allow public read for event players in events with bracket status
 CREATE POLICY "Enable public read for event players in bracket"
 ON public.event_players
 FOR SELECT
-TO anon
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
@@ -237,3 +237,8 @@ USING (true);
 -- Grant execute on the new functions
 GRANT EXECUTE ON FUNCTION public.validate_event_access_code(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_scoring_bracket_matches(uuid) TO anon, authenticated;
+
+-- Grant execute on bracket match functions needed for scoring
+GRANT EXECUTE ON FUNCTION public.create_match_for_bracket(INTEGER, UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.calculate_match_team_scores(UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_match_scores(UUID) TO anon, authenticated;

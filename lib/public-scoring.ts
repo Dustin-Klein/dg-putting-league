@@ -121,8 +121,9 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
   const matches: PublicMatchInfo[] = [];
 
   for (const bm of bracketMatches) {
+    console.log('Processing bracket match:', bm.id, 'status:', bm.status);
     // Get or check if match record exists
-    let { data: match } = await supabase
+    let { data: match, error: matchFetchError } = await supabase
       .from('match')
       .select(`
         id,
@@ -170,16 +171,28 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
       .eq('bracket_match_id', bm.id)
       .maybeSingle();
 
+    console.log('Initial match fetch for bracket', bm.id, ':', { found: !!match, error: matchFetchError });
+
     if (!match) {
       // Create match record if it doesn't exist
-      const { data: newMatchId } = await supabase.rpc('create_match_for_bracket', {
+      console.log('Creating match for bracket_match_id:', bm.id);
+      const { data: newMatchId, error: createError } = await supabase.rpc('create_match_for_bracket', {
         p_bracket_match_id: bm.id,
         p_event_id: event.id,
       });
+      console.log('Create match result:', { newMatchId, createError });
 
       if (newMatchId) {
+        // First check if match exists without joins (to verify RLS)
+        const { data: simpleCheck, error: simpleError } = await supabase
+          .from('match')
+          .select('id, team_one_id, team_two_id, event_id')
+          .eq('id', newMatchId)
+          .maybeSingle();
+        console.log('Simple match check:', { simpleCheck, simpleError });
+
         // Fetch the newly created match
-        const { data: newMatch } = await supabase
+        const { data: newMatch, error: fetchError } = await supabase
           .from('match')
           .select(`
             id,
@@ -227,8 +240,11 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
           .eq('id', newMatchId)
           .single();
 
+        console.log('Fetch new match result:', { newMatch, fetchError, team_one: newMatch?.team_one, team_two: newMatch?.team_two });
         match = newMatch;
       }
+    } else {
+      console.log('Existing match found for bracket_match_id:', bm.id, { match_id: match?.id, team_one: match?.team_one, team_two: match?.team_two });
     }
 
     if (match) {
