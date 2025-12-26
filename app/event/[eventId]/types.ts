@@ -18,6 +18,8 @@ export interface EventPlayer {
   player_id: string;
   has_paid: boolean;
   pool?: 'A' | 'B' | null;
+  pfa_score?: number | null;
+  scoring_method?: 'qualification' | 'pfa' | 'default' | null;
   created_at: string;
   player: Player;
 }

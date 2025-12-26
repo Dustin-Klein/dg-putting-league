@@ -84,6 +84,8 @@ create table public.event_players (
   has_paid boolean not null default false,
   pool pool_type,
   qualification_seed integer,
+  pfa_score numeric(5,2),
+  scoring_method text check (scoring_method in ('qualification', 'pfa', 'default')),
   created_at timestamptz not null default now(),
   unique (event_id, player_id)
 );
@@ -629,6 +631,116 @@ USING (
   )
 );
 
+-- RLS Policies for match_frames table
+
+-- Helper function to check admin status via match -> event
+CREATE OR REPLACE FUNCTION public.is_league_admin_for_match(match_id_param uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.match m
+    JOIN public.events e ON e.id = m.event_id
+    JOIN public.league_admins la ON la.league_id = e.league_id
+    WHERE m.id = match_id_param
+      AND la.user_id = auth.uid()
+      AND la.role IN ('owner', 'admin')
+  );
+$$;
+
+CREATE POLICY "Enable read access for league admins"
+ON public.match_frames
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.match m
+    JOIN public.events e ON e.id = m.event_id
+    JOIN public.league_admins la ON la.league_id = e.league_id
+    WHERE m.id = match_frames.match_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Enable insert for league admins"
+ON public.match_frames
+FOR INSERT
+WITH CHECK (
+  public.is_league_admin_for_match(match_frames.match_id)
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.match_frames
+FOR UPDATE
+USING (
+  public.is_league_admin_for_match(match_frames.match_id)
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.match_frames
+FOR DELETE
+USING (
+  public.is_league_admin_for_match(match_frames.match_id)
+);
+
+-- RLS Policies for frame_results table
+
+-- Helper function to check admin status via match_frame -> match -> event
+CREATE OR REPLACE FUNCTION public.is_league_admin_for_match_frame(match_frame_id_param uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.match_frames mf
+    JOIN public.match m ON m.id = mf.match_id
+    JOIN public.events e ON e.id = m.event_id
+    JOIN public.league_admins la ON la.league_id = e.league_id
+    WHERE mf.id = match_frame_id_param
+      AND la.user_id = auth.uid()
+      AND la.role IN ('owner', 'admin')
+  );
+$$;
+
+CREATE POLICY "Enable read access for league admins"
+ON public.frame_results
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.match_frames mf
+    JOIN public.match m ON m.id = mf.match_id
+    JOIN public.events e ON e.id = m.event_id
+    JOIN public.league_admins la ON la.league_id = e.league_id
+    WHERE mf.id = frame_results.match_frame_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Enable insert for league admins"
+ON public.frame_results
+FOR INSERT
+WITH CHECK (
+  public.is_league_admin_for_match_frame(frame_results.match_frame_id)
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.frame_results
+FOR UPDATE
+USING (
+  public.is_league_admin_for_match_frame(frame_results.match_frame_id)
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.frame_results
+FOR DELETE
+USING (
+  public.is_league_admin_for_match_frame(frame_results.match_frame_id)
+);
+
 -- GRANTS -----------------------------------------------------
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
@@ -651,20 +763,22 @@ DECLARE
   updated_count integer := 0;
 BEGIN
   -- Start transaction block
-  FOR assignment IN SELECT * FROM json_to_recordset(p_pool_assignments) 
-    AS x(id uuid, pool text)
+  FOR assignment IN SELECT * FROM json_to_recordset(p_pool_assignments)
+    AS x(id uuid, pool text, pfa_score numeric, scoring_method text)
   LOOP
-    UPDATE public.event_players 
-    SET pool = assignment.pool
+    UPDATE public.event_players
+    SET pool = assignment.pool,
+        pfa_score = COALESCE(assignment.pfa_score, pfa_score),
+        scoring_method = COALESCE(assignment.scoring_method, scoring_method)
     WHERE id = assignment.id AND event_id = p_event_id;
-    
+
     IF NOT FOUND THEN
       RAISE EXCEPTION 'Player % not found in event %', assignment.id, p_event_id;
     END IF;
-    
+
     updated_count := updated_count + 1;
   END LOOP;
-  
+
   -- Return updated players
   RETURN json_build_object(
     'updated_count', updated_count,
@@ -676,6 +790,8 @@ BEGIN
           'player_id', ep.player_id,
           'has_paid', ep.has_paid,
           'pool', ep.pool,
+          'pfa_score', ep.pfa_score,
+          'scoring_method', ep.scoring_method,
           'created_at', ep.created_at,
           'player', (
             SELECT json_build_object(

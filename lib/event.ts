@@ -25,9 +25,13 @@ export async function getEventWithPlayers(eventId: string) {
       *,
       players:event_players(
         id,
+        event_id,
+        player_id,
         created_at,
         has_paid,
         pool,
+        pfa_score,
+        scoring_method,
         player:players(
           id,
           full_name,
@@ -50,9 +54,13 @@ export async function getEventWithPlayers(eventId: string) {
           joined_at,
           event_player:event_players(
             id,
+            event_id,
+            player_id,
             created_at,
             has_paid,
             pool,
+            pfa_score,
+            scoring_method,
             player:players(
               id,
               full_name,

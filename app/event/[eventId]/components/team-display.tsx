@@ -102,9 +102,55 @@ export function TeamDisplay({ event, isAdmin }: TeamDisplayProps) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm text-muted-foreground">
-                      {/* This could be calculated from qualification scores in a future enhancement */}
-                      Seeded by qualification performance
+                    <div className="text-sm">
+                      {(() => {
+                        const poolAScore = poolAMember?.event_player.pfa_score;
+                        const poolBScore = poolBMember?.event_player.pfa_score;
+                        const poolAScoringMethod = poolAMember?.event_player.scoring_method;
+                        const poolBScoringMethod = poolBMember?.event_player.scoring_method;
+
+                        const poolAHasScore = poolAScoringMethod !== 'default' && poolAScore != null;
+                        const poolBHasScore = poolBScoringMethod !== 'default' && poolBScore != null;
+
+                        const formatScore = (score: number | null | undefined, hasScore: boolean) => {
+                          if (!hasScore) return 'X';
+                          return score?.toFixed(1) ?? 'X';
+                        };
+
+                        const poolADisplay = formatScore(poolAScore, poolAHasScore);
+                        const poolBDisplay = formatScore(poolBScore, poolBHasScore);
+
+                        if (!poolAHasScore && !poolBHasScore) {
+                          return (
+                            <span className="text-muted-foreground">
+                              {poolADisplay} + {poolBDisplay} = No data
+                            </span>
+                          );
+                        }
+
+                        if (!poolAHasScore || !poolBHasScore) {
+                          return (
+                            <span>
+                              <span className={!poolAHasScore ? 'text-muted-foreground' : ''}>
+                                {poolADisplay}
+                              </span>
+                              {' + '}
+                              <span className={!poolBHasScore ? 'text-muted-foreground' : ''}>
+                                {poolBDisplay}
+                              </span>
+                              {' = '}
+                              <span className="text-muted-foreground">Incomplete</span>
+                            </span>
+                          );
+                        }
+
+                        const combinedScore = (poolAScore ?? 0) + (poolBScore ?? 0);
+                        return (
+                          <span className="font-medium">
+                            {poolADisplay} + {poolBDisplay} = {combinedScore.toFixed(1)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -118,13 +164,14 @@ export function TeamDisplay({ event, isAdmin }: TeamDisplayProps) {
         <h3 className="font-medium mb-2">Team Generation Details</h3>
         <ul className="text-sm text-muted-foreground space-y-1">
           <li>• Teams are formed with 1 player from Pool A and 1 player from Pool B</li>
-          <li>• Teams are seeded based on combined qualification scores</li>
-          <li>• Higher seeds indicate better combined performance</li>
-          {event.qualification_round_enabled && (
-            <li>• Seeding based on qualification round performance</li>
-          )}
-          {!event.qualification_round_enabled && (
-            <li>• Random seeding within pools (no qualification round)</li>
+          <li>• Teams are seeded based on combined scores (lower seed = higher combined score)</li>
+          {event.qualification_round_enabled ? (
+            <li>• Scores based on qualification round performance</li>
+          ) : (
+            <>
+              <li>• Scores based on PFA (Per Frame Average) from the last 6 months</li>
+              <li>• Players with no frame history show &quot;X&quot; and are assigned pools by default pool setting</li>
+            </>
           )}
         </ul>
       </div>
