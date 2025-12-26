@@ -230,7 +230,14 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
       team_members(
         *,
         event_player:event_players(
-          *,
+          id,
+          event_id,
+          player_id,
+          created_at,
+          has_paid,
+          pool,
+          pfa_score,
+          scoring_method,
           player:players(*)
         )
       )
@@ -258,7 +265,14 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
       team_members(
         *,
         event_player:event_players(
-          *,
+          id,
+          event_id,
+          player_id,
+          created_at,
+          has_paid,
+          pool,
+          pfa_score,
+          scoring_method,
           player:players(*)
         )
       )
