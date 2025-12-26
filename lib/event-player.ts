@@ -140,7 +140,7 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
   }
 
   const playersWithScores = await Promise.all(
-    event.players.map(async (player) => {
+    event.players.map(async (eventPlayer) => {
       let score: number;
       let scoringMethod: 'qualification' | 'pfa' | 'default';
 
@@ -150,69 +150,45 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
           .from('qualification_frames')
           .select('points_earned')
           .eq('event_id', eventId)
-          .eq('event_player_id', player.id);
+          .eq('event_player_id', eventPlayer.id);
 
         if (qualError) {
-          throw new InternalError(`Failed to fetch qualification frames for player ${player.id}: ${qualError.message}`);
+          throw new InternalError(`Failed to fetch qualification frames for player ${eventPlayer.id}: ${qualError.message}`);
         }
 
         score = qualificationFrames?.reduce((sum, frame) => sum + frame.points_earned, 0) || 0;
         scoringMethod = 'qualification';
       } else {
-        // Calculate PFA from last 6 months across ALL events for this player
+        // Calculate PFA from last 6 months
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        // First get all event_player records for this player (across all events)
-        const { data: allEventPlayers, error: epError } = await supabase
-          .from('event_players')
-          .select('id')
-          .eq('player_id', player.player_id);
+        const { data: frameResults, error: frameError } = await supabase
+          .from('frame_results')
+          .select('points_earned')
+          .eq('event_player_id', eventPlayer.id)
+          .gte('recorded_at', sixMonthsAgo.toISOString());
 
-        console.log(`[PFA Debug] Player ${player.player.full_name} (player_id: ${player.player_id})`);
-        console.log(`[PFA Debug] Found ${allEventPlayers?.length || 0} event_player records:`, allEventPlayers?.map(ep => ep.id));
-
-        if (epError) {
-          throw new InternalError(`Failed to fetch event players for player ${player.player_id}: ${epError.message}`);
+        if (frameError) {
+          throw new InternalError(`Failed to fetch frame results for player ${eventPlayer.id}: ${frameError.message}`);
         }
 
-        const eventPlayerIds = allEventPlayers?.map(ep => ep.id) || [];
-
-        let frameResults: { points_earned: number }[] = [];
-        if (eventPlayerIds.length > 0) {
-          const { data: results, error: frameError } = await supabase
-            .from('frame_results')
-            .select('points_earned, recorded_at')
-            .in('event_player_id', eventPlayerIds)
-            .gte('recorded_at', sixMonthsAgo.toISOString());
-
-          console.log(`[PFA Debug] Frame results query (since ${sixMonthsAgo.toISOString()}):`, results?.length || 0, 'frames found');
-
-          if (frameError) {
-            console.error(`[PFA Debug] Frame results error:`, frameError);
-            throw new InternalError(`Failed to fetch frame results for player ${player.player_id}: ${frameError.message}`);
-          }
-          frameResults = results || [];
-        }
-
-        if (frameResults.length > 0) {
+        if (frameResults && frameResults.length > 0) {
           const totalPoints = frameResults.reduce((sum, frame) => sum + frame.points_earned, 0);
           score = totalPoints / frameResults.length;
           scoringMethod = 'pfa';
-          console.log(`[PFA Debug] Calculated PFA: ${score.toFixed(2)} (${totalPoints} points / ${frameResults.length} frames)`);
         } else {
           // No frame history, use default_pool for scoring (0 for comparison)
           score = 0;
           scoringMethod = 'default';
-          console.log(`[PFA Debug] No frame history, using default scoring`);
         }
       }
 
       return {
-        ...player,
+        ...eventPlayer,
         score,
         scoringMethod,
-        default_pool: player.player.default_pool || 'B'
+        default_pool: eventPlayer.player.default_pool || 'B'
       };
     })
   );
@@ -233,15 +209,13 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
   // Split into pools: top 50% -> Pool A, bottom 50% -> Pool B
   const totalPlayers = playersWithScores.length;
   const poolASize = Math.ceil(totalPlayers / 2); // Top half gets extra player if odd
-  const poolAssignments: { id: string; pool: 'A' | 'B'; pfa_score: number; scoring_method: 'qualification' | 'pfa' | 'default' }[] = [];
+  const poolAssignments: { id: string; pool: 'A' | 'B' }[] = [];
 
   playersWithScores.forEach((player, index) => {
     const pool = index < poolASize ? 'A' : 'B';
     poolAssignments.push({
       id: player.id,
-      pool,
-      pfa_score: player.score,
-      scoring_method: player.scoringMethod
+      pool
     });
   });
 
@@ -259,11 +233,11 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
   if (updateError) {
     // Fallback to individual updates if RPC is not available
     console.warn('RPC update_player_pools not available, using individual updates');
-
-    const updates = poolAssignments.map(({ id, pool, pfa_score, scoring_method }) =>
+    
+    const updates = poolAssignments.map(({ id, pool }) =>
       supabase
         .from('event_players')
-        .update({ pool, pfa_score, scoring_method })
+        .update({ pool })
         .eq('id', id)
     );
 
@@ -286,11 +260,9 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         id,
         event_id,
         player_id,
-        created_at,
         has_paid,
         pool,
-        pfa_score,
-        scoring_method,
+        created_at,
         player:players(
           id,
           full_name,
