@@ -16,7 +16,7 @@ const recordScoreSchema = z.object({
   frame_number: z.number().min(1),
   event_player_id: z.string().uuid(),
   putts_made: z.number().min(0).max(3),
-  bonus_point_enabled: z.boolean(),
+  // bonus_point_enabled is now determined server-side from the event record
 });
 
 const completeMatchSchema = z.object({
@@ -79,8 +79,7 @@ export async function PUT(
       bracketMatchId,
       parsed.data.frame_number,
       parsed.data.event_player_id,
-      parsed.data.putts_made,
-      parsed.data.bonus_point_enabled
+      parsed.data.putts_made
     );
 
     // Return updated match

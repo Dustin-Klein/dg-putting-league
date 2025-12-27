@@ -278,8 +278,7 @@ export async function recordScore(
   bracketMatchId: number,
   frameNumber: number,
   eventPlayerId: string,
-  puttsMade: number,
-  bonusPointEnabled: boolean
+  puttsMade: number
 ): Promise<void> {
   const event = await validateAccessCode(accessCode);
   const supabase = await createClient();
@@ -304,8 +303,8 @@ export async function recordScore(
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  // Calculate points
-  const pointsEarned = puttsMade === 3 && bonusPointEnabled ? 4 : puttsMade;
+  // Calculate points using server-validated event setting (not client-provided value)
+  const pointsEarned = puttsMade === 3 && event.bonus_point_enabled ? 4 : puttsMade;
 
   // Get or create frame
   let { data: frame } = await supabase
