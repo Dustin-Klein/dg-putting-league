@@ -443,7 +443,7 @@ WITH CHECK (
 );
 
 -- Create policy to allow reading events for league members
-CREATE POLICY "Enable read access for league members" 
+CREATE POLICY "Enable read access for league members"
 ON public.events
 FOR SELECT
 TO authenticated
@@ -454,6 +454,13 @@ USING (
     AND league_admins.user_id = auth.uid()
   )
 );
+
+-- Allow public read for events in bracket status (for public scoring)
+CREATE POLICY "Enable public read for bracket events"
+ON public.events
+FOR SELECT
+TO anon, authenticated
+USING (status = 'bracket');
 
 -- Enable update for league admins
 CREATE POLICY "Enable update for league admins"

@@ -58,24 +58,23 @@ export interface PublicFrameResult {
 
 /**
  * Validate access code and get event info
- * Uses a security definer function to bypass RLS for unauthenticated users
  */
 export async function validateAccessCode(accessCode: string): Promise<PublicEventInfo> {
   const supabase = await createClient();
 
   const { data: event, error } = await supabase
-    .rpc('validate_event_access_code', { p_access_code: accessCode });
+    .from('events')
+    .select('id, event_date, location, lane_count, bonus_point_enabled, status')
+    .eq('access_code', accessCode)
+    .eq('status', 'bracket')
+    .maybeSingle();
 
   if (error) {
     throw new InternalError(`Failed to validate access code: ${error.message}`);
   }
 
   if (!event) {
-    throw new NotFoundError('Invalid access code');
-  }
-
-  if (event.status !== 'bracket') {
-    throw new BadRequestError('Event is not in bracket play');
+    throw new NotFoundError('Invalid access code or event is not in bracket play');
   }
 
   return event as PublicEventInfo;
