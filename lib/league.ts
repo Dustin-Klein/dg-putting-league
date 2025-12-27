@@ -104,24 +104,36 @@ export async function createLeague(input: CreateLeagueInput) {
     throw new BadRequestError('League name is required');
   }
 
-  // Create the league
-  const { data: league, error: leagueError } = await supabase
-    .from('leagues')
-    .insert({ name, city: city ?? null })
-    .select('id, name, city, created_at')
-    .single();
+  // Generate UUID for the new league (avoids RLS issues with RETURNING)
+  const leagueId = crypto.randomUUID();
 
-  if (leagueError || !league) {
-    throw new InternalError(`Failed to create league: ${leagueError?.message}`);
+  // Create the league
+  const { error: leagueError } = await supabase
+    .from('leagues')
+    .insert({ id: leagueId, name, city: city ?? null });
+
+  if (leagueError) {
+    throw new InternalError(`Failed to create league: ${leagueError.message}`);
   }
 
   // Create the admin record for the owner
   const { error: adminError } = await supabase
     .from('league_admins')
-    .insert({ league_id: league.id, user_id: user.id, role: 'owner' });
+    .insert({ league_id: leagueId, user_id: user.id, role: 'owner' });
 
   if (adminError) {
     throw new InternalError(`Failed to create league admin: ${adminError.message}`);
+  }
+
+  // Now fetch the full league (RLS will allow since user is now an admin)
+  const { data: league, error: fetchError } = await supabase
+    .from('leagues')
+    .select('id, name, city, created_at')
+    .eq('id', leagueId)
+    .single();
+
+  if (fetchError || !league) {
+    throw new InternalError(`Failed to fetch created league: ${fetchError?.message}`);
   }
 
   return league;

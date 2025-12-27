@@ -140,48 +140,49 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
     });
   }
 
-  // Debug logging
-  const teamData = teamsToCreate.map(team => ({
-    event_id: team.event_id,
-    seed: team.seed,
-    pool_combo: team.pool_combo
-  }));
-  
-  const memberData = teamMembersToCreate.map(member => ({
-    team_index: member.team_index,
-    event_player_id: member.event_player_id,
-    role: member.role
-  }));
+  // Insert teams and collect their IDs
+  const teamIdMap: Map<number, string> = new Map();
 
-  console.log('Sending to generate_teams_for_event:', JSON.stringify({
-    p_event_id: eventId,
-    p_team_data: teamData,
-    p_team_members_data: memberData
-  }, null, 2));
+  for (let i = 0; i < teamsToCreate.length; i++) {
+    const team = teamsToCreate[i];
+    const { data: newTeam, error: teamError } = await supabase
+      .from('teams')
+      .insert({
+        event_id: team.event_id,
+        seed: team.seed,
+        pool_combo: team.pool_combo
+      })
+      .select('id')
+      .single();
 
-  try {
-    // Create teams and team members using security definer function
-    const { data: rpcResult, error: createError } = await supabase.rpc('generate_teams_for_event', {
-      p_event_id: eventId,
-      p_team_data: teamData,
-      p_team_members_data: memberData
-    });
-
-    if (createError) {
-      console.error('RPC Error:', createError);
-      throw new InternalError(`Failed to create teams: ${createError.message}`);
+    if (teamError || !newTeam) {
+      throw new InternalError(`Failed to create team ${i}: ${teamError?.message}`);
     }
 
-    if (!rpcResult || !rpcResult.success) {
-      console.error('RPC Result indicates failure:', rpcResult);
-      throw new InternalError('Failed to create teams: RPC call did not succeed');
-    }
-  } catch (error) {
-    console.error('Error in RPC call:', error);
-    throw new InternalError(`Failed to create teams: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    teamIdMap.set(i, newTeam.id);
   }
 
-  // Fetch the created teams to get their actual IDs
+  // Insert team members with the correct team IDs
+  for (const member of teamMembersToCreate) {
+    const teamId = teamIdMap.get(member.team_index);
+    if (!teamId) {
+      throw new InternalError(`Invalid team index: ${member.team_index}`);
+    }
+
+    const { error: memberError } = await supabase
+      .from('team_members')
+      .insert({
+        team_id: teamId,
+        event_player_id: member.event_player_id,
+        role: member.role
+      });
+
+    if (memberError) {
+      throw new InternalError(`Failed to create team member: ${memberError.message}`);
+    }
+  }
+
+  // Fetch the created teams
   const { data: createdTeams, error: teamsFetchError } = await supabase
     .from('teams')
     .select('*')
@@ -207,19 +208,18 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
 
   teamsWithScores.sort((a, b) => b.combinedScore - a.combinedScore);
 
-  // Update team seeds based on combined scores using security definer function
-  const seedUpdates = teamsWithScores.map((team, index) => ({
-    id: team.id,
-    seed: index + 1
-  }));
+  // Update team seeds based on combined scores
+  for (let i = 0; i < teamsWithScores.length; i++) {
+    const team = teamsWithScores[i];
+    const { error: seedError } = await supabase
+      .from('teams')
+      .update({ seed: i + 1 })
+      .eq('id', team.id)
+      .eq('event_id', eventId);
 
-  const { error: seedError } = await supabase.rpc('update_team_seeds', {
-    p_event_id: eventId,
-    p_seed_updates: seedUpdates
-  });
-
-  if (seedError) {
-    throw new InternalError(`Failed to update team seeds: ${seedError.message}`);
+    if (seedError) {
+      throw new InternalError(`Failed to update seed for team ${team.id}: ${seedError.message}`);
+    }
   }
 
   // Fetch complete teams with members for return
