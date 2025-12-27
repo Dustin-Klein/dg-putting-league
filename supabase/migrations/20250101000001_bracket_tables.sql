@@ -298,6 +298,42 @@ CREATE POLICY "Enable delete for league admins"
 ON public.bracket_participant FOR DELETE
 USING (public.is_tournament_admin(tournament_id));
 
+-- Public read policies for bracket tables when event is in bracket status
+CREATE POLICY "Enable public read for bracket participants"
+ON public.bracket_participant FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = bracket_participant.tournament_id
+    AND e.status = 'bracket'
+  )
+);
+
+CREATE POLICY "Enable public read for bracket rounds"
+ON public.bracket_round FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    JOIN public.events e ON e.id = s.tournament_id
+    WHERE s.id = bracket_round.stage_id
+    AND e.status = 'bracket'
+  )
+);
+
+CREATE POLICY "Enable public read for bracket groups"
+ON public.bracket_group FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    JOIN public.events e ON e.id = s.tournament_id
+    WHERE s.id = bracket_group.stage_id
+    AND e.status = 'bracket'
+  )
+);
+
 -- Add lane assignment to bracket_match for tracking which lane a match is on
 ALTER TABLE public.bracket_match ADD COLUMN lane_id UUID REFERENCES public.lanes(id);
 ALTER TABLE public.bracket_match ADD COLUMN event_id UUID REFERENCES public.events(id) ON DELETE CASCADE;

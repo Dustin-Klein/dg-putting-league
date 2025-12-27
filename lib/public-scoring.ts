@@ -1,5 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
+import { createMatchForBracket } from '@/lib/match-scoring';
 import {
   BadRequestError,
   InternalError,
@@ -175,10 +176,13 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
     if (!match) {
       // Create match record if it doesn't exist
       console.log('Creating match for bracket_match_id:', bm.id);
-      const { data: newMatchId, error: createError } = await supabase.rpc('create_match_for_bracket', {
-        p_bracket_match_id: bm.id,
-        p_event_id: event.id,
-      });
+      let newMatchId: string | null = null;
+      let createError: Error | null = null;
+      try {
+        newMatchId = await createMatchForBracket(supabase, bm.id, event.id);
+      } catch (err) {
+        createError = err as Error;
+      }
       console.log('Create match result:', { newMatchId, createError });
 
       if (newMatchId) {
