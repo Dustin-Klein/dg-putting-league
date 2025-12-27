@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/app/event/[eventId]/types';
 import {
@@ -49,6 +49,16 @@ export function MatchScoreDialog({
   const [score2, setScore2] = useState<string>('0');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (match) {
+      const opp1 = match.opponent1 as OpponentData | null;
+      const opp2 = match.opponent2 as OpponentData | null;
+      setScore1(String(opp1?.score ?? 0));
+      setScore2(String(opp2?.score ?? 0));
+      setError(null);
+    }
+  }, [match]);
 
   if (!match) return null;
 
