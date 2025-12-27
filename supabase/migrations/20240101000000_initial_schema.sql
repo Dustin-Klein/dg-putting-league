@@ -767,7 +767,7 @@ BEGIN
     AS x(id uuid, pool text, pfa_score numeric, scoring_method text)
   LOOP
     UPDATE public.event_players
-    SET pool = assignment.pool,
+    SET pool = assignment.pool::pool_type,
         pfa_score = COALESCE(assignment.pfa_score, pfa_score),
         scoring_method = COALESCE(assignment.scoring_method, scoring_method)
     WHERE id = assignment.id AND event_id = p_event_id;
@@ -783,8 +783,9 @@ BEGIN
   RETURN json_build_object(
     'updated_count', updated_count,
     'players', (
-      SELECT json_agg(
-        json_build_object(
+      SELECT json_agg(player_row ORDER BY player_row->>'created_at')
+      FROM (
+        SELECT json_build_object(
           'id', ep.id,
           'event_id', ep.event_id,
           'player_id', ep.player_id,
@@ -806,11 +807,10 @@ BEGIN
             FROM public.players p
             WHERE p.id = ep.player_id
           )
-        )
-      )
-      FROM public.event_players ep
-      WHERE ep.event_id = p_event_id
-      ORDER BY ep.created_at
+        ) as player_row
+        FROM public.event_players ep
+        WHERE ep.event_id = p_event_id
+      ) subq
     )
   );
 END;

@@ -51,7 +51,15 @@ export function TeamDisplay({ event, isAdmin }: TeamDisplayProps) {
             {teams.map((team) => {
               const poolAMember = team.team_members.find(member => member.role === 'A_pool');
               const poolBMember = team.team_members.find(member => member.role === 'B_pool');
-              
+
+              // Debug logging
+              console.log(`[Team ${team.seed}] Pool A:`, poolAMember?.event_player.player.full_name,
+                'pfa_score:', poolAMember?.event_player.pfa_score,
+                'scoring_method:', poolAMember?.event_player.scoring_method);
+              console.log(`[Team ${team.seed}] Pool B:`, poolBMember?.event_player.player.full_name,
+                'pfa_score:', poolBMember?.event_player.pfa_score,
+                'scoring_method:', poolBMember?.event_player.scoring_method);
+
               return (
                 <TableRow key={team.id}>
                   <TableCell className="font-medium">
