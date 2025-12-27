@@ -8,12 +8,11 @@ import {
 } from '@/lib/event';
 import { splitPlayersIntoPools } from '@/lib/event-player';
 import { generateTeams } from '@/lib/team';
-import { createBracket, bracketExists } from '@/lib/bracket';
+import { createBracket } from '@/lib/bracket';
 import {
   handleError,
   BadRequestError,
 } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
 
 const updateEventSchema = z.object({
   status: z.enum([
@@ -76,52 +75,42 @@ export async function PATCH(
         currentEvent
       );
       
-      // If transitioning from pre-bracket to bracket, split players into pools and generate teams
+      // If transitioning from pre-bracket to bracket, perform setup steps
       if (currentEvent.status === 'pre-bracket' && parsed.data.status === 'bracket') {
+        // Note: Ideally these sequential operations would be wrapped in a database
+        // function (RPC) to ensure atomicity. The current implementation uses
+        // idempotent operations as a fallback - each step checks if already done.
+
+        // 1. Split players into pools
         try {
-          // Try to split players into pools (might fail if already done)
           await splitPlayersIntoPools(resolvedParams.eventId);
         } catch (error) {
-          // If pools are already assigned, that's okay - continue to team generation
-          if (!(error instanceof BadRequestError && error.message.includes('Players have already been assigned to pools'))) {
+          if (!(error instanceof BadRequestError && error.message.includes('already been assigned'))) {
             throw error;
           }
         }
-        
-        // Generate teams first (this will fail if teams already exist, which is okay)
+
+        // 2. Generate teams
         try {
           await generateTeams(resolvedParams.eventId);
         } catch (error) {
-          // If teams already exist, that's okay - just continue
-          if (!(error instanceof BadRequestError && error.message.includes('Teams have already been generated for this event'))) {
+          if (!(error instanceof BadRequestError && error.message.includes('already been generated'))) {
             throw error;
           }
         }
 
-        // Generate bracket BEFORE updating status (allowPreBracketStatus=true)
-        // This ensures status only changes if bracket creation succeeds
+        // 3. Generate bracket
         try {
-          const hasBracket = await bracketExists(resolvedParams.eventId);
-          if (!hasBracket) {
-            await createBracket(resolvedParams.eventId, true);
-          }
+          await createBracket(resolvedParams.eventId, true);
         } catch (error) {
-          // If bracket already exists, that's okay - just continue
-          if (!(error instanceof BadRequestError && error.message.includes('Bracket has already been created'))) {
+          if (!(error instanceof BadRequestError && error.message.includes('already been created'))) {
             throw error;
           }
         }
-
-        // Only update event status AFTER successful bracket creation
-        const updatedEvent = await updateEvent(
-          resolvedParams.eventId,
-          parsed.data
-        );
-
-        return NextResponse.json(updatedEvent);
       }
     }
 
+    // Update event status (happens for all valid status changes)
     const updatedEvent = await updateEvent(
       resolvedParams.eventId,
       parsed.data
