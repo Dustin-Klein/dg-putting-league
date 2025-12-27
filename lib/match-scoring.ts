@@ -71,6 +71,112 @@ export interface RecordFrameResultInput {
 }
 
 /**
+ * Create a match record for a bracket match
+ */
+export async function createMatchForBracket(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  bracketMatchId: number,
+  eventId: string
+): Promise<string> {
+  // Get bracket match details with group and round info
+  const { data: bracketMatch, error: bmError } = await supabase
+    .from('bracket_match')
+    .select(`
+      *,
+      round:bracket_round!inner(number),
+      group:bracket_group!inner(number)
+    `)
+    .eq('id', bracketMatchId)
+    .single();
+
+  if (bmError || !bracketMatch) {
+    throw new InternalError(`Bracket match not found: ${bracketMatchId}`);
+  }
+
+  const groupNumber = (bracketMatch.round as any).number;
+  const roundNumber = (bracketMatch.group as any).number;
+
+  // Get team IDs from bracket participants
+  const opponent1Id = (bracketMatch.opponent1 as any)?.id;
+  const opponent2Id = (bracketMatch.opponent2 as any)?.id;
+
+  let teamOneId: string | null = null;
+  let teamTwoId: string | null = null;
+
+  if (opponent1Id) {
+    const { data: bp1 } = await supabase
+      .from('bracket_participant')
+      .select('team_id')
+      .eq('id', opponent1Id)
+      .single();
+    teamOneId = bp1?.team_id || null;
+  }
+
+  if (opponent2Id) {
+    const { data: bp2 } = await supabase
+      .from('bracket_participant')
+      .select('team_id')
+      .eq('id', opponent2Id)
+      .single();
+    teamTwoId = bp2?.team_id || null;
+  }
+
+  // Determine bracket side and round name
+  let bracketSide: string;
+  let roundName: string;
+
+  if (groupNumber === 1) {
+    bracketSide = 'upper';
+    roundName = `Winners Round ${roundNumber}`;
+  } else if (groupNumber === 2) {
+    bracketSide = 'lower';
+    roundName = `Losers Round ${roundNumber}`;
+  } else {
+    bracketSide = 'final';
+    roundName = 'Grand Final';
+  }
+
+  // Check if match already exists
+  const { data: existingMatch } = await supabase
+    .from('match')
+    .select('id')
+    .eq('bracket_match_id', bracketMatchId)
+    .maybeSingle();
+
+  if (existingMatch) {
+    // Update existing match with current team IDs
+    await supabase
+      .from('match')
+      .update({ team_one_id: teamOneId, team_two_id: teamTwoId })
+      .eq('id', existingMatch.id);
+    return existingMatch.id;
+  }
+
+  // Create new match record
+  const { data: newMatch, error: insertError } = await supabase
+    .from('match')
+    .insert({
+      event_id: eventId,
+      round_name: roundName,
+      round_number: roundNumber,
+      match_order: bracketMatchId,
+      bracket_side: bracketSide,
+      team_one_id: teamOneId,
+      team_two_id: teamTwoId,
+      bracket_match_id: bracketMatchId,
+      status: 'ready',
+    })
+    .select('id')
+    .single();
+
+  if (insertError || !newMatch) {
+    throw new InternalError(`Failed to create match: ${insertError?.message}`);
+  }
+
+  return newMatch.id;
+}
+
+/**
  * Get or create a match record linked to a bracket match
  */
 export async function getOrCreateMatchForBracket(
@@ -90,16 +196,8 @@ export async function getOrCreateMatchForBracket(
     return getMatchWithDetails(eventId, existingMatch.id);
   }
 
-  // Create new match using the database function
-  const { data: matchId, error } = await supabase
-    .rpc('create_match_for_bracket', {
-      p_bracket_match_id: bracketMatchId,
-      p_event_id: eventId,
-    });
-
-  if (error || !matchId) {
-    throw new InternalError(`Failed to create match: ${error?.message}`);
-  }
+  // Create new match
+  const matchId = await createMatchForBracket(supabase, bracketMatchId, eventId);
 
   return getMatchWithDetails(eventId, matchId);
 }

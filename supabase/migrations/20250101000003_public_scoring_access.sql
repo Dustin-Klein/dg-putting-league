@@ -202,6 +202,5 @@ USING (true);
 GRANT EXECUTE ON FUNCTION public.get_scoring_bracket_matches(uuid) TO anon, authenticated;
 
 -- Grant execute on bracket match functions needed for scoring
-GRANT EXECUTE ON FUNCTION public.create_match_for_bracket(INTEGER, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.calculate_match_team_scores(UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_match_scores(UUID) TO anon, authenticated;
