@@ -266,71 +266,52 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
     throw new InternalError('Pool assignment mismatch: not all players were assigned to a pool');
   }
 
-  // Use a transaction to ensure all updates succeed or none do
-  const { data: rpcResult, error: updateError } = await supabase.rpc('update_player_pools', {
-    p_event_id: eventId,
-    p_pool_assignments: poolAssignments
+  // Update all player pool assignments
+  const updates = poolAssignments.map(({ id, pool, pfa_score, scoring_method }) => {
+    return supabase
+      .from('event_players')
+      .update({ pool, pfa_score, scoring_method })
+      .eq('id', id);
   });
 
-  if (updateError) {
-    // Fallback to individual updates if RPC is not available
-    console.warn('RPC update_player_pools not available, using individual updates:', updateError.message);
+  // Execute all updates
+  const results = await Promise.all(updates);
 
-    const updates = poolAssignments.map(({ id, pool, pfa_score, scoring_method }) => {
-      console.log(`[Fallback Update] id=${id}, pool=${pool}, pfa_score=${pfa_score}, scoring_method=${scoring_method}`);
-      return supabase
-        .from('event_players')
-        .update({ pool, pfa_score, scoring_method })
-        .eq('id', id);
-    });
+  // Check for errors
+  const hasErrors = results.some(result => result.error);
+  if (hasErrors) {
+    const errorDetails = results
+      .map((result, index) => result.error ? `Player ${index}: ${result.error.message}` : null)
+      .filter(Boolean);
+    throw new InternalError(`Failed to update player pool assignments: ${errorDetails.join(', ')}`);
+  }
 
-    // Execute all updates
-    const results = await Promise.all(updates);
-
-    // Check for errors
-    const hasErrors = results.some(result => result.error);
-    if (hasErrors) {
-      const errorDetails = results
-        .map((result, index) => result.error ? `Player ${index}: ${result.error.message}` : null)
-        .filter(Boolean);
-      throw new InternalError(`Failed to update player pool assignments: ${errorDetails.join(', ')}`);
-    }
-
-    // Return updated players with pool assignments
-    const { data: finalPlayers, error: fetchError } = await supabase
-      .from('event_players')
-      .select(`
+  // Return updated players with pool assignments
+  const { data: finalPlayers, error: fetchError } = await supabase
+    .from('event_players')
+    .select(`
+      id,
+      event_id,
+      player_id,
+      has_paid,
+      pool,
+      created_at,
+      player:players(
         id,
-        event_id,
-        player_id,
-        has_paid,
-        pool,
+        full_name,
+        nickname,
+        email,
         created_at,
-        player:players(
-          id,
-          full_name,
-          nickname,
-          email,
-          created_at,
-          default_pool,
-          player_number
-        )
-      `)
-      .eq('event_id', eventId)
-      .order('created_at');
+        default_pool,
+        player_number
+      )
+    `)
+    .eq('event_id', eventId)
+    .order('created_at');
 
-    if (fetchError || !finalPlayers) {
-      throw new InternalError('Failed to fetch updated player data');
-    }
-
-    // Type assertion with proper validation
-    return finalPlayers as unknown as EventPlayer[];
+  if (fetchError || !finalPlayers) {
+    throw new InternalError('Failed to fetch updated player data');
   }
 
-  if (!rpcResult || !rpcResult.players) {
-    throw new InternalError('Failed to update player pool assignments');
-  }
-
-  // Type assertion with proper validation for RPC response
-  return rpcResult.players as unknown as EventPlayer[];
+  return finalPlayers as unknown as EventPlayer[];
 }

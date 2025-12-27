@@ -104,30 +104,25 @@ export async function createLeague(input: CreateLeagueInput) {
     throw new BadRequestError('League name is required');
   }
 
-  const { data: league, error } = await supabase.rpc(
-    'create_league_with_admin',
-    {
-      p_name: name,
-      p_city: city ?? null,
-      p_user_id: user.id,
-    }
-  );
+  // Create the league
+  const { data: league, error: leagueError } = await supabase
+    .from('leagues')
+    .insert({ name, city: city ?? null })
+    .select('id, name, city, created_at')
+    .single();
 
-  if (error) {
-    throw new InternalError(`Failed to create league: ${error.message}`);
+  if (leagueError || !league) {
+    throw new InternalError(`Failed to create league: ${leagueError?.message}`);
   }
 
-  // RPC may return JSON or stringified JSON
-  const parsed = typeof league === 'string' ? JSON.parse(league) : league;
+  // Create the admin record for the owner
+  const { error: adminError } = await supabase
+    .from('league_admins')
+    .insert({ league_id: league.id, user_id: user.id, role: 'owner' });
 
-  if (!parsed?.id) {
-    throw new InternalError('Invalid response from create_league_with_admin');
+  if (adminError) {
+    throw new InternalError(`Failed to create league admin: ${adminError.message}`);
   }
 
-  return parsed as {
-    id: string;
-    name: string;
-    city: string | null;
-    created_at: string;
-  };
+  return league;
 }
