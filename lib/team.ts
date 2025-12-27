@@ -182,44 +182,43 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
     }
   }
 
-  // Fetch the created teams
-  const { data: createdTeams, error: teamsFetchError } = await supabase
+  // Fetch the created teams with their members to calculate combined scores accurately
+  const { data: teamsWithMembers, error: teamsFetchError } = await supabase
     .from('teams')
-    .select('*')
-    .eq('event_id', eventId)
-    .order('created_at', { ascending: true });
+    .select(`*, team_members(*)`)
+    .eq('event_id', eventId);
 
-  if (teamsFetchError || !createdTeams) {
-    throw new InternalError(`Failed to fetch created teams: ${teamsFetchError?.message}`);
+  if (teamsFetchError || !teamsWithMembers) {
+    throw new InternalError(`Failed to fetch created teams with members: ${teamsFetchError?.message}`);
   }
 
   // Sort teams by combined qualification score and update seeds
-  const teamsWithScores = createdTeams.map((team, index) => {
-    const poolAPlayer = poolAPlayers[index];
-    const poolBPlayer = poolBPlayers[index];
-    const poolAScore = playersWithScores.find(p => p.id === poolAPlayer.id)?.qualificationScore || 0;
-    const poolBScore = playersWithScores.find(p => p.id === poolBPlayer.id)?.qualificationScore || 0;
-    
+  const teamsWithScores = teamsWithMembers.map(team => {
+    const memberScores = (team.team_members as { event_player_id: string }[]).map(member => {
+      return playersWithScores.find(p => p.id === member.event_player_id)?.qualificationScore || 0;
+    });
+    const combinedScore = memberScores.reduce((sum, score) => sum + score, 0);
+
     return {
       ...team,
-      combinedScore: poolAScore + poolBScore
+      combinedScore,
     };
   });
 
   teamsWithScores.sort((a, b) => b.combinedScore - a.combinedScore);
 
-  // Update team seeds based on combined scores
-  for (let i = 0; i < teamsWithScores.length; i++) {
-    const team = teamsWithScores[i];
-    const { error: seedError } = await supabase
+  // Update team seeds based on combined scores (in parallel)
+  const seedUpdates = teamsWithScores.map((team, i) =>
+    supabase
       .from('teams')
       .update({ seed: i + 1 })
       .eq('id', team.id)
-      .eq('event_id', eventId);
+  );
 
-    if (seedError) {
-      throw new InternalError(`Failed to update seed for team ${team.id}: ${seedError.message}`);
-    }
+  const results = await Promise.all(seedUpdates);
+  const firstError = results.find(res => res.error);
+  if (firstError?.error) {
+    throw new InternalError(`Failed to update team seeds: ${firstError.error.message}`);
   }
 
   // Fetch complete teams with members for return
