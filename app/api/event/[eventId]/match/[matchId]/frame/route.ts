@@ -26,6 +26,12 @@ export async function POST(
 ) {
   try {
     const { eventId, matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
     const body = await req.json();
     const parsed = createFrameSchema.safeParse(body);
 
@@ -39,7 +45,7 @@ export async function POST(
       // Record full frame with results
       const frame = await recordFullFrame(
         eventId,
-        matchId,
+        bracketMatchId,
         frame_number,
         results as RecordFrameResultInput[],
         is_overtime
@@ -47,7 +53,7 @@ export async function POST(
       return NextResponse.json(frame);
     } else {
       // Just create/get the frame
-      const frame = await getOrCreateFrame(eventId, matchId, frame_number, is_overtime);
+      const frame = await getOrCreateFrame(eventId, bracketMatchId, frame_number, is_overtime);
       return NextResponse.json(frame);
     }
   } catch (error) {

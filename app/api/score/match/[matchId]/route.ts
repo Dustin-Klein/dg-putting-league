@@ -32,6 +32,12 @@ export async function POST(
 ) {
   try {
     const { matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
     const body = await req.json();
     const parsed = getMatchSchema.safeParse(body);
 
@@ -39,7 +45,7 @@ export async function POST(
       throw new BadRequestError('Access code is required');
     }
 
-    const match = await getMatchForScoring(parsed.data.access_code, matchId);
+    const match = await getMatchForScoring(parsed.data.access_code, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
     return handleError(error);
@@ -55,6 +61,12 @@ export async function PUT(
 ) {
   try {
     const { matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
     const body = await req.json();
     const parsed = recordScoreSchema.safeParse(body);
 
@@ -64,7 +76,7 @@ export async function PUT(
 
     await recordScore(
       parsed.data.access_code,
-      matchId,
+      bracketMatchId,
       parsed.data.frame_number,
       parsed.data.event_player_id,
       parsed.data.putts_made,
@@ -72,7 +84,7 @@ export async function PUT(
     );
 
     // Return updated match
-    const match = await getMatchForScoring(parsed.data.access_code, matchId);
+    const match = await getMatchForScoring(parsed.data.access_code, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
     return handleError(error);
@@ -88,6 +100,12 @@ export async function PATCH(
 ) {
   try {
     const { matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
     const body = await req.json();
     const parsed = completeMatchSchema.safeParse(body);
 
@@ -95,7 +113,7 @@ export async function PATCH(
       throw new BadRequestError('Access code is required');
     }
 
-    const match = await completeMatchPublic(parsed.data.access_code, matchId);
+    const match = await completeMatchPublic(parsed.data.access_code, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
     return handleError(error);

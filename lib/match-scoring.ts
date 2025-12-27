@@ -9,24 +9,26 @@ import {
   NotFoundError,
 } from '@/lib/errors';
 
-export interface MatchWithDetails {
-  id: string;
+export interface BracketMatchWithDetails {
+  id: number;
   event_id: string;
-  bracket_match_id: number | null;
-  round_name: string;
-  round_number: number;
-  match_order: number;
-  bracket_side: 'upper' | 'lower' | 'final' | null;
-  team_one_id: string | null;
-  team_two_id: string | null;
-  team_one_score: number;
-  team_two_score: number;
-  winner_team_id: string | null;
-  status: 'pending' | 'ready' | 'in_progress' | 'completed';
+  stage_id: number;
+  group_id: number;
+  round_id: number;
+  number: number;
+  status: number;
   lane_id: string | null;
+  opponent1: OpponentData | null;
+  opponent2: OpponentData | null;
   team_one?: TeamWithPlayers;
   team_two?: TeamWithPlayers;
   frames?: MatchFrame[];
+}
+
+export interface OpponentData {
+  id: number | null;
+  score?: number;
+  result?: 'win' | 'loss' | 'draw';
 }
 
 export interface TeamWithPlayers {
@@ -48,7 +50,7 @@ export interface PlayerInTeam {
 
 export interface MatchFrame {
   id: string;
-  match_id: string;
+  bracket_match_id: number;
   frame_number: number;
   is_overtime: boolean;
   results: FrameResult[];
@@ -71,187 +73,74 @@ export interface RecordFrameResultInput {
 }
 
 /**
- * Create a match record for a bracket match
+ * Get team info from a bracket participant ID
  */
-export async function createMatchForBracket(
+async function getTeamFromParticipant(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  bracketMatchId: number,
-  eventId: string
-): Promise<string> {
-  // Get bracket match details with group and round info
-  const { data: bracketMatch, error: bmError } = await supabase
+  participantId: number | null
+): Promise<TeamWithPlayers | undefined> {
+  if (!participantId) return undefined;
+
+  const { data: participant } = await supabase
+    .from('bracket_participant')
+    .select('team_id')
+    .eq('id', participantId)
+    .single();
+
+  if (!participant?.team_id) return undefined;
+
+  const { data: team } = await supabase
+    .from('teams')
+    .select(`
+      id,
+      seed,
+      pool_combo,
+      team_members(
+        event_player_id,
+        role,
+        event_player:event_players(
+          id,
+          player:players(
+            id,
+            full_name,
+            nickname
+          )
+        )
+      )
+    `)
+    .eq('id', participant.team_id)
+    .single();
+
+  if (!team) return undefined;
+
+  return {
+    id: team.id,
+    seed: team.seed,
+    pool_combo: team.pool_combo,
+    players: team.team_members?.map((tm: any) => ({
+      event_player_id: tm.event_player_id,
+      role: tm.role,
+      player: tm.event_player?.player,
+    })) || [],
+  };
+}
+
+/**
+ * Get bracket match with full details including teams and frames
+ */
+export async function getBracketMatchWithDetails(
+  eventId: string,
+  bracketMatchId: number
+): Promise<BracketMatchWithDetails> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const { data: bracketMatch, error } = await supabase
     .from('bracket_match')
     .select(`
       *,
-      round:bracket_round!inner(number),
-      group:bracket_group!inner(number)
-    `)
-    .eq('id', bracketMatchId)
-    .single();
-
-  if (bmError || !bracketMatch) {
-    throw new InternalError(`Bracket match not found: ${bracketMatchId}`);
-  }
-
-  const groupNumber = (bracketMatch.round as any).number;
-  const roundNumber = (bracketMatch.group as any).number;
-
-  // Get team IDs from bracket participants
-  const opponent1Id = (bracketMatch.opponent1 as any)?.id;
-  const opponent2Id = (bracketMatch.opponent2 as any)?.id;
-
-  let teamOneId: string | null = null;
-  let teamTwoId: string | null = null;
-
-  if (opponent1Id) {
-    const { data: bp1 } = await supabase
-      .from('bracket_participant')
-      .select('team_id')
-      .eq('id', opponent1Id)
-      .single();
-    teamOneId = bp1?.team_id || null;
-  }
-
-  if (opponent2Id) {
-    const { data: bp2 } = await supabase
-      .from('bracket_participant')
-      .select('team_id')
-      .eq('id', opponent2Id)
-      .single();
-    teamTwoId = bp2?.team_id || null;
-  }
-
-  // Determine bracket side and round name
-  let bracketSide: string;
-  let roundName: string;
-
-  if (groupNumber === 1) {
-    bracketSide = 'upper';
-    roundName = `Winners Round ${roundNumber}`;
-  } else if (groupNumber === 2) {
-    bracketSide = 'lower';
-    roundName = `Losers Round ${roundNumber}`;
-  } else {
-    bracketSide = 'final';
-    roundName = 'Grand Final';
-  }
-
-  // Check if match already exists
-  const { data: existingMatch } = await supabase
-    .from('match')
-    .select('id')
-    .eq('bracket_match_id', bracketMatchId)
-    .maybeSingle();
-
-  if (existingMatch) {
-    // Update existing match with current team IDs
-    await supabase
-      .from('match')
-      .update({ team_one_id: teamOneId, team_two_id: teamTwoId })
-      .eq('id', existingMatch.id);
-    return existingMatch.id;
-  }
-
-  // Create new match record
-  const { data: newMatch, error: insertError } = await supabase
-    .from('match')
-    .insert({
-      event_id: eventId,
-      round_name: roundName,
-      round_number: roundNumber,
-      match_order: bracketMatchId,
-      bracket_side: bracketSide,
-      team_one_id: teamOneId,
-      team_two_id: teamTwoId,
-      bracket_match_id: bracketMatchId,
-      status: 'ready',
-    })
-    .select('id')
-    .single();
-
-  if (insertError || !newMatch) {
-    throw new InternalError(`Failed to create match: ${insertError?.message}`);
-  }
-
-  return newMatch.id;
-}
-
-/**
- * Get or create a match record linked to a bracket match
- */
-export async function getOrCreateMatchForBracket(
-  eventId: string,
-  bracketMatchId: number
-): Promise<MatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  // Try to find existing match
-  const { data: existingMatch } = await supabase
-    .from('match')
-    .select('*')
-    .eq('bracket_match_id', bracketMatchId)
-    .maybeSingle();
-
-  if (existingMatch) {
-    return getMatchWithDetails(eventId, existingMatch.id);
-  }
-
-  // Create new match
-  const matchId = await createMatchForBracket(supabase, bracketMatchId, eventId);
-
-  return getMatchWithDetails(eventId, matchId);
-}
-
-/**
- * Get match with full details including teams and frames
- */
-export async function getMatchWithDetails(
-  eventId: string,
-  matchId: string
-): Promise<MatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const { data: match, error } = await supabase
-    .from('match')
-    .select(`
-      *,
-      team_one:teams!match_team_one_id_fkey(
-        id,
-        seed,
-        pool_combo,
-        team_members(
-          event_player_id,
-          role,
-          event_player:event_players(
-            id,
-            player:players(
-              id,
-              full_name,
-              nickname
-            )
-          )
-        )
-      ),
-      team_two:teams!match_team_two_id_fkey(
-        id,
-        seed,
-        pool_combo,
-        team_members(
-          event_player_id,
-          role,
-          event_player:event_players(
-            id,
-            player:players(
-              id,
-              full_name,
-              nickname
-            )
-          )
-        )
-      ),
       frames:match_frames(
         id,
-        match_id,
+        bracket_match_id,
         frame_number,
         is_overtime,
         results:frame_results(
@@ -264,81 +153,54 @@ export async function getMatchWithDetails(
         )
       )
     `)
-    .eq('id', matchId)
+    .eq('id', bracketMatchId)
     .eq('event_id', eventId)
     .single();
 
-  if (error || !match) {
-    throw new NotFoundError('Match not found');
+  if (error || !bracketMatch) {
+    throw new NotFoundError('Bracket match not found');
   }
 
-  // Transform team data
-  const transformTeam = (team: any): TeamWithPlayers | undefined => {
-    if (!team) return undefined;
-    return {
-      id: team.id,
-      seed: team.seed,
-      pool_combo: team.pool_combo,
-      players: team.team_members?.map((tm: any) => ({
-        event_player_id: tm.event_player_id,
-        role: tm.role,
-        player: tm.event_player?.player,
-      })) || [],
-    };
-  };
+  // Get teams from participants
+  const opponent1 = bracketMatch.opponent1 as OpponentData | null;
+  const opponent2 = bracketMatch.opponent2 as OpponentData | null;
+
+  const [team_one, team_two] = await Promise.all([
+    getTeamFromParticipant(supabase, opponent1?.id ?? null),
+    getTeamFromParticipant(supabase, opponent2?.id ?? null),
+  ]);
 
   return {
-    ...match,
-    team_one: transformTeam(match.team_one),
-    team_two: transformTeam(match.team_two),
-    frames: match.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
-  } as MatchWithDetails;
+    ...bracketMatch,
+    opponent1,
+    opponent2,
+    team_one,
+    team_two,
+    frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
+  } as BracketMatchWithDetails;
 }
 
 /**
- * Get match by bracket match ID
- */
-export async function getMatchByBracketMatchId(
-  eventId: string,
-  bracketMatchId: number
-): Promise<MatchWithDetails | null> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const { data: match } = await supabase
-    .from('match')
-    .select('id')
-    .eq('bracket_match_id', bracketMatchId)
-    .eq('event_id', eventId)
-    .maybeSingle();
-
-  if (!match) {
-    return null;
-  }
-
-  return getMatchWithDetails(eventId, match.id);
-}
-
-/**
- * Create or get a frame for a match
+ * Create or get a frame for a bracket match
  */
 export async function getOrCreateFrame(
   eventId: string,
-  matchId: string,
+  bracketMatchId: number,
   frameNumber: number,
   isOvertime = false
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify match belongs to event
-  const { data: match } = await supabase
-    .from('match')
+  // Verify bracket match belongs to event
+  const { data: bracketMatch } = await supabase
+    .from('bracket_match')
     .select('id, event_id')
-    .eq('id', matchId)
+    .eq('id', bracketMatchId)
     .eq('event_id', eventId)
     .single();
 
-  if (!match) {
-    throw new NotFoundError('Match not found');
+  if (!bracketMatch) {
+    throw new NotFoundError('Bracket match not found');
   }
 
   // Try to find existing frame
@@ -348,7 +210,7 @@ export async function getOrCreateFrame(
       *,
       results:frame_results(*)
     `)
-    .eq('match_id', matchId)
+    .eq('bracket_match_id', bracketMatchId)
     .eq('frame_number', frameNumber)
     .maybeSingle();
 
@@ -360,7 +222,7 @@ export async function getOrCreateFrame(
   const { data: newFrame, error } = await supabase
     .from('match_frames')
     .insert({
-      match_id: matchId,
+      bracket_match_id: bracketMatchId,
       frame_number: frameNumber,
       is_overtime: isOvertime,
     })
@@ -387,14 +249,14 @@ export async function recordFrameResult(
 ): Promise<FrameResult> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify frame belongs to a match in this event
+  // Verify frame belongs to a bracket match in this event
   const { data: frame } = await supabase
     .from('match_frames')
-    .select('id, match:match(event_id)')
+    .select('id, bracket_match:bracket_match(event_id)')
     .eq('id', matchFrameId)
     .single();
 
-  if (!frame || (frame.match as any)?.event_id !== eventId) {
+  if (!frame || (frame.bracket_match as any)?.event_id !== eventId) {
     throw new NotFoundError('Frame not found');
   }
 
@@ -436,7 +298,7 @@ export async function recordFrameResult(
  */
 export async function recordFullFrame(
   eventId: string,
-  matchId: string,
+  bracketMatchId: number,
   frameNumber: number,
   results: RecordFrameResultInput[],
   isOvertime = false
@@ -444,7 +306,7 @@ export async function recordFullFrame(
   const { supabase } = await requireEventAdmin(eventId);
 
   // Get or create the frame
-  const frame = await getOrCreateFrame(eventId, matchId, frameNumber, isOvertime);
+  const frame = await getOrCreateFrame(eventId, bracketMatchId, frameNumber, isOvertime);
 
   // Record all results
   for (const result of results) {
@@ -469,102 +331,81 @@ export async function recordFullFrame(
 }
 
 /**
- * Complete a match and update bracket progression
+ * Complete a bracket match and update bracket progression
  */
-export async function completeMatch(
+export async function completeBracketMatch(
   eventId: string,
-  matchId: string
-): Promise<MatchWithDetails> {
+  bracketMatchId: number
+): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
   // Get match with current scores
-  const match = await getMatchWithDetails(eventId, matchId);
+  const match = await getBracketMatchWithDetails(eventId, bracketMatchId);
 
-  if (match.team_one_score === match.team_two_score) {
+  const score1 = match.opponent1?.score ?? 0;
+  const score2 = match.opponent2?.score ?? 0;
+
+  if (score1 === score2) {
     throw new BadRequestError('Match cannot be completed with a tied score');
   }
 
-  const winnerId = match.team_one_score > match.team_two_score
-    ? match.team_one_id
-    : match.team_two_id;
+  const team1Won = score1 > score2;
 
-  // Update match status
-  const { error: matchError } = await supabase
-    .from('match')
-    .update({
-      status: 'completed',
-      winner_team_id: winnerId,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', matchId);
+  // Use brackets-manager to update the match (handles bracket progression)
+  const storage = new SupabaseBracketStorage(supabase, eventId);
+  const manager = new BracketsManager(storage);
 
-  if (matchError) {
-    throw new InternalError(`Failed to complete match: ${matchError.message}`);
+  try {
+    await manager.update.match({
+      id: bracketMatchId,
+      opponent1: {
+        score: score1,
+        result: team1Won ? 'win' : 'loss',
+      },
+      opponent2: {
+        score: score2,
+        result: team1Won ? 'loss' : 'win',
+      },
+    });
+  } catch (bracketError) {
+    console.error('Failed to update bracket match:', bracketError);
+    throw new InternalError(`Failed to complete match: ${bracketError}`);
   }
 
-  // If linked to bracket, update using brackets-manager for proper progression
-  if (match.bracket_match_id) {
-    const team1Won = winnerId === match.team_one_id;
-
-    // Use brackets-manager to update the match (handles bracket progression)
-    const storage = new SupabaseBracketStorage(supabase, eventId);
-    const manager = new BracketsManager(storage);
-
-    try {
-      await manager.update.match({
-        id: match.bracket_match_id,
-        opponent1: {
-          score: match.team_one_score,
-          result: team1Won ? 'win' : 'loss',
-        },
-        opponent2: {
-          score: match.team_two_score,
-          result: team1Won ? 'loss' : 'win',
-        },
-      });
-    } catch (bracketError) {
-      console.error('Failed to update bracket match:', bracketError);
-      // Don't throw - the match is already completed
-    }
-  }
-
-  return getMatchWithDetails(eventId, matchId);
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
 
 /**
- * Start a match (set status to in_progress)
+ * Start a bracket match (set status to in_progress/Running)
  */
-export async function startMatch(
+export async function startBracketMatch(
   eventId: string,
-  matchId: string
-): Promise<MatchWithDetails> {
+  bracketMatchId: number
+): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
+  // Verify bracket match belongs to event
+  const { data: bracketMatch } = await supabase
+    .from('bracket_match')
+    .select('id')
+    .eq('id', bracketMatchId)
+    .eq('event_id', eventId)
+    .single();
+
+  if (!bracketMatch) {
+    throw new NotFoundError('Bracket match not found');
+  }
+
   const { error } = await supabase
-    .from('match')
-    .update({ status: 'in_progress' })
-    .eq('id', matchId)
-    .eq('event_id', eventId);
+    .from('bracket_match')
+    .update({ status: 3 }) // Running
+    .eq('id', bracketMatchId);
 
   if (error) {
     throw new InternalError(`Failed to start match: ${error.message}`);
   }
 
-  // Also update bracket_match status if linked
-  const { data: match } = await supabase
-    .from('match')
-    .select('bracket_match_id')
-    .eq('id', matchId)
-    .single();
-
-  if (match?.bracket_match_id) {
-    await supabase
-      .from('bracket_match')
-      .update({ status: 3 }) // Running
-      .eq('id', match.bracket_match_id);
-  }
-
-  return getMatchWithDetails(eventId, matchId);
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
 
 /**
@@ -576,3 +417,10 @@ export function calculatePoints(puttsMade: number, bonusPointEnabled: boolean): 
   }
   return puttsMade;
 }
+
+// Legacy aliases for backwards compatibility during migration
+// These can be removed once all callers are updated
+export const getMatchWithDetails = getBracketMatchWithDetails;
+export const completeMatch = completeBracketMatch;
+export const startMatch = startBracketMatch;
+export type MatchWithDetails = BracketMatchWithDetails;

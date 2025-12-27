@@ -398,7 +398,7 @@ export async function assignLaneToMatch(
     throw new NotFoundError('Match not found');
   }
 
-  // Update match with lane
+  // Update match with lane and set status to Running
   const { error } = await supabase
     .from('bracket_match')
     .update({
@@ -411,13 +411,10 @@ export async function assignLaneToMatch(
     throw new InternalError('Failed to assign lane to match');
   }
 
-  // Update lane status
+  // Update lane status to occupied
   await supabase
     .from('lanes')
-    .update({
-      current_match_id: matchId.toString(),
-      status: 'occupied'
-    })
+    .update({ status: 'occupied' })
     .eq('id', laneId);
 }
 
@@ -430,12 +427,17 @@ export async function releaseLane(
 ): Promise<void> {
   const { supabase } = await requireEventAdmin(eventId);
 
+  // Clear the lane_id from any bracket_match that has this lane
+  await supabase
+    .from('bracket_match')
+    .update({ lane_id: null })
+    .eq('lane_id', laneId)
+    .eq('event_id', eventId);
+
+  // Set lane status to idle
   await supabase
     .from('lanes')
-    .update({
-      current_match_id: null,
-      status: 'idle'
-    })
+    .update({ status: 'idle' })
     .eq('id', laneId);
 }
 
