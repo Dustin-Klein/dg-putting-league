@@ -192,19 +192,22 @@ export async function getOrCreateFrame(
   const { supabase } = await requireEventAdmin(eventId);
 
   // Verify bracket match belongs to event
-  const { data: bracketMatch } = await supabase
+  const { data: bracketMatch, error: matchError } = await supabase
     .from('bracket_match')
     .select('id, event_id')
     .eq('id', bracketMatchId)
     .eq('event_id', eventId)
     .single();
 
+  if (matchError) {
+    throw new InternalError(`Failed to fetch bracket match: ${matchError.message}`);
+  }
   if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
 
   // Try to find existing frame
-  const { data: existingFrame } = await supabase
+  const { data: existingFrame, error: frameQueryError } = await supabase
     .from('match_frames')
     .select(`
       *,
@@ -214,6 +217,9 @@ export async function getOrCreateFrame(
     .eq('frame_number', frameNumber)
     .maybeSingle();
 
+  if (frameQueryError) {
+    throw new InternalError(`Failed to query frame: ${frameQueryError.message}`);
+  }
   if (existingFrame) {
     return existingFrame as MatchFrame;
   }
@@ -250,12 +256,15 @@ export async function recordFrameResult(
   const { supabase } = await requireEventAdmin(eventId);
 
   // Verify frame belongs to a bracket match in this event
-  const { data: frame } = await supabase
+  const { data: frame, error: frameError } = await supabase
     .from('match_frames')
     .select('id, bracket_match:bracket_match(event_id)')
     .eq('id', matchFrameId)
     .single();
 
+  if (frameError) {
+    throw new InternalError(`Failed to fetch frame: ${frameError.message}`);
+  }
   if (!frame || (frame.bracket_match as any)?.event_id !== eventId) {
     throw new NotFoundError('Frame not found');
   }
@@ -385,13 +394,16 @@ export async function startBracketMatch(
   const { supabase } = await requireEventAdmin(eventId);
 
   // Verify bracket match belongs to event
-  const { data: bracketMatch } = await supabase
+  const { data: bracketMatch, error: matchError } = await supabase
     .from('bracket_match')
     .select('id')
     .eq('id', bracketMatchId)
     .eq('event_id', eventId)
     .single();
 
+  if (matchError) {
+    throw new InternalError(`Failed to fetch bracket match: ${matchError.message}`);
+  }
   if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
