@@ -159,83 +159,18 @@ CREATE TABLE public.lanes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   label TEXT NOT NULL,
-  current_match_id UUID,
   status lane_status NOT NULL DEFAULT 'idle',
   UNIQUE (event_id, label)
 );
 
--- Match (with bracket_match_id and score columns consolidated)
-CREATE TABLE public.match (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  -- Event relationship
-  event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-
-  -- Display / ordering
-  round_name TEXT NOT NULL,
-  round_number INTEGER NOT NULL DEFAULT 1,
-  match_order INTEGER NOT NULL,
-
-  -- Bracket metadata
-  bracket_side TEXT CHECK (bracket_side IN ('upper','lower','final')),
-  is_reset_final BOOLEAN NOT NULL DEFAULT false,
-
-  -- Teams
-  team_one_id UUID REFERENCES public.teams(id),
-  team_two_id UUID REFERENCES public.teams(id),
-  winner_team_id UUID REFERENCES public.teams(id),
-
-  -- Team scores (cached from frame_results)
-  team_one_score INTEGER DEFAULT 0,
-  team_two_score INTEGER DEFAULT 0,
-
-  -- Bracket progression
-  next_match_win_id UUID REFERENCES public.match(id),
-  next_match_lose_id UUID REFERENCES public.match(id),
-
-  -- Link to bracket_match for bracket progression
-  bracket_match_id INTEGER,
-
-  -- Match state
-  status match_status NOT NULL DEFAULT 'pending',
-
-  -- Lane scheduling
-  lane_id UUID REFERENCES public.lanes(id),
-  scheduled_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ,
-
-  -- Constraints
-  UNIQUE (event_id, match_order)
-);
-
-CREATE INDEX idx_match_event_bracket ON public.match(event_id, bracket_side, round_number);
-CREATE INDEX idx_match_next_match_win ON public.match(next_match_win_id);
-CREATE INDEX idx_match_next_match_lose ON public.match(next_match_lose_id);
-CREATE INDEX idx_match_lane ON public.match(lane_id);
-CREATE INDEX idx_match_bracket_match ON public.match(bracket_match_id);
-
--- Add foreign key for lanes.current_match_id after match table exists
-ALTER TABLE public.lanes
-  ADD CONSTRAINT lanes_current_match_id_fkey FOREIGN KEY (current_match_id) REFERENCES public.match(id);
-
--- Match Lanes
-CREATE TABLE public.match_lanes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  match_id UUID NOT NULL REFERENCES public.match(id) ON DELETE CASCADE,
-  lane_id UUID NOT NULL REFERENCES public.lanes(id) ON DELETE CASCADE,
-  assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  released_at TIMESTAMPTZ,
-  UNIQUE (match_id, lane_id)
-);
-
--- Match Frames
+-- Match Frames (linked directly to bracket_match)
 CREATE TABLE public.match_frames (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  match_id UUID NOT NULL REFERENCES public.match(id) ON DELETE CASCADE,
+  bracket_match_id INTEGER,  -- nullable for future qualification matches
   frame_number INTEGER NOT NULL,
   is_overtime BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (match_id, frame_number)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  -- Note: UNIQUE constraint added after bracket_match table is created
 );
 
 -- Frame Results
@@ -335,9 +270,15 @@ CREATE INDEX idx_bracket_match_status ON public.bracket_match(status);
 CREATE INDEX idx_bracket_match_lane ON public.bracket_match(lane_id);
 CREATE INDEX idx_bracket_match_event ON public.bracket_match(event_id);
 
--- Add foreign key from match to bracket_match after bracket_match table exists
-ALTER TABLE public.match
-  ADD CONSTRAINT match_bracket_match_id_fkey FOREIGN KEY (bracket_match_id) REFERENCES public.bracket_match(id) ON DELETE CASCADE;
+-- Add foreign key and unique constraint from match_frames to bracket_match after bracket_match table exists
+ALTER TABLE public.match_frames
+  ADD CONSTRAINT match_frames_bracket_match_id_fkey FOREIGN KEY (bracket_match_id) REFERENCES public.bracket_match(id) ON DELETE CASCADE;
+
+-- Unique constraint: only one frame per frame_number per bracket_match
+ALTER TABLE public.match_frames
+  ADD CONSTRAINT match_frames_bracket_match_frame_unique UNIQUE (bracket_match_id, frame_number);
+
+CREATE INDEX idx_match_frames_bracket_match ON public.match_frames(bracket_match_id);
 
 -- Bracket Match Game: for best-of series (not typically used in our single-match format)
 CREATE TABLE public.bracket_match_game (
@@ -434,8 +375,8 @@ AS $$
   );
 $$;
 
--- Helper function to check admin status via match -> event
-CREATE OR REPLACE FUNCTION public.is_league_admin_for_match(match_id_param uuid)
+-- Helper function to check admin status via bracket_match -> event
+CREATE OR REPLACE FUNCTION public.is_league_admin_for_bracket_match(bracket_match_id_param integer)
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
@@ -443,16 +384,16 @@ SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1
-    FROM public.match m
-    JOIN public.events e ON e.id = m.event_id
+    FROM public.bracket_match bm
+    JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE m.id = match_id_param
+    WHERE bm.id = bracket_match_id_param
       AND la.user_id = auth.uid()
       AND la.role IN ('owner', 'admin')
   );
 $$;
 
--- Helper function to check admin status via match_frame -> match -> event
+-- Helper function to check admin status via match_frame -> bracket_match -> event
 CREATE OR REPLACE FUNCTION public.is_league_admin_for_match_frame(match_frame_id_param uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -462,8 +403,8 @@ AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public.match_frames mf
-    JOIN public.match m ON m.id = mf.match_id
-    JOIN public.events e ON e.id = m.event_id
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE mf.id = match_frame_id_param
       AND la.user_id = auth.uid()
@@ -481,127 +422,110 @@ AS $$
   SELECT public.is_league_admin_for_event(tournament_id_param);
 $$;
 
--- Function to calculate team scores from frame_results
-CREATE OR REPLACE FUNCTION public.calculate_match_team_scores(p_match_id UUID)
-RETURNS TABLE (team_one_score INTEGER, team_two_score INTEGER)
+-- Function to calculate team scores from frame_results for a bracket_match
+-- Teams are identified via bracket_participant -> team_id
+CREATE OR REPLACE FUNCTION public.calculate_bracket_match_scores(p_bracket_match_id INTEGER)
+RETURNS TABLE (opponent1_score INTEGER, opponent2_score INTEGER)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_team_one_id UUID;
-  v_team_two_id UUID;
-  v_team_one_score INTEGER := 0;
-  v_team_two_score INTEGER := 0;
+  v_participant1_id INTEGER;
+  v_participant2_id INTEGER;
+  v_team1_id UUID;
+  v_team2_id UUID;
+  v_score1 INTEGER := 0;
+  v_score2 INTEGER := 0;
 BEGIN
-  -- Get team IDs for this match
-  SELECT team_one_id, team_two_id INTO v_team_one_id, v_team_two_id
-  FROM public.match WHERE id = p_match_id;
+  -- Get participant IDs from bracket_match opponent JSONB
+  SELECT
+    (opponent1->>'id')::INTEGER,
+    (opponent2->>'id')::INTEGER
+  INTO v_participant1_id, v_participant2_id
+  FROM public.bracket_match WHERE id = p_bracket_match_id;
 
-  IF v_team_one_id IS NULL OR v_team_two_id IS NULL THEN
+  -- Get team IDs from participants
+  SELECT team_id INTO v_team1_id FROM public.bracket_participant WHERE id = v_participant1_id;
+  SELECT team_id INTO v_team2_id FROM public.bracket_participant WHERE id = v_participant2_id;
+
+  IF v_team1_id IS NULL OR v_team2_id IS NULL THEN
     RETURN QUERY SELECT 0, 0;
     RETURN;
   END IF;
 
-  -- Calculate team one score (sum of both players' points)
-  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_team_one_score
+  -- Calculate team 1 score (sum of both players' points)
+  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_score1
   FROM public.frame_results fr
   JOIN public.match_frames mf ON mf.id = fr.match_frame_id
   JOIN public.team_members tm ON tm.event_player_id = fr.event_player_id
-  WHERE mf.match_id = p_match_id
-    AND tm.team_id = v_team_one_id;
+  WHERE mf.bracket_match_id = p_bracket_match_id
+    AND tm.team_id = v_team1_id;
 
-  -- Calculate team two score
-  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_team_two_score
+  -- Calculate team 2 score
+  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_score2
   FROM public.frame_results fr
   JOIN public.match_frames mf ON mf.id = fr.match_frame_id
   JOIN public.team_members tm ON tm.event_player_id = fr.event_player_id
-  WHERE mf.match_id = p_match_id
-    AND tm.team_id = v_team_two_id;
+  WHERE mf.bracket_match_id = p_bracket_match_id
+    AND tm.team_id = v_team2_id;
 
-  RETURN QUERY SELECT v_team_one_score, v_team_two_score;
+  RETURN QUERY SELECT v_score1, v_score2;
 END;
 $$;
 
--- Function to update match scores and sync to bracket_match
-CREATE OR REPLACE FUNCTION public.sync_match_scores(p_match_id UUID)
+-- Function to sync bracket_match scores from frame_results
+CREATE OR REPLACE FUNCTION public.sync_bracket_match_scores(p_bracket_match_id INTEGER)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_team_one_score INTEGER;
-  v_team_two_score INTEGER;
-  v_bracket_match_id INTEGER;
-  v_team_one_id UUID;
-  v_team_two_id UUID;
-  v_winner_team_id UUID;
+  v_score1 INTEGER;
+  v_score2 INTEGER;
 BEGIN
   -- Calculate scores
-  SELECT * INTO v_team_one_score, v_team_two_score
-  FROM public.calculate_match_team_scores(p_match_id);
+  SELECT * INTO v_score1, v_score2
+  FROM public.calculate_bracket_match_scores(p_bracket_match_id);
 
-  -- Get match details
-  SELECT bracket_match_id, team_one_id, team_two_id
-  INTO v_bracket_match_id, v_team_one_id, v_team_two_id
-  FROM public.match WHERE id = p_match_id;
-
-  -- Determine winner if scores are different
-  IF v_team_one_score > v_team_two_score THEN
-    v_winner_team_id := v_team_one_id;
-  ELSIF v_team_two_score > v_team_one_score THEN
-    v_winner_team_id := v_team_two_id;
-  ELSE
-    v_winner_team_id := NULL; -- Tie
-  END IF;
-
-  -- Update match table with scores
-  UPDATE public.match
-  SET team_one_score = v_team_one_score,
-      team_two_score = v_team_two_score,
-      winner_team_id = v_winner_team_id
-  WHERE id = p_match_id;
-
-  -- Update bracket_match if linked
-  IF v_bracket_match_id IS NOT NULL THEN
-    UPDATE public.bracket_match
-    SET opponent1 = jsonb_set(
-          COALESCE(opponent1, '{}'::jsonb),
-          '{score}',
-          to_jsonb(v_team_one_score)
-        ),
-        opponent2 = jsonb_set(
-          COALESCE(opponent2, '{}'::jsonb),
-          '{score}',
-          to_jsonb(v_team_two_score)
-        ),
-        updated_at = NOW()
-    WHERE id = v_bracket_match_id;
-  END IF;
+  -- Update bracket_match with scores
+  UPDATE public.bracket_match
+  SET opponent1 = jsonb_set(
+        COALESCE(opponent1, '{}'::jsonb),
+        '{score}',
+        to_jsonb(v_score1)
+      ),
+      opponent2 = jsonb_set(
+        COALESCE(opponent2, '{}'::jsonb),
+        '{score}',
+        to_jsonb(v_score2)
+      ),
+      updated_at = NOW()
+  WHERE id = p_bracket_match_id;
 END;
 $$;
 
 -- Trigger function to sync scores when frame_results change
-CREATE OR REPLACE FUNCTION public.trigger_sync_match_scores()
+CREATE OR REPLACE FUNCTION public.trigger_sync_bracket_match_scores()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_match_id UUID;
+  v_bracket_match_id INTEGER;
 BEGIN
-  -- Get match_id from match_frame
+  -- Get bracket_match_id from match_frame
   IF TG_OP = 'DELETE' THEN
-    SELECT match_id INTO v_match_id
+    SELECT bracket_match_id INTO v_bracket_match_id
     FROM public.match_frames WHERE id = OLD.match_frame_id;
   ELSE
-    SELECT match_id INTO v_match_id
+    SELECT bracket_match_id INTO v_bracket_match_id
     FROM public.match_frames WHERE id = NEW.match_frame_id;
   END IF;
 
-  -- Sync scores
-  IF v_match_id IS NOT NULL THEN
-    PERFORM public.sync_match_scores(v_match_id);
+  -- Sync scores if linked to bracket_match
+  IF v_bracket_match_id IS NOT NULL THEN
+    PERFORM public.sync_bracket_match_scores(v_bracket_match_id);
   END IF;
 
   RETURN COALESCE(NEW, OLD);
@@ -646,8 +570,6 @@ ALTER TABLE public.qualification_frames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lanes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.match ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.match_lanes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.match_frames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.frame_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.player_statistics ENABLE ROW LEVEL SECURITY;
@@ -974,46 +896,6 @@ USING (
 );
 
 -- ============================================================================
--- RLS POLICIES - Match
--- ============================================================================
-
-CREATE POLICY "Enable public read for match scoring"
-ON public.match
-FOR SELECT
-TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.events e
-    WHERE e.id = match.event_id
-    AND e.status = 'bracket'
-  )
-);
-
-CREATE POLICY "Enable public insert for match scoring"
-ON public.match
-FOR INSERT
-TO anon, authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.events e
-    WHERE e.id = match.event_id
-    AND e.status = 'bracket'
-  )
-);
-
-CREATE POLICY "Enable public update for match scoring"
-ON public.match
-FOR UPDATE
-TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.events e
-    WHERE e.id = match.event_id
-    AND e.status = 'bracket'
-  )
-);
-
--- ============================================================================
 -- RLS POLICIES - Match Frames
 -- ============================================================================
 
@@ -1022,10 +904,10 @@ ON public.match_frames
 FOR SELECT
 USING (
   EXISTS (
-    SELECT 1 FROM public.match m
-    JOIN public.events e ON e.id = m.event_id
+    SELECT 1 FROM public.bracket_match bm
+    JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE m.id = match_frames.match_id
+    WHERE bm.id = match_frames.bracket_match_id
     AND la.user_id = auth.uid()
   )
 );
@@ -1036,9 +918,9 @@ FOR SELECT
 TO anon, authenticated
 USING (
   EXISTS (
-    SELECT 1 FROM public.match m
-    JOIN public.events e ON e.id = m.event_id
-    WHERE m.id = match_frames.match_id
+    SELECT 1 FROM public.bracket_match bm
+    JOIN public.events e ON e.id = bm.event_id
+    WHERE bm.id = match_frames.bracket_match_id
     AND e.status = 'bracket'
   )
 );
@@ -1047,7 +929,7 @@ CREATE POLICY "Enable insert for league admins"
 ON public.match_frames
 FOR INSERT
 WITH CHECK (
-  public.is_league_admin_for_match(match_frames.match_id)
+  public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
 );
 
 CREATE POLICY "Enable public insert for frame scoring"
@@ -1056,9 +938,9 @@ FOR INSERT
 TO anon, authenticated
 WITH CHECK (
   EXISTS (
-    SELECT 1 FROM public.match m
-    JOIN public.events e ON e.id = m.event_id
-    WHERE m.id = match_frames.match_id
+    SELECT 1 FROM public.bracket_match bm
+    JOIN public.events e ON e.id = bm.event_id
+    WHERE bm.id = match_frames.bracket_match_id
     AND e.status = 'bracket'
   )
 );
@@ -1067,14 +949,14 @@ CREATE POLICY "Enable update for league admins"
 ON public.match_frames
 FOR UPDATE
 USING (
-  public.is_league_admin_for_match(match_frames.match_id)
+  public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
 );
 
 CREATE POLICY "Enable delete for league admins"
 ON public.match_frames
 FOR DELETE
 USING (
-  public.is_league_admin_for_match(match_frames.match_id)
+  public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
 );
 
 -- ============================================================================
@@ -1087,8 +969,8 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
-    JOIN public.match m ON m.id = mf.match_id
-    JOIN public.events e ON e.id = m.event_id
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE mf.id = frame_results.match_frame_id
     AND la.user_id = auth.uid()
@@ -1102,8 +984,8 @@ TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
-    JOIN public.match m ON m.id = mf.match_id
-    JOIN public.events e ON e.id = m.event_id
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
     WHERE mf.id = frame_results.match_frame_id
     AND e.status = 'bracket'
   )
@@ -1123,8 +1005,8 @@ TO anon, authenticated
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
-    JOIN public.match m ON m.id = mf.match_id
-    JOIN public.events e ON e.id = m.event_id
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
     WHERE mf.id = frame_results.match_frame_id
     AND e.status = 'bracket'
   )
@@ -1144,8 +1026,8 @@ TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.match_frames mf
-    JOIN public.match m ON m.id = mf.match_id
-    JOIN public.events e ON e.id = m.event_id
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
     WHERE mf.id = frame_results.match_frame_id
     AND e.status = 'bracket'
   )
@@ -1427,7 +1309,7 @@ USING (public.is_tournament_admin(tournament_id));
 
 CREATE TRIGGER trigger_frame_results_sync_scores
 AFTER INSERT OR UPDATE OR DELETE ON public.frame_results
-FOR EACH ROW EXECUTE FUNCTION public.trigger_sync_match_scores();
+FOR EACH ROW EXECUTE FUNCTION public.trigger_sync_bracket_match_scores();
 
 -- ============================================================================
 -- REALTIME PUBLICATIONS
@@ -1435,7 +1317,6 @@ FOR EACH ROW EXECUTE FUNCTION public.trigger_sync_match_scores();
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bracket_match;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bracket_participant;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.match;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.match_frames;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.frame_results;
 
@@ -1461,8 +1342,8 @@ GRANT USAGE, SELECT ON SEQUENCE bracket_participant_id_seq TO postgres, anon, au
 -- Function permissions
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_scoring_bracket_matches(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.calculate_match_team_scores(UUID) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sync_match_scores(UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.calculate_bracket_match_scores(INTEGER) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_bracket_match_scores(INTEGER) TO anon, authenticated;
 
 -- Bracket table permissions
 GRANT ALL ON public.bracket_stage TO postgres, anon, authenticated, service_role;

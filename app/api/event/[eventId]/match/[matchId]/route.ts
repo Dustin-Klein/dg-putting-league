@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
-  getMatchWithDetails,
-  startMatch,
-  completeMatch,
+  getBracketMatchWithDetails,
+  startBracketMatch,
+  completeBracketMatch,
 } from '@/lib/match-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
@@ -17,7 +17,13 @@ export async function GET(
 ) {
   try {
     const { eventId, matchId } = await params;
-    const match = await getMatchWithDetails(eventId, matchId);
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
+    const match = await getBracketMatchWithDetails(eventId, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
     return handleError(error);
@@ -30,6 +36,12 @@ export async function PATCH(
 ) {
   try {
     const { eventId, matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) {
+      throw new BadRequestError('Invalid match ID');
+    }
+
     const body = await req.json();
     const parsed = updateMatchSchema.safeParse(body);
 
@@ -40,10 +52,10 @@ export async function PATCH(
     let match;
     switch (parsed.data.action) {
       case 'start':
-        match = await startMatch(eventId, matchId);
+        match = await startBracketMatch(eventId, bracketMatchId);
         break;
       case 'complete':
-        match = await completeMatch(eventId, matchId);
+        match = await completeBracketMatch(eventId, bracketMatchId);
         break;
       default:
         throw new BadRequestError('Invalid action');
