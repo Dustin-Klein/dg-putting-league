@@ -1078,6 +1078,17 @@ CREATE POLICY "Enable read access for league admins"
 ON public.bracket_stage FOR SELECT
 USING (public.is_tournament_admin(tournament_id));
 
+CREATE POLICY "Enable public read for bracket stages"
+ON public.bracket_stage FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = bracket_stage.tournament_id
+    AND e.status = 'bracket'
+  )
+);
+
 CREATE POLICY "Enable insert for league admins"
 ON public.bracket_stage FOR INSERT
 WITH CHECK (public.is_tournament_admin(tournament_id));
@@ -1245,6 +1256,24 @@ USING (
     SELECT 1 FROM public.bracket_stage s
     WHERE s.id = bracket_match.stage_id
     AND public.is_tournament_admin(s.tournament_id)
+  )
+);
+
+CREATE POLICY "Enable public update for bracket scoring"
+ON public.bracket_match FOR UPDATE
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = bracket_match.event_id
+    AND e.status = 'bracket'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = bracket_match.event_id
+    AND e.status = 'bracket'
   )
 );
 
