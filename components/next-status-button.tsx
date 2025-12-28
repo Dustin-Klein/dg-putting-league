@@ -39,7 +39,7 @@ const nextStatusLabels = {
 
 interface NextStatusButtonProps {
   event: EventWithDetails;
-  onStatusUpdate?: (newStatus: EventWithDetails['status']) => void;
+  onStatusUpdate?: () => void;
 }
 
 export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProps) {
@@ -82,7 +82,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         description: `Event status updated to ${statusLabelMap[nextStatus]}`,
       });
 
-      onStatusUpdate?.(nextStatus);
+      onStatusUpdate?.();
       setIsDialogOpen(false);
     } catch (error) {
       console.error('Error updating status:', error);
