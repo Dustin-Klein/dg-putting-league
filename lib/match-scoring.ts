@@ -60,6 +60,7 @@ export interface FrameResult {
   id: string;
   match_frame_id: string;
   event_player_id: string;
+  bracket_match_id?: number | null;
   putts_made: number;
   points_earned: number;
   order_in_frame: number;
@@ -258,7 +259,7 @@ export async function recordFrameResult(
   // Verify frame belongs to a bracket match in this event
   const { data: frame, error: frameError } = await supabase
     .from('match_frames')
-    .select('id, bracket_match:bracket_match(event_id)')
+    .select('id, bracket_match_id, bracket_match:bracket_match(event_id)')
     .eq('id', matchFrameId)
     .single();
 
@@ -277,13 +278,14 @@ export async function recordFrameResult(
     throw new BadRequestError('Points earned must be between 0 and 4');
   }
 
-  // Upsert the frame result
+  // Upsert the frame result (includes denormalized bracket_match_id for robust cascade delete handling)
   const { data: result, error } = await supabase
     .from('frame_results')
     .upsert(
       {
         match_frame_id: matchFrameId,
         event_player_id: input.event_player_id,
+        bracket_match_id: frame.bracket_match_id,
         putts_made: input.putts_made,
         points_earned: input.points_earned,
         order_in_frame: input.order_in_frame,

@@ -347,13 +347,14 @@ export async function recordScore(
   const orderInFrame = existingResult?.order_in_frame ||
     (existingResults?.length || 0) + 1;
 
-  // Upsert the result
+  // Upsert the result (includes denormalized bracket_match_id for robust cascade delete handling)
   const { error: resultError } = await supabase
     .from('frame_results')
     .upsert(
       {
         match_frame_id: frame.id,
         event_player_id: eventPlayerId,
+        bracket_match_id: bracketMatchId,
         putts_made: puttsMade,
         points_earned: pointsEarned,
         order_in_frame: orderInFrame,

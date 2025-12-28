@@ -95,8 +95,14 @@ export function MatchCard({
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
 
-  const showScore = match.status >= Status.Running;
-  const isComplete = match.status >= Status.Completed;
+const showScore =
+  match.status === Status.Running ||
+  match.status === Status.Completed ||
+  match.status === Status.Archived;
+ 
+const isComplete =
+  match.status === Status.Completed ||
+  match.status === Status.Archived;
 
   const team1IsWinner = isComplete && opponent1?.result === 'win';
   const team2IsWinner = isComplete && opponent2?.result === 'win';
