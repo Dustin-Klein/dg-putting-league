@@ -163,15 +163,11 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        console.log(`[PFA Debug] Player: ${eventPlayer.player.full_name}, player_id: ${eventPlayer.player_id}`);
-
         // First get all event_player records for this player (across all events)
         const { data: allEventPlayers, error: epError } = await supabase
           .from('event_players')
           .select('id')
           .eq('player_id', eventPlayer.player_id);
-
-        console.log(`[PFA Debug] Found ${allEventPlayers?.length || 0} event_player records:`, allEventPlayers?.map(ep => ep.id));
 
         if (epError) {
           console.error(`[PFA Debug] Error fetching event_players:`, epError);
@@ -188,21 +184,14 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
             .select('points_earned, recorded_at')
             .in('event_player_id', eventPlayerIds);
 
-          console.log(`[PFA Debug] Total frame_results (no date filter): ${allResults?.length || 0}`);
-          if (allResults && allResults.length > 0) {
-            console.log(`[PFA Debug] Sample frame_result:`, allResults[0]);
-          }
-
           const { data: results, error: frameError } = await supabase
             .from('frame_results')
             .select('points_earned')
             .in('event_player_id', eventPlayerIds)
             .gte('recorded_at', sixMonthsAgo.toISOString());
 
-          console.log(`[PFA Debug] Frame results (since ${sixMonthsAgo.toISOString()}): ${results?.length || 0}`);
 
           if (frameError) {
-            console.error(`[PFA Debug] Error fetching frame_results:`, frameError);
             throw new InternalError(`Failed to fetch frame results for player ${eventPlayer.player_id}: ${frameError.message}`);
           }
           frameResults = results || [];
@@ -212,12 +201,10 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
           const totalPoints = frameResults.reduce((sum, frame) => sum + frame.points_earned, 0);
           score = totalPoints / frameResults.length;
           scoringMethod = 'pfa';
-          console.log(`[PFA Debug] Calculated PFA: ${score} (${totalPoints} / ${frameResults.length})`);
         } else {
           // No frame history, use default_pool for scoring (0 for comparison)
           score = 0;
           scoringMethod = 'default';
-          console.log(`[PFA Debug] No frame results, using default`);
         }
       }
 
@@ -250,7 +237,6 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
 
   playersWithScores.forEach((player, index) => {
     const pool = index < poolASize ? 'A' : 'B';
-    console.log(`[Pool Assignment] ${player.player.full_name}: score=${player.score}, method=${player.scoringMethod}, pool=${pool}`);
     poolAssignments.push({
       id: player.id,
       pool,
@@ -258,8 +244,6 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
       scoring_method: player.scoringMethod
     });
   });
-
-  console.log('[Pool Assignments]', JSON.stringify(poolAssignments, null, 2));
 
   // Validate all players have been assigned a pool
   if (poolAssignments.length !== totalPlayers) {
