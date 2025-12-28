@@ -1,10 +1,35 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { EventHeader, PlayerManagement } from './components';
+import { EventHeader, PlayerManagement, BracketSection, TeamDisplay, ResultsDisplay } from './components';
 import { EventWithDetails } from './types';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+
+function EventContent({
+  event,
+  isAdmin,
+  onPlayersUpdate
+}: {
+  event: EventWithDetails;
+  isAdmin: boolean;
+  onPlayersUpdate: (players: EventWithDetails['players']) => void;
+}) {
+  if (event.status === 'completed') {
+    return <ResultsDisplay eventId={event.id} />;
+  }
+
+  if (event.status === 'bracket') {
+    return (
+      <>
+        <BracketSection eventId={event.id} />
+        <TeamDisplay event={event} isAdmin={isAdmin} />
+      </>
+    );
+  }
+
+  return <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={onPlayersUpdate} />;
+}
 
 export default function EventPage({
   params,
@@ -88,7 +113,7 @@ export default function EventPage({
       </Link>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       <div className="mt-8">
-        <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
+        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
       </div>
     </div>
   );

@@ -11,9 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails, AddPlayerFormValues } from '../types';
 import { format } from 'date-fns';
-import { TeamDisplay } from './team-display';
-import { BracketSection } from './bracket-section';
-import { ResultsDisplay } from './results-display';
 import {
   Dialog,
   DialogContent,
@@ -246,17 +243,7 @@ export function PlayerManagement({
 
   return (
     <div className="space-y-6">
-      {/* Show results if event is completed */}
-      {event.status === 'completed' ? (
-        <ResultsDisplay eventId={event.id} />
-      ) : event.status === 'bracket' ? (
-        <>
-          <BracketSection eventId={event.id} />
-          <TeamDisplay event={event} isAdmin={isAdmin} />
-        </>
-      ) : (
-        <>
-          <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Players</h2>
             {isAdmin && event.status === 'pre-bracket' && (
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -510,9 +497,7 @@ export function PlayerManagement({
                 )}
               </TableBody>
             </Table>
-          </div>
-        </>
-      )}
+      </div>
     </div>
   );
 }
