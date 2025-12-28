@@ -76,7 +76,7 @@ export function BracketSection({ eventId }: BracketSectionProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      channel.unsubscribe();
     };
   }, [eventId, fetchBracket]);
 

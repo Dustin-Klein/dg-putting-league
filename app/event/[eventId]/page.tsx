@@ -78,11 +78,14 @@ export default function EventPage({
   const handleStatusUpdate = useCallback(async () => {
     // Re-fetch the full event to get updated data including teams
     if (eventIdRef.current) {
+      setLoading(true);
       try {
         const eventData = await fetchEvent(eventIdRef.current);
         setEvent(eventData);
       } catch (error) {
         console.error('Failed to refresh event:', error);
+      } finally {
+        setLoading(false);
       }
     }
   }, [fetchEvent]);
