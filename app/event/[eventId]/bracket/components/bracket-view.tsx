@@ -111,44 +111,60 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
     return `Round ${round.number}`;
   };
 
-  return (
-    <div className="space-y-8">
-      {groupsWithRounds.map((group) => (
-        <div key={group.id} className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">
-            {GROUP_NAMES[group.number] || `Group ${group.number}`}
-          </h2>
+  // Separate groups into main brackets (winners/losers) and grand final
+  const mainBrackets = groupsWithRounds.filter((g) => g.number === 1 || g.number === 2);
+  const grandFinal = groupsWithRounds.find((g) => g.number === 3);
 
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-6 min-w-max">
-              {group.rounds.map((round) => (
-                <div key={round.id} className="flex flex-col gap-4">
-                  <div className="text-sm font-medium text-muted-foreground text-center">
-                    {getRoundName(group, round)}
-                  </div>
+  const renderGroup = (group: GroupWithRounds) => (
+    <div key={group.id} className="space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">
+        {GROUP_NAMES[group.number] || `Group ${group.number}`}
+      </h2>
 
-                  <div className="flex flex-col gap-4 justify-around h-full">
-                    {round.matches.map((match) => (
-                      <MatchCard
-                        key={match.id}
-                        match={match}
-                        team1={match.team1}
-                        team2={match.team2}
-                        roundName={getRoundName(group, round)}
-                        onClick={() => onMatchClick?.(match)}
-                        isClickable={
-                          match.status === Status.Ready ||
-                          match.status === Status.Running
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
+      <div className="overflow-x-auto pb-4">
+        <div className="flex gap-6 min-w-max">
+          {group.rounds.map((round) => (
+            <div key={round.id} className="flex flex-col gap-4">
+              <div className="text-sm font-medium text-muted-foreground text-center">
+                {getRoundName(group, round)}
+              </div>
+
+              <div className="flex flex-col gap-4 justify-around h-full">
+                {round.matches.map((match) => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    team1={match.team1}
+                    team2={match.team2}
+                    roundName={getRoundName(group, round)}
+                    onClick={() => onMatchClick?.(match)}
+                    isClickable={
+                      match.status === Status.Ready ||
+                      match.status === Status.Running
+                    }
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          ))}
         </div>
-      ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex gap-8">
+      {/* Left side: Winners and Losers brackets stacked */}
+      <div className="flex-1 space-y-8">
+        {mainBrackets.map((group) => renderGroup(group))}
+      </div>
+
+      {/* Right side: Grand Final */}
+      {grandFinal && (
+        <div className="flex-shrink-0 flex flex-col justify-center">
+          {renderGroup(grandFinal)}
+        </div>
+      )}
     </div>
   );
 }
