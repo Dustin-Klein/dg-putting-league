@@ -39,8 +39,8 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
             </p>
           </div>
           <div className="flex items-center space-x-2">
-            <Badge variant={statusVariantMap[event.status]}>
-              {statusLabelMap[event.status]}
+            <Badge variant={statusVariantMap[event.status] ?? 'outline'}>
+              {statusLabelMap[event.status] ?? event.status}
             </Badge>
             <NextStatusButton 
               event={event} 

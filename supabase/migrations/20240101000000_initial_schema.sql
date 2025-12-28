@@ -178,6 +178,9 @@ CREATE TABLE public.frame_results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   match_frame_id UUID NOT NULL REFERENCES public.match_frames(id) ON DELETE CASCADE,
   event_player_id UUID NOT NULL REFERENCES public.event_players(id) ON DELETE CASCADE,
+  -- Denormalized bracket_match_id to make score-sync robust on cascade deletes
+  -- (FK constraint added after bracket_match table is created)
+  bracket_match_id INTEGER,
   putts_made INTEGER NOT NULL CHECK (putts_made BETWEEN 0 AND 3),
   points_earned INTEGER NOT NULL CHECK (points_earned BETWEEN 0 AND 4),
   order_in_frame SMALLINT NOT NULL CHECK (order_in_frame >= 1),
@@ -279,6 +282,12 @@ ALTER TABLE public.match_frames
   ADD CONSTRAINT match_frames_bracket_match_frame_unique UNIQUE (bracket_match_id, frame_number);
 
 CREATE INDEX idx_match_frames_bracket_match ON public.match_frames(bracket_match_id);
+
+-- Add foreign key for denormalized bracket_match_id on frame_results
+ALTER TABLE public.frame_results
+  ADD CONSTRAINT frame_results_bracket_match_id_fkey FOREIGN KEY (bracket_match_id) REFERENCES public.bracket_match(id) ON DELETE CASCADE;
+
+CREATE INDEX idx_frame_results_bracket_match ON public.frame_results(bracket_match_id);
 
 -- Bracket Match Game: for best-of series (not typically used in our single-match format)
 CREATE TABLE public.bracket_match_game (
@@ -507,6 +516,7 @@ END;
 $$;
 
 -- Trigger function to sync scores when frame_results change
+-- Uses denormalized bracket_match_id to avoid lookup failures during cascade deletes
 CREATE OR REPLACE FUNCTION public.trigger_sync_bracket_match_scores()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -514,13 +524,11 @@ AS $$
 DECLARE
   v_bracket_match_id INTEGER;
 BEGIN
-  -- Get bracket_match_id from match_frame
+  -- Use denormalized bracket_match_id directly (avoids lookup during cascade deletes)
   IF TG_OP = 'DELETE' THEN
-    SELECT bracket_match_id INTO v_bracket_match_id
-    FROM public.match_frames WHERE id = OLD.match_frame_id;
+    v_bracket_match_id := OLD.bracket_match_id;
   ELSE
-    SELECT bracket_match_id INTO v_bracket_match_id
-    FROM public.match_frames WHERE id = NEW.match_frame_id;
+    v_bracket_match_id := NEW.bracket_match_id;
   END IF;
 
   -- Sync scores if linked to bracket_match

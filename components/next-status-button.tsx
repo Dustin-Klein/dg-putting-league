@@ -67,8 +67,14 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
+        let message = 'Failed to update status';
+        try {
+          const errorData = await response.json();
+          message = errorData?.error || message;
+        } catch {
+          message = response.statusText || message;
+        }
+        throw new Error(message);
       }
 
       toast({
