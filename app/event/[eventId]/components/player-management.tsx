@@ -5,6 +5,7 @@ import { useDebounce } from 'use-debounce';
 import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
@@ -35,6 +36,7 @@ export function PlayerManagement({
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedPool, setSelectedPool] = useState<'A' | 'B'>('A');
   const formRef = useRef<HTMLFormElement>(null);
 
   // Handle search input change
@@ -110,6 +112,7 @@ export function PlayerManagement({
       setSearchQuery('');
       setSearchResults([]);
       setShowAddForm(false);
+      setSelectedPool('A');
     }
     setIsDialogOpen(open);
   };
@@ -118,12 +121,13 @@ export function PlayerManagement({
   const handleCreatePlayer = async (formData: FormData) => {
     try {
       setIsAddingPlayer(true);
-      
+
       // Convert FormData to JSON
       const playerData = {
         name: formData.get('name')?.toString(),
         identifier: formData.get('identifier')?.toString(),
         email: formData.get('email')?.toString(),
+        default_pool: selectedPool,
       };
 
       const response = await fetch(`/api/players`, {
@@ -282,23 +286,33 @@ export function PlayerManagement({
                   )}
                   
                   {searchQuery && !isSearching && searchResults.length > 0 && (
-                    <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-                      {searchResults.map((player) => (
-                        <div 
-                          key={player.id}
-                          className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
-                          onClick={() => {
-                            handleAddPlayer(player.id);
-                            setIsDialogOpen(false);
-                          }}
-                        >
-                          <div>
-                            <div className="font-medium">{player.name}</div>
-                            <div className="text-xs text-muted-foreground">{player.identifier}</div>
+                    <div className="mt-4 space-y-2">
+                      <div className="max-h-60 overflow-y-auto space-y-2">
+                        {searchResults.map((player) => (
+                          <div
+                            key={player.id}
+                            className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
+                            onClick={() => {
+                              handleAddPlayer(player.id);
+                              setIsDialogOpen(false);
+                            }}
+                          >
+                            <div>
+                              <div className="font-medium">{player.name}</div>
+                              <div className="text-xs text-muted-foreground">{player.identifier}</div>
+                            </div>
+                            <Plus className="h-4 w-4 text-muted-foreground" />
                           </div>
-                          <Plus className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowAddForm(true)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add New Player
+                      </Button>
                     </div>
                   )}
                   {showAddForm && (
@@ -331,16 +345,8 @@ export function PlayerManagement({
                           return;
                         }
 
-                        if (!email) {
-                          toast({
-                            title: 'Error',
-                            description: 'Email is required',
-                          });
-                          return;
-                        }
-
-                        // Simple email validation
-                        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                        // Simple email validation (only if provided)
+                        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                           toast({
                             title: 'Error',
                             description: 'Please enter a valid email address',
@@ -368,15 +374,28 @@ export function PlayerManagement({
                           </div>
                           <div>
                             <label htmlFor="email" className="text-sm font-medium mb-1 block">
-                              Email <span className="text-destructive">*</span>
+                              Email
                             </label>
                             <Input
                               id="email"
                               name="email"
                               type="email"
                               placeholder="player@example.com"
-                              required
                             />
+                          </div>
+                          <div>
+                            <label htmlFor="pool" className="text-sm font-medium mb-1 block">
+                              Default Pool <span className="text-destructive">*</span>
+                            </label>
+                            <Select value={selectedPool} onValueChange={(value: 'A' | 'B') => setSelectedPool(value)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select pool" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="A">Pool A</SelectItem>
+                                <SelectItem value="B">Pool B</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                         <div className="flex justify-end space-x-2 pt-2">
