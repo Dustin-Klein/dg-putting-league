@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { EventHeader, PlayerManagement } from './components';
 import { EventWithDetails } from './types';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 
 export default function EventPage({
   params,
@@ -62,6 +64,13 @@ export default function EventPage({
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <Link
+        href={`/league/${event.league_id}`}
+        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
+        <ChevronLeft className="w-4 h-4 mr-1" />
+        Back to league
+      </Link>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       <div className="mt-8">
         <PlayerManagement event={event} isAdmin={isAdmin} />
