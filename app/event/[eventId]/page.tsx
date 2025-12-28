@@ -27,10 +27,8 @@ export default function EventPage({
         
         try {
           const adminResponse = await fetch(`/api/league/${eventData.league_id}/is-admin`);
-          console.log('Admin response status:', adminResponse.status);
           setIsAdmin(adminResponse.ok);
         } catch (error) {
-          console.log('Admin check failed:', error);
           setIsAdmin(false);
         }
         

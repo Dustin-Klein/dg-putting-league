@@ -27,11 +27,6 @@ export function PlayerManagement({
   isAdmin: boolean;
 }) {
   const { toast } = useToast();
-  
-  console.log('PlayerManagement - isAdmin:', isAdmin);
-  console.log('PlayerManagement - event.status:', event.status);
-  console.log('PlayerManagement - should show button:', isAdmin && event.status === 'pre-bracket');
-  
   const [players, setPlayers] = useState(event.players ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 300);
