@@ -1,74 +1,30 @@
 'use client';
 
-import { CalendarDays, Loader2, MapPin } from 'lucide-react';
-import { useState } from 'react';
+import { CalendarDays, MapPin } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { useToast } from '@/components/ui/use-toast';
+import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/date-utils';
-import { EventWithDetails, UpdateEventStatusValues } from '../types';
+import { EventWithDetails } from '../types';
 
 const statusVariantMap = {
-  registration: 'outline',
-  qualification: 'secondary',
-  bracket: 'default',
-  completed: 'destructive',
+  'created': 'outline',
+  'pre-bracket': 'secondary',
+  'bracket': 'default',
+  'completed': 'destructive',
 } as const;
 
 const statusLabelMap = {
-  registration: 'Registration',
-  qualification: 'Qualification',
-  bracket: 'Bracket',
-  completed: 'Completed',
+  'created': 'Created',
+  'pre-bracket': 'Pre-Bracket',
+  'bracket': 'Bracket',
+  'completed': 'Completed',
 } as const;
 
-export function EventHeader({ event }: { event: EventWithDetails }) {
-  const { toast } = useToast();
-  const [status, setStatus] = useState<EventWithDetails['status']>(event.status);
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const handleStatusChange = async (newStatus: EventWithDetails['status']) => {
-    try {
-      setIsUpdating(true);
-      setStatus(newStatus);
-      
-      const response = await fetch(`/api/event/${event.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus } as UpdateEventStatusValues),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update status');
-      }
-
-      toast({
-        title: 'Success',
-        description: 'Event status updated successfully',
-      });
-    } catch (error) {
-      console.error('Error updating status:', error);
-      setStatus(event.status); // Revert on error
-      toast({
-        title: 'Error',
-        description: 'Failed to update event status',
-        variant: 'destructive',
-      } as any);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: (newStatus: EventWithDetails['status']) => void }) {
+  // Use the event prop directly since state is now managed by parent
 
   return (
     <Card>
@@ -83,25 +39,13 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
             </p>
           </div>
           <div className="flex items-center space-x-2">
-            <Badge variant={statusVariantMap[status]}>
-              {statusLabelMap[status]}
+            <Badge variant={statusVariantMap[event.status] ?? 'outline'}>
+              {statusLabelMap[event.status] ?? event.status}
             </Badge>
-            <Select
-              value={status}
-              onValueChange={handleStatusChange}
-              disabled={isUpdating}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Change status" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(statusLabelMap).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <NextStatusButton 
+              event={event} 
+              onStatusUpdate={onStatusUpdate}
+            />
           </div>
         </div>
       </CardHeader>
@@ -119,10 +63,7 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
                 className="ml-2"
                 onClick={() => {
                   navigator.clipboard.writeText(event.access_code);
-                  toast({
-                    title: 'Copied!',
-                    description: 'Access code copied to clipboard',
-                  });
+                  // You could add a toast here if needed
                 }}
               >
                 Copy
@@ -149,6 +90,13 @@ export function EventHeader({ event }: { event: EventWithDetails }) {
             <h3 className="text-sm font-medium text-muted-foreground">Bonus Points</h3>
             <p className="text-lg font-medium">
               {event.bonus_point_enabled ? 'Enabled' : 'Disabled'}
+            </p>
+          </div>
+          
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Qualification Round</h3>
+            <p className="text-lg font-medium">
+              {event.qualification_round_enabled ? 'Enabled' : 'Disabled'}
             </p>
           </div>
         </div>

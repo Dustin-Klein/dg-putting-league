@@ -1,4 +1,4 @@
-export type EventStatus = 'registration' | 'qualification' | 'bracket' | 'completed';
+export type EventStatus = 'created' | 'pre-bracket' | 'bracket' | 'completed';
 
 export interface Event {
   id: string;

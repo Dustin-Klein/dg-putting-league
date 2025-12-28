@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { formatDisplayDate, formatForDatabase, isFutureOrToday } from '@/lib/date-utils';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
+import { Switch } from '@/components/ui/switch';
 import {
   Popover,
   PopoverContent,
@@ -42,6 +43,7 @@ export const eventFormSchema = z.object({
   lane_count: z.coerce.number().int().positive('Must have at least 1 lane').default(1),
   putt_distance_ft: z.coerce.number().positive('Distance must be greater than 0').default(15),
   access_code: z.string().min(4, 'Access code must be at least 4 characters'),
+  qualification_round_enabled: z.boolean().default(false),
 });
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
@@ -209,6 +211,31 @@ export function EventForm({
             )}
           />
         </div>
+
+        <FormField
+          control={form.control}
+          name="qualification_round_enabled"
+          render={({ field }) => (
+            <FormItem className="w-full">
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Qualification Round</FormLabel>
+                    <FormDescription>
+                      Enable to include a qualification round to determine A/B pools
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </div>
+              </div>
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}

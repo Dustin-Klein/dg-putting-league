@@ -30,6 +30,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
           lane_count: values.lane_count,
           putt_distance_ft: values.putt_distance_ft,
           access_code: values.access_code,
+          qualification_round_enabled: values.qualification_round_enabled,
         }),
       });
 

@@ -17,8 +17,28 @@ export interface EventPlayer {
   event_id: string;
   player_id: string;
   has_paid: boolean;
+  pool?: 'A' | 'B' | null;
+  pfa_score?: number | null;
+  scoring_method?: 'qualification' | 'pfa' | 'default' | null;
   created_at: string;
   player: Player;
+}
+
+export interface TeamMember {
+  team_id: string;
+  event_player_id: string;
+  role: 'A_pool' | 'B_pool' | 'alternate';
+  joined_at: string;
+  event_player: EventPlayer;
+}
+
+export interface Team {
+  id: string;
+  event_id: string;
+  seed: number;
+  pool_combo: string;
+  created_at: string;
+  team_members: TeamMember[];
 }
 
 export interface EventWithDetails {
@@ -30,8 +50,10 @@ export interface EventWithDetails {
   putt_distance_ft: number;
   access_code: string;
   bonus_point_enabled: boolean;
+  qualification_round_enabled: boolean;
   created_at: string;
   players: EventPlayer[];
+  teams?: Team[];
   participant_count: number;
   league_id: string;
 }
