@@ -15,10 +15,18 @@ export function AuthButton() {
     const supabase = createClient();
 
     // Get initial user
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setLoading(false);
-    });
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        setUser(data.user);
+      })
+      .catch(() => {
+        // If this fails, treat as signed out so the UI is usable.
+        setUser(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     // Listen for auth state changes
     const {
