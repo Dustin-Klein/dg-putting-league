@@ -13,6 +13,7 @@ import { EventWithDetails, AddPlayerFormValues } from '../types';
 import { format } from 'date-fns';
 import { TeamDisplay } from './team-display';
 import { BracketSection } from './bracket-section';
+import { ResultsDisplay } from './results-display';
 import {
   Dialog,
   DialogContent,
@@ -245,8 +246,10 @@ export function PlayerManagement({
 
   return (
     <div className="space-y-6">
-      {/* Show bracket and teams if event is in bracket status */}
-      {event.status === 'bracket' ? (
+      {/* Show results if event is completed */}
+      {event.status === 'completed' ? (
+        <ResultsDisplay eventId={event.id} />
+      ) : event.status === 'bracket' ? (
         <>
           <BracketSection eventId={event.id} />
           <TeamDisplay event={event} isAdmin={isAdmin} />
