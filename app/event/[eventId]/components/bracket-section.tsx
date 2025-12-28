@@ -86,11 +86,11 @@ export function BracketSection({ eventId }: BracketSectionProps) {
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
-    const team1 = opp1?.id !== null
-      ? bracketData.participantTeamMap[opp1!.id!]
+    const team1 = opp1?.id
+      ? bracketData.participantTeamMap[opp1.id]
       : undefined;
-    const team2 = opp2?.id !== null
-      ? bracketData.participantTeamMap[opp2!.id!]
+    const team2 = opp2?.id
+      ? bracketData.participantTeamMap[opp2.id]
       : undefined;
 
     setSelectedMatch({ ...match, team1, team2 });
