@@ -1,27 +1,10 @@
 'use client';
 
-import { CalendarDays, MapPin } from 'lucide-react';
-
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/date-utils';
 import { EventWithDetails } from '../types';
-
-const statusVariantMap = {
-  'created': 'outline',
-  'pre-bracket': 'secondary',
-  'bracket': 'default',
-  'completed': 'destructive',
-} as const;
-
-const statusLabelMap = {
-  'created': 'Created',
-  'pre-bracket': 'Pre-Bracket',
-  'bracket': 'Bracket',
-  'completed': 'Completed',
-} as const;
 
 export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: (newStatus: EventWithDetails['status']) => void }) {
   // Use the event prop directly since state is now managed by parent
@@ -38,15 +21,10 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
               {event.location || 'Location not specified'}
             </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant={statusVariantMap[event.status] ?? 'outline'}>
-              {statusLabelMap[event.status] ?? event.status}
-            </Badge>
-            <NextStatusButton 
-              event={event} 
-              onStatusUpdate={onStatusUpdate}
-            />
-          </div>
+          <NextStatusButton
+            event={event}
+            onStatusUpdate={onStatusUpdate}
+          />
         </div>
       </CardHeader>
       <CardContent>

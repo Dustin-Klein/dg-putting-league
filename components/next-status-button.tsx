@@ -31,8 +31,8 @@ const nextStatusMap = {
 } as const;
 
 const nextStatusLabels = {
-  'created': 'Start Pre-Bracket',
-  'pre-bracket': 'Start Bracket',
+  'created': 'Open Event',
+  'pre-bracket': 'Start Bracket Play',
   'bracket': 'Complete Event',
   'completed': 'Event Completed',
 } as const;
@@ -99,7 +99,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
   const getConfirmationMessage = () => {
     switch (currentStatus) {
       case 'created':
-        return 'This will start the pre-bracket phase of the event. Players will be able to participate in qualifying rounds if enabled.';
+        return 'This will start the pre-bracket phase of the event. Players will be able to be added to the event and participate in qualifying rounds if enabled.';
       case 'pre-bracket':
         if (event.qualification_round_enabled) {
           return 'This will start the bracket phase. All players must have completed their qualifying rounds to continue.';
