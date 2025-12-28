@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { EventHeader, PlayerManagement } from './components';
 import { EventWithDetails } from './types';
 import Link from 'next/link';
@@ -51,6 +51,10 @@ export default function EventPage({
     }
   };
 
+  const handlePlayersUpdate = useCallback((players: EventWithDetails['players']) => {
+    setEvent(prev => prev ? { ...prev, players } : null);
+  }, []);
+
   if (loading || !event) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -73,7 +77,7 @@ export default function EventPage({
       </Link>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       <div className="mt-8">
-        <PlayerManagement event={event} isAdmin={isAdmin} />
+        <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
       </div>
     </div>
   );

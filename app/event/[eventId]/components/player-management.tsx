@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,15 +20,27 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-export function PlayerManagement({ 
-  event, 
-  isAdmin 
-}: { 
-  event: EventWithDetails; 
+export function PlayerManagement({
+  event,
+  isAdmin,
+  onPlayersUpdate
+}: {
+  event: EventWithDetails;
   isAdmin: boolean;
+  onPlayersUpdate?: (players: EventWithDetails['players']) => void;
 }) {
   const { toast } = useToast();
   const [players, setPlayers] = useState(event.players ?? []);
+  const isInitialMount = useRef(true);
+
+  // Notify parent when players change (skip initial mount)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    onPlayersUpdate?.(players);
+  }, [players, onPlayersUpdate]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 300);
   const [isSearching, setIsSearching] = useState(false);
