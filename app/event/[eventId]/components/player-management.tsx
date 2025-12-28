@@ -294,7 +294,7 @@ export function PlayerManagement({
                             className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
                             onClick={() => {
                               handleAddPlayer(player.id);
-                              setIsDialogOpen(false);
+                              handleDialogOpenChange(false);
                             }}
                           >
                             <div>
