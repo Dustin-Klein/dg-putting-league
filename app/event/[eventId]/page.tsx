@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { EventHeader, PlayerManagement } from './components';
 import { EventWithDetails } from './types';
 import Link from 'next/link';
@@ -14,26 +14,31 @@ export default function EventPage({
   const [event, setEvent] = useState<EventWithDetails | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const eventIdRef = useRef<string | null>(null);
+
+  const fetchEvent = useCallback(async (eventId: string) => {
+    const eventResponse = await fetch(`/api/event/${eventId}`);
+    if (!eventResponse.ok) {
+      throw new Error('Failed to fetch event');
+    }
+    return await eventResponse.json();
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
       const { eventId } = await Promise.resolve(params);
-      
+      eventIdRef.current = eventId;
+
       try {
-        // Fetch event data via API
-        const eventResponse = await fetch(`/api/event/${eventId}`);
-        if (!eventResponse.ok) {
-          throw new Error('Failed to fetch event');
-        }
-        const eventData = await eventResponse.json();
-        
+        const eventData = await fetchEvent(eventId);
+
         try {
           const adminResponse = await fetch(`/api/league/${eventData.league_id}/is-admin`);
           setIsAdmin(adminResponse.ok);
         } catch (error) {
           setIsAdmin(false);
         }
-        
+
         setEvent(eventData);
       } catch (error) {
         console.error('Failed to load event:', error);
@@ -43,13 +48,19 @@ export default function EventPage({
     };
 
     loadData();
-  }, [params]);
+  }, [params, fetchEvent]);
 
-  const handleStatusUpdate = (newStatus: EventWithDetails['status']) => {
-    if (event) {
-      setEvent(prev => prev ? { ...prev, status: newStatus } : null);
+  const handleStatusUpdate = useCallback(async () => {
+    // Re-fetch the full event to get updated data including teams
+    if (eventIdRef.current) {
+      try {
+        const eventData = await fetchEvent(eventIdRef.current);
+        setEvent(eventData);
+      } catch (error) {
+        console.error('Failed to refresh event:', error);
+      }
     }
-  };
+  }, [fetchEvent]);
 
   const handlePlayersUpdate = useCallback((players: EventWithDetails['players']) => {
     setEvent(prev => prev ? { ...prev, players } : null);

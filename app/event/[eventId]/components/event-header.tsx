@@ -6,7 +6,7 @@ import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/date-utils';
 import { EventWithDetails } from '../types';
 
-export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: (newStatus: EventWithDetails['status']) => void }) {
+export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: () => void }) {
   // Use the event prop directly since state is now managed by parent
 
   return (
