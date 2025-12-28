@@ -367,6 +367,20 @@ AS $$
   );
 $$;
 
+-- Function to check if user is admin of ANY league
+CREATE OR REPLACE FUNCTION public.is_any_league_admin(user_id_param uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE user_id = user_id_param
+    AND role IN ('owner', 'admin')
+  );
+$$;
+
 -- Function to check if user is league admin for an event
 CREATE OR REPLACE FUNCTION public.is_league_admin_for_event(event_id_param uuid)
 RETURNS boolean
@@ -679,11 +693,13 @@ FOR SELECT
 TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Enable insert for authenticated users"
+CREATE POLICY "Enable insert for league admins"
 ON public.players
 FOR INSERT
 TO authenticated
-WITH CHECK (true);
+WITH CHECK (
+  public.is_any_league_admin(auth.uid())
+);
 
 -- ============================================================================
 -- RLS POLICIES - Events
