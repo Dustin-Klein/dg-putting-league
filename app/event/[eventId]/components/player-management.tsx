@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails, AddPlayerFormValues } from '../types';
 import { format } from 'date-fns';
 import { TeamDisplay } from './team-display';
+import { BracketSection } from './bracket-section';
 import {
   Dialog,
   DialogContent,
@@ -244,9 +245,12 @@ export function PlayerManagement({
 
   return (
     <div className="space-y-6">
-      {/* Show teams if event is in bracket status */}
+      {/* Show bracket and teams if event is in bracket status */}
       {event.status === 'bracket' ? (
-        <TeamDisplay event={event} isAdmin={isAdmin} />
+        <>
+          <BracketSection eventId={event.id} />
+          <TeamDisplay event={event} isAdmin={isAdmin} />
+        </>
       ) : (
         <>
           <div className="flex justify-between items-center">
