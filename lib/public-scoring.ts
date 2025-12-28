@@ -283,10 +283,10 @@ export async function recordScore(
   const event = await validateAccessCode(accessCode);
   const supabase = await createClient();
 
-  // Verify bracket match belongs to event
+  // Verify bracket match belongs to event and get opponent info
   const { data: bracketMatch } = await supabase
     .from('bracket_match')
-    .select('id, event_id, status')
+    .select('id, event_id, status, opponent1, opponent2')
     .eq('id', bracketMatchId)
     .single();
 
@@ -296,6 +296,39 @@ export async function recordScore(
 
   if (bracketMatch.status === 4) { // Completed
     throw new BadRequestError('Match is already completed');
+  }
+
+  // Verify player belongs to one of the teams in this match
+  const opponent1 = bracketMatch.opponent1 as { id: number | null } | null;
+  const opponent2 = bracketMatch.opponent2 as { id: number | null } | null;
+  const participantIds = [opponent1?.id, opponent2?.id].filter((id): id is number => id !== null);
+
+  if (participantIds.length === 0) {
+    throw new BadRequestError('Match has no participants yet');
+  }
+
+  // Get team IDs from participants
+  const { data: participants } = await supabase
+    .from('bracket_participant')
+    .select('team_id')
+    .in('id', participantIds);
+
+  const teamIds = participants?.map(p => p.team_id).filter((id): id is string => id !== null) || [];
+
+  if (teamIds.length === 0) {
+    throw new BadRequestError('Match teams not found');
+  }
+
+  // Verify player is a member of one of the teams
+  const { data: teamMember } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .in('team_id', teamIds)
+    .eq('event_player_id', eventPlayerId)
+    .maybeSingle();
+
+  if (!teamMember) {
+    throw new BadRequestError('Player is not in this match');
   }
 
   // Validate putts
