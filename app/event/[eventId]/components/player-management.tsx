@@ -32,6 +32,11 @@ export function PlayerManagement({
   const [players, setPlayers] = useState(event.players ?? []);
   const isInitialMount = useRef(true);
 
+  // Keep local state in sync with incoming event data
+  useEffect(() => {
+    setPlayers(event.players ?? []);
+  }, [event.players]);
+
   // Notify parent when players change (skip initial mount)
   useEffect(() => {
     if (isInitialMount.current) {
