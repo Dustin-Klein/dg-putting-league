@@ -65,7 +65,7 @@ CREATE TABLE public.players (
   email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   default_pool pool_type,
-  CONSTRAINT uq_players_email UNIQUE NULLS NOT DISTINCT (email)
+  CONSTRAINT uq_players_email UNIQUE NULLS DISTINCT (email)
 );
 
 -- Set sequence to start after the highest existing player number if any
@@ -678,6 +678,12 @@ ON public.players
 FOR SELECT
 TO anon, authenticated
 USING (true);
+
+CREATE POLICY "Enable insert for authenticated users"
+ON public.players
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
 
 -- ============================================================================
 -- RLS POLICIES - Events
