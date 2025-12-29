@@ -194,6 +194,22 @@ export class SupabaseBracketStorage implements Storage {
     const tableName = this.getTableName(table);
     const mappedValue = this.mapToSupabaseFormat(table, value as OmitId<DataTypes[T]>);
 
+    // For bracket_match updates, use SECURITY DEFINER function to bypass permission issues
+    if (table === 'match' && typeof idOrFilter === 'number') {
+      const { error } = await this.supabase.rpc('update_bracket_match_score', {
+        p_match_id: idOrFilter,
+        p_status: mappedValue.status ?? null,
+        p_opponent1: mappedValue.opponent1 ?? null,
+        p_opponent2: mappedValue.opponent2 ?? null,
+      });
+
+      if (error) {
+        console.error(`Error updating ${tableName}:`, error);
+        return false;
+      }
+      return true;
+    }
+
     // Add updated_at timestamp only for tables that have it (only match)
     if (table === 'match') {
       (mappedValue as Record<string, unknown>).updated_at = new Date().toISOString();
