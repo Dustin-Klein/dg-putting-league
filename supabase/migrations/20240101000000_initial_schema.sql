@@ -578,6 +578,53 @@ BEGIN
 END;
 $$;
 
+-- Security definer function to update bracket_match for public scoring
+-- Bypasses RLS and permission restrictions for anonymous users
+CREATE OR REPLACE FUNCTION public.update_bracket_match_score(
+  p_match_id INTEGER,
+  p_status INTEGER,
+  p_opponent1 JSONB,
+  p_opponent2 JSONB
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_event_id UUID;
+  v_event_status event_status;
+BEGIN
+  -- Get the event_id and verify the match exists
+  SELECT event_id INTO v_event_id
+  FROM public.bracket_match
+  WHERE id = p_match_id;
+
+  IF v_event_id IS NULL THEN
+    RAISE EXCEPTION 'Match not found';
+  END IF;
+
+  -- Verify the event is in bracket status
+  SELECT status INTO v_event_status
+  FROM public.events
+  WHERE id = v_event_id;
+
+  IF v_event_status != 'bracket' THEN
+    RAISE EXCEPTION 'Event is not in bracket play';
+  END IF;
+
+  -- Update the match
+  UPDATE public.bracket_match
+  SET status = p_status,
+      opponent1 = p_opponent1,
+      opponent2 = p_opponent2,
+      updated_at = NOW()
+  WHERE id = p_match_id;
+
+  RETURN true;
+END;
+$$;
+
 -- ============================================================================
 -- ROW LEVEL SECURITY - Enable RLS
 -- ============================================================================
@@ -1403,11 +1450,25 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, se
 GRANT EXECUTE ON FUNCTION public.get_scoring_bracket_matches(uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.calculate_bracket_match_scores(INTEGER) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_bracket_match_scores(INTEGER) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.update_bracket_match_score(INTEGER, INTEGER, JSONB, JSONB) TO anon, authenticated;
 
 -- Bracket table permissions
-GRANT ALL ON public.bracket_stage TO postgres, anon, authenticated, service_role;
-GRANT ALL ON public.bracket_group TO postgres, anon, authenticated, service_role;
-GRANT ALL ON public.bracket_round TO postgres, anon, authenticated, service_role;
-GRANT ALL ON public.bracket_match TO postgres, anon, authenticated, service_role;
-GRANT ALL ON public.bracket_match_game TO postgres, anon, authenticated, service_role;
-GRANT ALL ON public.bracket_participant TO postgres, anon, authenticated, service_role;
+-- authenticated users (league admins) get full access, anon users get restricted access for public scoring
+GRANT ALL ON public.bracket_stage TO postgres, authenticated, service_role;
+GRANT SELECT ON public.bracket_stage TO anon;
+
+GRANT ALL ON public.bracket_group TO postgres, authenticated, service_role;
+GRANT SELECT ON public.bracket_group TO anon;
+
+GRANT ALL ON public.bracket_round TO postgres, authenticated, service_role;
+GRANT SELECT ON public.bracket_round TO anon;
+
+GRANT ALL ON public.bracket_match TO postgres, authenticated, service_role;
+-- anon users can SELECT and UPDATE for public scoring (RLS policies restrict which rows)
+GRANT SELECT, UPDATE ON public.bracket_match TO anon;
+
+GRANT ALL ON public.bracket_match_game TO postgres, authenticated, service_role;
+GRANT SELECT ON public.bracket_match_game TO anon;
+
+GRANT ALL ON public.bracket_participant TO postgres, authenticated, service_role;
+GRANT SELECT ON public.bracket_participant TO anon;
