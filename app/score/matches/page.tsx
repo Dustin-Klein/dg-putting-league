@@ -24,6 +24,8 @@ interface MatchInfo {
   bracket_match_id: number;
   round_name: string;
   status: string;
+  lane_id: string | null;
+  lane_label: string | null;
   team_one: TeamInfo;
   team_two: TeamInfo;
   team_one_score: number;
@@ -158,9 +160,16 @@ export default function MatchesPage() {
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-muted-foreground">
-                      {match.round_name}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {match.round_name}
+                      </span>
+                      {match.lane_label && (
+                        <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
+                          Lane {match.lane_label}
+                        </Badge>
+                      )}
+                    </div>
                     <Badge
                       variant={match.status === 'in_progress' ? 'default' : 'secondary'}
                     >

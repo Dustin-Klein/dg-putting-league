@@ -973,6 +973,64 @@ USING (
 );
 
 -- ============================================================================
+-- RLS POLICIES - Lanes
+-- ============================================================================
+
+CREATE POLICY "Enable read access for league admins"
+ON public.lanes FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM events e
+    JOIN league_admins la ON la.league_id = e.league_id
+    WHERE e.id = lanes.event_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Enable public read for bracket lanes"
+ON public.lanes FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM events e
+    WHERE e.id = lanes.event_id
+    AND e.status = 'bracket'
+  )
+);
+
+CREATE POLICY "Enable insert for league admins"
+ON public.lanes FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM events e
+    JOIN league_admins la ON la.league_id = e.league_id
+    WHERE e.id = lanes.event_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.lanes FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM events e
+    JOIN league_admins la ON la.league_id = e.league_id
+    WHERE e.id = lanes.event_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.lanes FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM events e
+    JOIN league_admins la ON la.league_id = e.league_id
+    WHERE e.id = lanes.event_id
+    AND la.user_id = auth.uid()
+  )
+);
+
+-- ============================================================================
 -- RLS POLICIES - Match Frames
 -- ============================================================================
 

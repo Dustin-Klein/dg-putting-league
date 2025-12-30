@@ -20,6 +20,7 @@ interface MatchCardProps {
   team1?: Team;
   team2?: Team;
   roundName: string;
+  laneLabel?: string;
   onClick?: () => void;
   isClickable?: boolean;
 }
@@ -89,6 +90,7 @@ export function MatchCard({
   team1,
   team2,
   roundName,
+  laneLabel,
   onClick,
   isClickable = false,
 }: MatchCardProps) {
@@ -117,9 +119,19 @@ const isComplete =
       onClick={isClickable ? onClick : undefined}
     >
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b">
-        <span className="text-xs font-medium text-muted-foreground truncate">
-          {roundName} - Match {match.number}
-        </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-medium text-muted-foreground truncate">
+            {roundName} - Match {match.number}
+          </span>
+          {laneLabel && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+            >
+              Lane {laneLabel}
+            </Badge>
+          )}
+        </div>
         <Badge
           variant="outline"
           className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}

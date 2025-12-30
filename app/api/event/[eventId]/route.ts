@@ -9,6 +9,7 @@ import {
 import { splitPlayersIntoPools } from '@/lib/event-player';
 import { generateTeams } from '@/lib/team';
 import { createBracket } from '@/lib/bracket';
+import { createEventLanes, autoAssignLanes } from '@/lib/lane';
 import {
   handleError,
   BadRequestError,
@@ -105,6 +106,23 @@ export async function PATCH(
         } catch (error) {
           if (!(error instanceof BadRequestError && error.message.includes('already been created'))) {
             throw error;
+          }
+        }
+
+        // 4. Create lanes based on lane_count
+        if (currentEvent.lane_count && currentEvent.lane_count > 0) {
+          try {
+            await createEventLanes(resolvedParams.eventId, currentEvent.lane_count);
+          } catch (error) {
+            // Lane creation is idempotent - ignore if already created
+            console.error('Lane creation error (may be expected):', error);
+          }
+
+          // 5. Auto-assign lanes to initial ready matches
+          try {
+            await autoAssignLanes(resolvedParams.eventId);
+          } catch (error) {
+            console.error('Auto-assign lanes error:', error);
           }
         }
       }
