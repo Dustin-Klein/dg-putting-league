@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { Match } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
+import type { Team } from '@/lib/types/team';
 import {
   Dialog,
   DialogContent,

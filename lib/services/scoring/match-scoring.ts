@@ -1,7 +1,5 @@
 import 'server-only';
-import { BracketsManager } from 'brackets-manager';
 import { createClient } from '@/lib/supabase/server';
-import { SupabaseBracketStorage } from '@/lib/bracket/storage';
 import { requireEventAdmin } from '@/lib/event';
 import { releaseMatchLaneAndReassign } from '@/lib/lane';
 import {
@@ -9,6 +7,11 @@ import {
   InternalError,
   NotFoundError,
 } from '@/lib/errors';
+import { completeMatch } from './match-completion';
+import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
+
+// Re-export calculatePoints for backwards compatibility
+export { calculatePoints } from './points-calculator';
 
 export interface BracketMatchWithDetails {
   id: number;
@@ -74,58 +77,6 @@ export interface RecordFrameResultInput {
   order_in_frame: number;
 }
 
-/**
- * Get team info from a bracket participant ID
- */
-async function getTeamFromParticipant(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  participantId: number | null
-): Promise<TeamWithPlayers | undefined> {
-  if (!participantId) return undefined;
-
-  const { data: participant } = await supabase
-    .from('bracket_participant')
-    .select('team_id')
-    .eq('id', participantId)
-    .single();
-
-  if (!participant?.team_id) return undefined;
-
-  const { data: team } = await supabase
-    .from('teams')
-    .select(`
-      id,
-      seed,
-      pool_combo,
-      team_members(
-        event_player_id,
-        role,
-        event_player:event_players(
-          id,
-          player:players(
-            id,
-            full_name,
-            nickname
-          )
-        )
-      )
-    `)
-    .eq('id', participant.team_id)
-    .single();
-
-  if (!team) return undefined;
-
-  return {
-    id: team.id,
-    seed: team.seed,
-    pool_combo: team.pool_combo,
-    players: team.team_members?.map((tm: any) => ({
-      event_player_id: tm.event_player_id,
-      role: tm.role,
-      player: tm.event_player?.player,
-    })) || [],
-  };
-}
 
 /**
  * Get bracket match with full details including teams and frames
@@ -357,35 +308,14 @@ export async function completeBracketMatch(
   const score1 = match.opponent1?.score ?? 0;
   const score2 = match.opponent2?.score ?? 0;
 
-  if (score1 === score2) {
-    throw new BadRequestError('Match cannot be completed with a tied score');
-  }
-
-  const team1Won = score1 > score2;
-
-  // Use brackets-manager to update the match (handles bracket progression)
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
-
-  try {
-    await manager.update.match({
-      id: bracketMatchId,
-      opponent1: {
-        score: score1,
-        result: team1Won ? 'win' : 'loss',
-      },
-      opponent2: {
-        score: score2,
-        result: team1Won ? 'loss' : 'win',
-      },
-    });
-  } catch (bracketError) {
-    console.error('Failed to update bracket match:', bracketError);
-    throw new InternalError(`Failed to complete match: ${bracketError}`);
-  }
+  // Use shared match completion logic
+  await completeMatch(supabase, eventId, bracketMatchId, {
+    team1Score: score1,
+    team2Score: score2,
+  });
 
   // Release the lane and auto-assign to next ready match
-  // This runs after manager.update.match() which may have set new matches to Ready
+  // This runs after completeMatch() which may have set new matches to Ready
   try {
     await releaseMatchLaneAndReassign(eventId, bracketMatchId);
   } catch (laneError) {
@@ -432,19 +362,9 @@ export async function startBracketMatch(
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
 
-/**
- * Calculate points earned based on putts made and bonus point setting
- */
-export function calculatePoints(puttsMade: number, bonusPointEnabled: boolean): number {
-  if (puttsMade === 3 && bonusPointEnabled) {
-    return 4; // Bonus point for making all 3
-  }
-  return puttsMade;
-}
-
 // Legacy aliases for backwards compatibility during migration
 // These can be removed once all callers are updated
 export const getMatchWithDetails = getBracketMatchWithDetails;
-export const completeMatch = completeBracketMatch;
+export { completeBracketMatch as completeMatchAdmin };
 export const startMatch = startBracketMatch;
 export type MatchWithDetails = BracketMatchWithDetails;

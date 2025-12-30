@@ -14,7 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { formatDisplayDate, formatForDatabase, isFutureOrToday } from '@/lib/date-utils';
+import { formatDisplayDate, formatForDatabase, isFutureOrToday } from '@/lib/utils/date-utils';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Switch } from '@/components/ui/switch';

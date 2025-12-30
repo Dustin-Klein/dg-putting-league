@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBracketMatchWithDetails } from '@/lib/match-scoring';
+import { getBracketMatchWithDetails } from '@/lib/services/scoring/match-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 /**

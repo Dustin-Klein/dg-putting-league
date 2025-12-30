@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createPlayer } from '@/lib/players';
 import { handleError, BadRequestError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { logger } from '@/lib/utils/logger';
 
 export async function POST(request: Request) {
   try {

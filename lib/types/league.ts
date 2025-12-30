@@ -1,5 +1,8 @@
 export type LeagueAdminRole = 'owner' | 'admin' | 'scorer';
 
+/**
+ * League type with aggregated counts from database query
+ */
 export interface League {
   id: string;
   name: string;
@@ -10,6 +13,9 @@ export interface League {
   last_event: Array<{ event_date: string | null }>;
 }
 
+/**
+ * Processed league type with role and computed counts
+ */
 export interface LeagueWithRole extends Omit<League, 'events' | 'active_events' | 'last_event'> {
   role: LeagueAdminRole;
   eventCount: number;

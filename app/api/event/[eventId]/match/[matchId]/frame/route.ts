@@ -3,8 +3,8 @@ import { z } from 'zod';
 import {
   getOrCreateFrame,
   recordFullFrame,
-  RecordFrameResultInput,
-} from '@/lib/match-scoring';
+  type RecordFrameResultInput,
+} from '@/lib/services/scoring/match-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const frameResultSchema = z.object({

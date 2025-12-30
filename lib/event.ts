@@ -1,7 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { EventWithDetails } from '@/app/event/[eventId]/types';
+import { EventWithDetails } from '@/lib/types/event';
 import {
   UnauthorizedError,
   ForbiddenError,
@@ -9,7 +9,7 @@ import {
   NotFoundError,
   BadRequestError
 } from '@/lib/errors';
-import { requireAuthenticatedUser } from './league-auth';
+import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
 import { splitPlayersIntoPools } from '@/lib/event-player';
 import { generateTeams } from '@/lib/team';
 import { createBracket } from '@/lib/bracket';
@@ -314,7 +314,19 @@ export async function transitionEventToBracket(
   eventId: string,
   event: EventWithDetails
 ) {
-  // 1. Split players into pools
+  const { supabase } = await requireEventAdmin(eventId);
+
+  // 1. Update status to 'bracket' first so subsequent RPC checks pass
+  const { error: statusError } = await supabase
+    .from('events')
+    .update({ status: 'bracket' })
+    .eq('id', eventId);
+
+  if (statusError) {
+    throw new InternalError(`Failed to update event status: ${statusError.message}`);
+  }
+
+  // 2. Split players into pools
   try {
     await splitPlayersIntoPools(eventId);
   } catch (error) {
@@ -323,7 +335,7 @@ export async function transitionEventToBracket(
     }
   }
 
-  // 2. Generate teams
+  // 3. Generate teams
   try {
     await generateTeams(eventId);
   } catch (error) {
@@ -332,7 +344,7 @@ export async function transitionEventToBracket(
     }
   }
 
-  // 3. Generate bracket
+  // 4. Generate bracket
   try {
     await createBracket(eventId, true);
   } catch (error) {
@@ -341,7 +353,7 @@ export async function transitionEventToBracket(
     }
   }
 
-  // 4. Create lanes based on lane_count
+  // 5. Create lanes based on lane_count
   if (event.lane_count && event.lane_count > 0) {
     try {
       await createEventLanes(eventId, event.lane_count);
@@ -350,7 +362,7 @@ export async function transitionEventToBracket(
       console.error('Lane creation error (may be expected):', error);
     }
 
-    // 5. Auto-assign lanes to initial ready matches
+    // 6. Auto-assign lanes to initial ready matches
     try {
       await autoAssignLanes(eventId);
     } catch (error) {

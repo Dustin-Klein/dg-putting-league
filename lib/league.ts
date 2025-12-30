@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { LeagueWithRole } from '@/app/leagues/types';
+import { LeagueWithRole } from '@/lib/types/league';
 import {
   UnauthorizedError,
   BadRequestError,

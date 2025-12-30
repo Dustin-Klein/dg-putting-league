@@ -6,7 +6,7 @@ import {
   BadRequestError,
   InternalError,
 } from '@/lib/errors';
-import { requireAuthenticatedUser } from './league-auth';
+import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
 
 type CreatePlayerInput = {
   name: string;

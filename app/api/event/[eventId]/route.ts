@@ -72,14 +72,17 @@ export async function PATCH(
         parsed.data.status,
         currentEvent
       );
-      
+
       // If transitioning from pre-bracket to bracket, perform setup steps
+      // (transitionEventToBracket handles the status update internally)
       if (currentEvent.status === 'pre-bracket' && parsed.data.status === 'bracket') {
         await transitionEventToBracket(resolvedParams.eventId, currentEvent);
+        const updatedEvent = await getEventWithPlayers(resolvedParams.eventId);
+        return NextResponse.json(updatedEvent);
       }
     }
 
-    // Update event status (happens for all valid status changes)
+    // Update event status (happens for all other valid status changes)
     const updatedEvent = await updateEvent(
       resolvedParams.eventId,
       parsed.data

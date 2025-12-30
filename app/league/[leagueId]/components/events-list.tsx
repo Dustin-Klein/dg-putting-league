@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { formatDisplayDate } from '@/lib/date-utils';
+import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/button';
-import { Event } from '../types';
+import { Event } from '@/lib/types/event';
 import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';

@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
+import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoreDialog } from './components';
-import type { BracketWithTeams } from './types';
+import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 

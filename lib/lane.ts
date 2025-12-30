@@ -134,6 +134,23 @@ async function autoAssignLanesInternal(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<number> {
+  // Check event is still in bracket status before attempting lane assignments
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('status')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) {
+    console.error('Failed to fetch event status:', eventError);
+    return 0;
+  }
+
+  if (event.status !== 'bracket') {
+    // Event is no longer in bracket play - skip lane assignment
+    return 0;
+  }
+
   // Get available lanes (idle status)
   const { data: availableLanes, error: lanesError } = await supabase
     .from('lanes')

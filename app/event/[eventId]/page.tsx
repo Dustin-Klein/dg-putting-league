@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { EventHeader, PlayerManagement, BracketSection, TeamDisplay, ResultsDisplay } from './components';
-import { EventWithDetails } from './types';
+import { EventWithDetails } from '@/lib/types/event';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 

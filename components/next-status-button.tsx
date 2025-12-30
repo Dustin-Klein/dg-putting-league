@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { EventWithDetails } from '@/app/event/[eventId]/types';
+import { EventWithDetails } from '@/lib/types/event';
 
 const statusLabelMap = {
   'created': 'Created',
