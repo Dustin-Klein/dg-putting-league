@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { searchPlayers } from '@/lib/players';
+import { searchPlayers } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 export async function GET(request: Request) {

@@ -1,5 +1,5 @@
 import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
-import { getUserAdminLeagues } from '@/lib/league';
+import { getUserAdminLeagues } from '@/lib/services/league';
 import LeaguesList from './LeaguesList';
 
 export default async function LeaguePage() {

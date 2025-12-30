@@ -4,8 +4,8 @@ import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseBracketStorage } from './storage';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/event';
-import { getEventTeams, Team } from '@/lib/team';
+import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import { getEventTeams, Team } from '@/lib/services/team';
 import {
   BadRequestError,
   InternalError,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createLeague } from '@/lib/league';
+import { createLeague } from '@/lib/services/league';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 export async function POST(request: Request) {

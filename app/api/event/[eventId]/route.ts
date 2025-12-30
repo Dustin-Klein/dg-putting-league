@@ -6,7 +6,7 @@ import {
   updateEvent,
   validateEventStatusTransition,
   transitionEventToBracket,
-} from '@/lib/event';
+} from '@/lib/services/event';
 import {
   handleError,
   BadRequestError,
