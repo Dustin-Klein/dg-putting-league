@@ -377,7 +377,7 @@ export async function getReadyMatches(eventId: string): Promise<Match[]> {
 }
 
 /**
- * Assign a lane to a match
+ * Assign a lane to a match using atomic RPC
  */
 export async function assignLaneToMatch(
   eventId: string,
@@ -386,59 +386,21 @@ export async function assignLaneToMatch(
 ): Promise<void> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify match belongs to event
-  const { data: match } = await supabase
-    .from('bracket_match')
-    .select('id, event_id')
-    .eq('id', matchId)
-    .eq('event_id', eventId)
-    .single();
-
-  if (!match) {
-    throw new NotFoundError('Match not found');
-  }
-
-  // Update match with lane and set status to Running
-  const { error } = await supabase
-    .from('bracket_match')
-    .update({
-      lane_id: laneId,
-      status: Status.Running
-    })
-    .eq('id', matchId);
+  // Use atomic RPC for lane assignment
+  const { data: assigned, error } = await supabase
+    .rpc('assign_lane_to_match', {
+      p_event_id: eventId,
+      p_lane_id: laneId,
+      p_match_id: matchId,
+    });
 
   if (error) {
-    throw new InternalError('Failed to assign lane to match');
+    throw new InternalError(`Failed to assign lane to match: ${error.message}`);
   }
 
-  // Update lane status to occupied
-  await supabase
-    .from('lanes')
-    .update({ status: 'occupied' })
-    .eq('id', laneId);
-}
-
-/**
- * Release a lane from a match
- */
-export async function releaseLane(
-  eventId: string,
-  laneId: string
-): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  // Clear the lane_id from any bracket_match that has this lane
-  await supabase
-    .from('bracket_match')
-    .update({ lane_id: null })
-    .eq('lane_id', laneId)
-    .eq('event_id', eventId);
-
-  // Set lane status to idle
-  await supabase
-    .from('lanes')
-    .update({ status: 'idle' })
-    .eq('id', laneId);
+  if (!assigned) {
+    throw new BadRequestError('Lane is not available for assignment');
+  }
 }
 
 /**

@@ -626,6 +626,156 @@ END;
 $$;
 
 -- ============================================================================
+-- LANE MANAGEMENT RPC FUNCTIONS (Atomic Operations)
+-- ============================================================================
+
+-- Atomically assign a lane to a match
+-- Returns true if successful, false if lane was already occupied
+CREATE OR REPLACE FUNCTION public.assign_lane_to_match(
+  p_event_id UUID,
+  p_lane_id UUID,
+  p_match_id INTEGER
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_lane_status lane_status;
+  v_event_status event_status;
+BEGIN
+  -- Verify the event is in bracket status
+  SELECT status INTO v_event_status
+  FROM public.events
+  WHERE id = p_event_id;
+
+  IF v_event_status IS NULL OR v_event_status != 'bracket' THEN
+    RAISE EXCEPTION 'Event is not in bracket play';
+  END IF;
+
+  -- Lock the lane row and check status
+  SELECT status INTO v_lane_status
+  FROM public.lanes
+  WHERE id = p_lane_id AND event_id = p_event_id
+  FOR UPDATE;
+
+  IF v_lane_status IS NULL THEN
+    RAISE EXCEPTION 'Lane not found';
+  END IF;
+
+  IF v_lane_status != 'idle' THEN
+    -- Lane is not available
+    RETURN false;
+  END IF;
+
+  -- Update lane status to occupied
+  UPDATE public.lanes
+  SET status = 'occupied'
+  WHERE id = p_lane_id;
+
+  -- Assign lane to match (keep current status)
+  UPDATE public.bracket_match
+  SET lane_id = p_lane_id
+  WHERE id = p_match_id AND event_id = p_event_id;
+
+  RETURN true;
+END;
+$$;
+
+-- Atomically release a lane from a specific match
+-- Returns true if successful
+CREATE OR REPLACE FUNCTION public.release_match_lane(
+  p_event_id UUID,
+  p_match_id INTEGER
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_lane_id UUID;
+BEGIN
+  -- Get and lock the lane associated with this match
+  SELECT lane_id INTO v_lane_id
+  FROM public.bracket_match
+  WHERE id = p_match_id AND event_id = p_event_id
+  FOR UPDATE;
+
+  IF v_lane_id IS NULL THEN
+    -- No lane to release
+    RETURN true;
+  END IF;
+
+  -- Clear lane from match
+  UPDATE public.bracket_match
+  SET lane_id = NULL
+  WHERE id = p_match_id AND event_id = p_event_id;
+
+  -- Set lane to idle (lock the lane row first)
+  UPDATE public.lanes
+  SET status = 'idle'
+  WHERE id = v_lane_id AND event_id = p_event_id;
+
+  RETURN true;
+END;
+$$;
+
+-- Atomically set a lane to maintenance mode
+-- Returns true if successful
+CREATE OR REPLACE FUNCTION public.set_lane_maintenance(
+  p_event_id UUID,
+  p_lane_id UUID
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Lock and update lane status
+  UPDATE public.lanes
+  SET status = 'maintenance'
+  WHERE id = p_lane_id AND event_id = p_event_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Lane not found';
+  END IF;
+
+  -- Clear lane from any matches
+  UPDATE public.bracket_match
+  SET lane_id = NULL
+  WHERE lane_id = p_lane_id AND event_id = p_event_id;
+
+  RETURN true;
+END;
+$$;
+
+-- Atomically set a lane back to idle
+CREATE OR REPLACE FUNCTION public.set_lane_idle(
+  p_event_id UUID,
+  p_lane_id UUID
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.lanes
+  SET status = 'idle'
+  WHERE id = p_lane_id AND event_id = p_event_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Lane not found';
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+-- ============================================================================
 -- ROW LEVEL SECURITY - Enable RLS
 -- ============================================================================
 
@@ -1509,6 +1659,10 @@ GRANT EXECUTE ON FUNCTION public.get_scoring_bracket_matches(uuid) TO anon, auth
 GRANT EXECUTE ON FUNCTION public.calculate_bracket_match_scores(INTEGER) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_bracket_match_scores(INTEGER) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.update_bracket_match_score(INTEGER, INTEGER, JSONB, JSONB) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_lane_to_match(UUID, UUID, INTEGER) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_match_lane(UUID, INTEGER) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_lane_maintenance(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_lane_idle(UUID, UUID) TO authenticated;
 
 -- Bracket table permissions
 -- authenticated users (league admins) get full access, anon users get restricted access for public scoring

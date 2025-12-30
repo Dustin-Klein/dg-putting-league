@@ -36,7 +36,12 @@ export async function PATCH(
     } else {
       lane = await setLaneIdle(eventId, laneId);
       // After setting to idle, try to auto-assign if there are waiting matches
-      await autoAssignLanes(eventId);
+      // Wrap in try/catch so auto-assign failure doesn't fail the main operation
+      try {
+        await autoAssignLanes(eventId);
+      } catch (assignError) {
+        console.error('Failed to auto-assign lanes after setting idle:', assignError);
+      }
     }
 
     return NextResponse.json(lane);
