@@ -10,6 +10,10 @@ import {
   BadRequestError
 } from '@/lib/errors';
 import { requireAuthenticatedUser } from './league-auth';
+import { splitPlayersIntoPools } from '@/lib/event-player';
+import { generateTeams } from '@/lib/team';
+import { createBracket } from '@/lib/bracket';
+import { createEventLanes, autoAssignLanes } from '@/lib/lane';
 
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
@@ -296,4 +300,61 @@ export async function updateEvent(
   }
 
   return updatedEvent;
+}
+
+/**
+ * Handle the transition from pre-bracket to bracket status.
+ * Orchestrates pool assignment, team generation, bracket creation, and lane setup.
+ *
+ * Note: Ideally these sequential operations would be wrapped in a database
+ * function (RPC) to ensure atomicity. The current implementation uses
+ * idempotent operations as a fallback - each step checks if already done.
+ */
+export async function transitionEventToBracket(
+  eventId: string,
+  event: EventWithDetails
+) {
+  // 1. Split players into pools
+  try {
+    await splitPlayersIntoPools(eventId);
+  } catch (error) {
+    if (!(error instanceof BadRequestError && error.message.includes('already been assigned'))) {
+      throw error;
+    }
+  }
+
+  // 2. Generate teams
+  try {
+    await generateTeams(eventId);
+  } catch (error) {
+    if (!(error instanceof BadRequestError && error.message.includes('already been generated'))) {
+      throw error;
+    }
+  }
+
+  // 3. Generate bracket
+  try {
+    await createBracket(eventId, true);
+  } catch (error) {
+    if (!(error instanceof BadRequestError && error.message.includes('already been created'))) {
+      throw error;
+    }
+  }
+
+  // 4. Create lanes based on lane_count
+  if (event.lane_count && event.lane_count > 0) {
+    try {
+      await createEventLanes(eventId, event.lane_count);
+    } catch (error) {
+      // Lane creation is idempotent - ignore if already created
+      console.error('Lane creation error (may be expected):', error);
+    }
+
+    // 5. Auto-assign lanes to initial ready matches
+    try {
+      await autoAssignLanes(eventId);
+    } catch (error) {
+      console.error('Auto-assign lanes error:', error);
+    }
+  }
 }
