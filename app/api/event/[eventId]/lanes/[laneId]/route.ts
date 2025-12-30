@@ -4,7 +4,7 @@ import {
   setLaneMaintenance,
   setLaneIdle,
   autoAssignLanes,
-} from '@/lib/lane';
+} from '@/lib/services/lane';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const updateLaneSchema = z.object({

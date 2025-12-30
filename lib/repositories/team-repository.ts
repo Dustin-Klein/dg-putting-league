@@ -172,3 +172,178 @@ export async function getTeamIdsFromParticipants(
 
   return participants?.map(p => p.team_id).filter((id): id is string => id !== null) || [];
 }
+
+/**
+ * Check if teams exist for an event
+ */
+export async function getTeamsForEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<{ id: string }[]> {
+  const { data: existingTeams, error } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return existingTeams || [];
+}
+
+/**
+ * Insert a new team
+ */
+export async function insertTeam(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  seed: number,
+  poolCombo: string
+): Promise<string> {
+  const { data: newTeam, error } = await supabase
+    .from('teams')
+    .insert({
+      event_id: eventId,
+      seed,
+      pool_combo: poolCombo
+    })
+    .select('id')
+    .single();
+
+  if (error || !newTeam) {
+    throw new Error(`Failed to create team: ${error?.message}`);
+  }
+
+  return newTeam.id;
+}
+
+/**
+ * Insert a team member
+ */
+export async function insertTeamMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  teamId: string,
+  eventPlayerId: string,
+  role: 'A_pool' | 'B_pool'
+): Promise<void> {
+  const { error } = await supabase
+    .from('team_members')
+    .insert({
+      team_id: teamId,
+      event_player_id: eventPlayerId,
+      role
+    });
+
+  if (error) {
+    throw new Error(`Failed to create team member: ${error.message}`);
+  }
+}
+
+/**
+ * Get teams with members for seed calculation
+ */
+export async function getTeamsWithMembersForEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<{ id: string; team_members: { event_player_id: string }[] }[]> {
+  const { data: teamsWithMembers, error } = await supabase
+    .from('teams')
+    .select(`*, team_members(*)`)
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw new Error(`Failed to fetch teams with members: ${error.message}`);
+  }
+
+  return teamsWithMembers || [];
+}
+
+/**
+ * Update team seed
+ */
+export async function updateTeamSeed(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  teamId: string,
+  seed: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('teams')
+    .update({ seed })
+    .eq('id', teamId);
+
+  if (error) {
+    throw new Error(`Failed to update team seed: ${error.message}`);
+  }
+}
+
+export interface FullTeamData {
+  id: string;
+  event_id: string;
+  seed: number;
+  pool_combo: string;
+  created_at: string;
+  team_members: FullTeamMemberData[];
+}
+
+export interface FullTeamMemberData {
+  team_id: string;
+  event_player_id: string;
+  role: 'A_pool' | 'B_pool' | 'alternate';
+  joined_at: string;
+  event_player: {
+    id: string;
+    event_id: string;
+    player_id: string;
+    created_at: string;
+    has_paid: boolean;
+    pool: 'A' | 'B' | null;
+    pfa_score: number | null;
+    scoring_method: 'qualification' | 'pfa' | 'default' | null;
+    player: {
+      id: string;
+      full_name: string;
+      nickname: string | null;
+      email: string | null;
+      created_at: string;
+      default_pool: 'A' | 'B' | null;
+      player_number: number | null;
+    };
+  };
+}
+
+/**
+ * Get full team details for an event
+ */
+export async function getFullTeamsForEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<FullTeamData[]> {
+  const { data: finalTeams, error } = await supabase
+    .from('teams')
+    .select(`
+      *,
+      team_members(
+        *,
+        event_player:event_players(
+          id,
+          event_id,
+          player_id,
+          created_at,
+          has_paid,
+          pool,
+          pfa_score,
+          scoring_method,
+          player:players(*)
+        )
+      )
+    `)
+    .eq('event_id', eventId)
+    .order('seed');
+
+  if (error) {
+    throw new Error('Failed to fetch generated teams');
+  }
+
+  return (finalTeams || []) as unknown as FullTeamData[];
+}

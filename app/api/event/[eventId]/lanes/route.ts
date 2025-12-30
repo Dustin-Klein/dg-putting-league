@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   getLanesWithMatches,
   autoAssignLanes,
-} from '@/lib/lane';
+} from '@/lib/services/lane';
 import { handleError } from '@/lib/errors';
 
 /**

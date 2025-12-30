@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { releaseAndReassignLanePublic } from '@/lib/lane';
+import { releaseAndReassignLanePublic } from '@/lib/services/lane';
 import {
   BadRequestError,
   InternalError,

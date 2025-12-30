@@ -4,7 +4,7 @@ import {
   createBracket,
   bracketExists,
 } from '@/lib/bracket';
-import { getEventLanes } from '@/lib/lane';
+import { getEventLanes } from '@/lib/services/lane';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 export async function GET(

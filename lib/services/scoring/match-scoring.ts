@@ -1,7 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { requireEventAdmin } from '@/lib/event';
-import { releaseMatchLaneAndReassign } from '@/lib/lane';
+import { requireEventAdmin } from '@/lib/services/event';
+import { releaseMatchLaneAndReassign } from '@/lib/services/lane';
 import {
   BadRequestError,
   InternalError,

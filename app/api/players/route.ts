@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createPlayer } from '@/lib/players';
+import { createPlayer } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 
