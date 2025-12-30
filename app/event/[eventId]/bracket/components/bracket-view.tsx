@@ -16,6 +16,7 @@ interface BracketViewProps {
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
   team2?: Team;
+  lane_id?: string | null;
 }
 
 interface RoundWithMatches extends Round {
@@ -35,7 +36,7 @@ function getTeamForParticipant(
 }
 
 export function BracketView({ data, onMatchClick }: BracketViewProps) {
-  const { bracket, participantTeamMap } = data;
+  const { bracket, participantTeamMap, laneMap = {} } = data;
 
   // Organize matches by group and round
   const groupsWithRounds = useMemo(() => {
@@ -52,11 +53,14 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
           .map((match) => {
             const opp1 = match.opponent1 as { id: number | null } | null;
             const opp2 = match.opponent2 as { id: number | null } | null;
+            // Cast to access lane_id which is on the db record but not in brackets-model Match type
+            const matchWithLane = match as Match & { lane_id?: string | null };
 
             return {
               ...match,
               team1: getTeamForParticipant(opp1?.id ?? null, participantTeamMap),
               team2: getTeamForParticipant(opp2?.id ?? null, participantTeamMap),
+              lane_id: matchWithLane.lane_id,
             } as MatchWithTeamInfo;
           })
           .sort((a, b) => a.number - b.number);
@@ -137,6 +141,7 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
                     team1={match.team1}
                     team2={match.team2}
                     roundName={getRoundName(group, round)}
+                    laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                     onClick={() => onMatchClick?.(match)}
                     isClickable={
                       match.status === Status.Ready ||

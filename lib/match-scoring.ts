@@ -3,6 +3,7 @@ import { BracketsManager } from 'brackets-manager';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseBracketStorage } from '@/lib/bracket/storage';
 import { requireEventAdmin } from '@/lib/event';
+import { releaseMatchLaneAndReassign } from '@/lib/lane';
 import {
   BadRequestError,
   InternalError,
@@ -381,6 +382,15 @@ export async function completeBracketMatch(
   } catch (bracketError) {
     console.error('Failed to update bracket match:', bracketError);
     throw new InternalError(`Failed to complete match: ${bracketError}`);
+  }
+
+  // Release the lane and auto-assign to next ready match
+  // This runs after manager.update.match() which may have set new matches to Ready
+  try {
+    await releaseMatchLaneAndReassign(eventId, bracketMatchId);
+  } catch (laneError) {
+    // Log but don't fail - lane management is secondary to match completion
+    console.error('Failed to release lane and reassign:', laneError);
   }
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);

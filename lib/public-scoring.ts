@@ -2,6 +2,7 @@ import 'server-only';
 import { BracketsManager } from 'brackets-manager';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseBracketStorage } from '@/lib/bracket/storage';
+import { releaseAndReassignLanePublic } from '@/lib/lane';
 import {
   BadRequestError,
   InternalError,
@@ -23,6 +24,8 @@ export interface PublicMatchInfo {
   round_id: number;
   number: number;
   status: number;
+  lane_id: string | null;
+  lane_label: string | null;
   team_one: PublicTeamInfo;
   team_two: PublicTeamInfo;
   team_one_score: number;
@@ -138,6 +141,17 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
   const event = await validateAccessCode(accessCode);
   const supabase = await createClient();
 
+  // Get lanes for this event to build a lane map
+  const { data: lanes } = await supabase
+    .from('lanes')
+    .select('id, label')
+    .eq('event_id', event.id);
+
+  const laneMap: Record<string, string> = {};
+  lanes?.forEach((lane) => {
+    laneMap[lane.id] = lane.label;
+  });
+
   // Get bracket matches that are ready or in progress
   const { data: bracketMatches, error: bracketError } = await supabase
     .from('bracket_match')
@@ -146,6 +160,7 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
       status,
       round_id,
       number,
+      lane_id,
       opponent1,
       opponent2,
       frames:match_frames(
@@ -191,6 +206,8 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
       round_id: bm.round_id,
       number: bm.number,
       status: bm.status,
+      lane_id: bm.lane_id,
+      lane_label: bm.lane_id ? laneMap[bm.lane_id] || null : null,
       team_one,
       team_two,
       team_one_score: opponent1?.score ?? 0,
@@ -212,6 +229,17 @@ export async function getMatchForScoring(
   const event = await validateAccessCode(accessCode);
   const supabase = await createClient();
 
+  // Get lanes for this event to build a lane map
+  const { data: lanes } = await supabase
+    .from('lanes')
+    .select('id, label')
+    .eq('event_id', event.id);
+
+  const laneMap: Record<string, string> = {};
+  lanes?.forEach((lane) => {
+    laneMap[lane.id] = lane.label;
+  });
+
   const { data: bracketMatch, error } = await supabase
     .from('bracket_match')
     .select(`
@@ -219,6 +247,7 @@ export async function getMatchForScoring(
       status,
       round_id,
       number,
+      lane_id,
       opponent1,
       opponent2,
       event_id,
@@ -262,6 +291,8 @@ export async function getMatchForScoring(
     round_id: bracketMatch.round_id,
     number: bracketMatch.number,
     status: bracketMatch.status,
+    lane_id: bracketMatch.lane_id,
+    lane_label: bracketMatch.lane_id ? laneMap[bracketMatch.lane_id] || null : null,
     team_one,
     team_two,
     team_one_score: opponent1?.score ?? 0,
@@ -446,6 +477,14 @@ export async function completeMatchPublic(
   } catch (bracketError) {
     console.error('Failed to update bracket:', bracketError);
     throw new InternalError(`Failed to complete match: ${bracketError}`);
+  }
+
+  // Release the lane and auto-assign to next ready match
+  try {
+    await releaseAndReassignLanePublic(event.id, bracketMatchId);
+  } catch (laneError) {
+    // Log but don't fail - lane management is secondary to match completion
+    console.error('Failed to release lane and reassign:', laneError);
   }
 
   return getMatchForScoring(accessCode, bracketMatchId);
