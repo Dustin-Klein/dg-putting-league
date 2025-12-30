@@ -1,6 +1,9 @@
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
+import type { Team } from './team';
 
+/**
+ * Lane for match assignment
+ */
 export interface Lane {
   id: string;
   event_id: string;
@@ -8,6 +11,9 @@ export interface Lane {
   status: 'idle' | 'occupied' | 'maintenance';
 }
 
+/**
+ * Bracket data from brackets-manager
+ */
 export interface BracketData {
   stage: Stage;
   groups: Group[];
@@ -16,6 +22,9 @@ export interface BracketData {
   participants: Participant[];
 }
 
+/**
+ * Bracket with resolved team data
+ */
 export interface BracketWithTeams {
   bracket: BracketData;
   teams: Team[];
@@ -24,6 +33,9 @@ export interface BracketWithTeams {
   laneMap: Record<string, string>;
 }
 
+/**
+ * Match with display-ready data
+ */
 export interface MatchDisplayData {
   match: Match;
   team1?: Team;

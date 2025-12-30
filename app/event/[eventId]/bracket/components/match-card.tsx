@@ -1,12 +1,12 @@
 'use client';
 
 import type { Match } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
+import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Status } from 'brackets-model';
-import { getStatusLabel, getStatusColor } from '../types';
+import { getStatusLabel, getStatusColor } from '@/lib/types/bracket';
 
 interface OpponentData {
   id: number | null;

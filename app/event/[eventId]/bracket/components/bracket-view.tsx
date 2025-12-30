@@ -2,11 +2,11 @@
 
 import { useMemo } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
-import type { BracketWithTeams } from '../types';
+import type { Team } from '@/lib/types/team';
+import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Status } from 'brackets-model';
 import { MatchCard } from './match-card';
-import { GROUP_NAMES } from '../types';
+import { GROUP_NAMES } from '@/lib/types/bracket';
 
 interface BracketViewProps {
   data: BracketWithTeams;

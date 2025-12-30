@@ -6,7 +6,8 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from './event';
 import { createClient } from '@/lib/supabase/server';
-import { EventWithDetails, EventPlayer } from '@/app/event/[eventId]/types';
+import { EventWithDetails } from '@/lib/types/event';
+import { EventPlayer } from '@/lib/types/player';
 
 export interface Team {
   id: string;

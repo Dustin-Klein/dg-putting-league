@@ -1,4 +1,4 @@
-import { requireAuthenticatedUser } from '@/lib/league-auth';
+import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
 import { getUserAdminLeagues } from '@/lib/league';
 import LeaguesList from './LeaguesList';
 

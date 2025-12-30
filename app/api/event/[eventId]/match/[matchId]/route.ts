@@ -4,7 +4,7 @@ import {
   getBracketMatchWithDetails,
   startBracketMatch,
   completeBracketMatch,
-} from '@/lib/match-scoring';
+} from '@/lib/services/scoring/match-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const updateMatchSchema = z.object({

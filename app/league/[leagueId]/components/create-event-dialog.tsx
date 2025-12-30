@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatForDatabase } from '@/lib/date-utils';
+import { formatForDatabase } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';

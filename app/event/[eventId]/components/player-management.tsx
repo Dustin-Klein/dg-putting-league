@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { EventWithDetails, AddPlayerFormValues } from '../types';
+import { EventWithDetails } from '@/lib/types/event';
+import { AddPlayerFormValues } from '@/lib/types/player';
 import { format } from 'date-fns';
 import {
   Dialog,

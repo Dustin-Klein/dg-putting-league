@@ -4,7 +4,7 @@ import {
   getMatchForScoring,
   recordScore,
   completeMatchPublic,
-} from '@/lib/public-scoring';
+} from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const getMatchSchema = z.object({

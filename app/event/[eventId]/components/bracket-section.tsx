@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Match } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
+import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoreDialog } from '../bracket/components';
-import type { BracketWithTeams } from '../bracket/types';
+import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 

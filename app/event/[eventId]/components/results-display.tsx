@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Match } from 'brackets-model';
-import type { Team } from '@/app/event/[eventId]/types';
-import type { BracketWithTeams } from '../bracket/types';
+import type { Team } from '@/lib/types/team';
+import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Trophy, Medal, Award } from 'lucide-react';

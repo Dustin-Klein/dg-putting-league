@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireLeagueAdmin } from '@/lib/league-auth';
+import { requireLeagueAdmin } from '@/lib/auth/league-auth';
 import { handleError } from '@/lib/errors';
 
 export async function GET(

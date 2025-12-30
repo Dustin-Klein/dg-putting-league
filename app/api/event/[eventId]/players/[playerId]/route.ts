@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addPlayerToEvent, removePlayerFromEvent, updatePlayerPayment } from '@/lib/event-player';
 import { BadRequestError, NotFoundError, handleError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { logger } from '@/lib/utils/logger';
 
 export async function POST(
   req: Request,

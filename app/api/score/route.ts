@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { validateAccessCode, getMatchesForScoring } from '@/lib/public-scoring';
+import { validateAccessCode, getMatchesForScoring } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const validateCodeSchema = z.object({

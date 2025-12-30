@@ -3,8 +3,8 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NextStatusButton } from '@/components/next-status-button';
-import { formatDisplayDate } from '@/lib/date-utils';
-import { EventWithDetails } from '../types';
+import { formatDisplayDate } from '@/lib/utils/date-utils';
+import { EventWithDetails } from '@/lib/types/event';
 
 export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: () => void }) {
   // Use the event prop directly since state is now managed by parent
