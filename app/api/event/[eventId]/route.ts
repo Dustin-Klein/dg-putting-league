@@ -5,11 +5,8 @@ import {
   deleteEvent,
   updateEvent,
   validateEventStatusTransition,
+  transitionEventToBracket,
 } from '@/lib/event';
-import { splitPlayersIntoPools } from '@/lib/event-player';
-import { generateTeams } from '@/lib/team';
-import { createBracket } from '@/lib/bracket';
-import { createEventLanes, autoAssignLanes } from '@/lib/lane';
 import {
   handleError,
   BadRequestError,
@@ -78,53 +75,7 @@ export async function PATCH(
       
       // If transitioning from pre-bracket to bracket, perform setup steps
       if (currentEvent.status === 'pre-bracket' && parsed.data.status === 'bracket') {
-        // Note: Ideally these sequential operations would be wrapped in a database
-        // function (RPC) to ensure atomicity. The current implementation uses
-        // idempotent operations as a fallback - each step checks if already done.
-
-        // 1. Split players into pools
-        try {
-          await splitPlayersIntoPools(resolvedParams.eventId);
-        } catch (error) {
-          if (!(error instanceof BadRequestError && error.message.includes('already been assigned'))) {
-            throw error;
-          }
-        }
-
-        // 2. Generate teams
-        try {
-          await generateTeams(resolvedParams.eventId);
-        } catch (error) {
-          if (!(error instanceof BadRequestError && error.message.includes('already been generated'))) {
-            throw error;
-          }
-        }
-
-        // 3. Generate bracket
-        try {
-          await createBracket(resolvedParams.eventId, true);
-        } catch (error) {
-          if (!(error instanceof BadRequestError && error.message.includes('already been created'))) {
-            throw error;
-          }
-        }
-
-        // 4. Create lanes based on lane_count
-        if (currentEvent.lane_count && currentEvent.lane_count > 0) {
-          try {
-            await createEventLanes(resolvedParams.eventId, currentEvent.lane_count);
-          } catch (error) {
-            // Lane creation is idempotent - ignore if already created
-            console.error('Lane creation error (may be expected):', error);
-          }
-
-          // 5. Auto-assign lanes to initial ready matches
-          try {
-            await autoAssignLanes(resolvedParams.eventId);
-          } catch (error) {
-            console.error('Auto-assign lanes error:', error);
-          }
-        }
+        await transitionEventToBracket(resolvedParams.eventId, currentEvent);
       }
     }
 
