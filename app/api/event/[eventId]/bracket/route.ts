@@ -3,7 +3,7 @@ import {
   getBracketWithTeams,
   createBracket,
   bracketExists,
-} from '@/lib/bracket';
+} from '@/lib/services/bracket';
 import { getEventLanes } from '@/lib/services/lane';
 import { handleError, BadRequestError } from '@/lib/errors';
 
