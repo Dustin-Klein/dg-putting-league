@@ -1,3 +1,4 @@
+export * from './bracket-repository';
 export * from './event-repository';
 export * from './event-player-repository';
 export * from './frame-repository';

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   updateMatchResult,
   assignLaneToMatch,
-} from '@/lib/bracket';
+} from '@/lib/services/bracket';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const updateMatchSchema = z.object({

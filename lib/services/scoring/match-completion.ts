@@ -1,6 +1,6 @@
 import { BracketsManager } from 'brackets-manager';
 import { createClient } from '@/lib/supabase/server';
-import { SupabaseBracketStorage } from '@/lib/bracket/storage';
+import { SupabaseBracketStorage } from '@/lib/repositories/bracket-repository';
 import { BadRequestError, InternalError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
 

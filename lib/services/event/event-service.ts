@@ -7,10 +7,10 @@ import {
   ForbiddenError,
   BadRequestError,
 } from '@/lib/errors';
-import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
+import { requireAuthenticatedUser } from '@/lib/services/auth';
 import { splitPlayersIntoPools } from '@/lib/services/event-player';
 import { generateTeams } from '@/lib/services/team';
-import { createBracket } from '@/lib/bracket';
+import { createBracket } from '@/lib/services/bracket';
 import { createEventLanes, autoAssignLanes } from '@/lib/services/lane';
 import * as eventRepo from '@/lib/repositories/event-repository';
 

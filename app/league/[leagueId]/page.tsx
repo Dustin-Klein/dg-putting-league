@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { EventsContent } from './events-content';
 import { getEventsByLeagueId } from '@/lib/services/event';
 import { getLeague } from '@/lib/services/league';
-import { requireLeagueAdmin } from '@/lib/auth/league-auth';
+import { requireLeagueAdmin } from '@/lib/services/auth';
 
 export default async function LeagueEventsPage({ 
   params: paramsPromise 

@@ -3,7 +3,7 @@ import { BracketsManager } from 'brackets-manager';
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
-import { SupabaseBracketStorage } from './storage';
+import { SupabaseBracketStorage } from '@/lib/repositories/bracket-repository';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { getEventTeams, Team } from '@/lib/services/team';
 import {

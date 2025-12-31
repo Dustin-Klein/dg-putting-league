@@ -1,7 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { BadRequestError } from '@/lib/errors';
-import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
+import { requireAuthenticatedUser } from '@/lib/services/auth';
 import type { PlayerSearchResult } from '@/lib/types/player';
 import * as playerRepo from '@/lib/repositories/player-repository';
 
