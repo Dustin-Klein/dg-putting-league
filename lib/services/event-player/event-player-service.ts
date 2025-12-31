@@ -6,7 +6,21 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { EventPlayer } from '@/lib/types/player';
+import { EventWithDetails } from '@/lib/types/event';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+
+/**
+ * Pool assignment data structure for atomic transition
+ */
+export interface PoolAssignment {
+  eventPlayerId: string;
+  playerId: string;
+  playerName: string;
+  pool: 'A' | 'B';
+  pfaScore: number;
+  scoringMethod: 'qualification' | 'pfa' | 'default';
+  defaultPool: 'A' | 'B';
+}
 
 /**
  * Add a player to an event
@@ -180,4 +194,103 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
   const finalPlayers = await eventPlayerRepo.getEventPlayersWithPools(supabase, eventId);
 
   return finalPlayers as unknown as EventPlayer[];
+}
+
+/**
+ * Compute pool assignments for all players in an event without persisting.
+ * This is used by the atomic transition RPC to pre-compute the data.
+ *
+ * Returns an array of pool assignments sorted by score (top half -> Pool A, bottom half -> Pool B)
+ */
+export async function computePoolAssignments(
+  eventId: string,
+  event: EventWithDetails
+): Promise<PoolAssignment[]> {
+  const supabase = await createClient();
+
+  if (!event.players || event.players.length === 0) {
+    throw new BadRequestError('No players registered for this event');
+  }
+
+  // Check if pools are already assigned
+  const playersWithPools = event.players.filter(player => player.pool);
+  if (playersWithPools.length > 0) {
+    throw new BadRequestError('Players have already been assigned to pools');
+  }
+
+  // Calculate scores for each player
+  const playersWithScores = await Promise.all(
+    event.players.map(async (eventPlayer) => {
+      let score: number;
+      let scoringMethod: 'qualification' | 'pfa' | 'default';
+
+      if (event.qualification_round_enabled) {
+        // Calculate total qualification score
+        score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
+        scoringMethod = 'qualification';
+      } else {
+        // Calculate PFA from last 6 months
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        // Get all event_player records for this player (across all events)
+        const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(
+          supabase,
+          eventPlayer.player_id
+        );
+
+        const frameResults = await eventPlayerRepo.getFrameResultsForEventPlayers(
+          supabase,
+          eventPlayerIds,
+          sixMonthsAgo
+        );
+
+        if (frameResults.length > 0) {
+          const totalPoints = frameResults.reduce((sum, frame) => sum + frame.points_earned, 0);
+          score = totalPoints / frameResults.length;
+          scoringMethod = 'pfa';
+        } else {
+          // No frame history, use default_pool for scoring (0 for comparison)
+          score = 0;
+          scoringMethod = 'default';
+        }
+      }
+
+      return {
+        eventPlayerId: eventPlayer.id,
+        playerId: eventPlayer.player_id,
+        playerName: eventPlayer.player.full_name,
+        score,
+        scoringMethod,
+        defaultPool: (eventPlayer.player.default_pool || 'B') as 'A' | 'B',
+      };
+    })
+  );
+
+  // Sort players by score (descending), then by default_pool, then maintain database order
+  playersWithScores.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    // Tie-breaking: use default_pool (A > B)
+    if (a.defaultPool !== b.defaultPool) {
+      return a.defaultPool === 'A' ? -1 : 1;
+    }
+    // Maintain original order as final tie-breaker
+    return 0;
+  });
+
+  // Split into pools: top 50% -> Pool A, bottom 50% -> Pool B
+  const totalPlayers = playersWithScores.length;
+  const poolASize = Math.ceil(totalPlayers / 2); // Top half gets extra player if odd
+
+  return playersWithScores.map((player, index): PoolAssignment => ({
+    eventPlayerId: player.eventPlayerId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    pool: index < poolASize ? 'A' : 'B',
+    pfaScore: player.score,
+    scoringMethod: player.scoringMethod,
+    defaultPool: player.defaultPool,
+  }));
 }

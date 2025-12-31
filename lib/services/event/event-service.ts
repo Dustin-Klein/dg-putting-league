@@ -6,12 +6,13 @@ import {
   UnauthorizedError,
   ForbiddenError,
   BadRequestError,
+  InternalError,
 } from '@/lib/errors';
 import { requireAuthenticatedUser } from '@/lib/services/auth';
-import { splitPlayersIntoPools } from '@/lib/services/event-player';
-import { generateTeams } from '@/lib/services/team';
+import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
+import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
-import { createEventLanes, autoAssignLanes } from '@/lib/services/lane';
+import { autoAssignLanes } from '@/lib/services/lane';
 import * as eventRepo from '@/lib/repositories/event-repository';
 
 /**
@@ -162,11 +163,18 @@ export async function updateEvent(
 
 /**
  * Handle the transition from pre-bracket to bracket status.
- * Orchestrates pool assignment, team generation, bracket creation, and lane setup.
+ * Uses an atomic database transaction (RPC) to ensure all operations
+ * succeed or fail together, preventing data inconsistency.
  *
- * Note: Ideally these sequential operations would be wrapped in a database
- * function (RPC) to ensure atomicity. The current implementation uses
- * idempotent operations as a fallback - each step checks if already done.
+ * Steps performed atomically:
+ * 1. Update event status to 'bracket'
+ * 2. Assign players to pools (A/B based on scores)
+ * 3. Create teams (pairing pool A and B players)
+ * 4. Create lanes
+ *
+ * After atomic transaction succeeds:
+ * 5. Create bracket structure (uses brackets-manager library)
+ * 6. Auto-assign lanes to initial matches
  */
 export async function transitionEventToBracket(
   eventId: string,
@@ -174,28 +182,43 @@ export async function transitionEventToBracket(
 ) {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // 1. Update status to 'bracket' first so subsequent RPC checks pass
-  await eventRepo.updateEventStatus(supabase, eventId, 'bracket');
+  // Compute pool assignments (scoring and ranking)
+  const poolAssignments = await computePoolAssignments(eventId, event);
 
-  // 2. Split players into pools
-  try {
-    await splitPlayersIntoPools(eventId);
-  } catch (error) {
-    if (!(error instanceof BadRequestError && error.message.includes('already been assigned'))) {
-      throw error;
-    }
+  // Compute team pairings based on pool assignments
+  const teamPairings = computeTeamPairings(poolAssignments, event);
+
+  // Convert to JSON format for RPC
+  const poolAssignmentsJson = poolAssignments.map((pa: PoolAssignment) => ({
+    event_player_id: pa.eventPlayerId,
+    pool: pa.pool,
+    pfa_score: pa.pfaScore,
+    scoring_method: pa.scoringMethod,
+  }));
+
+  const teamsJson = teamPairings.map((tp: TeamPairing) => ({
+    seed: tp.seed,
+    pool_combo: tp.poolCombo,
+    members: tp.members.map((m) => ({
+      event_player_id: m.eventPlayerId,
+      role: m.role,
+    })),
+  }));
+
+  // Execute atomic transition RPC
+  const { error } = await supabase.rpc('transition_event_to_bracket', {
+    p_event_id: eventId,
+    p_pool_assignments: poolAssignmentsJson,
+    p_teams: teamsJson,
+    p_lane_count: event.lane_count || 0,
+  });
+
+  if (error) {
+    throw new InternalError(`Failed to transition event to bracket: ${error.message}`);
   }
 
-  // 3. Generate teams
-  try {
-    await generateTeams(eventId);
-  } catch (error) {
-    if (!(error instanceof BadRequestError && error.message.includes('already been generated'))) {
-      throw error;
-    }
-  }
-
-  // 4. Generate bracket
+  // After atomic transaction succeeds, create bracket structure
+  // (uses brackets-manager JS library, already idempotent)
   try {
     await createBracket(eventId, true);
   } catch (error) {
@@ -204,16 +227,8 @@ export async function transitionEventToBracket(
     }
   }
 
-  // 5. Create lanes based on lane_count
+  // Auto-assign lanes to initial ready matches
   if (event.lane_count && event.lane_count > 0) {
-    try {
-      await createEventLanes(eventId, event.lane_count);
-    } catch (error) {
-      // Lane creation is idempotent - ignore if already created
-      console.error('Lane creation error (may be expected):', error);
-    }
-
-    // 6. Auto-assign lanes to initial ready matches
     try {
       await autoAssignLanes(eventId);
     } catch (error) {
