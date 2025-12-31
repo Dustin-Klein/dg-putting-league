@@ -11,57 +11,24 @@ import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
 import { getOrCreateFrame, getPlayerFrameResult, getFrameResults, upsertFrameResult } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
+import type {
+  PublicEventInfo,
+  PublicMatchInfo,
+  PublicTeamInfo,
+  PublicPlayerInfo,
+  PublicFrameInfo,
+  PublicFrameResult,
+} from '@/lib/types/scoring';
 
-export interface PublicEventInfo {
-  id: string;
-  event_date: string;
-  location: string | null;
-  lane_count: number;
-  bonus_point_enabled: boolean;
-  status: string;
-}
-
-export interface PublicMatchInfo {
-  id: number; // bracket_match_id (integer)
-  round_id: number;
-  number: number;
-  status: number;
-  lane_id: string | null;
-  lane_label: string | null;
-  team_one: PublicTeamInfo;
-  team_two: PublicTeamInfo;
-  team_one_score: number;
-  team_two_score: number;
-  frames: PublicFrameInfo[];
-}
-
-export interface PublicTeamInfo {
-  id: string;
-  seed: number;
-  pool_combo: string;
-  players: PublicPlayerInfo[];
-}
-
-export interface PublicPlayerInfo {
-  event_player_id: string;
-  role: 'A_pool' | 'B_pool';
-  full_name: string;
-  nickname: string | null;
-}
-
-export interface PublicFrameInfo {
-  id: string;
-  frame_number: number;
-  is_overtime: boolean;
-  results: PublicFrameResult[];
-}
-
-export interface PublicFrameResult {
-  id: string;
-  event_player_id: string;
-  putts_made: number;
-  points_earned: number;
-}
+// Re-export types for consumers
+export type {
+  PublicEventInfo,
+  PublicMatchInfo,
+  PublicTeamInfo,
+  PublicPlayerInfo,
+  PublicFrameInfo,
+  PublicFrameResult,
+} from '@/lib/types/scoring';
 
 /**
  * Validate access code and get event info

@@ -1,17 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
 import { Status } from 'brackets-model';
-
-export interface LaneData {
-  id: string;
-  event_id: string;
-  label: string;
-  status: 'idle' | 'occupied' | 'maintenance';
-}
-
-export interface LaneWithMatchData extends LaneData {
-  current_match_id: number | null;
-}
+import type { Lane } from '@/lib/types/bracket';
 
 /**
  * Check if lanes exist for an event
@@ -19,7 +9,7 @@ export interface LaneWithMatchData extends LaneData {
 export async function getLanesForEvent(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<LaneData[]> {
+): Promise<Lane[]> {
   const { data: lanes, error } = await supabase
     .from('lanes')
     .select('*')
@@ -30,7 +20,7 @@ export async function getLanesForEvent(
     throw new InternalError(`Failed to fetch lanes: ${error.message}`);
   }
 
-  return (lanes || []) as LaneData[];
+  return (lanes || []) as Lane[];
 }
 
 /**
@@ -60,7 +50,7 @@ export async function insertLanes(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
   laneCount: number
-): Promise<LaneData[]> {
+): Promise<Lane[]> {
   const lanesToInsert = Array.from({ length: laneCount }, (_, i) => ({
     event_id: eventId,
     label: `${i + 1}`,
@@ -76,7 +66,7 @@ export async function insertLanes(
     throw new InternalError(`Failed to create lanes: ${error.message}`);
   }
 
-  return (lanes || []) as LaneData[];
+  return (lanes || []) as Lane[];
 }
 
 /**
@@ -112,7 +102,7 @@ export async function getMatchLaneAssignments(
 export async function getAvailableLanes(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<LaneData[]> {
+): Promise<Lane[]> {
   const { data: availableLanes, error } = await supabase
     .from('lanes')
     .select('*')
@@ -124,7 +114,7 @@ export async function getAvailableLanes(
     throw new InternalError(`Failed to fetch available lanes: ${error.message}`);
   }
 
-  return (availableLanes || []) as LaneData[];
+  return (availableLanes || []) as Lane[];
 }
 
 /**
@@ -283,7 +273,7 @@ export async function getLaneById(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
   laneId: string
-): Promise<LaneData> {
+): Promise<Lane> {
   const { data: lane, error } = await supabase
     .from('lanes')
     .select()
@@ -295,5 +285,5 @@ export async function getLaneById(
     throw new InternalError(`Failed to fetch lane: ${error?.message}`);
   }
 
-  return lane as LaneData;
+  return lane as Lane;
 }

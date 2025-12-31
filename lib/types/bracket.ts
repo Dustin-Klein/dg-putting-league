@@ -12,6 +12,13 @@ export interface Lane {
 }
 
 /**
+ * Lane with current match assignment
+ */
+export interface LaneWithMatch extends Lane {
+  current_match_id: number | null;
+}
+
+/**
  * Bracket data from brackets-manager
  */
 export interface BracketData {

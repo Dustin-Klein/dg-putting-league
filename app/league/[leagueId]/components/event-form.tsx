@@ -23,7 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils/utils';
 
 // Generate a random alphanumeric code
 const generateRandomCode = (length = 6): string => {

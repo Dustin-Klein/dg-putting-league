@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
+import type { EventPlayer } from '@/lib/types/player';
 
+// Partial type for queries without player join
 export interface EventPlayerData {
   id: string;
   event_id: string;
@@ -10,18 +12,6 @@ export interface EventPlayerData {
   pool: 'A' | 'B' | null;
   pfa_score: number | null;
   scoring_method: 'qualification' | 'pfa' | 'default' | null;
-}
-
-export interface EventPlayerWithPlayer extends EventPlayerData {
-  player: {
-    id: string;
-    full_name: string;
-    nickname: string | null;
-    email: string | null;
-    created_at: string;
-    default_pool: 'A' | 'B' | null;
-    player_number: number | null;
-  };
 }
 
 /**
@@ -76,10 +66,10 @@ export async function insertEventPlayer(
 /**
  * Get event player with nested player info
  */
-export async function getEventPlayerWithPlayer(
+export async function getEventPlayer(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventPlayerId: string
-): Promise<EventPlayerWithPlayer> {
+): Promise<EventPlayer> {
   const { data: inserted, error } = await supabase
     .from('event_players')
     .select(`
@@ -108,7 +98,7 @@ export async function getEventPlayerWithPlayer(
     throw new InternalError('Failed to fetch event player');
   }
 
-  return inserted as unknown as EventPlayerWithPlayer;
+  return inserted as unknown as EventPlayer;
 }
 
 /**
@@ -163,7 +153,7 @@ export async function updateEventPlayerPayment(
 export async function getEventPlayersWithPools(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<EventPlayerWithPlayer[]> {
+): Promise<EventPlayer[]> {
   const { data, error } = await supabase
     .from('event_players')
     .select(`
@@ -192,7 +182,7 @@ export async function getEventPlayersWithPools(
     throw new InternalError('Failed to fetch event players');
   }
 
-  return (data ?? []) as unknown as EventPlayerWithPlayer[];
+  return (data ?? []) as unknown as EventPlayer[];
 }
 
 /**

@@ -1,26 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
+import type { MatchFrame, FrameResult } from '@/lib/types/scoring';
 
-export interface FrameData {
-  id: string;
-  bracket_match_id: number;
-  frame_number: number;
-  is_overtime: boolean;
-}
-
-export interface FrameWithResults extends FrameData {
-  results: FrameResultData[];
-}
-
-export interface FrameResultData {
-  id: string;
-  match_frame_id: string;
-  event_player_id: string;
-  bracket_match_id?: number | null;
-  putts_made: number;
-  points_earned: number;
-  order_in_frame: number;
-}
+// Partial type for queries without results join
+export type FrameData = Omit<MatchFrame, 'results'>;
 
 /**
  * Get or create a frame for a bracket match
@@ -72,10 +55,10 @@ export async function getOrCreateFrame(
 /**
  * Get frame with all results
  */
-export async function getFrameWithResults(
+export async function getMatchFrame(
   supabase: Awaited<ReturnType<typeof createClient>>,
   frameId: string
-): Promise<FrameWithResults> {
+): Promise<MatchFrame> {
   const { data: frame, error } = await supabase
     .from('match_frames')
     .select(`
@@ -100,7 +83,7 @@ export async function getFrameWithResults(
     throw new InternalError(`Failed to fetch frame: ${error?.message}`);
   }
 
-  return frame as FrameWithResults;
+  return frame as MatchFrame;
 }
 
 /**
@@ -116,7 +99,7 @@ export async function upsertFrameResult(
     pointsEarned: number;
     orderInFrame: number;
   }
-): Promise<FrameResultData> {
+): Promise<FrameResult> {
   const { data: result, error } = await supabase
     .from('frame_results')
     .upsert(
@@ -137,7 +120,7 @@ export async function upsertFrameResult(
     throw new InternalError(`Failed to upsert frame result: ${error?.message}`);
   }
 
-  return result as FrameResultData;
+  return result as FrameResult;
 }
 
 /**
@@ -146,7 +129,7 @@ export async function upsertFrameResult(
 export async function getFrameResults(
   supabase: Awaited<ReturnType<typeof createClient>>,
   frameId: string
-): Promise<FrameResultData[]> {
+): Promise<FrameResult[]> {
   const { data: results, error } = await supabase
     .from('frame_results')
     .select('*')
@@ -156,7 +139,7 @@ export async function getFrameResults(
     throw new InternalError(`Failed to fetch frame results: ${error.message}`);
   }
 
-  return (results || []) as FrameResultData[];
+  return (results || []) as FrameResult[];
 }
 
 /**
@@ -166,7 +149,7 @@ export async function getPlayerFrameResult(
   supabase: Awaited<ReturnType<typeof createClient>>,
   frameId: string,
   eventPlayerId: string
-): Promise<FrameResultData | null> {
+): Promise<FrameResult | null> {
   const { data: result, error } = await supabase
     .from('frame_results')
     .select('*')
@@ -178,5 +161,5 @@ export async function getPlayerFrameResult(
     throw new InternalError(`Failed to fetch player frame result: ${error.message}`);
   }
 
-  return result as FrameResultData | null;
+  return result as FrameResult | null;
 }

@@ -35,7 +35,7 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
   const insertedId = await eventPlayerRepo.insertEventPlayer(supabase, eventId, playerId);
 
   // Fetch the inserted row with nested player info for client state updates
-  return eventPlayerRepo.getEventPlayerWithPlayer(supabase, insertedId);
+  return eventPlayerRepo.getEventPlayer(supabase, insertedId);
 }
 
 /**
