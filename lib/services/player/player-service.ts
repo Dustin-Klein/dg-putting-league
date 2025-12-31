@@ -63,8 +63,8 @@ export async function searchPlayers(query: string | null, excludeEventId?: strin
 
   // Sanitize and validate input to prevent filter injection
   const trimmed = query.trim();
-  // Escape % and _ used by LIKE to avoid unintended wildcards
-  const escaped = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
+  // Escape \, % and _ used by LIKE to avoid unintended wildcards
+  const escaped = trimmed.replace(/[\\%_]/g, (m) => `\\${m}`);
 
   // Search by name
   let players = await playerRepo.searchPlayersByName(supabase, escaped, 10);

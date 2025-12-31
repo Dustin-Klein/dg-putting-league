@@ -2,6 +2,7 @@
 
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { LeagueWithRole } from '@/lib/types/league';
 import { CreateLeagueDialog } from './create-league-dialog';
@@ -11,8 +12,10 @@ interface LeaguesListProps {
 }
 
 export default function LeaguesList({ leagues }: LeaguesListProps) {
+  const router = useRouter();
+
   const handleCardClick = (leagueId: string) => {
-    window.location.href = `/league/${leagueId}`;
+    router.push(`/league/${leagueId}`);
   };
 
   return (
@@ -59,7 +62,7 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
                 <div className="col-span-2">
                   <p className="text-muted-foreground">Last Event</p>
                   <p className="font-medium">
-                    {league.lastEventDate
+                    {league.lastEventDate && !Number.isNaN(new Date(league.lastEventDate).getTime())
                       ? format(new Date(league.lastEventDate), 'MMM d, yyyy')
                       : 'No events yet'}
                   </p>
