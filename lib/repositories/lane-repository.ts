@@ -40,7 +40,7 @@ export async function hasLanes(
     throw new InternalError(`Failed to check lanes: ${error.message}`);
   }
 
-  return (existingLanes && existingLanes.length > 0);
+  return (existingLanes?.length ?? 0) > 0;
 }
 
 /**

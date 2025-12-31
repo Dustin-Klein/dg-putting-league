@@ -284,10 +284,16 @@ export async function recordScore(
   const frame = await getOrCreateFrame(supabase, bracketMatchId, frameNumber);
 
   // Determine order in frame for this player
-  const existingResults = await getFrameResults(supabase, frame.id);
   const existingResult = await getPlayerFrameResult(supabase, frame.id, eventPlayerId);
 
-  const orderInFrame = existingResult?.order_in_frame || existingResults.length + 1;
+  let orderInFrame: number;
+  if (existingResult?.order_in_frame) {
+    orderInFrame = existingResult.order_in_frame;
+  } else {
+    const existingResults = await getFrameResults(supabase, frame.id);
+    const maxOrder = existingResults.reduce((max, r) => Math.max(max, r.order_in_frame ?? 0), 0);
+    orderInFrame = maxOrder + 1;
+  }
 
   // Upsert the result using repository
   await upsertFrameResult(supabase, {

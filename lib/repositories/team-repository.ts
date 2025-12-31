@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { InternalError } from '@/lib/errors';
 import type { Team } from '@/lib/types/team';
 
 export interface TeamData {
@@ -147,12 +148,16 @@ export async function verifyPlayerInTeams(
 ): Promise<boolean> {
   if (teamIds.length === 0) return false;
 
-  const { data: teamMember } = await supabase
+  const { data: teamMember, error } = await supabase
     .from('team_members')
     .select('team_id')
     .in('team_id', teamIds)
     .eq('event_player_id', eventPlayerId)
     .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to verify team membership: ${error.message}`);
+  }
 
   return !!teamMember;
 }
