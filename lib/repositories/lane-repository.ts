@@ -53,7 +53,7 @@ export async function insertLanes(
 ): Promise<Lane[]> {
   const lanesToInsert = Array.from({ length: laneCount }, (_, i) => ({
     event_id: eventId,
-    label: `${i + 1}`,
+    label: `Lane ${i + 1}`,
     status: 'idle' as const,
   }));
 

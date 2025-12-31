@@ -166,7 +166,7 @@ export default function MatchesPage() {
                       </span>
                       {match.lane_label && (
                         <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                          Lane {match.lane_label}
+                          {match.lane_label}
                         </Badge>
                       )}
                     </div>
