@@ -2,17 +2,9 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
+import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
-export interface Lane {
-  id: string;
-  event_id: string;
-  label: string;
-  status: 'idle' | 'occupied' | 'maintenance';
-}
-
-export interface LaneWithMatch extends Lane {
-  current_match_id: number | null;
-}
+export type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
 /**
  * Create lanes for an event based on lane_count

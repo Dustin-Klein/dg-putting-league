@@ -5,25 +5,12 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { EventPlayer } from '@/lib/types/player';
+import type { Team, TeamMember } from '@/lib/types/team';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 
-export interface Team {
-  id: string;
-  event_id: string;
-  seed: number;
-  pool_combo: string;
-  created_at: string;
-  team_members: TeamMember[];
-}
-
-export interface TeamMember {
-  team_id: string;
-  event_player_id: string;
-  role: 'A_pool' | 'B_pool' | 'alternate';
-  joined_at: string;
-  event_player: EventPlayer;
-}
+// Re-export types for consumers
+export type { Team, TeamMember } from '@/lib/types/team';
 
 /**
  * Generate teams of 2 players (1 from Pool A, 1 from Pool B) when event status changes to 'bracket'

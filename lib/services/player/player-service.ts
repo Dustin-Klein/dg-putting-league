@@ -2,7 +2,11 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { BadRequestError } from '@/lib/errors';
 import { requireAuthenticatedUser } from '@/lib/auth/league-auth';
+import type { PlayerSearchResult } from '@/lib/types/player';
 import * as playerRepo from '@/lib/repositories/player-repository';
+
+// Re-export types for consumers
+export type { PlayerSearchResult } from '@/lib/types/player';
 
 type CreatePlayerInput = {
   name: string;
@@ -45,12 +49,6 @@ export async function createPlayer(input: CreatePlayerInput) {
     default_pool: defaultPool,
   });
 }
-
-export type PlayerSearchResult = {
-  id: string;
-  full_name: string;
-  player_number: number | null;
-};
 
 /**
  * Search for players by name or player number

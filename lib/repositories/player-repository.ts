@@ -1,21 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
-
-export interface PlayerData {
-  id: string;
-  full_name: string;
-  nickname?: string | null;
-  email?: string | null;
-  created_at: string;
-  default_pool?: 'A' | 'B' | null;
-  player_number?: number | null;
-}
-
-export interface PlayerSearchResult {
-  id: string;
-  full_name: string;
-  player_number: number | null;
-}
+import type { Player, PlayerSearchResult } from '@/lib/types/player';
 
 /**
  * Check if a player exists with given email

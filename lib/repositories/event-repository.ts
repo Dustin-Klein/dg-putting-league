@@ -1,11 +1,14 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError, NotFoundError } from '@/lib/errors';
+import type { EventStatus } from '@/lib/types/event';
+import type { EventPlayer } from '@/lib/types/player';
+import type { Team } from '@/lib/types/team';
 
 export interface EventData {
   id: string;
   league_id: string;
   event_date: string;
-  status: 'created' | 'pre-bracket' | 'bracket' | 'completed';
+  status: EventStatus;
   lane_count: number | null;
   qualification_round_enabled: boolean;
   access_code: string | null;
@@ -13,46 +16,8 @@ export interface EventData {
 }
 
 export interface EventWithPlayersData extends EventData {
-  players: EventPlayerInEvent[];
-  teams: TeamInEvent[];
-}
-
-export interface EventPlayerInEvent {
-  id: string;
-  event_id: string;
-  player_id: string;
-  created_at: string;
-  has_paid: boolean;
-  pool: 'A' | 'B' | null;
-  pfa_score: number | null;
-  scoring_method: 'qualification' | 'pfa' | 'default' | null;
-  player: PlayerInEvent;
-}
-
-export interface PlayerInEvent {
-  id: string;
-  full_name: string;
-  nickname: string | null;
-  email: string | null;
-  created_at: string;
-  default_pool: 'A' | 'B' | null;
-  player_number: number | null;
-}
-
-export interface TeamInEvent {
-  id: string;
-  seed: number;
-  pool_combo: string;
-  created_at: string;
-  team_members: TeamMemberInEvent[];
-}
-
-export interface TeamMemberInEvent {
-  team_id: string;
-  event_player_id: string;
-  role: 'A_pool' | 'B_pool' | 'alternate';
-  joined_at: string;
-  event_player: EventPlayerInEvent;
+  players: EventPlayer[];
+  teams: Team[];
 }
 
 /**

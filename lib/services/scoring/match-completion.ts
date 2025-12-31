@@ -2,11 +2,10 @@ import { BracketsManager } from 'brackets-manager';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseBracketStorage } from '@/lib/bracket/storage';
 import { BadRequestError, InternalError } from '@/lib/errors';
+import type { MatchScores } from '@/lib/types/scoring';
 
-export interface MatchScores {
-  team1Score: number;
-  team2Score: number;
-}
+// Re-export for consumers
+export type { MatchScores } from '@/lib/types/scoring';
 
 /**
  * Complete a bracket match and update bracket progression

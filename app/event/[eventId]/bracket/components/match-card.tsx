@@ -4,7 +4,7 @@ import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils/utils';
 import { Status } from 'brackets-model';
 import { getStatusLabel, getStatusColor } from '@/lib/types/bracket';
 

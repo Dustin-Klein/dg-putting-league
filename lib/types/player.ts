@@ -33,6 +33,15 @@ export interface SearchPlayerResponse {
   hasMore: boolean;
 }
 
+/**
+ * Player search result (lightweight version for search endpoints)
+ */
+export interface PlayerSearchResult {
+  id: string;
+  full_name: string;
+  player_number: number | null;
+}
+
 export interface AddPlayerFormValues {
   name: string;
   email?: string;

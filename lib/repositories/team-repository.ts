@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { Team } from '@/lib/types/team';
 
 export interface TeamData {
   id: string;
@@ -277,48 +278,13 @@ export async function updateTeamSeed(
   }
 }
 
-export interface FullTeamData {
-  id: string;
-  event_id: string;
-  seed: number;
-  pool_combo: string;
-  created_at: string;
-  team_members: FullTeamMemberData[];
-}
-
-export interface FullTeamMemberData {
-  team_id: string;
-  event_player_id: string;
-  role: 'A_pool' | 'B_pool' | 'alternate';
-  joined_at: string;
-  event_player: {
-    id: string;
-    event_id: string;
-    player_id: string;
-    created_at: string;
-    has_paid: boolean;
-    pool: 'A' | 'B' | null;
-    pfa_score: number | null;
-    scoring_method: 'qualification' | 'pfa' | 'default' | null;
-    player: {
-      id: string;
-      full_name: string;
-      nickname: string | null;
-      email: string | null;
-      created_at: string;
-      default_pool: 'A' | 'B' | null;
-      player_number: number | null;
-    };
-  };
-}
-
 /**
  * Get full team details for an event
  */
 export async function getFullTeamsForEvent(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<FullTeamData[]> {
+): Promise<Team[]> {
   const { data: finalTeams, error } = await supabase
     .from('teams')
     .select(`
@@ -345,5 +311,5 @@ export async function getFullTeamsForEvent(
     throw new Error('Failed to fetch generated teams');
   }
 
-  return (finalTeams || []) as unknown as FullTeamData[];
+  return (finalTeams || []) as unknown as Team[];
 }
