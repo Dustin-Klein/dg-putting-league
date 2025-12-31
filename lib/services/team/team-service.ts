@@ -5,12 +5,32 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { EventPlayer } from '@/lib/types/player';
+import { EventWithDetails } from '@/lib/types/event';
 import type { Team, TeamMember } from '@/lib/types/team';
+import type { PoolAssignment } from '@/lib/services/event-player';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 
 // Re-export types for consumers
 export type { Team, TeamMember } from '@/lib/types/team';
+
+/**
+ * Team member data structure for atomic transition
+ */
+export interface TeamMemberPairing {
+  eventPlayerId: string;
+  role: 'A_pool' | 'B_pool';
+}
+
+/**
+ * Team pairing data structure for atomic transition
+ */
+export interface TeamPairing {
+  seed: number;
+  poolCombo: string;
+  combinedScore: number;
+  members: TeamMemberPairing[];
+}
 
 /**
  * Generate teams of 2 players (1 from Pool A, 1 from Pool B) when event status changes to 'bracket'
@@ -142,4 +162,58 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
   const { supabase } = await requireEventAdmin(eventId);
   const teams = await teamRepo.getFullTeamsForEvent(supabase, eventId);
   return teams as unknown as Team[];
+}
+
+/**
+ * Compute team pairings based on pool assignments without persisting.
+ * This is used by the atomic transition RPC to pre-compute the data.
+ *
+ * Pairs top Pool A player with top Pool B player, second with second, etc.
+ * Returns teams sorted by combined score (highest first) with seeds assigned.
+ */
+export function computeTeamPairings(
+  poolAssignments: PoolAssignment[],
+  event: EventWithDetails
+): TeamPairing[] {
+  // Separate players by pool
+  const poolAPlayers = poolAssignments.filter(pa => pa.pool === 'A');
+  const poolBPlayers = poolAssignments.filter(pa => pa.pool === 'B');
+
+  if (poolAPlayers.length === 0 || poolBPlayers.length === 0) {
+    throw new BadRequestError('Both Pool A and Pool B must have players to generate teams');
+  }
+
+  // Sort each pool by score (descending) for seeding - they should already be sorted
+  // but we sort again to be safe
+  poolAPlayers.sort((a, b) => b.pfaScore - a.pfaScore);
+  poolBPlayers.sort((a, b) => b.pfaScore - a.pfaScore);
+
+  // Generate teams by pairing top Pool A player with top Pool B player
+  const minPoolSize = Math.min(poolAPlayers.length, poolBPlayers.length);
+  const teams: TeamPairing[] = [];
+
+  for (let i = 0; i < minPoolSize; i++) {
+    const poolAPlayer = poolAPlayers[i];
+    const poolBPlayer = poolBPlayers[i];
+    const combinedScore = poolAPlayer.pfaScore + poolBPlayer.pfaScore;
+    const poolCombo = `${poolAPlayer.playerName} & ${poolBPlayer.playerName}`;
+
+    teams.push({
+      seed: 0, // Will be assigned after sorting by combined score
+      poolCombo,
+      combinedScore,
+      members: [
+        { eventPlayerId: poolAPlayer.eventPlayerId, role: 'A_pool' },
+        { eventPlayerId: poolBPlayer.eventPlayerId, role: 'B_pool' },
+      ],
+    });
+  }
+
+  // Sort teams by combined score (descending) and assign seeds
+  teams.sort((a, b) => b.combinedScore - a.combinedScore);
+  teams.forEach((team, index) => {
+    team.seed = index + 1;
+  });
+
+  return teams;
 }
