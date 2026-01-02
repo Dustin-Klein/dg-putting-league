@@ -44,7 +44,7 @@ function OpponentRow({
   if (!opponent || opponent.id === null) {
     return (
       <div className="flex items-center justify-between px-3 py-2 text-sm text-muted-foreground">
-        <span className="italic">BYE</span>
+        <span className="italic">TBD</span>
       </div>
     );
   }
