@@ -35,6 +35,21 @@ function getTeamForParticipant(
   return participantTeamMap[participantId];
 }
 
+function isByeMatch(match: Match): boolean {
+  // BYE: opponent is literally `null` (not an object like {id:null})
+  // TBD: opponent is an object like {id:null} or {id:null,position:X}
+  const opp1IsLiterallyNull = match.opponent1 === null;
+  const opp2IsLiterallyNull = match.opponent2 === null;
+
+  // Hide if one opponent is null (BYE match)
+  // Hide if both opponents are null (empty/unused match slot)
+  return opp1IsLiterallyNull || opp2IsLiterallyNull;
+}
+
+function hasVisibleMatches(matches: Match[]): boolean {
+  return matches.some((match) => !isByeMatch(match));
+}
+
 export function BracketView({ data, onMatchClick }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
 
@@ -80,39 +95,40 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
     return result.sort((a, b) => a.number - b.number);
   }, [bracket, participantTeamMap]);
 
-  const getRoundName = (group: Group, round: Round): string => {
-    const groupName = GROUP_NAMES[group.number] || `Group ${group.number}`;
+  const getRoundName = (group: GroupWithRounds, round: Round, visibleIndex: number): string => {
+    // Get visible rounds for this group (rounds with at least one non-BYE match)
+    const visibleRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches));
+    const totalVisibleRounds = visibleRounds.length;
+    const displayRoundNumber = visibleIndex + 1;
 
     // For winner's bracket
     if (group.number === 1) {
-      const roundsInGroup = bracket.rounds.filter((r) => r.group_id === group.id);
-      if (round.number === roundsInGroup.length) {
+      if (displayRoundNumber === totalVisibleRounds) {
         return 'WB Final';
       }
-      if (round.number === roundsInGroup.length - 1) {
+      if (displayRoundNumber === totalVisibleRounds - 1) {
         return 'WB Semifinal';
       }
-      return `WB Round ${round.number}`;
+      return `WB Round ${displayRoundNumber}`;
     }
 
     // For loser's bracket
     if (group.number === 2) {
-      const roundsInGroup = bracket.rounds.filter((r) => r.group_id === group.id);
-      if (round.number === roundsInGroup.length) {
+      if (displayRoundNumber === totalVisibleRounds) {
         return 'LB Final';
       }
-      return `LB Round ${round.number}`;
+      return `LB Round ${displayRoundNumber}`;
     }
 
     // For grand final
     if (group.number === 3) {
-      if (round.number === 1) {
+      if (displayRoundNumber === 1) {
         return 'Grand Final';
       }
       return 'Grand Final Reset';
     }
 
-    return `Round ${round.number}`;
+    return `Round ${displayRoundNumber}`;
   };
 
   // Separate groups into main brackets (winners/losers) and grand final
@@ -127,31 +143,38 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
 
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-6 min-w-max">
-          {group.rounds.map((round) => (
-            <div key={round.id} className="flex flex-col gap-4">
-              <div className="text-sm font-medium text-muted-foreground text-center">
-                {getRoundName(group, round)}
-              </div>
+          {group.rounds
+            .filter((round) => hasVisibleMatches(round.matches))
+            .map((round, visibleIndex) => (
+              <div key={round.id} className="flex flex-col gap-4">
+                <div className="text-sm font-medium text-muted-foreground text-center">
+                  {getRoundName(group, round, visibleIndex)}
+                </div>
 
-              <div className="flex flex-col gap-4 justify-around h-full">
-                {round.matches.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    match={match}
-                    team1={match.team1}
-                    team2={match.team2}
-                    roundName={getRoundName(group, round)}
-                    laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
-                    onClick={() => onMatchClick?.(match)}
-                    isClickable={
-                      match.status === Status.Ready ||
-                      match.status === Status.Running
-                    }
-                  />
-                ))}
+                <div className="flex flex-col gap-4 justify-around h-full">
+                  {round.matches.map((match) =>
+                    isByeMatch(match) ? (
+                      // Invisible placeholder to preserve bracket spacing for BYE matches
+                      <div key={match.id} className="w-56 h-[88px]" />
+                    ) : (
+                      <MatchCard
+                        key={match.id}
+                        match={match}
+                        team1={match.team1}
+                        team2={match.team2}
+                        roundName={getRoundName(group, round, visibleIndex)}
+                        laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
+                        onClick={() => onMatchClick?.(match)}
+                        isClickable={
+                          match.status === Status.Ready ||
+                          match.status === Status.Running
+                        }
+                      />
+                    )
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
     </div>
