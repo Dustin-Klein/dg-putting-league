@@ -19,7 +19,7 @@ interface MatchCardProps {
   match: Match;
   team1?: Team;
   team2?: Team;
-  roundName: string;
+  matchNumber: number;
   laneLabel?: string;
   onClick?: () => void;
   isClickable?: boolean;
@@ -89,7 +89,7 @@ export function MatchCard({
   match,
   team1,
   team2,
-  roundName,
+  matchNumber,
   laneLabel,
   onClick,
   isClickable = false,
@@ -121,7 +121,7 @@ const isComplete =
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-medium text-muted-foreground truncate">
-            {roundName} - Match {match.number}
+            Match {matchNumber}
           </span>
           {laneLabel && (
             <Badge

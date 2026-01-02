@@ -159,6 +159,25 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
     return result.sort((a, b) => a.number - b.number);
   }, [bracket, participantTeamMap]);
 
+  // Compute sequential match numbers for visible matches across all groups
+  const matchNumberMap = useMemo(() => {
+    const map = new Map<number | string, number>();
+    let matchNumber = 1;
+
+    // Process groups in order (winners, losers, grand final)
+    for (const group of groupsWithRounds) {
+      for (const round of group.rounds) {
+        for (const match of round.matches) {
+          if (!isByeMatch(match)) {
+            map.set(match.id, matchNumber++);
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [groupsWithRounds]);
+
   const getRoundName = (group: GroupWithRounds, round: Round, visibleIndex: number): string => {
     // Get visible rounds for this group (rounds with at least one non-BYE match)
     const visibleRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches));
@@ -238,7 +257,7 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
                         match={match}
                         team1={match.team1}
                         team2={match.team2}
-                        roundName={getRoundName(group, round, visibleIndex)}
+                        matchNumber={matchNumberMap.get(match.id) || 0}
                         laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                         onClick={() => onMatchClick?.(match)}
                         isClickable={
