@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, Fragment } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
@@ -48,6 +48,70 @@ function isByeMatch(match: Match): boolean {
 
 function hasVisibleMatches(matches: Match[]): boolean {
   return matches.some((match) => !isByeMatch(match));
+}
+
+// Connector component to draw lines between rounds
+function RoundConnector({ matches }: { matches: Match[] }) {
+  // Match card height (88px) + gap (16px) = 104px per match slot
+  const halfHeight = 52;
+
+  // Group matches into pairs for connectors
+  const connectors: Array<{ top: boolean; bottom: boolean }> = [];
+
+  for (let i = 0; i < matches.length; i += 2) {
+    const topMatch = matches[i];
+    const bottomMatch = matches[i + 1];
+    const topVisible = topMatch && !isByeMatch(topMatch);
+    const bottomVisible = bottomMatch && !isByeMatch(bottomMatch);
+    connectors.push({ top: topVisible, bottom: Boolean(bottomMatch) && bottomVisible });
+  }
+
+  // Special case: single match (like grand final to reset)
+  const isSingleMatch = matches.length === 1;
+
+  return (
+    <div className="flex flex-col justify-around mx-2">
+      {isSingleMatch ? (
+        // Single straight line for 1-to-1 connections
+        !isByeMatch(matches[0]) && (
+          <div className="flex items-center">
+            <div className="w-6 border-t-2 border-muted-foreground/40" />
+          </div>
+        )
+      ) : (
+        connectors.map((connector, i) => {
+          // Skip if neither match is visible
+          if (!connector.top && !connector.bottom) {
+            return <div key={i} style={{ height: halfHeight * 2 }} />;
+          }
+
+          return (
+            <div key={i} className="flex items-center">
+              <div className="flex flex-col w-3">
+                {/* Top half - only show border if top match is visible */}
+                <div
+                  className={connector.top
+                    ? "border-t-2 border-r-2 border-muted-foreground/40 rounded-tr-sm"
+                    : ""
+                  }
+                  style={{ height: halfHeight }}
+                />
+                {/* Bottom half - only show border if bottom match is visible */}
+                <div
+                  className={connector.bottom
+                    ? "border-b-2 border-r-2 border-muted-foreground/40 rounded-br-sm"
+                    : ""
+                  }
+                  style={{ height: halfHeight }}
+                />
+              </div>
+              <div className="w-3 border-t-2 border-muted-foreground/40" />
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
 }
 
 export function BracketView({ data, onMatchClick }: BracketViewProps) {
@@ -142,16 +206,28 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
       </h2>
 
       <div className="overflow-x-auto pb-4">
-        <div className="flex gap-6 min-w-max">
+        {/* Round headers row */}
+        <div className="flex min-w-max mb-4">
           {group.rounds
             .filter((round) => hasVisibleMatches(round.matches))
-            .map((round, visibleIndex) => (
-              <div key={round.id} className="flex flex-col gap-4">
-                <div className="text-sm font-medium text-muted-foreground text-center">
+            .map((round, visibleIndex, visibleRounds) => (
+              <Fragment key={round.id}>
+                <div className="w-56 text-sm font-medium text-muted-foreground text-center">
                   {getRoundName(group, round, visibleIndex)}
                 </div>
-
-                <div className="flex flex-col gap-4 justify-around h-full">
+                {visibleIndex < visibleRounds.length - 1 && (
+                  <div className="w-9" /> // Spacer for connector width
+                )}
+              </Fragment>
+            ))}
+        </div>
+        {/* Matches and connectors row */}
+        <div className="flex min-w-max items-stretch">
+          {group.rounds
+            .filter((round) => hasVisibleMatches(round.matches))
+            .map((round, visibleIndex, visibleRounds) => (
+              <Fragment key={round.id}>
+                <div className="flex flex-col gap-4 justify-around">
                   {round.matches.map((match) =>
                     isByeMatch(match) ? (
                       // Invisible placeholder to preserve bracket spacing for BYE matches
@@ -173,7 +249,11 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
                     )
                   )}
                 </div>
-              </div>
+                {/* Add connector lines between rounds (not after last round) */}
+                {visibleIndex < visibleRounds.length - 1 && (
+                  <RoundConnector matches={round.matches} />
+                )}
+              </Fragment>
             ))}
         </div>
       </div>
