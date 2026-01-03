@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoreDialog } from '../bracket/components';
+import { BracketView, MatchScoringDialog } from '../bracket/components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
@@ -152,7 +152,7 @@ export function BracketSection({ eventId }: BracketSectionProps) {
         onMatchClick={handleMatchClick}
       />
 
-      <MatchScoreDialog
+      <MatchScoringDialog
         match={selectedMatch}
         team1={selectedMatch?.team1}
         team2={selectedMatch?.team2}

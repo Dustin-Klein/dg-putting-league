@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -65,14 +66,19 @@ export default function MatchScoringPage({
   const [isCompleting, setIsCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track if we're currently saving to avoid refetch during our own updates
+  const isSavingRef = useRef(false);
+
   // Resolve params
   useEffect(() => {
     params.then((p) => setMatchId(p.matchId));
   }, [params]);
 
-  const fetchMatch = useCallback(async (code: string, id: string) => {
+  const fetchMatch = useCallback(async (code: string, id: string, showLoading = true) => {
     try {
-      setIsLoading(true);
+      if (showLoading) {
+        setIsLoading(true);
+      }
       const response = await fetch(`/api/score/match/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -90,7 +96,9 @@ export default function MatchScoringPage({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load match');
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -119,9 +127,42 @@ export default function MatchScoringPage({
 
   useEffect(() => {
     if (accessCode && matchId) {
-      fetchMatch(accessCode, matchId);
+      fetchMatch(accessCode, matchId, true);
     }
   }, [accessCode, matchId, fetchMatch]);
+
+  // Realtime subscription for frame_results changes
+  useEffect(() => {
+    if (!matchId || !accessCode) return;
+
+    const supabase = createClient();
+    const bracketMatchId = parseInt(matchId, 10);
+
+    if (isNaN(bracketMatchId)) return;
+
+    const channel = supabase
+      .channel(`public-match-scoring-${bracketMatchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'frame_results',
+          filter: `bracket_match_id=eq.${bracketMatchId}`,
+        },
+        () => {
+          // Only refetch if we're not the one saving
+          if (!isSavingRef.current) {
+            fetchMatch(accessCode, matchId, false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [matchId, accessCode, fetchMatch]);
 
   const handleScoreChange = async (
     eventPlayerId: string,
@@ -132,6 +173,7 @@ export default function MatchScoringPage({
 
     const saveKey = `${eventPlayerId}-${frameNumber}`;
     setIsSaving(saveKey);
+    isSavingRef.current = true;
 
     try {
       const response = await fetch(`/api/score/match/${matchId}`, {
@@ -157,6 +199,7 @@ export default function MatchScoringPage({
       console.error('Failed to save score:', err);
     } finally {
       setIsSaving(null);
+      isSavingRef.current = false;
     }
   };
 
