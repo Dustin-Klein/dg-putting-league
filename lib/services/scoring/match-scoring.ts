@@ -8,7 +8,14 @@ import {
   NotFoundError,
 } from '@/lib/errors';
 import { completeMatch } from './match-completion';
+import { calculatePoints } from './points-calculator';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
+import {
+  getOrCreateFrame as getOrCreateFrameRepo,
+  upsertFrameResult,
+  getPlayerFrameResult,
+  getFrameResults,
+} from '@/lib/repositories/frame-repository';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -31,6 +38,90 @@ export type {
 
 // Re-export calculatePoints for backwards compatibility
 export { calculatePoints } from './points-calculator';
+
+/**
+ * Record a score for a player in a frame (admin-authenticated)
+ */
+export async function recordScoreAdmin(
+  eventId: string,
+  bracketMatchId: number,
+  frameNumber: number,
+  eventPlayerId: string,
+  puttsMade: number
+): Promise<BracketMatchWithDetails> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  // Get event to check bonus_point_enabled setting
+  const { data: event } = await supabase
+    .from('events')
+    .select('bonus_point_enabled')
+    .eq('id', eventId)
+    .single();
+
+  if (!event) {
+    throw new NotFoundError('Event not found');
+  }
+
+  // Validate putts
+  if (puttsMade < 0 || puttsMade > 3) {
+    throw new BadRequestError('Putts must be between 0 and 3');
+  }
+
+  // Verify bracket match belongs to event
+  const { data: bracketMatch, error: matchError } = await supabase
+    .from('bracket_match')
+    .select('id, status')
+    .eq('id', bracketMatchId)
+    .eq('event_id', eventId)
+    .single();
+
+  if (matchError || !bracketMatch) {
+    throw new NotFoundError('Bracket match not found');
+  }
+
+  if (bracketMatch.status === 4) { // Completed
+    throw new BadRequestError('Match is already completed');
+  }
+
+  // Calculate points
+  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
+
+  // Get or create the frame
+  const isOvertime = frameNumber > 5;
+  const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
+
+  // Determine order_in_frame
+  const existingResult = await getPlayerFrameResult(supabase, frame.id, eventPlayerId);
+  let orderInFrame: number;
+  if (existingResult?.order_in_frame) {
+    orderInFrame = existingResult.order_in_frame;
+  } else {
+    const existingResults = await getFrameResults(supabase, frame.id);
+    const maxOrder = existingResults.reduce((max, r) => Math.max(max, r.order_in_frame ?? 0), 0);
+    orderInFrame = maxOrder + 1;
+  }
+
+  // Record the result
+  await upsertFrameResult(supabase, {
+    matchFrameId: frame.id,
+    eventPlayerId,
+    bracketMatchId,
+    puttsMade,
+    pointsEarned,
+    orderInFrame,
+  });
+
+  // Start match if it's in Ready status
+  if (bracketMatch.status === 2) { // Ready
+    await supabase
+      .from('bracket_match')
+      .update({ status: 3 }) // Running
+      .eq('id', bracketMatchId);
+  }
+
+  // Return updated match
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
+}
 
 
 /**
@@ -275,6 +366,38 @@ export async function completeBracketMatch(
     await releaseMatchLaneAndReassign(eventId, bracketMatchId);
   } catch (laneError) {
     // Log but don't fail - lane management is secondary to match completion
+    console.error('Failed to release lane and reassign:', laneError);
+  }
+
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
+}
+
+/**
+ * Complete a bracket match with final scores (no frame data)
+ * This sets the scores, completes the match, and handles lane reassignment
+ */
+export async function completeMatchWithFinalScores(
+  eventId: string,
+  bracketMatchId: number,
+  team1Score: number,
+  team2Score: number
+): Promise<BracketMatchWithDetails> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  if (team1Score === team2Score) {
+    throw new BadRequestError('Scores cannot be tied - there must be a winner');
+  }
+
+  // Use shared match completion logic (sets scores and updates bracket)
+  await completeMatch(supabase, eventId, bracketMatchId, {
+    team1Score,
+    team2Score,
+  });
+
+  // Release the lane and auto-assign to next ready match
+  try {
+    await releaseMatchLaneAndReassign(eventId, bracketMatchId);
+  } catch (laneError) {
     console.error('Failed to release lane and reassign:', laneError);
   }
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoreDialog } from './components';
+import { BracketView, MatchScoringDialog } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
@@ -202,7 +202,7 @@ export default function BracketPage({
       />
 
       {eventId && (
-        <MatchScoreDialog
+        <MatchScoringDialog
           match={selectedMatch}
           team1={selectedMatch?.team1}
           team2={selectedMatch?.team2}
