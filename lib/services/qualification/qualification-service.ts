@@ -353,53 +353,54 @@ export async function getBatchPlayerQualificationData(
   // Get or create qualification round
   const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
 
-  // Get all players' data
-  const playersData = await Promise.all(
-    eventPlayerIds.map(async (eventPlayerId) => {
-      // Get player info using repository
-      const eventPlayer = await import('@/lib/repositories/event-player-repository')
-        .then(repo => repo.getEventPlayer(supabase, eventPlayerId))
-        .catch(() => null);
+  const eventPlayerRepo = await import('@/lib/repositories/event-player-repository');
+  const eventPlayers = await eventPlayerRepo.getEventPlayersBulk(supabase, eventPlayerIds);
 
-      if (!eventPlayer) {
-        return null;
-      }
-
-      // Validate player belongs to event and has paid
-      if (eventPlayer.event_id !== event.id || !eventPlayer.has_paid) {
-        return null;
-      }
-
-      // Get player's frames using repository
-      const frames = await qualificationRepo.getPlayerQualificationFrames(
-        supabase,
-        event.id,
-        eventPlayerId
-      );
-
-      const framesCompleted = frames.length;
-      const totalPoints = frames.reduce((sum, f) => sum + f.points_earned, 0);
-      const isComplete = framesCompleted >= round.frame_count;
-
-      return {
-        event_player_id: eventPlayer.id,
-        player_id: eventPlayer.player_id,
-        full_name: eventPlayer.player.full_name,
-        nickname: eventPlayer.player.nickname ?? null,
-        player_number: eventPlayer.player.player_number ?? null,
-        frames_completed: framesCompleted,
-        total_frames_required: round.frame_count,
-        total_points: totalPoints,
-        is_complete: isComplete,
-        frames,
-      };
-    })
+  // Filter to only valid players (belong to event and have paid)
+  const validEventPlayers = eventPlayers.filter(
+    (ep) => ep.event_id === event.id && ep.has_paid
   );
 
-  // Filter out null results
-  const validPlayers = playersData.filter((p) => p !== null) as Array<
-    PublicQualificationPlayerInfo & { frames: QualificationFrame[] }
-  >;
+  if (validEventPlayers.length === 0) {
+    return {
+      event,
+      round: {
+        id: round.id,
+        frame_count: round.frame_count,
+      },
+      players: [],
+    };
+  }
+
+  const validPlayerIds = validEventPlayers.map((ep) => ep.id);
+
+  // Bulk fetch all frames for valid players (1 query instead of N)
+  const framesByPlayer = await qualificationRepo.getQualificationFramesBulk(
+    supabase,
+    event.id,
+    validPlayerIds
+  );
+
+  // Map players with their frames and calculated data
+  const players = validEventPlayers.map((eventPlayer) => {
+    const frames = framesByPlayer[eventPlayer.id] ?? [];
+    const framesCompleted = frames.length;
+    const totalPoints = frames.reduce((sum, f) => sum + f.points_earned, 0);
+    const isComplete = framesCompleted >= round.frame_count;
+
+    return {
+      event_player_id: eventPlayer.id,
+      player_id: eventPlayer.player_id,
+      full_name: eventPlayer.player.full_name,
+      nickname: eventPlayer.player.nickname ?? null,
+      player_number: eventPlayer.player.player_number ?? null,
+      frames_completed: framesCompleted,
+      total_frames_required: round.frame_count,
+      total_points: totalPoints,
+      is_complete: isComplete,
+      frames,
+    };
+  });
 
   return {
     event,
@@ -407,6 +408,6 @@ export async function getBatchPlayerQualificationData(
       id: round.id,
       frame_count: round.frame_count,
     },
-    players: validPlayers,
+    players,
   };
 }

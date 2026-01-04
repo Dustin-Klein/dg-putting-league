@@ -145,6 +145,41 @@ export async function getPlayerQualificationFrames(
 }
 
 /**
+ * Get qualification frames for multiple players (bulk query)
+ */
+export async function getQualificationFramesBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  eventPlayerIds: string[]
+): Promise<Record<string, QualificationFrame[]>> {
+  if (eventPlayerIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('qualification_frames')
+    .select('*')
+    .eq('event_id', eventId)
+    .in('event_player_id', eventPlayerIds)
+    .order('frame_number');
+
+  if (error) {
+    throw new InternalError(`Failed to fetch qualification frames: ${error.message}`);
+  }
+
+  // Group frames by event_player_id
+  const framesByPlayer: Record<string, QualificationFrame[]> = {};
+  for (const frame of data ?? []) {
+    if (!framesByPlayer[frame.event_player_id]) {
+      framesByPlayer[frame.event_player_id] = [];
+    }
+    framesByPlayer[frame.event_player_id].push(frame as QualificationFrame);
+  }
+
+  return framesByPlayer;
+}
+
+/**
  * Get all qualification frames for an event
  */
 export async function getEventQualificationFrames(
