@@ -120,16 +120,16 @@ export function MatchScoringDialog({
           filter: `bracket_match_id=eq.${bracketMatchId}`,
         },
         () => {
-          // Only refetch if we're not the one saving
           if (!isSavingRef.current) {
             fetchMatchDetails(false);
           }
         }
-      )
-      .subscribe();
+      );
+    
+    channel.subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      channel.unsubscribe();
     };
   }, [open, match, fetchMatchDetails]);
 

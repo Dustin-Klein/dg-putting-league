@@ -105,7 +105,9 @@ function RoundConnector({ matches }: { matches: Match[] }) {
                   style={{ height: halfHeight }}
                 />
               </div>
-              <div className="w-3 border-t-2 border-muted-foreground/40" />
+              {(connector.top || connector.bottom) && (
+                <div className="w-3 border-t-2 border-muted-foreground/40" />
+              )}
             </div>
           );
         })
