@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
-import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign } from 'lucide-react';
+import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
 import { AddPlayerFormValues } from '@/lib/types/player';
 import { format } from 'date-fns';
+import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+
+interface QualificationStatus {
+  event_player_id: string;
+  frames_completed: number;
+  total_frames_required: number;
+  total_points: number;
+  is_complete: boolean;
+}
 
 export function PlayerManagement({
   event,
@@ -31,12 +40,35 @@ export function PlayerManagement({
 }) {
   const { toast } = useToast();
   const [players, setPlayers] = useState(event.players ?? []);
+  const [qualificationStatus, setQualificationStatus] = useState<Record<string, QualificationStatus>>({});
   const isInitialMount = useRef(true);
 
   // Keep local state in sync with incoming event data
   useEffect(() => {
     setPlayers(event.players ?? []);
   }, [event.players]);
+
+  // Fetch qualification status when event has qualification enabled
+  useEffect(() => {
+    if (event.qualification_round_enabled && event.status === 'pre-bracket') {
+      const fetchQualificationStatus = async () => {
+        try {
+          const response = await fetch(`/api/event/${event.id}/qualification`);
+          if (response.ok) {
+            const data = await response.json();
+            const statusMap: Record<string, QualificationStatus> = {};
+            for (const player of data.players || []) {
+              statusMap[player.event_player_id] = player;
+            }
+            setQualificationStatus(statusMap);
+          }
+        } catch (error) {
+          console.error('Failed to fetch qualification status:', error);
+        }
+      };
+      fetchQualificationStatus();
+    }
+  }, [event.id, event.qualification_round_enabled, event.status]);
 
   // Notify parent when players change (skip initial mount)
   useEffect(() => {
@@ -55,6 +87,8 @@ export function PlayerManagement({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<'A' | 'B'>('A');
   const formRef = useRef<HTMLFormElement>(null);
+
+  const showQualificationColumn = event.qualification_round_enabled && event.status === 'pre-bracket';
 
   // Handle search input change
   const handleSearch = useCallback(async (query: string) => {
@@ -443,6 +477,7 @@ export function PlayerManagement({
                   <TableHead>Identifier</TableHead>
                   <TableHead>Registered</TableHead>
                   <TableHead>Paid</TableHead>
+                  {showQualificationColumn && <TableHead>Qualification</TableHead>}
                   {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -479,6 +514,37 @@ export function PlayerManagement({
                           </span>
                         </Button>
                       </TableCell>
+                      {showQualificationColumn && (
+                        <TableCell>
+                          {eventPlayer.has_paid ? (
+                            (() => {
+                              const status = qualificationStatus[eventPlayer.id];
+                              if (!status) {
+                                return <span className="text-muted-foreground text-sm">-</span>;
+                              }
+                              return (
+                                <div className="flex items-center gap-2">
+                                  {status.is_complete ? (
+                                    <Trophy className="h-4 w-4 text-yellow-500" />
+                                  ) : null}
+                                  <div className="flex flex-col gap-1 min-w-[80px]">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span>{status.frames_completed}/{status.total_frames_required}</span>
+                                      <span className="font-mono font-medium">{status.total_points}pts</span>
+                                    </div>
+                                    <Progress
+                                      value={(status.frames_completed / status.total_frames_required) * 100}
+                                      className="h-1.5"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-muted-foreground text-xs">Pay to qualify</span>
+                          )}
+                        </TableCell>
+                      )}
                       {isAdmin && event.status === 'pre-bracket' && (
                         <TableCell>
                           <Button
@@ -496,7 +562,7 @@ export function PlayerManagement({
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={isAdmin && event.status === 'pre-bracket' ? 4 : 3} className="h-24 text-center">
+                    <TableCell colSpan={4 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
                       No players registered yet.
                     </TableCell>
                   </TableRow>

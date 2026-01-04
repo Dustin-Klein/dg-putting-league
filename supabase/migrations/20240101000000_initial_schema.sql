@@ -125,6 +125,7 @@ CREATE TABLE public.qualification_rounds (
 CREATE TABLE public.qualification_frames (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   qualification_round_id UUID NOT NULL REFERENCES public.qualification_rounds(id) ON DELETE CASCADE,
+  event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   event_player_id UUID NOT NULL REFERENCES public.event_players(id) ON DELETE CASCADE,
   frame_number INTEGER NOT NULL CHECK (frame_number > 0),
   putts_made INTEGER NOT NULL CHECK (putts_made BETWEEN 0 AND 3),
@@ -133,6 +134,9 @@ CREATE TABLE public.qualification_frames (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (event_player_id, frame_number)
 );
+
+CREATE INDEX idx_qualification_frames_event ON public.qualification_frames(event_id);
+CREATE INDEX idx_qualification_rounds_event ON public.qualification_rounds(event_id);
 
 -- Teams
 CREATE TABLE public.teams (
@@ -1004,6 +1008,124 @@ ON public.event_players
 FOR DELETE
 USING (
   public.is_league_admin_for_event(event_players.event_id)
+);
+
+-- ============================================================================
+-- RLS POLICIES - Qualification Rounds
+-- ============================================================================
+
+CREATE POLICY "Enable read access for league admins"
+ON public.qualification_rounds
+FOR SELECT
+USING (
+  public.is_league_admin_for_event(qualification_rounds.event_id)
+);
+
+CREATE POLICY "Enable public read for qualification rounds in pre-bracket"
+ON public.qualification_rounds
+FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_rounds.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+);
+
+CREATE POLICY "Enable insert for league admins"
+ON public.qualification_rounds
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin_for_event(qualification_rounds.event_id)
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.qualification_rounds
+FOR UPDATE
+USING (
+  public.is_league_admin_for_event(qualification_rounds.event_id)
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.qualification_rounds
+FOR DELETE
+USING (
+  public.is_league_admin_for_event(qualification_rounds.event_id)
+);
+
+-- ============================================================================
+-- RLS POLICIES - Qualification Frames
+-- ============================================================================
+
+CREATE POLICY "Enable read access for league admins"
+ON public.qualification_frames
+FOR SELECT
+USING (
+  public.is_league_admin_for_event(qualification_frames.event_id)
+);
+
+CREATE POLICY "Enable public read for qualification frames"
+ON public.qualification_frames
+FOR SELECT
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_frames.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+);
+
+CREATE POLICY "Enable insert for league admins"
+ON public.qualification_frames
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin_for_event(qualification_frames.event_id)
+);
+
+CREATE POLICY "Enable public insert for qualification scoring"
+ON public.qualification_frames
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_frames.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.qualification_frames
+FOR UPDATE
+USING (
+  public.is_league_admin_for_event(qualification_frames.event_id)
+);
+
+CREATE POLICY "Enable public update for qualification scoring"
+ON public.qualification_frames
+FOR UPDATE
+TO anon, authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_frames.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.qualification_frames
+FOR DELETE
+USING (
+  public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
 -- ============================================================================

@@ -5,4 +5,5 @@ export * from './frame-repository';
 export * from './lane-repository';
 export * from './league-repository';
 export * from './player-repository';
+export * from './qualification-repository';
 export * from './team-repository';
