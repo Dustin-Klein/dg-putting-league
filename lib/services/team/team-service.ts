@@ -85,27 +85,18 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
     })
   );
 
-  // Sort each pool by qualification score (descending) for seeding
-  poolAPlayers.sort((a, b) => {
-    const aScore = playersWithScores.find(p => p.id === a.id)?.qualificationScore || 0;
-    const bScore = playersWithScores.find(p => p.id === b.id)?.qualificationScore || 0;
-    return bScore - aScore;
-  });
+  // Shuffle players in each pool for random pairing
+  const shuffledPoolA = [...poolAPlayers].sort(() => Math.random() - 0.5);
+  const shuffledPoolB = [...poolBPlayers].sort(() => Math.random() - 0.5);
 
-  poolBPlayers.sort((a, b) => {
-    const aScore = playersWithScores.find(p => p.id === a.id)?.qualificationScore || 0;
-    const bScore = playersWithScores.find(p => p.id === b.id)?.qualificationScore || 0;
-    return bScore - aScore;
-  });
-
-  // Generate teams by pairing top Pool A player with top Pool B player, second with second, etc.
+  // Generate teams by randomly pairing Pool A with Pool B players
   const teamsToCreate: { poolAPlayer: EventPlayer; poolBPlayer: EventPlayer }[] = [];
-  const minPoolSize = Math.min(poolAPlayers.length, poolBPlayers.length);
+  const minPoolSize = Math.min(shuffledPoolA.length, shuffledPoolB.length);
 
   for (let i = 0; i < minPoolSize; i++) {
     teamsToCreate.push({
-      poolAPlayer: poolAPlayers[i],
-      poolBPlayer: poolBPlayers[i],
+      poolAPlayer: shuffledPoolA[i],
+      poolBPlayer: shuffledPoolB[i],
     });
   }
 
@@ -168,7 +159,7 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
  * Compute team pairings based on pool assignments without persisting.
  * This is used by the atomic transition RPC to pre-compute the data.
  *
- * Pairs top Pool A player with top Pool B player, second with second, etc.
+ * Randomly pairs Pool A players with Pool B players.
  * Returns teams sorted by combined score (highest first) with seeds assigned.
  */
 export function computeTeamPairings(
@@ -183,18 +174,17 @@ export function computeTeamPairings(
     throw new BadRequestError('Both Pool A and Pool B must have players to generate teams');
   }
 
-  // Sort each pool by score (descending) for seeding - they should already be sorted
-  // but we sort again to be safe
-  poolAPlayers.sort((a, b) => b.pfaScore - a.pfaScore);
-  poolBPlayers.sort((a, b) => b.pfaScore - a.pfaScore);
+  // Shuffle players in each pool for random pairing
+  const shuffledPoolA = [...poolAPlayers].sort(() => Math.random() - 0.5);
+  const shuffledPoolB = [...poolBPlayers].sort(() => Math.random() - 0.5);
 
-  // Generate teams by pairing top Pool A player with top Pool B player
-  const minPoolSize = Math.min(poolAPlayers.length, poolBPlayers.length);
+  // Generate teams by randomly pairing Pool A with Pool B players
+  const minPoolSize = Math.min(shuffledPoolA.length, shuffledPoolB.length);
   const teams: TeamPairing[] = [];
 
   for (let i = 0; i < minPoolSize; i++) {
-    const poolAPlayer = poolAPlayers[i];
-    const poolBPlayer = poolBPlayers[i];
+    const poolAPlayer = shuffledPoolA[i];
+    const poolBPlayer = shuffledPoolB[i];
     const combinedScore = poolAPlayer.pfaScore + poolBPlayer.pfaScore;
     const poolCombo = `${poolAPlayer.playerName} & ${poolBPlayer.playerName}`;
 
