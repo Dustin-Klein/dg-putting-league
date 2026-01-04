@@ -13,7 +13,6 @@ import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import {
   getOrCreateFrame as getOrCreateFrameRepo,
   upsertFrameResult,
-  getPlayerFrameResult,
   getFrameResults,
 } from '@/lib/repositories/frame-repository';
 import type {
@@ -51,30 +50,23 @@ export async function recordScoreAdmin(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Get event to check bonus_point_enabled setting
-  const { data: event } = await supabase
-    .from('events')
-    .select('bonus_point_enabled')
-    .eq('id', eventId)
-    .single();
-
-  if (!event) {
-    throw new NotFoundError('Event not found');
-  }
-
-  // Validate putts
+  // Validate putts early (before any DB calls)
   if (puttsMade < 0 || puttsMade > 3) {
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  // Verify bracket match belongs to event
-  const { data: bracketMatch, error: matchError } = await supabase
-    .from('bracket_match')
-    .select('id, status')
-    .eq('id', bracketMatchId)
-    .eq('event_id', eventId)
-    .single();
+  // Fetch event and bracket match in parallel
+  const [eventRes, bracketMatchRes] = await Promise.all([
+    supabase.from('events').select('bonus_point_enabled').eq('id', eventId).single(),
+    supabase.from('bracket_match').select('id, status').eq('id', bracketMatchId).eq('event_id', eventId).single(),
+  ]);
 
+  const { data: event, error: eventError } = eventRes;
+  if (eventError || !event) {
+    throw new NotFoundError('Event not found');
+  }
+
+  const { data: bracketMatch, error: matchError } = bracketMatchRes;
   if (matchError || !bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
@@ -90,13 +82,13 @@ export async function recordScoreAdmin(
   const isOvertime = frameNumber > 5;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
-  // Determine order_in_frame
-  const existingResult = await getPlayerFrameResult(supabase, frame.id, eventPlayerId);
+  // Determine order_in_frame (single query for all results, filter in-memory)
+  const existingResults = await getFrameResults(supabase, frame.id);
+  const existingResult = existingResults.find(r => r.event_player_id === eventPlayerId);
   let orderInFrame: number;
   if (existingResult?.order_in_frame) {
     orderInFrame = existingResult.order_in_frame;
   } else {
-    const existingResults = await getFrameResults(supabase, frame.id);
     const maxOrder = existingResults.reduce((max, r) => Math.max(max, r.order_in_frame ?? 0), 0);
     orderInFrame = maxOrder + 1;
   }
