@@ -335,3 +335,78 @@ export async function getEventQualificationStatus(
 
   return { round, players, allComplete };
 }
+
+/**
+ * Get batch qualification data for multiple players
+ */
+export async function getBatchPlayerQualificationData(
+  accessCode: string,
+  eventPlayerIds: string[]
+): Promise<{
+  event: PublicQualificationEventInfo;
+  round: { id: string; frame_count: number };
+  players: Array<PublicQualificationPlayerInfo & { frames: QualificationFrame[] }>;
+}> {
+  const event = await validateQualificationAccessCode(accessCode);
+  const supabase = await createClient();
+
+  // Get or create qualification round
+  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
+
+  // Get all players' data
+  const playersData = await Promise.all(
+    eventPlayerIds.map(async (eventPlayerId) => {
+      // Get player info using repository
+      const eventPlayer = await import('@/lib/repositories/event-player-repository')
+        .then(repo => repo.getEventPlayer(supabase, eventPlayerId))
+        .catch(() => null);
+
+      if (!eventPlayer) {
+        return null;
+      }
+
+      // Validate player belongs to event and has paid
+      if (eventPlayer.event_id !== event.id || !eventPlayer.has_paid) {
+        return null;
+      }
+
+      // Get player's frames using repository
+      const frames = await qualificationRepo.getPlayerQualificationFrames(
+        supabase,
+        event.id,
+        eventPlayerId
+      );
+
+      const framesCompleted = frames.length;
+      const totalPoints = frames.reduce((sum, f) => sum + f.points_earned, 0);
+      const isComplete = framesCompleted >= round.frame_count;
+
+      return {
+        event_player_id: eventPlayer.id,
+        player_id: eventPlayer.player_id,
+        full_name: eventPlayer.player.full_name,
+        nickname: eventPlayer.player.nickname ?? null,
+        player_number: eventPlayer.player.player_number ?? null,
+        frames_completed: framesCompleted,
+        total_frames_required: round.frame_count,
+        total_points: totalPoints,
+        is_complete: isComplete,
+        frames,
+      };
+    })
+  );
+
+  // Filter out null results
+  const validPlayers = playersData.filter((p) => p !== null) as Array<
+    PublicQualificationPlayerInfo & { frames: QualificationFrame[] }
+  >;
+
+  return {
+    event,
+    round: {
+      id: round.id,
+      frame_count: round.frame_count,
+    },
+    players: validPlayers,
+  };
+}
