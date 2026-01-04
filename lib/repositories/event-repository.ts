@@ -277,3 +277,42 @@ export async function getQualificationFrameCounts(
 
   return frameCounts;
 }
+
+/**
+ * Get event by access code for qualification scoring
+ * Returns only events that are in pre-bracket status with qualification enabled
+ */
+export async function getEventByAccessCodeForQualification(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accessCode: string
+): Promise<{
+  id: string;
+  event_date: string;
+  location: string | null;
+  lane_count: number;
+  bonus_point_enabled: boolean;
+  qualification_round_enabled: boolean;
+  status: string;
+} | null> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, status')
+    .eq('access_code', accessCode)
+    .eq('status', 'pre-bracket')
+    .eq('qualification_round_enabled', true)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
+  }
+
+  return event as {
+    id: string;
+    event_date: string;
+    location: string | null;
+    lane_count: number;
+    bonus_point_enabled: boolean;
+    qualification_round_enabled: boolean;
+    status: string;
+  } | null;
+}

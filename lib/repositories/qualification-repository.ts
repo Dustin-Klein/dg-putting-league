@@ -180,6 +180,35 @@ export async function getQualificationFramesBulk(
 }
 
 /**
+ * Get aggregated qualification frame data for all players in an event
+ * Returns count and total points per player
+ */
+export async function getQualificationFrameAggregations(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<Record<string, { count: number; totalPoints: number }>> {
+  const { data: frames, error } = await supabase
+    .from('qualification_frames')
+    .select('event_player_id, points_earned')
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch qualification frames: ${error.message}`);
+  }
+
+  const aggregations: Record<string, { count: number; totalPoints: number }> = {};
+  for (const frame of frames ?? []) {
+    if (!aggregations[frame.event_player_id]) {
+      aggregations[frame.event_player_id] = { count: 0, totalPoints: 0 };
+    }
+    aggregations[frame.event_player_id].count++;
+    aggregations[frame.event_player_id].totalPoints += frame.points_earned;
+  }
+
+  return aggregations;
+}
+
+/**
  * Get all qualification frames for an event
  */
 export async function getEventQualificationFrames(

@@ -7,6 +7,8 @@ import {
 } from '@/lib/errors';
 import { calculatePoints } from '@/lib/services/scoring/points-calculator';
 import * as qualificationRepo from '@/lib/repositories/qualification-repository';
+import * as eventRepo from '@/lib/repositories/event-repository';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import type {
   QualificationRound,
   QualificationFrame,
@@ -51,17 +53,7 @@ export async function validateQualificationAccessCode(
 ): Promise<PublicQualificationEventInfo> {
   const supabase = await createClient();
 
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, status')
-    .eq('access_code', accessCode)
-    .eq('status', 'pre-bracket')
-    .eq('qualification_round_enabled', true)
-    .maybeSingle();
-
-  if (error) {
-    throw new BadRequestError(`Failed to validate access code: ${error.message}`);
-  }
+  const event = await eventRepo.getEventByAccessCodeForQualification(supabase, accessCode);
 
   if (!event) {
     throw new NotFoundError('Invalid access code or event is not accepting qualification scores');
@@ -85,25 +77,8 @@ export async function getPlayersForQualification(
   // Get all paid event players
   const paidPlayers = await qualificationRepo.getPaidEventPlayers(supabase, event.id);
 
-  // Get all qualification frames for the event
-  const { data: frames, error: framesError } = await supabase
-    .from('qualification_frames')
-    .select('event_player_id, points_earned')
-    .eq('event_id', event.id);
-
-  if (framesError) {
-    throw new BadRequestError(`Failed to fetch qualification frames: ${framesError.message}`);
-  }
-
-  // Aggregate frames by player
-  const framesByPlayer: Record<string, { count: number; totalPoints: number }> = {};
-  for (const frame of frames ?? []) {
-    if (!framesByPlayer[frame.event_player_id]) {
-      framesByPlayer[frame.event_player_id] = { count: 0, totalPoints: 0 };
-    }
-    framesByPlayer[frame.event_player_id].count++;
-    framesByPlayer[frame.event_player_id].totalPoints += frame.points_earned;
-  }
+  // Get aggregated frame data for all players
+  const framesByPlayer = await qualificationRepo.getQualificationFrameAggregations(supabase, event.id);
 
   // Build player info
   return paidPlayers.map((ep) => {
@@ -137,27 +112,8 @@ export async function getPlayerQualificationData(
   const event = await validateQualificationAccessCode(accessCode);
   const supabase = await createClient();
 
-  // Verify player is paid and belongs to this event
-  const { data: eventPlayer, error: playerError } = await supabase
-    .from('event_players')
-    .select(`
-      id,
-      player_id,
-      has_paid,
-      event_id,
-      player:players(
-        id,
-        full_name,
-        nickname,
-        player_number
-      )
-    `)
-    .eq('id', eventPlayerId)
-    .single();
-
-  if (playerError || !eventPlayer) {
-    throw new NotFoundError('Player not found');
-  }
+  // Get player info from repository
+  const eventPlayer = await eventPlayerRepo.getEventPlayer(supabase, eventPlayerId);
 
   if (eventPlayer.event_id !== event.id) {
     throw new ForbiddenError('Player does not belong to this event');
@@ -178,21 +134,14 @@ export async function getPlayerQualificationData(
   const totalPoints = frames.reduce((sum, f) => sum + f.points_earned, 0);
   const isComplete = framesCompleted >= round.frame_count;
 
-  const player = eventPlayer.player as unknown as {
-    id: string;
-    full_name: string;
-    nickname: string | null;
-    player_number: number | null;
-  };
-
   return {
     event,
     player: {
       event_player_id: eventPlayer.id,
       player_id: eventPlayer.player_id,
-      full_name: player.full_name,
-      nickname: player.nickname,
-      player_number: player.player_number,
+      full_name: eventPlayer.player.full_name,
+      nickname: eventPlayer.player.nickname ?? null,
+      player_number: eventPlayer.player.player_number ?? null,
       frames_completed: framesCompleted,
       total_frames_required: round.frame_count,
       total_points: totalPoints,
@@ -220,27 +169,8 @@ export async function recordQualificationScore(
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  // Verify player is paid and belongs to this event
-  const { data: eventPlayer, error: playerError } = await supabase
-    .from('event_players')
-    .select(`
-      id,
-      player_id,
-      has_paid,
-      event_id,
-      player:players(
-        id,
-        full_name,
-        nickname,
-        player_number
-      )
-    `)
-    .eq('id', eventPlayerId)
-    .single();
-
-  if (playerError || !eventPlayer) {
-    throw new NotFoundError('Player not found');
-  }
+  // Get player info from repository
+  const eventPlayer = await eventPlayerRepo.getEventPlayer(supabase, eventPlayerId);
 
   if (eventPlayer.event_id !== event.id) {
     throw new ForbiddenError('Player does not belong to this event');
@@ -290,21 +220,14 @@ export async function recordQualificationScore(
   const framesCompleted = updatedFrames.length;
   const totalPoints = updatedFrames.reduce((sum, f) => sum + f.points_earned, 0);
 
-  const player = eventPlayer.player as unknown as {
-    id: string;
-    full_name: string;
-    nickname: string | null;
-    player_number: number | null;
-  };
-
   return {
     frame,
     player: {
       event_player_id: eventPlayer.id,
       player_id: eventPlayer.player_id,
-      full_name: player.full_name,
-      nickname: player.nickname,
-      player_number: player.player_number,
+      full_name: eventPlayer.player.full_name,
+      nickname: eventPlayer.player.nickname ?? null,
+      player_number: eventPlayer.player.player_number ?? null,
       frames_completed: framesCompleted,
       total_frames_required: round.frame_count,
       total_points: totalPoints,
@@ -353,7 +276,7 @@ export async function getBatchPlayerQualificationData(
   // Get or create qualification round
   const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
 
-  const eventPlayerRepo = await import('@/lib/repositories/event-player-repository');
+  // Bulk fetch all event players (1 query instead of N)
   const eventPlayers = await eventPlayerRepo.getEventPlayersBulk(supabase, eventPlayerIds);
 
   // Filter to only valid players (belong to event and have paid)
