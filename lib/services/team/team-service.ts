@@ -86,8 +86,17 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
   );
 
   // Shuffle players in each pool for random pairing
-  const shuffledPoolA = [...poolAPlayers].sort(() => Math.random() - 0.5);
-  const shuffledPoolB = [...poolBPlayers].sort(() => Math.random() - 0.5);
+  const shuffle = <T>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
+  const shuffledPoolA = shuffle(poolAPlayers);
+  const shuffledPoolB = shuffle(poolBPlayers);
 
   // Generate teams by randomly pairing Pool A with Pool B players
   const teamsToCreate: { poolAPlayer: EventPlayer; poolBPlayer: EventPlayer }[] = [];

@@ -533,7 +533,7 @@ export function PlayerManagement({
                                       <span className="font-mono font-medium">{status.total_points}pts</span>
                                     </div>
                                     <Progress
-                                      value={(status.frames_completed / status.total_frames_required) * 100}
+                                      value={status.total_frames_required > 0 ? (status.frames_completed / status.total_frames_required) * 100 : 0}
                                       className="h-1.5"
                                     />
                                   </div>
@@ -562,7 +562,7 @@ export function PlayerManagement({
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
+                    <TableCell colSpan={3 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
                       No players registered yet.
                     </TableCell>
                   </TableRow>
