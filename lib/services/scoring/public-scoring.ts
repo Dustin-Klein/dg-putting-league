@@ -97,7 +97,8 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
       )
     `)
     .eq('event_id', event.id)
-    .in('status', [2, 3]); // Ready = 2, Running = 3
+    .in('status', [2, 3]) // Ready = 2, Running = 3
+    .not('lane_id', 'is', null); // Only show matches with a lane assigned
 
   if (bracketError) {
     throw new InternalError('Failed to fetch matches');
