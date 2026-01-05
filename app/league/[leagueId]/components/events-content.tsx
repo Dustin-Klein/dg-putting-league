@@ -1,14 +1,13 @@
 "use client";
 
-import { Button } from '@/components/ui/button';
 import { EventsList } from './events-list';
-import { CreateEventDialog } from './create-event-dialog';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { Event } from '@/lib/types/event';
 
 interface EventsContentProps {
-  league: any;
-  events: any[];
+  league: { name: string; city?: string };
+  events: Event[];
   isAdmin: boolean;
   leagueId: string;
 }

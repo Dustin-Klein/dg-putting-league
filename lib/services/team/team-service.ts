@@ -1,12 +1,9 @@
 import 'server-only';
 import {
   BadRequestError,
-  InternalError,
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import { EventPlayer } from '@/lib/types/player';
-import { EventWithDetails } from '@/lib/types/event';
-import type { Team, TeamMember } from '@/lib/types/team';
+import type { Team } from '@/lib/types/team';
 import type { PoolAssignment } from '@/lib/services/event-player';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
@@ -172,8 +169,7 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
  * Returns teams sorted by combined score (highest first) with seeds assigned.
  */
 export function computeTeamPairings(
-  poolAssignments: PoolAssignment[],
-  event: EventWithDetails
+  poolAssignments: PoolAssignment[]
 ): TeamPairing[] {
   // Separate players by pool
   const poolAPlayers = poolAssignments.filter(pa => pa.pool === 'A');

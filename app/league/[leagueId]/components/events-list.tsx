@@ -60,7 +60,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
       <div className="text-center py-12 border-2 border-dashed rounded-lg">
         <h3 className="text-lg font-medium">No events scheduled yet</h3>
         <p className="text-muted-foreground mt-2 mb-4">
-          This league doesn't have any events yet. {isAdmin && 'Create one to get started.'}
+          This league doesn&apos;t have any events yet. {isAdmin && 'Create one to get started.'}
         </p>
         {isAdmin && <CreateEventDialog leagueId={leagueId} />}
       </div>

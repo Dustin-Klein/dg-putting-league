@@ -7,7 +7,6 @@ import {
   ForbiddenError,
   BadRequestError,
   InternalError,
-  NotFoundError
 } from '@/lib/errors';
 
 const eventSchema = z.object({

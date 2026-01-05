@@ -8,7 +8,6 @@ import {
   FieldValues,
   FormProvider,
   useFormContext,
-  useFormState,
 } from "react-hook-form"
 
 import { cn } from "@/lib/utils/utils"
@@ -28,10 +27,10 @@ const FormFieldContext = React.createContext<FormFieldContextValue>(
   {} as FormFieldContextValue
 )
 
-interface FormFieldProps<
+type FormFieldProps<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
-> extends ControllerProps<TFieldValues, TName> {}
+> = ControllerProps<TFieldValues, TName>;
 
 const FormField = <
   TFieldValues extends FieldValues = FieldValues,

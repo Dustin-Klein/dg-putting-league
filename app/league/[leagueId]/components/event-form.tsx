@@ -14,7 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { formatDisplayDate, formatForDatabase, isFutureOrToday } from '@/lib/utils/date-utils';
+import { formatDisplayDate, isFutureOrToday } from '@/lib/utils/date-utils';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Switch } from '@/components/ui/switch';
@@ -24,15 +24,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils/utils';
-
-// Generate a random alphanumeric code
-const generateRandomCode = (length = 6): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from(
-    { length },
-    () => chars[Math.floor(Math.random() * chars.length)]
-  ).join('');
-};
 
 export const eventFormSchema = z.object({
   event_date: z.date()
@@ -75,13 +66,14 @@ export function EventForm({
   })();
 
   const form = useForm<z.infer<typeof eventFormSchema>>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(eventFormSchema) as any,
     defaultValues: {
       lane_count: 1,
       putt_distance_ft: 15,
       access_code: initialCode,
       ...defaultValues,
-    } as any,
+    },
   });
 
   const generateRandomCode = (length: number = 6): string => {

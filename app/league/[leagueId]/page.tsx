@@ -12,12 +12,12 @@ export default async function LeagueEventsPage({
   const params = await Promise.resolve(paramsPromise);
   const leagueId = params.leagueId;
   
-  const { user, isAdmin } = await requireLeagueAdmin(leagueId);
+  const { isAdmin } = await requireLeagueAdmin(leagueId);
 
   let league = null
   try {
     league = await getLeague(leagueId);
-  } catch (e) {
+  } catch {
     redirect('/leagues');
   } 
   if (!league) {

@@ -90,7 +90,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to update event status',
         variant: 'destructive',
-      } as any);
+      });
     } finally {
       setIsUpdating(false);
     }

@@ -4,7 +4,7 @@ import { handleError, BadRequestError } from '@/lib/errors';
 
 export async function POST(request: Request) {
   try {
-    let body: any;
+    let body: { name?: string; city?: string };
     try {
       body = await request.json();
     } catch {

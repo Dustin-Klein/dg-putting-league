@@ -1,5 +1,4 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import { releaseMatchLaneAndReassign } from '@/lib/services/lane';
 import {
@@ -18,7 +17,6 @@ import {
 import type {
   BracketMatchWithDetails,
   OpponentData,
-  TeamWithPlayers,
   MatchFrame,
   FrameResult,
   RecordFrameResultInput,
@@ -167,6 +165,7 @@ export async function getBracketMatchWithDetails(
     opponent2,
     team_one,
     team_two,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
   } as BracketMatchWithDetails;
 }
@@ -256,6 +255,7 @@ export async function recordFrameResult(
   if (frameError) {
     throw new InternalError(`Failed to fetch frame: ${frameError.message}`);
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!frame || (frame.bracket_match as any)?.event_id !== eventId) {
     throw new NotFoundError('Frame not found');
   }

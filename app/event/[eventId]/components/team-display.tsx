@@ -3,15 +3,14 @@
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EventWithDetails } from '@/lib/types/event';
-import { Team } from '@/lib/types/team';
 import { Trophy, Users } from 'lucide-react';
 
 interface TeamDisplayProps {
   event: EventWithDetails;
-  isAdmin: boolean;
+  isAdmin?: boolean;
 }
 
-export function TeamDisplay({ event, isAdmin }: TeamDisplayProps) {
+export function TeamDisplay({ event }: TeamDisplayProps) {
   const teams = event.teams || [];
 
   if (teams.length === 0) {

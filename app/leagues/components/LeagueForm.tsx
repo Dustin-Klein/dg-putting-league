@@ -64,7 +64,7 @@ export function LeagueForm({
                 />
               </FormControl>
               <FormDescription>
-                This is your league's public display name.
+                This is your league&apos;s public display name.
               </FormDescription>
               <FormMessage />
             </FormItem>

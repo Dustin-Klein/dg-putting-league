@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addPlayerToEvent, removePlayerFromEvent, updatePlayerPayment } from '@/lib/services/event-player';
-import { BadRequestError, NotFoundError, handleError } from '@/lib/errors';
+import { BadRequestError, handleError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 
 export async function POST(
@@ -34,7 +34,7 @@ export async function DELETE(
     const { eventId, playerId } = resolvedParams;
 
     // removePlayerFromEvent returns success regardless; add an existence check by attempting delete and verifying affected row
-    const result = await removePlayerFromEvent(eventId, playerId);
+    await removePlayerFromEvent(eventId, playerId);
     logger.info('player_removed_from_event', { eventId, eventPlayerId: playerId });
 
     return NextResponse.json({ success: true });
@@ -54,7 +54,7 @@ export async function PATCH(
   try {
     const body = await req.json();
     parsed = schema.parse(body);
-  } catch (e) {
+  } catch {
     throw new BadRequestError('Invalid request data');
   }
 

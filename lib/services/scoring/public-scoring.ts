@@ -14,10 +14,6 @@ import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerI
 import type {
   PublicEventInfo,
   PublicMatchInfo,
-  PublicTeamInfo,
-  PublicPlayerInfo,
-  PublicFrameInfo,
-  PublicFrameResult,
 } from '@/lib/types/scoring';
 
 // Re-export types for consumers
@@ -134,6 +130,7 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
       team_two,
       team_one_score: opponent1?.score ?? 0,
       team_two_score: opponent2?.score ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       frames: ((bm.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
     });
   }
@@ -219,6 +216,7 @@ export async function getMatchForScoring(
     team_two,
     team_one_score: opponent1?.score ?? 0,
     team_two_score: opponent2?.score ?? 0,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: ((bracketMatch.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
   };
 }
