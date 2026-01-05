@@ -4,6 +4,7 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import type { Team } from '@/lib/types/team';
+import type { EventPlayer } from '@/lib/types/player';
 import type { PoolAssignment } from '@/lib/services/event-player';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';

@@ -10,6 +10,8 @@ export interface EventData {
   event_date: string;
   status: EventStatus;
   lane_count: number | null;
+  location: string | null;
+  putt_distance_ft: number | null;
   qualification_round_enabled: boolean;
   access_code: string | null;
   created_at: string;

@@ -4,14 +4,16 @@ import { getEventsByLeagueId } from '@/lib/services/event';
 import { getLeague } from '@/lib/services/league';
 import { requireLeagueAdmin } from '@/lib/services/auth';
 
-export default async function LeagueEventsPage({ 
-  params: paramsPromise 
-}: { 
+export const dynamic = 'force-dynamic';
+
+export default async function LeagueEventsPage({
+  params: paramsPromise
+}: {
   params: Promise<{ leagueId: string }> | { leagueId: string }
 }) {
   const params = await Promise.resolve(paramsPromise);
   const leagueId = params.leagueId;
-  
+
   const { isAdmin } = await requireLeagueAdmin(leagueId);
 
   let league = null

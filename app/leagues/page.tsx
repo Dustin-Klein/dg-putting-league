@@ -2,6 +2,8 @@ import { requireAuthenticatedUser } from '@/lib/services/auth';
 import { getUserAdminLeagues } from '@/lib/services/league';
 import LeaguesList from './LeaguesList';
 
+export const dynamic = 'force-dynamic';
+
 export default async function LeaguePage() {
   try {
     const user = await requireAuthenticatedUser();
