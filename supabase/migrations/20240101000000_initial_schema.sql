@@ -1860,6 +1860,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.bracket_match;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bracket_participant;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.match_frames;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.frame_results;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.qualification_frames;
 
 -- ============================================================================
 -- GRANTS AND PERMISSIONS

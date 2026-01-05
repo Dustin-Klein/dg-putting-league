@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { createClient } from '@/lib/supabase/client';
 
 interface QualificationStatus {
   event_player_id: string;
@@ -48,27 +49,55 @@ export function PlayerManagement({
     setPlayers(event.players ?? []);
   }, [event.players]);
 
-  // Fetch qualification status when event has qualification enabled
-  useEffect(() => {
-    if (event.qualification_round_enabled && event.status === 'pre-bracket') {
-      const fetchQualificationStatus = async () => {
-        try {
-          const response = await fetch(`/api/event/${event.id}/qualification`);
-          if (response.ok) {
-            const data = await response.json();
-            const statusMap: Record<string, QualificationStatus> = {};
-            for (const player of data.players || []) {
-              statusMap[player.event_player_id] = player;
-            }
-            setQualificationStatus(statusMap);
-          }
-        } catch (error) {
-          console.error('Failed to fetch qualification status:', error);
+  // Fetch qualification status function (extracted for reuse)
+  const fetchQualificationStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/event/${event.id}/qualification`);
+      if (response.ok) {
+        const data = await response.json();
+        const statusMap: Record<string, QualificationStatus> = {};
+        for (const player of data.players || []) {
+          statusMap[player.event_player_id] = player;
         }
-      };
-      fetchQualificationStatus();
+        setQualificationStatus(statusMap);
+      }
+    } catch (error) {
+      console.error('Failed to fetch qualification status:', error);
     }
-  }, [event.id, event.qualification_round_enabled, event.status]);
+  }, [event.id]);
+
+  // Initial fetch and realtime subscription for qualification status
+  useEffect(() => {
+    if (!event.qualification_round_enabled || event.status !== 'pre-bracket') {
+      return;
+    }
+
+    // Initial fetch
+    fetchQualificationStatus();
+
+    // Set up realtime subscription for qualification frame updates
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`qualification-${event.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'qualification_frames',
+          filter: `event_id=eq.${event.id}`,
+        },
+        () => {
+          // Refetch qualification status when any frame is added/updated
+          fetchQualificationStatus();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [event.id, event.qualification_round_enabled, event.status, fetchQualificationStatus]);
 
   // Notify parent when players change (skip initial mount)
   useEffect(() => {
