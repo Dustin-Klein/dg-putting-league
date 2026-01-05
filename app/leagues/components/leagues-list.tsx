@@ -28,7 +28,7 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <h3 className="text-lg font-medium">No leagues found</h3>
           <p className="text-muted-foreground mt-2 mb-4">
-            You don't have access to any leagues yet.
+            You don&apos;t have access to any leagues yet.
           </p>
           <CreateLeagueDialog />
         </div>

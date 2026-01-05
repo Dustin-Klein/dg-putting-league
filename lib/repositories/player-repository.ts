@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
-import type { Player, PlayerSearchResult } from '@/lib/types/player';
+import type { PlayerSearchResult } from '@/lib/types/player';
 
 /**
  * Check if a player exists with given email

@@ -277,11 +277,6 @@ export default function MatchScoringPage({
     );
   }
 
-  const allPlayers = [
-    ...match.team_one.players.map((p) => ({ ...p, teamId: match.team_one.id, teamName: match.team_one.pool_combo })),
-    ...match.team_two.players.map((p) => ({ ...p, teamId: match.team_two.id, teamName: match.team_two.pool_combo })),
-  ];
-
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-4xl mx-auto">

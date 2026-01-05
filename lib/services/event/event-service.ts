@@ -186,7 +186,7 @@ export async function transitionEventToBracket(
   const poolAssignments = await computePoolAssignments(eventId, event);
 
   // Compute team pairings based on pool assignments
-  const teamPairings = computeTeamPairings(poolAssignments, event);
+  const teamPairings = computeTeamPairings(poolAssignments);
 
   // Convert to JSON format for RPC
   const poolAssignmentsJson = poolAssignments.map((pa: PoolAssignment) => ({

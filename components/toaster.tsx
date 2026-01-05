@@ -1,14 +1,13 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import { useTheme } from 'next-themes'
-import { 
-  Toast, 
-  ToastProvider, 
-  ToastViewport, 
-  ToastTitle, 
-  ToastDescription, 
-  ToastClose 
+import {
+  Toast,
+  ToastProvider,
+  ToastViewport,
+  ToastTitle,
+  ToastDescription,
+  ToastClose
 } from '@/components/ui/toast'
 
 export function Toaster() {
@@ -20,8 +19,6 @@ export function Toaster() {
   }
 
   const [toasts, setToasts] = useState<ToastType[]>([])
-  const { theme } = useTheme()
-  const toast = useToaster()
   const mounted = useRef(false)
 
   useEffect(() => {

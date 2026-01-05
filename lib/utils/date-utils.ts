@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 
 /**
  * Converts a date string (YYYY-MM-DD) to a local Date object

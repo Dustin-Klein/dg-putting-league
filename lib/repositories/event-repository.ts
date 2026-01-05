@@ -155,7 +155,7 @@ export async function getEventsByLeagueId(
 
   // Participant counts - optimized to avoid N+1 queries
   const eventIds = (events ?? []).map((e) => e.id);
-  let countsByEvent: Record<string, number> = {};
+  const countsByEvent: Record<string, number> = {};
   if (eventIds.length > 0) {
     const { data: epRows, error: epError } = await supabase
       .from('event_players')

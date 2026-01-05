@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useDebounce } from 'use-debounce';
 import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
-import { AddPlayerFormValues } from '@/lib/types/player';
 import { format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -108,7 +106,6 @@ export function PlayerManagement({
     onPlayersUpdate?.(players);
   }, [players, onPlayersUpdate]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery] = useDebounce(searchQuery, 300);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{id: string; name: string; identifier: string}[]>([]);
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
@@ -140,7 +137,7 @@ export function PlayerManagement({
 
       const data = await response.json();
       // Map the API response to match the expected format
-      const mappedResults = (data.results || []).map((player: any) => ({
+      const mappedResults = (data.results || []).map((player: { id: string; full_name?: string; player_number?: number }) => ({
         id: player.id,
         name: player.full_name || 'Unknown Player',
         identifier: player.player_number ? `#${player.player_number}` : '',
@@ -156,7 +153,7 @@ export function PlayerManagement({
     } finally {
       setIsSearching(false);
     }
-  }, [toast]);
+  }, [event.id, toast]);
 
   // Handle adding a player to the event
   const handleAddPlayer = async (playerId: string) => {

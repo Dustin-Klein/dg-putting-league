@@ -60,7 +60,7 @@ export default function EventPage({
         try {
           const adminResponse = await fetch(`/api/league/${eventData.league_id}/is-admin`);
           setIsAdmin(adminResponse.ok);
-        } catch (error) {
+        } catch {
           setIsAdmin(false);
         }
 

@@ -80,6 +80,7 @@ export async function getTeamFromParticipant(
     id: team.id,
     seed: team.seed,
     pool_combo: team.pool_combo,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     players: team.team_members?.map((tm: any) => ({
       event_player_id: tm.event_player_id,
       role: tm.role,
@@ -129,6 +130,7 @@ export async function getPublicTeamFromParticipant(
     id: team.id,
     seed: team.seed,
     pool_combo: team.pool_combo,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     players: team.team_members?.map((tm: any) => ({
       event_player_id: tm.event_player_id,
       role: tm.role,
