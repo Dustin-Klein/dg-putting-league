@@ -4,13 +4,15 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/button';
-import { Event } from '@/lib/types/event';
+import { EventData } from '@/lib/repositories/event-repository';
 import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
+type EventWithParticipantCount = EventData & { participant_count: number };
+
 interface EventsListProps {
-  events: Event[] | null;
+  events: EventWithParticipantCount[] | null;
   leagueId: string;
   isAdmin?: boolean;
 }

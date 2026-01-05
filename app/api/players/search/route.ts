@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { searchPlayers } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

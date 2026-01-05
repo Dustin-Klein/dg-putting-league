@@ -3,11 +3,13 @@
 import { EventsList } from './events-list';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { Event } from '@/lib/types/event';
+import { EventData } from '@/lib/repositories/event-repository';
+
+type EventWithParticipantCount = EventData & { participant_count: number };
 
 interface EventsContentProps {
-  league: { name: string; city?: string };
-  events: Event[];
+  league: { name: string; city?: string | null };
+  events: EventWithParticipantCount[];
   isAdmin: boolean;
   leagueId: string;
 }

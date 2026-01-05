@@ -11,9 +11,13 @@ export async function POST(request: Request) {
       throw new BadRequestError('Invalid JSON body');
     }
 
+    if (!body?.name) {
+      throw new BadRequestError('Name is required');
+    }
+
     const league = await createLeague({
-      name: body?.name,
-      city: body?.city,
+      name: body.name,
+      city: body.city,
     });
 
     return NextResponse.json(league, { status: 201 });
