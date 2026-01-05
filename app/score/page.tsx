@@ -30,9 +30,17 @@ export default function ScorePage() {
         throw new Error(data.error || 'Invalid access code');
       }
 
-      // Store access code and navigate to matches
+      const data = await response.json();
+
+      // Store access code for subsequent requests
       sessionStorage.setItem('scoring_access_code', accessCode);
-      router.push(`/score/matches`);
+
+      // Navigate based on mode
+      if (data.mode === 'qualification') {
+        router.push('/score/qualification');
+      } else {
+        router.push('/score/matches');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate access code');
     } finally {
@@ -46,7 +54,7 @@ export default function ScorePage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Score Entry</CardTitle>
           <CardDescription>
-            Enter the event access code to start scoring matches
+            Enter the event access code to start scoring
           </CardDescription>
         </CardHeader>
         <CardContent>

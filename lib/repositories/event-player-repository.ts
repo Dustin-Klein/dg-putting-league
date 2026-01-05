@@ -102,6 +102,47 @@ export async function getEventPlayer(
 }
 
 /**
+ * Get multiple event players with nested player info (bulk query)
+ */
+export async function getEventPlayersBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventPlayerIds: string[]
+): Promise<EventPlayer[]> {
+  if (eventPlayerIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('event_players')
+    .select(`
+      id,
+      event_id,
+      player_id,
+      has_paid,
+      created_at,
+      pool,
+      pfa_score,
+      scoring_method,
+      player:players(
+        id,
+        full_name,
+        nickname,
+        email,
+        created_at,
+        default_pool,
+        player_number
+      )
+    `)
+    .in('id', eventPlayerIds);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event players: ${error.message}`);
+  }
+
+  return (data ?? []) as unknown as EventPlayer[];
+}
+
+/**
  * Delete an event player
  */
 export async function deleteEventPlayer(
