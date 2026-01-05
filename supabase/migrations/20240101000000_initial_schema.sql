@@ -26,7 +26,21 @@ CREATE TYPE stat_type AS ENUM (
   'frames_played',
   'streak_best',
   'qualification_total',
-  'match_points'
+  'match_points',
+  -- Additional player stats
+  'win_count',
+  'loss_count',
+  'overtime_wins',
+  'overtime_losses',
+  'avg_points_per_frame',
+  'total_events_played',
+  'best_qualification_score',
+  'perfect_frames',           -- frames with 4 points (all 3 putts + bonus)
+  -- Event/league aggregate stats
+  'total_participants',
+  'avg_qualification_score',
+  'highest_match_score',
+  'total_matches_played'
 );
 
 -- ============================================================================
@@ -214,6 +228,16 @@ CREATE TABLE public.league_stats (
   UNIQUE (league_id, stat_type, computed_at)
 );
 
+-- Event Stats
+CREATE TABLE public.event_statistics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  stat_type stat_type NOT NULL,
+  value NUMERIC NOT NULL,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (event_id, stat_type)
+);
+
 -- ============================================================================
 -- BRACKET TABLES (for brackets-manager library)
 -- ============================================================================
@@ -328,6 +352,14 @@ CREATE INDEX IF NOT EXISTS idx_league_admins_user_id ON public.league_admins(use
 CREATE INDEX IF NOT EXISTS idx_leagues_created_at ON public.leagues(created_at);
 CREATE INDEX IF NOT EXISTS idx_qualification_frames_event_player ON public.qualification_frames(event_player_id);
 CREATE INDEX IF NOT EXISTS idx_frame_results_event_player_recorded ON public.frame_results(event_player_id, recorded_at);
+
+-- Statistics table indexes
+CREATE INDEX IF NOT EXISTS idx_player_statistics_player ON public.player_statistics(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_statistics_league ON public.player_statistics(league_id);
+CREATE INDEX IF NOT EXISTS idx_player_statistics_event ON public.player_statistics(event_id);
+CREATE INDEX IF NOT EXISTS idx_player_statistics_type ON public.player_statistics(stat_type);
+CREATE INDEX IF NOT EXISTS idx_league_stats_league ON public.league_stats(league_id);
+CREATE INDEX IF NOT EXISTS idx_event_statistics_event ON public.event_statistics(event_id);
 
 -- ============================================================================
 -- FUNCTIONS
@@ -797,6 +829,7 @@ ALTER TABLE public.match_frames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.frame_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.player_statistics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.league_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_statistics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bracket_stage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bracket_group ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bracket_round ENABLE ROW LEVEL SECURITY;
@@ -1738,6 +1771,102 @@ USING (public.is_tournament_admin(tournament_id));
 CREATE POLICY "Enable delete for league admins"
 ON public.bracket_participant FOR DELETE
 USING (public.is_tournament_admin(tournament_id));
+
+-- ============================================================================
+-- RLS POLICIES - Player Statistics
+-- ============================================================================
+
+-- Public read for player statistics (useful for player profiles/leaderboards)
+CREATE POLICY "Enable public read for player statistics"
+ON public.player_statistics FOR SELECT
+TO anon, authenticated
+USING (true);
+
+-- League admins can manage player statistics
+CREATE POLICY "Enable insert for league admins"
+ON public.player_statistics FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.player_statistics FOR UPDATE
+TO authenticated
+USING (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.player_statistics FOR DELETE
+TO authenticated
+USING (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+-- ============================================================================
+-- RLS POLICIES - League Stats
+-- ============================================================================
+
+-- Public read for league statistics
+CREATE POLICY "Enable public read for league stats"
+ON public.league_stats FOR SELECT
+TO anon, authenticated
+USING (true);
+
+-- League admins can manage league statistics
+CREATE POLICY "Enable insert for league admins"
+ON public.league_stats FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.league_stats FOR UPDATE
+TO authenticated
+USING (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.league_stats FOR DELETE
+TO authenticated
+USING (
+  public.is_league_admin(league_id, auth.uid())
+);
+
+-- ============================================================================
+-- RLS POLICIES - Event Statistics
+-- ============================================================================
+
+-- Public read for event statistics
+CREATE POLICY "Enable public read for event statistics"
+ON public.event_statistics FOR SELECT
+TO anon, authenticated
+USING (true);
+
+-- League admins can manage event statistics
+CREATE POLICY "Enable insert for league admins"
+ON public.event_statistics FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin_for_event(event_id)
+);
+
+CREATE POLICY "Enable update for league admins"
+ON public.event_statistics FOR UPDATE
+TO authenticated
+USING (
+  public.is_league_admin_for_event(event_id)
+);
+
+CREATE POLICY "Enable delete for league admins"
+ON public.event_statistics FOR DELETE
+TO authenticated
+USING (
+  public.is_league_admin_for_event(event_id)
+);
 
 -- ============================================================================
 -- EVENT TRANSITION RPC (Atomic Transaction)
