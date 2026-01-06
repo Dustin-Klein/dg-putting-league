@@ -6,7 +6,11 @@
 -- EXTENSIONS
 -- ============================================================================
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- Create extensions schema to avoid security warnings about extensions in public
+CREATE SCHEMA IF NOT EXISTS extensions;
+GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role;
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
 
 -- ============================================================================
 -- ENUMS
@@ -90,7 +94,7 @@ BEGIN
   END IF;
 END $$;
 
-CREATE INDEX idx_players_full_name ON public.players USING gin (full_name gin_trgm_ops);
+CREATE INDEX idx_players_full_name ON public.players USING gin (full_name extensions.gin_trgm_ops);
 
 -- Events
 CREATE TABLE public.events (
@@ -369,9 +373,11 @@ CREATE INDEX IF NOT EXISTS idx_event_statistics_event ON public.event_statistics
 CREATE OR REPLACE FUNCTION public.get_league_event_counts(league_ids uuid[])
 RETURNS TABLE (league_id uuid, count bigint)
 LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public
 AS $$
   SELECT league_id, count(*)
-  FROM events
+  FROM public.events
   WHERE league_id = ANY(league_ids)
   GROUP BY league_id;
 $$;
@@ -380,9 +386,11 @@ $$;
 CREATE OR REPLACE FUNCTION public.get_league_active_event_counts(league_ids uuid[], status_filter text)
 RETURNS TABLE (league_id uuid, count bigint)
 LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public
 AS $$
   SELECT e.league_id, count(*)
-  FROM events e
+  FROM public.events e
   WHERE e.league_id = ANY(league_ids)
     AND (e.status IS NULL OR e.status::text != status_filter)
   GROUP BY e.league_id;
@@ -570,6 +578,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.trigger_sync_bracket_match_scores()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
 AS $$
 DECLARE
   v_bracket_match_id INTEGER;
