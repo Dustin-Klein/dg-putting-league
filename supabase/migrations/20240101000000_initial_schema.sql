@@ -82,8 +82,7 @@ CREATE TABLE public.players (
   nickname TEXT,
   email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  default_pool pool_type,
-  CONSTRAINT uq_players_email UNIQUE NULLS DISTINCT (email)
+  default_pool pool_type
 );
 
 -- Set sequence to start after the highest existing player number if any
@@ -128,6 +127,7 @@ CREATE TABLE public.event_players (
 );
 
 CREATE INDEX idx_event_players_event ON public.event_players(event_id);
+CREATE INDEX idx_event_players_player ON public.event_players(player_id);
 
 -- Qualification Rounds
 CREATE TABLE public.qualification_rounds (
@@ -154,6 +154,7 @@ CREATE TABLE public.qualification_frames (
 );
 
 CREATE INDEX idx_qualification_frames_event ON public.qualification_frames(event_id);
+CREATE INDEX idx_qualification_frames_round ON public.qualification_frames(qualification_round_id);
 CREATE INDEX idx_qualification_rounds_event ON public.qualification_rounds(event_id);
 
 -- Teams
@@ -175,6 +176,8 @@ CREATE TABLE public.team_members (
   joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (team_id, event_player_id)
 );
+
+CREATE INDEX idx_team_members_event_player ON public.team_members(event_player_id);
 
 -- Lanes
 CREATE TABLE public.lanes (
@@ -353,7 +356,6 @@ CREATE INDEX idx_bracket_participant_team ON public.bracket_participant(team_id)
 
 CREATE INDEX IF NOT EXISTS idx_league_admins_league_id ON public.league_admins(league_id);
 CREATE INDEX IF NOT EXISTS idx_league_admins_user_id ON public.league_admins(user_id);
-CREATE INDEX IF NOT EXISTS idx_leagues_created_at ON public.leagues(created_at);
 CREATE INDEX IF NOT EXISTS idx_qualification_frames_event_player ON public.qualification_frames(event_player_id);
 CREATE INDEX IF NOT EXISTS idx_frame_results_event_player_recorded ON public.frame_results(event_player_id, recorded_at);
 
@@ -361,7 +363,6 @@ CREATE INDEX IF NOT EXISTS idx_frame_results_event_player_recorded ON public.fra
 CREATE INDEX IF NOT EXISTS idx_player_statistics_player ON public.player_statistics(player_id);
 CREATE INDEX IF NOT EXISTS idx_player_statistics_league ON public.player_statistics(league_id);
 CREATE INDEX IF NOT EXISTS idx_player_statistics_event ON public.player_statistics(event_id);
-CREATE INDEX IF NOT EXISTS idx_player_statistics_type ON public.player_statistics(stat_type);
 CREATE INDEX IF NOT EXISTS idx_league_stats_league ON public.league_stats(league_id);
 CREATE INDEX IF NOT EXISTS idx_event_statistics_event ON public.event_statistics(event_id);
 
@@ -408,6 +409,20 @@ AS $$
     WHERE league_id = league_id_param
     AND user_id = user_id_param
     AND role IN ('owner', 'admin')
+  );
+$$;
+
+-- Function to check if a league has no admins (for first admin insert)
+-- SECURITY DEFINER bypasses RLS to avoid infinite recursion
+CREATE OR REPLACE FUNCTION public.league_has_no_admins(league_id_param uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_id = league_id_param
   );
 $$;
 
@@ -864,7 +879,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = leagues.id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
   )
 );
 
@@ -875,7 +890,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = leagues.id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
     AND league_admins.role IN ('owner', 'admin')
   )
 );
@@ -887,7 +902,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = leagues.id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
     AND league_admins.role = 'owner'
   )
 );
@@ -900,32 +915,29 @@ CREATE POLICY "Enable read access for league admins"
 ON public.league_admins
 FOR SELECT
 USING (
-  user_id = auth.uid()
-  OR public.is_league_admin(league_id, auth.uid())
+  user_id = (select auth.uid())
+  OR public.is_league_admin(league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable insert for first league admin"
 ON public.league_admins
 FOR INSERT
 WITH CHECK (
-  NOT EXISTS (
-    SELECT 1 FROM public.league_admins
-    WHERE league_id = league_admins.league_id
-  )
+  public.league_has_no_admins(league_admins.league_id)
   OR
-  public.is_league_admin(league_admins.league_id, auth.uid())
+  public.is_league_admin(league_admins.league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable update for own record"
 ON public.league_admins
 FOR UPDATE
-USING (user_id = auth.uid())
-WITH CHECK (user_id = auth.uid());
+USING (user_id = (select auth.uid()))
+WITH CHECK (user_id = (select auth.uid()));
 
 CREATE POLICY "Enable delete for own record"
 ON public.league_admins
 FOR DELETE
-USING (user_id = auth.uid() OR public.is_league_admin(league_id, auth.uid()));
+USING (user_id = (select auth.uid()) OR public.is_league_admin(league_id, (select auth.uid())));
 
 -- ============================================================================
 -- RLS POLICIES - Players
@@ -942,7 +954,7 @@ ON public.players
 FOR INSERT
 TO authenticated
 WITH CHECK (
-  public.is_any_league_admin(auth.uid())
+  public.is_any_league_admin((select auth.uid()))
 );
 
 -- ============================================================================
@@ -957,28 +969,25 @@ WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = events.league_id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
     AND league_admins.role IN ('owner', 'admin')
   )
 );
 
-CREATE POLICY "Enable read access for league members"
-ON public.events
-FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.league_admins
-    WHERE league_admins.league_id = events.league_id
-    AND league_admins.user_id = auth.uid()
-  )
-);
-
-CREATE POLICY "Enable public read for bracket events"
+-- Consolidated SELECT policy for events (admin access OR public scoring events)
+CREATE POLICY "Enable read for admins or scoring events"
 ON public.events
 FOR SELECT
 TO anon, authenticated
-USING (status = 'bracket');
+USING (
+  status = 'bracket'
+  OR (status = 'pre-bracket' AND qualification_round_enabled = true)
+  OR EXISTS (
+    SELECT 1 FROM public.league_admins
+    WHERE league_admins.league_id = events.league_id
+    AND league_admins.user_id = (select auth.uid())
+  )
+);
 
 CREATE POLICY "Enable update for league admins"
 ON public.events
@@ -988,7 +997,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = events.league_id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
     AND league_admins.role IN ('owner', 'admin')
   )
 );
@@ -1001,7 +1010,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = events.league_id
-    AND league_admins.user_id = auth.uid()
+    AND league_admins.user_id = (select auth.uid())
     AND league_admins.role = 'owner'
   )
 );
@@ -1010,14 +1019,8 @@ USING (
 -- RLS POLICIES - Event Players
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.event_players
-FOR SELECT
-USING (
-  public.is_league_admin_for_event(event_players.event_id)
-);
-
-CREATE POLICY "Enable public read for event players in bracket"
+-- Consolidated SELECT policy for event_players (admin access OR scoring events)
+CREATE POLICY "Enable read for admins or scoring events"
 ON public.event_players
 FOR SELECT
 TO anon, authenticated
@@ -1025,8 +1028,9 @@ USING (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = event_players.event_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR (e.status = 'pre-bracket' AND e.qualification_round_enabled = true))
   )
+  OR public.is_league_admin_for_event(event_players.event_id)
 );
 
 CREATE POLICY "Enable insert for league admins"
@@ -1057,14 +1061,8 @@ USING (
 -- RLS POLICIES - Qualification Rounds
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.qualification_rounds
-FOR SELECT
-USING (
-  public.is_league_admin_for_event(qualification_rounds.event_id)
-);
-
-CREATE POLICY "Enable public read for qualification rounds in pre-bracket"
+-- Consolidated SELECT policy for qualification_rounds (admin access OR public pre-bracket)
+CREATE POLICY "Enable read for admins or pre-bracket"
 ON public.qualification_rounds
 FOR SELECT
 TO anon, authenticated
@@ -1075,21 +1073,37 @@ USING (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
+  OR public.is_league_admin_for_event(qualification_rounds.event_id)
 );
 
-CREATE POLICY "Enable insert for league admins"
+-- Consolidated INSERT policy for qualification_rounds (admin OR public pre-bracket)
+CREATE POLICY "Enable insert for admins or pre-bracket scoring"
 ON public.qualification_rounds
 FOR INSERT
-TO authenticated
+TO anon, authenticated
 WITH CHECK (
-  public.is_league_admin_for_event(qualification_rounds.event_id)
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_rounds.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+  OR public.is_league_admin_for_event(qualification_rounds.event_id)
 );
 
-CREATE POLICY "Enable update for league admins"
+-- Consolidated UPDATE policy for qualification_rounds (admin OR public pre-bracket)
+CREATE POLICY "Enable update for admins or pre-bracket scoring"
 ON public.qualification_rounds
 FOR UPDATE
+TO anon, authenticated
 USING (
-  public.is_league_admin_for_event(qualification_rounds.event_id)
+  EXISTS (
+    SELECT 1 FROM public.events e
+    WHERE e.id = qualification_rounds.event_id
+    AND e.status = 'pre-bracket'
+    AND e.qualification_round_enabled = true
+  )
+  OR public.is_league_admin_for_event(qualification_rounds.event_id)
 );
 
 CREATE POLICY "Enable delete for league admins"
@@ -1103,14 +1117,8 @@ USING (
 -- RLS POLICIES - Qualification Frames
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.qualification_frames
-FOR SELECT
-USING (
-  public.is_league_admin_for_event(qualification_frames.event_id)
-);
-
-CREATE POLICY "Enable public read for qualification frames"
+-- Consolidated SELECT policy for qualification_frames
+CREATE POLICY "Enable read for admins or pre-bracket"
 ON public.qualification_frames
 FOR SELECT
 TO anon, authenticated
@@ -1121,17 +1129,11 @@ USING (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
+  OR public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
-CREATE POLICY "Enable insert for league admins"
-ON public.qualification_frames
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  public.is_league_admin_for_event(qualification_frames.event_id)
-);
-
-CREATE POLICY "Enable public insert for qualification scoring"
+-- Consolidated INSERT policy for qualification_frames
+CREATE POLICY "Enable insert for admins or pre-bracket scoring"
 ON public.qualification_frames
 FOR INSERT
 TO anon, authenticated
@@ -1142,16 +1144,11 @@ WITH CHECK (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
+  OR public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
-CREATE POLICY "Enable update for league admins"
-ON public.qualification_frames
-FOR UPDATE
-USING (
-  public.is_league_admin_for_event(qualification_frames.event_id)
-);
-
-CREATE POLICY "Enable public update for qualification scoring"
+-- Consolidated UPDATE policy for qualification_frames
+CREATE POLICY "Enable update for admins or pre-bracket scoring"
 ON public.qualification_frames
 FOR UPDATE
 TO anon, authenticated
@@ -1162,6 +1159,7 @@ USING (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
+  OR public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
 CREATE POLICY "Enable delete for league admins"
@@ -1175,14 +1173,8 @@ USING (
 -- RLS POLICIES - Teams
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.teams
-FOR SELECT
-USING (
-  public.is_league_admin_for_event(teams.event_id)
-);
-
-CREATE POLICY "Enable public read for teams in bracket"
+-- Consolidated SELECT policy for teams (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.teams
 FOR SELECT
 TO anon, authenticated
@@ -1192,6 +1184,7 @@ USING (
     WHERE e.id = teams.event_id
     AND e.status = 'bracket'
   )
+  OR public.is_league_admin_for_event(teams.event_id)
 );
 
 CREATE POLICY "Enable insert for league admins"
@@ -1217,7 +1210,7 @@ USING (
     SELECT 1 FROM public.events e
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE e.id = teams.event_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
     AND la.role = 'owner'
   )
 );
@@ -1226,18 +1219,8 @@ USING (
 -- RLS POLICIES - Team Members
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.team_members
-FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.teams t
-    WHERE t.id = team_members.team_id
-    AND public.is_league_admin_for_event(t.event_id)
-  )
-);
-
-CREATE POLICY "Enable public read for team members in bracket"
+-- Consolidated SELECT policy for team_members (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.team_members
 FOR SELECT
 TO anon, authenticated
@@ -1247,6 +1230,11 @@ USING (
     JOIN public.events e ON e.id = t.event_id
     WHERE t.id = team_members.team_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.teams t
+    WHERE t.id = team_members.team_id
+    AND public.is_league_admin_for_event(t.event_id)
   )
 );
 
@@ -1282,7 +1270,7 @@ USING (
     JOIN public.events e ON e.id = t.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE t.id = team_members.team_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
     AND la.role = 'owner'
   )
 );
@@ -1291,24 +1279,21 @@ USING (
 -- RLS POLICIES - Lanes
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
+-- Consolidated SELECT policy for lanes (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.lanes FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM events e
-    JOIN league_admins la ON la.league_id = e.league_id
-    WHERE e.id = lanes.event_id
-    AND la.user_id = auth.uid()
-  )
-);
-
-CREATE POLICY "Enable public read for bracket lanes"
-ON public.lanes FOR SELECT
+TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM events e
     WHERE e.id = lanes.event_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM events e
+    JOIN league_admins la ON la.league_id = e.league_id
+    WHERE e.id = lanes.event_id
+    AND la.user_id = (select auth.uid())
   )
 );
 
@@ -1319,7 +1304,7 @@ WITH CHECK (
     SELECT 1 FROM events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
   )
 );
 
@@ -1330,7 +1315,7 @@ USING (
     SELECT 1 FROM events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
   )
 );
 
@@ -1341,7 +1326,7 @@ USING (
     SELECT 1 FROM events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
   )
 );
 
@@ -1349,40 +1334,29 @@ USING (
 -- RLS POLICIES - Match Frames
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
+-- Consolidated SELECT policy for match_frames (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.match_frames
 FOR SELECT
+TO anon, authenticated
 USING (
   EXISTS (
+    SELECT 1 FROM public.bracket_match bm
+    JOIN public.events e ON e.id = bm.event_id
+    WHERE bm.id = match_frames.bracket_match_id
+    AND e.status = 'bracket'
+  )
+  OR EXISTS (
     SELECT 1 FROM public.bracket_match bm
     JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE bm.id = match_frames.bracket_match_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
   )
 );
 
-CREATE POLICY "Enable public read for frame scoring"
-ON public.match_frames
-FOR SELECT
-TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_match bm
-    JOIN public.events e ON e.id = bm.event_id
-    WHERE bm.id = match_frames.bracket_match_id
-    AND e.status = 'bracket'
-  )
-);
-
-CREATE POLICY "Enable insert for league admins"
-ON public.match_frames
-FOR INSERT
-WITH CHECK (
-  public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
-);
-
-CREATE POLICY "Enable public insert for frame scoring"
+-- Consolidated INSERT policy for match_frames
+CREATE POLICY "Enable insert for admins or bracket scoring"
 ON public.match_frames
 FOR INSERT
 TO anon, authenticated
@@ -1393,6 +1367,7 @@ WITH CHECK (
     WHERE bm.id = match_frames.bracket_match_id
     AND e.status = 'bracket'
   )
+  OR public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
 );
 
 CREATE POLICY "Enable update for league admins"
@@ -1413,42 +1388,31 @@ USING (
 -- RLS POLICIES - Frame Results
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
+-- Consolidated SELECT policy for frame_results (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.frame_results
 FOR SELECT
+TO anon, authenticated
 USING (
   EXISTS (
+    SELECT 1 FROM public.match_frames mf
+    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    JOIN public.events e ON e.id = bm.event_id
+    WHERE mf.id = frame_results.match_frame_id
+    AND e.status = 'bracket'
+  )
+  OR EXISTS (
     SELECT 1 FROM public.match_frames mf
     JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
     JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE mf.id = frame_results.match_frame_id
-    AND la.user_id = auth.uid()
+    AND la.user_id = (select auth.uid())
   )
 );
 
-CREATE POLICY "Enable public read for result scoring"
-ON public.frame_results
-FOR SELECT
-TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.match_frames mf
-    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
-    JOIN public.events e ON e.id = bm.event_id
-    WHERE mf.id = frame_results.match_frame_id
-    AND e.status = 'bracket'
-  )
-);
-
-CREATE POLICY "Enable insert for league admins"
-ON public.frame_results
-FOR INSERT
-WITH CHECK (
-  public.is_league_admin_for_match_frame(frame_results.match_frame_id)
-);
-
-CREATE POLICY "Enable public insert for result scoring"
+-- Consolidated INSERT policy for frame_results
+CREATE POLICY "Enable insert for admins or bracket scoring"
 ON public.frame_results
 FOR INSERT
 TO anon, authenticated
@@ -1460,16 +1424,11 @@ WITH CHECK (
     WHERE mf.id = frame_results.match_frame_id
     AND e.status = 'bracket'
   )
+  OR public.is_league_admin_for_match_frame(frame_results.match_frame_id)
 );
 
-CREATE POLICY "Enable update for league admins"
-ON public.frame_results
-FOR UPDATE
-USING (
-  public.is_league_admin_for_match_frame(frame_results.match_frame_id)
-);
-
-CREATE POLICY "Enable public update for result scoring"
+-- Consolidated UPDATE policy for frame_results
+CREATE POLICY "Enable update for admins or bracket scoring"
 ON public.frame_results
 FOR UPDATE
 TO anon, authenticated
@@ -1481,6 +1440,7 @@ USING (
     WHERE mf.id = frame_results.match_frame_id
     AND e.status = 'bracket'
   )
+  OR public.is_league_admin_for_match_frame(frame_results.match_frame_id)
 );
 
 CREATE POLICY "Enable delete for league admins"
@@ -1494,11 +1454,8 @@ USING (
 -- RLS POLICIES - Bracket Stage
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.bracket_stage FOR SELECT
-USING (public.is_tournament_admin(tournament_id));
-
-CREATE POLICY "Enable public read for bracket stages"
+-- Consolidated SELECT policy for bracket_stage (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.bracket_stage FOR SELECT
 TO anon, authenticated
 USING (
@@ -1507,6 +1464,7 @@ USING (
     WHERE e.id = bracket_stage.tournament_id
     AND e.status = 'bracket'
   )
+  OR public.is_tournament_admin(tournament_id)
 );
 
 CREATE POLICY "Enable insert for league admins"
@@ -1525,17 +1483,8 @@ USING (public.is_tournament_admin(tournament_id));
 -- RLS POLICIES - Bracket Group
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.bracket_group FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_stage s
-    WHERE s.id = bracket_group.stage_id
-    AND public.is_tournament_admin(s.tournament_id)
-  )
-);
-
-CREATE POLICY "Enable public read for bracket groups"
+-- Consolidated SELECT policy for bracket_group (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.bracket_group FOR SELECT
 TO anon, authenticated
 USING (
@@ -1544,6 +1493,11 @@ USING (
     JOIN public.events e ON e.id = s.tournament_id
     WHERE s.id = bracket_group.stage_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    WHERE s.id = bracket_group.stage_id
+    AND public.is_tournament_admin(s.tournament_id)
   )
 );
 
@@ -1581,17 +1535,8 @@ USING (
 -- RLS POLICIES - Bracket Round
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.bracket_round FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_stage s
-    WHERE s.id = bracket_round.stage_id
-    AND public.is_tournament_admin(s.tournament_id)
-  )
-);
-
-CREATE POLICY "Enable public read for bracket rounds"
+-- Consolidated SELECT policy for bracket_round (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.bracket_round FOR SELECT
 TO anon, authenticated
 USING (
@@ -1600,6 +1545,11 @@ USING (
     JOIN public.events e ON e.id = s.tournament_id
     WHERE s.id = bracket_round.stage_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    WHERE s.id = bracket_round.stage_id
+    AND public.is_tournament_admin(s.tournament_id)
   )
 );
 
@@ -1637,25 +1587,20 @@ USING (
 -- RLS POLICIES - Bracket Match
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
+-- Consolidated SELECT policy for bracket_match (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.bracket_match FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_stage s
-    WHERE s.id = bracket_match.stage_id
-    AND public.is_tournament_admin(s.tournament_id)
-  )
-);
-
-CREATE POLICY "Enable public read for bracket scoring"
-ON public.bracket_match
-FOR SELECT
 TO anon, authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = bracket_match.event_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    WHERE s.id = bracket_match.stage_id
+    AND public.is_tournament_admin(s.tournament_id)
   )
 );
 
@@ -1669,17 +1614,8 @@ WITH CHECK (
   )
 );
 
-CREATE POLICY "Enable update for league admins"
-ON public.bracket_match FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_stage s
-    WHERE s.id = bracket_match.stage_id
-    AND public.is_tournament_admin(s.tournament_id)
-  )
-);
-
-CREATE POLICY "Enable public update for bracket scoring"
+-- Consolidated UPDATE policy for bracket_match (admin access OR bracket events)
+CREATE POLICY "Enable update for admins or bracket scoring"
 ON public.bracket_match FOR UPDATE
 TO anon, authenticated
 USING (
@@ -1688,12 +1624,22 @@ USING (
     WHERE e.id = bracket_match.event_id
     AND e.status = 'bracket'
   )
+  OR EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    WHERE s.id = bracket_match.stage_id
+    AND public.is_tournament_admin(s.tournament_id)
+  )
 )
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = bracket_match.event_id
     AND e.status = 'bracket'
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.bracket_stage s
+    WHERE s.id = bracket_match.stage_id
+    AND public.is_tournament_admin(s.tournament_id)
   )
 );
 
@@ -1755,11 +1701,8 @@ USING (
 -- RLS POLICIES - Bracket Participant
 -- ============================================================================
 
-CREATE POLICY "Enable read access for league admins"
-ON public.bracket_participant FOR SELECT
-USING (public.is_tournament_admin(tournament_id));
-
-CREATE POLICY "Enable public read for bracket participants"
+-- Consolidated SELECT policy for bracket_participant (admin access OR bracket events)
+CREATE POLICY "Enable read for admins or bracket events"
 ON public.bracket_participant FOR SELECT
 TO anon, authenticated
 USING (
@@ -1768,6 +1711,7 @@ USING (
     WHERE e.id = bracket_participant.tournament_id
     AND e.status = 'bracket'
   )
+  OR public.is_tournament_admin(tournament_id)
 );
 
 CREATE POLICY "Enable insert for league admins"
@@ -1797,21 +1741,21 @@ CREATE POLICY "Enable insert for league admins"
 ON public.player_statistics FOR INSERT
 TO authenticated
 WITH CHECK (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable update for league admins"
 ON public.player_statistics FOR UPDATE
 TO authenticated
 USING (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable delete for league admins"
 ON public.player_statistics FOR DELETE
 TO authenticated
 USING (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 -- ============================================================================
@@ -1829,21 +1773,21 @@ CREATE POLICY "Enable insert for league admins"
 ON public.league_stats FOR INSERT
 TO authenticated
 WITH CHECK (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable update for league admins"
 ON public.league_stats FOR UPDATE
 TO authenticated
 USING (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 CREATE POLICY "Enable delete for league admins"
 ON public.league_stats FOR DELETE
 TO authenticated
 USING (
-  public.is_league_admin(league_id, auth.uid())
+  public.is_league_admin(league_id, (select auth.uid()))
 );
 
 -- ============================================================================
