@@ -1076,8 +1076,17 @@ USING (
   OR public.is_league_admin_for_event(qualification_rounds.event_id)
 );
 
--- Consolidated INSERT policy for qualification_rounds (admin OR public pre-bracket)
-CREATE POLICY "Enable insert for admins or pre-bracket scoring"
+-- INSERT policy for qualification_rounds (admin only)
+CREATE POLICY "Enable insert for admins"
+ON public.qualification_rounds
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin_for_event(qualification_rounds.event_id)
+);
+
+-- INSERT policy for qualification_rounds (public pre-bracket scoring)
+CREATE POLICY "Enable insert for pre-bracket scoring"
 ON public.qualification_rounds
 FOR INSERT
 TO anon, authenticated
@@ -1088,7 +1097,6 @@ WITH CHECK (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
-  OR public.is_league_admin_for_event(qualification_rounds.event_id)
 );
 
 -- Consolidated UPDATE policy for qualification_rounds (admin OR public pre-bracket)
@@ -1132,8 +1140,17 @@ USING (
   OR public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
--- Consolidated INSERT policy for qualification_frames
-CREATE POLICY "Enable insert for admins or pre-bracket scoring"
+-- INSERT policy for qualification_frames (admin only)
+CREATE POLICY "Enable insert for admins"
+ON public.qualification_frames
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  public.is_league_admin_for_event(qualification_frames.event_id)
+);
+
+-- INSERT policy for qualification_frames (public pre-bracket scoring)
+CREATE POLICY "Enable insert for pre-bracket scoring"
 ON public.qualification_frames
 FOR INSERT
 TO anon, authenticated
@@ -1144,7 +1161,6 @@ WITH CHECK (
     AND e.status = 'pre-bracket'
     AND e.qualification_round_enabled = true
   )
-  OR public.is_league_admin_for_event(qualification_frames.event_id)
 );
 
 -- Consolidated UPDATE policy for qualification_frames
@@ -1285,12 +1301,12 @@ ON public.lanes FOR SELECT
 TO anon, authenticated
 USING (
   EXISTS (
-    SELECT 1 FROM events e
+    SELECT 1 FROM public.events e
     WHERE e.id = lanes.event_id
     AND e.status = 'bracket'
   )
   OR EXISTS (
-    SELECT 1 FROM events e
+    SELECT 1 FROM public.events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
     AND la.user_id = (select auth.uid())
@@ -1301,7 +1317,7 @@ CREATE POLICY "Enable insert for league admins"
 ON public.lanes FOR INSERT
 WITH CHECK (
   EXISTS (
-    SELECT 1 FROM events e
+    SELECT 1 FROM public.events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
     AND la.user_id = (select auth.uid())
@@ -1312,7 +1328,7 @@ CREATE POLICY "Enable update for league admins"
 ON public.lanes FOR UPDATE
 USING (
   EXISTS (
-    SELECT 1 FROM events e
+    SELECT 1 FROM public.events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
     AND la.user_id = (select auth.uid())
@@ -1323,7 +1339,7 @@ CREATE POLICY "Enable delete for league admins"
 ON public.lanes FOR DELETE
 USING (
   EXISTS (
-    SELECT 1 FROM events e
+    SELECT 1 FROM public.events e
     JOIN league_admins la ON la.league_id = e.league_id
     WHERE e.id = lanes.event_id
     AND la.user_id = (select auth.uid())
