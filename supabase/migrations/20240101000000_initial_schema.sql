@@ -235,7 +235,7 @@ CREATE TABLE public.event_statistics (
   stat_type stat_type NOT NULL,
   value NUMERIC NOT NULL,
   computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (event_id, stat_type)
+  UNIQUE (event_id, stat_type, computed_at)
 );
 
 -- ============================================================================
