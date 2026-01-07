@@ -366,6 +366,11 @@ CREATE INDEX IF NOT EXISTS idx_player_statistics_event ON public.player_statisti
 CREATE INDEX IF NOT EXISTS idx_league_stats_league ON public.league_stats(league_id);
 CREATE INDEX IF NOT EXISTS idx_event_statistics_event ON public.event_statistics(event_id);
 
+-- Performance indexes for scoring operations
+CREATE INDEX IF NOT EXISTS idx_frame_results_match_frame ON public.frame_results(match_frame_id);
+CREATE INDEX IF NOT EXISTS idx_frame_results_match_frame_player ON public.frame_results(match_frame_id, event_player_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_team ON public.team_members(team_id);
+
 -- ============================================================================
 -- FUNCTIONS
 -- ============================================================================

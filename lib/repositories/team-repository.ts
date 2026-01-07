@@ -37,6 +37,7 @@ export interface PublicTeamWithPlayers extends TeamData {
 /**
  * Get team info from a bracket participant ID
  * Returns full player info including player ID (for admin use)
+ * Optimized: Single query using join on bracket_participant
  */
 export async function getTeamFromParticipant(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -44,36 +45,34 @@ export async function getTeamFromParticipant(
 ): Promise<TeamWithPlayers | null> {
   if (!participantId) return null;
 
+  // Single query: join bracket_participant -> teams -> team_members -> event_players -> players
   const { data: participant } = await supabase
     .from('bracket_participant')
-    .select('team_id')
-    .eq('id', participantId)
-    .single();
-
-  if (!participant?.team_id) return null;
-
-  const { data: team } = await supabase
-    .from('teams')
     .select(`
-      id,
-      seed,
-      pool_combo,
-      team_members(
-        event_player_id,
-        role,
-        event_player:event_players(
-          id,
-          player:players(
+      team_id,
+      team:teams(
+        id,
+        seed,
+        pool_combo,
+        team_members(
+          event_player_id,
+          role,
+          event_player:event_players(
             id,
-            full_name,
-            nickname
+            player:players(
+              id,
+              full_name,
+              nickname
+            )
           )
         )
       )
     `)
-    .eq('id', participant.team_id)
+    .eq('id', participantId)
     .single();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const team = (participant as any)?.team;
   if (!team) return null;
 
   return {
@@ -92,6 +91,7 @@ export async function getTeamFromParticipant(
 /**
  * Get team info from a bracket participant ID
  * Returns limited player info (for public use - no player ID)
+ * Optimized: Single query using join on bracket_participant
  */
 export async function getPublicTeamFromParticipant(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -99,31 +99,29 @@ export async function getPublicTeamFromParticipant(
 ): Promise<PublicTeamWithPlayers | null> {
   if (!participantId) return null;
 
+  // Single query: join bracket_participant -> teams -> team_members -> event_players -> players
   const { data: participant } = await supabase
     .from('bracket_participant')
-    .select('team_id')
-    .eq('id', participantId)
-    .single();
-
-  if (!participant?.team_id) return null;
-
-  const { data: team } = await supabase
-    .from('teams')
     .select(`
-      id,
-      seed,
-      pool_combo,
-      team_members(
-        event_player_id,
-        role,
-        event_player:event_players(
-          player:players(full_name, nickname)
+      team_id,
+      team:teams(
+        id,
+        seed,
+        pool_combo,
+        team_members(
+          event_player_id,
+          role,
+          event_player:event_players(
+            player:players(full_name, nickname)
+          )
         )
       )
     `)
-    .eq('id', participant.team_id)
+    .eq('id', participantId)
     .single();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const team = (participant as any)?.team;
   if (!team) return null;
 
   return {
