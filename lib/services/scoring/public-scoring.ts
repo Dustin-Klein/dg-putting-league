@@ -9,7 +9,7 @@ import {
 } from '@/lib/errors';
 import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
-import { getOrCreateFrame, getPlayerFrameResult, getFrameResults, upsertFrameResult } from '@/lib/repositories/frame-repository';
+import { getOrCreateFrame, getPlayerFrameResult, getMaxOrderInFrame, upsertFrameResult } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
 import type {
   PublicEventInfo,
@@ -28,9 +28,14 @@ export type {
 
 /**
  * Validate access code and get event info
+ * @param accessCode - The event access code
+ * @param supabaseClient - Optional existing Supabase client (for connection reuse)
  */
-export async function validateAccessCode(accessCode: string): Promise<PublicEventInfo> {
-  const supabase = await createClient();
+export async function validateAccessCode(
+  accessCode: string,
+  supabaseClient?: Awaited<ReturnType<typeof createClient>>
+): Promise<PublicEventInfo> {
+  const supabase = supabaseClient ?? await createClient();
 
   const { data: event, error } = await supabase
     .from('events')
@@ -55,46 +60,49 @@ export async function validateAccessCode(accessCode: string): Promise<PublicEven
  * Get matches ready for scoring (status = ready or in_progress)
  */
 export async function getMatchesForScoring(accessCode: string): Promise<PublicMatchInfo[]> {
-  const event = await validateAccessCode(accessCode);
   const supabase = await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
 
-  // Get lanes for this event to build a lane map
-  const { data: lanes } = await supabase
-    .from('lanes')
-    .select('id, label')
-    .eq('event_id', event.id);
+  // Parallel: Get lanes and bracket matches simultaneously
+  const [lanesResult, bracketMatchesResult] = await Promise.all([
+    supabase
+      .from('lanes')
+      .select('id, label')
+      .eq('event_id', event.id),
+    supabase
+      .from('bracket_match')
+      .select(`
+        id,
+        status,
+        round_id,
+        number,
+        lane_id,
+        opponent1,
+        opponent2,
+        frames:match_frames(
+          id,
+          frame_number,
+          is_overtime,
+          results:frame_results(
+            id,
+            event_player_id,
+            putts_made,
+            points_earned
+          )
+        )
+      `)
+      .eq('event_id', event.id)
+      .in('status', [2, 3]) // Ready = 2, Running = 3
+      .not('lane_id', 'is', null), // Only show matches with a lane assigned
+  ]);
 
+  const lanes = lanesResult.data;
   const laneMap: Record<string, string> = {};
   lanes?.forEach((lane) => {
     laneMap[lane.id] = lane.label;
   });
 
-  // Get bracket matches that are ready or in progress
-  const { data: bracketMatches, error: bracketError } = await supabase
-    .from('bracket_match')
-    .select(`
-      id,
-      status,
-      round_id,
-      number,
-      lane_id,
-      opponent1,
-      opponent2,
-      frames:match_frames(
-        id,
-        frame_number,
-        is_overtime,
-        results:frame_results(
-          id,
-          event_player_id,
-          putts_made,
-          points_earned
-        )
-      )
-    `)
-    .eq('event_id', event.id)
-    .in('status', [2, 3]) // Ready = 2, Running = 3
-    .not('lane_id', 'is', null); // Only show matches with a lane assigned
+  const { data: bracketMatches, error: bracketError } = bracketMatchesResult;
 
   if (bracketError) {
     throw new InternalError('Failed to fetch matches');
@@ -104,20 +112,31 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
     return [];
   }
 
-  // Get detailed match info for each bracket match
-  const matches: PublicMatchInfo[] = [];
-
-  for (const bm of bracketMatches) {
+  // Parallel: Fetch all teams for all matches simultaneously
+  const teamPromises = bracketMatches.flatMap((bm) => {
     const opponent1 = bm.opponent1 as { id?: number; score?: number } | null;
     const opponent2 = bm.opponent2 as { id?: number; score?: number } | null;
-
-    const [team_one, team_two] = await Promise.all([
+    return [
       getPublicTeamFromParticipant(supabase, opponent1?.id ?? null),
       getPublicTeamFromParticipant(supabase, opponent2?.id ?? null),
-    ]);
+    ];
+  });
+
+  const teams = await Promise.all(teamPromises);
+
+  // Build matches from results
+  const matches: PublicMatchInfo[] = [];
+
+  for (let i = 0; i < bracketMatches.length; i++) {
+    const bm = bracketMatches[i];
+    const team_one = teams[i * 2];
+    const team_two = teams[i * 2 + 1];
 
     // Skip matches without both teams
     if (!team_one || !team_two) continue;
+
+    const opponent1 = bm.opponent1 as { id?: number; score?: number } | null;
+    const opponent2 = bm.opponent2 as { id?: number; score?: number } | null;
 
     matches.push({
       id: bm.id,
@@ -143,47 +162,52 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
  */
 export async function getMatchForScoring(
   accessCode: string,
-  bracketMatchId: number
+  bracketMatchId: number,
+  supabaseClient?: Awaited<ReturnType<typeof createClient>>
 ): Promise<PublicMatchInfo> {
-  const event = await validateAccessCode(accessCode);
-  const supabase = await createClient();
+  const supabase = supabaseClient ?? await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
 
-  // Get lanes for this event to build a lane map
-  const { data: lanes } = await supabase
-    .from('lanes')
-    .select('id, label')
-    .eq('event_id', event.id);
+  // Parallel: Get lanes and bracket match simultaneously
+  const [lanesResult, bracketMatchResult] = await Promise.all([
+    supabase
+      .from('lanes')
+      .select('id, label')
+      .eq('event_id', event.id),
+    supabase
+      .from('bracket_match')
+      .select(`
+        id,
+        status,
+        round_id,
+        number,
+        lane_id,
+        opponent1,
+        opponent2,
+        event_id,
+        frames:match_frames(
+          id,
+          frame_number,
+          is_overtime,
+          results:frame_results(
+            id,
+            event_player_id,
+            putts_made,
+            points_earned
+          )
+        )
+      `)
+      .eq('id', bracketMatchId)
+      .single(),
+  ]);
 
+  const lanes = lanesResult.data;
   const laneMap: Record<string, string> = {};
   lanes?.forEach((lane) => {
     laneMap[lane.id] = lane.label;
   });
 
-  const { data: bracketMatch, error } = await supabase
-    .from('bracket_match')
-    .select(`
-      id,
-      status,
-      round_id,
-      number,
-      lane_id,
-      opponent1,
-      opponent2,
-      event_id,
-      frames:match_frames(
-        id,
-        frame_number,
-        is_overtime,
-        results:frame_results(
-          id,
-          event_player_id,
-          putts_made,
-          points_earned
-        )
-      )
-    `)
-    .eq('id', bracketMatchId)
-    .single();
+  const { data: bracketMatch, error } = bracketMatchResult;
 
   if (error || !bracketMatch) {
     throw new NotFoundError('Match not found');
@@ -231,8 +255,9 @@ export async function recordScore(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<void> {
-  const event = await validateAccessCode(accessCode);
+  // Create client once and reuse for all operations
   const supabase = await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
 
   // Verify bracket match belongs to event and get opponent info
   const { data: bracketMatch } = await supabase
@@ -258,20 +283,7 @@ export async function recordScore(
     throw new BadRequestError('Match has no participants yet');
   }
 
-  // Get team IDs from participants and verify player
-  const teamIds = await getTeamIdsFromParticipants(supabase, participantIds);
-
-  if (teamIds.length === 0) {
-    throw new BadRequestError('Match teams not found');
-  }
-
-  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
-
-  if (!playerInMatch) {
-    throw new BadRequestError('Player is not in this match');
-  }
-
-  // Validate putts
+  // Validate putts early (no DB needed)
   if (puttsMade < 0 || puttsMade > 3) {
     throw new BadRequestError('Putts must be between 0 and 3');
   }
@@ -279,18 +291,33 @@ export async function recordScore(
   // Calculate points using server-validated event setting (not client-provided value)
   const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
 
-  // Get or create frame using repository
-  const frame = await getOrCreateFrame(supabase, bracketMatchId, frameNumber);
+  // Parallel: Get team IDs and get/create frame simultaneously
+  const [teamIds, frame] = await Promise.all([
+    getTeamIdsFromParticipants(supabase, participantIds),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+  ]);
+
+  if (teamIds.length === 0) {
+    throw new BadRequestError('Match teams not found');
+  }
+
+  // Parallel: Verify player in teams and get existing result simultaneously
+  const [playerInMatch, existingResult] = await Promise.all([
+    verifyPlayerInTeams(supabase, eventPlayerId, teamIds),
+    getPlayerFrameResult(supabase, frame.id, eventPlayerId),
+  ]);
+
+  if (!playerInMatch) {
+    throw new BadRequestError('Player is not in this match');
+  }
 
   // Determine order in frame for this player
-  const existingResult = await getPlayerFrameResult(supabase, frame.id, eventPlayerId);
-
   let orderInFrame: number;
   if (existingResult?.order_in_frame) {
     orderInFrame = existingResult.order_in_frame;
   } else {
-    const existingResults = await getFrameResults(supabase, frame.id);
-    const maxOrder = existingResults.reduce((max, r) => Math.max(max, r.order_in_frame ?? 0), 0);
+    // Optimized: fetch only max order instead of all results
+    const maxOrder = await getMaxOrderInFrame(supabase, frame.id);
     orderInFrame = maxOrder + 1;
   }
 
@@ -320,11 +347,12 @@ export async function completeMatchPublic(
   accessCode: string,
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
-  const event = await validateAccessCode(accessCode);
+  // Create client once and reuse for all operations
   const supabase = await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
 
-  // Get match with scores
-  const match = await getMatchForScoring(accessCode, bracketMatchId);
+  // Get match with scores (reuse client)
+  const match = await getMatchForScoring(accessCode, bracketMatchId, supabase);
 
   if (match.team_one_score === match.team_two_score) {
     throw new BadRequestError('Match cannot be completed with a tied score. Continue scoring in overtime.');
@@ -344,5 +372,5 @@ export async function completeMatchPublic(
     console.error('Failed to release lane and reassign:', laneError);
   }
 
-  return getMatchForScoring(accessCode, bracketMatchId);
+  return getMatchForScoring(accessCode, bracketMatchId, supabase);
 }

@@ -143,6 +143,29 @@ export async function getFrameResults(
 }
 
 /**
+ * Get the maximum order_in_frame for a frame
+ * Optimized: Uses SQL aggregation instead of fetching all rows
+ */
+export async function getMaxOrderInFrame(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  frameId: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('frame_results')
+    .select('order_in_frame')
+    .eq('match_frame_id', frameId)
+    .order('order_in_frame', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch max order_in_frame: ${error.message}`);
+  }
+
+  return data?.order_in_frame ?? 0;
+}
+
+/**
  * Get a specific player's result for a frame
  */
 export async function getPlayerFrameResult(
