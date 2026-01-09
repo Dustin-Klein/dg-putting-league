@@ -34,6 +34,55 @@ export interface PublicTeamWithPlayers extends TeamData {
   players: PublicTeamPlayerInfo[];
 }
 
+// Types for Supabase query results with nested structure
+interface TeamQueryTeamMember {
+  event_player_id: string;
+  role: 'A_pool' | 'B_pool';
+  event_player: {
+    id: string;
+    player: {
+      id: string;
+      full_name: string;
+      nickname: string | null;
+    };
+  } | null;
+}
+
+interface TeamQueryResult {
+  id: string;
+  seed: number;
+  pool_combo: string;
+  team_members: TeamQueryTeamMember[];
+}
+
+interface ParticipantWithTeam {
+  team_id: string | null;
+  team: TeamQueryResult | null;
+}
+
+interface PublicTeamQueryTeamMember {
+  event_player_id: string;
+  role: 'A_pool' | 'B_pool';
+  event_player: {
+    player: {
+      full_name: string;
+      nickname: string | null;
+    } | null;
+  } | null;
+}
+
+interface PublicTeamQueryResult {
+  id: string;
+  seed: number;
+  pool_combo: string;
+  team_members: PublicTeamQueryTeamMember[];
+}
+
+interface PublicParticipantWithTeam {
+  team_id: string | null;
+  team: PublicTeamQueryResult | null;
+}
+
 /**
  * Get team info from a bracket participant ID
  * Returns full player info including player ID (for admin use)
@@ -71,20 +120,21 @@ export async function getTeamFromParticipant(
     .eq('id', participantId)
     .single();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const team = (participant as any)?.team;
+  const typedParticipant = participant as ParticipantWithTeam | null;
+  const team = typedParticipant?.team;
   if (!team) return null;
 
   return {
     id: team.id,
     seed: team.seed,
     pool_combo: team.pool_combo,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    players: team.team_members?.map((tm: any) => ({
-      event_player_id: tm.event_player_id,
-      role: tm.role,
-      player: tm.event_player?.player,
-    })) || [],
+    players: team.team_members
+      ?.filter((tm) => tm.event_player?.player)
+      .map((tm) => ({
+        event_player_id: tm.event_player_id,
+        role: tm.role,
+        player: tm.event_player!.player,
+      })) || [],
   };
 }
 
@@ -120,20 +170,19 @@ export async function getPublicTeamFromParticipant(
     .eq('id', participantId)
     .single();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const team = (participant as any)?.team;
+  const typedParticipant = participant as PublicParticipantWithTeam | null;
+  const team = typedParticipant?.team;
   if (!team) return null;
 
   return {
     id: team.id,
     seed: team.seed,
     pool_combo: team.pool_combo,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    players: team.team_members?.map((tm: any) => ({
+    players: team.team_members?.map((tm) => ({
       event_player_id: tm.event_player_id,
       role: tm.role,
       full_name: tm.event_player?.player?.full_name || 'Unknown',
-      nickname: tm.event_player?.player?.nickname,
+      nickname: tm.event_player?.player?.nickname ?? null,
     })) || [],
   };
 }

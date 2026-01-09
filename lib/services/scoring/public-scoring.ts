@@ -411,11 +411,12 @@ export async function recordScoreAndGetMatch(
   }
 
   // Update bracket match status to Running if Ready
-  const newStatus = bracketMatch.status === 2 ? 3 : bracketMatch.status;
+  let newStatus = bracketMatch.status;
   if (bracketMatch.status === 2) {
+    newStatus = 3;
     await supabase
       .from('bracket_match')
-      .update({ status: 3 })
+      .update({ status: newStatus })
       .eq('id', bracketMatchId);
   }
 
