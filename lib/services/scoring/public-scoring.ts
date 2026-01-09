@@ -461,6 +461,7 @@ export async function recordScoreAndGetMatch(
   timings['g_upsertFrameResult'] = Date.now() - t;
 
   // Update bracket match status to Running if Ready
+  const newStatus = bracketMatch.status === 2 ? 3 : bracketMatch.status;
   if (bracketMatch.status === 2) {
     t = Date.now();
     await supabase
@@ -470,14 +471,77 @@ export async function recordScoreAndGetMatch(
     timings['h_updateStatus'] = Date.now() - t;
   }
 
-  // Get updated match using SAME client
+  // Fetch only what we need for response: lanes, teams, and updated frames
+  // Skip re-validating access code and re-fetching bracket match
   t = Date.now();
-  const match = await getMatchForScoring(accessCode, bracketMatchId, supabase);
-  timings['i_getMatchForScoring'] = Date.now() - t;
+  const [lanesResult, teamsResult, framesResult] = await Promise.all([
+    supabase
+      .from('lanes')
+      .select('id, label')
+      .eq('event_id', event.id),
+    // Fetch both teams in parallel
+    Promise.all([
+      getPublicTeamFromParticipant(supabase, opponent1?.id ?? null),
+      getPublicTeamFromParticipant(supabase, opponent2?.id ?? null),
+    ]),
+    // Fetch updated frames with results
+    supabase
+      .from('bracket_match')
+      .select(`
+        opponent1,
+        opponent2,
+        round_id,
+        number,
+        lane_id,
+        frames:match_frames(
+          id,
+          frame_number,
+          is_overtime,
+          results:frame_results(
+            id,
+            event_player_id,
+            putts_made,
+            points_earned
+          )
+        )
+      `)
+      .eq('id', bracketMatchId)
+      .single(),
+  ]);
+  timings['i_fetchMatchData'] = Date.now() - t;
+
+  const lanes = lanesResult.data;
+  const laneMap: Record<string, string> = {};
+  lanes?.forEach((lane) => {
+    laneMap[lane.id] = lane.label;
+  });
+
+  const [team_one, team_two] = teamsResult;
+  const matchData = framesResult.data;
+
+  if (!team_one || !team_two || !matchData) {
+    throw new NotFoundError('Match data not found');
+  }
+
+  const updatedOpponent1 = matchData.opponent1 as { id?: number; score?: number } | null;
+  const updatedOpponent2 = matchData.opponent2 as { id?: number; score?: number } | null;
 
   console.log('[PERF] recordScoreAndGetMatch timings:', JSON.stringify(timings));
 
-  return match;
+  return {
+    id: bracketMatchId,
+    round_id: matchData.round_id,
+    number: matchData.number,
+    status: newStatus,
+    lane_id: matchData.lane_id,
+    lane_label: matchData.lane_id ? laneMap[matchData.lane_id] || null : null,
+    team_one,
+    team_two,
+    team_one_score: updatedOpponent1?.score ?? 0,
+    team_two_score: updatedOpponent2?.score ?? 0,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    frames: ((matchData.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
+  };
 }
 
 /**
