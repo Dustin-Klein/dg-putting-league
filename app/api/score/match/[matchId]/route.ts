@@ -59,8 +59,6 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
-  const start = Date.now();
-
   try {
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
@@ -85,11 +83,8 @@ export async function PUT(
       parsed.data.putts_made
     );
 
-    console.log('[PERF] PUT /api/score/match total:', Date.now() - start, 'ms');
-
     return NextResponse.json(match);
   } catch (error) {
-    console.log('[PERF] PUT /api/score/match ERROR total:', Date.now() - start, 'ms');
     return handleError(error);
   }
 }
