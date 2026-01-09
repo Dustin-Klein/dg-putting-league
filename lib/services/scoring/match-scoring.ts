@@ -9,11 +9,7 @@ import {
 import { completeMatch } from './match-completion';
 import { calculatePoints } from './points-calculator';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
-import {
-  getOrCreateFrame as getOrCreateFrameRepo,
-  upsertFrameResult,
-  getFrameResults,
-} from '@/lib/repositories/frame-repository';
+import { getOrCreateFrame as getOrCreateFrameRepo } from '@/lib/repositories/frame-repository';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -80,26 +76,20 @@ export async function recordScoreAdmin(
   const isOvertime = frameNumber > 5;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
-  // Determine order_in_frame (single query for all results, filter in-memory)
-  const existingResults = await getFrameResults(supabase, frame.id);
-  const existingResult = existingResults.find(r => r.event_player_id === eventPlayerId);
-  let orderInFrame: number;
-  if (existingResult?.order_in_frame) {
-    orderInFrame = existingResult.order_in_frame;
-  } else {
-    const maxOrder = existingResults.reduce((max, r) => Math.max(max, r.order_in_frame ?? 0), 0);
-    orderInFrame = maxOrder + 1;
-  }
-
-  // Record the result
-  await upsertFrameResult(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
-    orderInFrame,
+  // Atomically upsert the frame result with correct order_in_frame
+  // This RPC handles the race condition where concurrent requests could
+  // both read the same max order and assign duplicate order values
+  const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
+    p_match_frame_id: frame.id,
+    p_event_player_id: eventPlayerId,
+    p_bracket_match_id: bracketMatchId,
+    p_putts_made: puttsMade,
+    p_points_earned: pointsEarned,
   });
+
+  if (upsertError) {
+    throw new InternalError(`Failed to record score: ${upsertError.message}`);
+  }
 
   // Start match if it's in Ready status
   if (bracketMatch.status === 2) { // Ready
