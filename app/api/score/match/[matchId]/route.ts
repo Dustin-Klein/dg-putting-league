@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   getMatchForScoring,
-  recordScore,
+  recordScoreAndGetMatch,
   completeMatchPublic,
 } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
@@ -59,11 +59,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
-  const timings: Record<string, number> = {};
   const start = Date.now();
 
   try {
-    let t = Date.now();
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
 
@@ -73,34 +71,25 @@ export async function PUT(
 
     const body = await req.json();
     const parsed = recordScoreSchema.safeParse(body);
-    timings['1_parse'] = Date.now() - t;
 
     if (!parsed.success) {
       throw new BadRequestError('Invalid score data');
     }
 
-    t = Date.now();
-    await recordScore(
+    // Combined: record score AND get updated match with single client
+    const match = await recordScoreAndGetMatch(
       parsed.data.access_code,
       bracketMatchId,
       parsed.data.frame_number,
       parsed.data.event_player_id,
       parsed.data.putts_made
     );
-    timings['2_recordScore'] = Date.now() - t;
 
-    // Return updated match
-    t = Date.now();
-    const match = await getMatchForScoring(parsed.data.access_code, bracketMatchId);
-    timings['3_getMatchForScoring'] = Date.now() - t;
-
-    timings['total'] = Date.now() - start;
-    console.log('[PERF] PUT /api/score/match timings:', JSON.stringify(timings));
+    console.log('[PERF] PUT /api/score/match total:', Date.now() - start, 'ms');
 
     return NextResponse.json(match);
   } catch (error) {
-    timings['total'] = Date.now() - start;
-    console.log('[PERF] PUT /api/score/match ERROR timings:', JSON.stringify(timings));
+    console.log('[PERF] PUT /api/score/match ERROR total:', Date.now() - start, 'ms');
     return handleError(error);
   }
 }

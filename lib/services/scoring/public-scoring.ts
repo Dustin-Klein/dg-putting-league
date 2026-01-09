@@ -362,6 +362,125 @@ export async function recordScore(
 }
 
 /**
+ * Record a score and return updated match (combined operation with shared client)
+ * This avoids creating two separate clients and duplicating validation
+ */
+export async function recordScoreAndGetMatch(
+  accessCode: string,
+  bracketMatchId: number,
+  frameNumber: number,
+  eventPlayerId: string,
+  puttsMade: number
+): Promise<PublicMatchInfo> {
+  const timings: Record<string, number> = {};
+  let t = Date.now();
+
+  // Create client once and reuse for ALL operations
+  const supabase = await createClient();
+  timings['a_createClient'] = Date.now() - t;
+
+  t = Date.now();
+  const event = await validateAccessCode(accessCode, supabase);
+  timings['b_validateAccessCode'] = Date.now() - t;
+
+  // Verify bracket match belongs to event and get opponent info
+  t = Date.now();
+  const { data: bracketMatch } = await supabase
+    .from('bracket_match')
+    .select('id, event_id, status, opponent1, opponent2')
+    .eq('id', bracketMatchId)
+    .single();
+  timings['c_getBracketMatch'] = Date.now() - t;
+
+  if (!bracketMatch || bracketMatch.event_id !== event.id) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (bracketMatch.status === 4) {
+    throw new BadRequestError('Match is already completed');
+  }
+
+  const opponent1 = bracketMatch.opponent1 as { id: number | null } | null;
+  const opponent2 = bracketMatch.opponent2 as { id: number | null } | null;
+  const participantIds = [opponent1?.id, opponent2?.id].filter((id): id is number => id !== null);
+
+  if (participantIds.length === 0) {
+    throw new BadRequestError('Match has no participants yet');
+  }
+
+  if (puttsMade < 0 || puttsMade > 3) {
+    throw new BadRequestError('Putts must be between 0 and 3');
+  }
+
+  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
+
+  // Parallel: Get team IDs and get/create frame simultaneously
+  t = Date.now();
+  const [teamIds, frame] = await Promise.all([
+    getTeamIdsFromParticipants(supabase, participantIds),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+  ]);
+  timings['d_parallel_teamIds_frame'] = Date.now() - t;
+
+  if (teamIds.length === 0) {
+    throw new BadRequestError('Match teams not found');
+  }
+
+  // Parallel: Verify player in teams and get existing result simultaneously
+  t = Date.now();
+  const [playerInMatch, existingResult] = await Promise.all([
+    verifyPlayerInTeams(supabase, eventPlayerId, teamIds),
+    getPlayerFrameResult(supabase, frame.id, eventPlayerId),
+  ]);
+  timings['e_parallel_verify_existingResult'] = Date.now() - t;
+
+  if (!playerInMatch) {
+    throw new BadRequestError('Player is not in this match');
+  }
+
+  let orderInFrame: number;
+  if (existingResult?.order_in_frame) {
+    orderInFrame = existingResult.order_in_frame;
+  } else {
+    t = Date.now();
+    const maxOrder = await getMaxOrderInFrame(supabase, frame.id);
+    timings['f_getMaxOrder'] = Date.now() - t;
+    orderInFrame = maxOrder + 1;
+  }
+
+  // Upsert the result
+  t = Date.now();
+  await upsertFrameResult(supabase, {
+    matchFrameId: frame.id,
+    eventPlayerId,
+    bracketMatchId,
+    puttsMade,
+    pointsEarned,
+    orderInFrame,
+  });
+  timings['g_upsertFrameResult'] = Date.now() - t;
+
+  // Update bracket match status to Running if Ready
+  if (bracketMatch.status === 2) {
+    t = Date.now();
+    await supabase
+      .from('bracket_match')
+      .update({ status: 3 })
+      .eq('id', bracketMatchId);
+    timings['h_updateStatus'] = Date.now() - t;
+  }
+
+  // Get updated match using SAME client
+  t = Date.now();
+  const match = await getMatchForScoring(accessCode, bracketMatchId, supabase);
+  timings['i_getMatchForScoring'] = Date.now() - t;
+
+  console.log('[PERF] recordScoreAndGetMatch timings:', JSON.stringify(timings));
+
+  return match;
+}
+
+/**
  * Complete a match (public, access-code authenticated)
  */
 export async function completeMatchPublic(
