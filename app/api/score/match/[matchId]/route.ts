@@ -59,7 +59,11 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
+  const timings: Record<string, number> = {};
+  const start = Date.now();
+
   try {
+    let t = Date.now();
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
 
@@ -69,11 +73,13 @@ export async function PUT(
 
     const body = await req.json();
     const parsed = recordScoreSchema.safeParse(body);
+    timings['1_parse'] = Date.now() - t;
 
     if (!parsed.success) {
       throw new BadRequestError('Invalid score data');
     }
 
+    t = Date.now();
     await recordScore(
       parsed.data.access_code,
       bracketMatchId,
@@ -81,11 +87,20 @@ export async function PUT(
       parsed.data.event_player_id,
       parsed.data.putts_made
     );
+    timings['2_recordScore'] = Date.now() - t;
 
     // Return updated match
+    t = Date.now();
     const match = await getMatchForScoring(parsed.data.access_code, bracketMatchId);
+    timings['3_getMatchForScoring'] = Date.now() - t;
+
+    timings['total'] = Date.now() - start;
+    console.log('[PERF] PUT /api/score/match timings:', JSON.stringify(timings));
+
     return NextResponse.json(match);
   } catch (error) {
+    timings['total'] = Date.now() - start;
+    console.log('[PERF] PUT /api/score/match ERROR timings:', JSON.stringify(timings));
     return handleError(error);
   }
 }
