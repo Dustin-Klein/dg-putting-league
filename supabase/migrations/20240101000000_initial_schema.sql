@@ -510,7 +510,7 @@ AS $$
 $$;
 
 -- Function to calculate team scores from frame_results for a bracket_match
--- Optimized: Single query using denormalized bracket_match_id and conditional aggregation
+-- Optimized: Uses denormalized bracket_match_id to skip match_frames JOIN
 CREATE OR REPLACE FUNCTION public.calculate_bracket_match_scores(p_bracket_match_id INTEGER)
 RETURNS TABLE (opponent1_score INTEGER, opponent2_score INTEGER)
 LANGUAGE plpgsql
@@ -518,34 +518,42 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  v_participant1_id INTEGER;
+  v_participant2_id INTEGER;
   v_team1_id UUID;
   v_team2_id UUID;
   v_score1 INTEGER := 0;
   v_score2 INTEGER := 0;
 BEGIN
-  -- Get team IDs in a single query using JOIN
-  SELECT bp1.team_id, bp2.team_id
-  INTO v_team1_id, v_team2_id
-  FROM public.bracket_match bm
-  LEFT JOIN public.bracket_participant bp1 ON bp1.id = (bm.opponent1->>'id')::INTEGER
-  LEFT JOIN public.bracket_participant bp2 ON bp2.id = (bm.opponent2->>'id')::INTEGER
-  WHERE bm.id = p_bracket_match_id;
+  -- Get participant IDs from bracket_match opponent JSONB
+  SELECT
+    (opponent1->>'id')::INTEGER,
+    (opponent2->>'id')::INTEGER
+  INTO v_participant1_id, v_participant2_id
+  FROM public.bracket_match WHERE id = p_bracket_match_id;
+
+  -- Get team IDs from participants (separate queries for query plan stability)
+  SELECT team_id INTO v_team1_id FROM public.bracket_participant WHERE id = v_participant1_id;
+  SELECT team_id INTO v_team2_id FROM public.bracket_participant WHERE id = v_participant2_id;
 
   IF v_team1_id IS NULL OR v_team2_id IS NULL THEN
     RETURN QUERY SELECT 0, 0;
     RETURN;
   END IF;
 
-  -- Calculate both team scores in a single query using conditional aggregation
-  -- Uses denormalized bracket_match_id to avoid join with match_frames
-  SELECT
-    COALESCE(SUM(CASE WHEN tm.team_id = v_team1_id THEN fr.points_earned ELSE 0 END), 0)::INTEGER,
-    COALESCE(SUM(CASE WHEN tm.team_id = v_team2_id THEN fr.points_earned ELSE 0 END), 0)::INTEGER
-  INTO v_score1, v_score2
+  -- Calculate team 1 score - uses denormalized bracket_match_id (skips match_frames JOIN)
+  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_score1
   FROM public.frame_results fr
   JOIN public.team_members tm ON tm.event_player_id = fr.event_player_id
   WHERE fr.bracket_match_id = p_bracket_match_id
-    AND tm.team_id IN (v_team1_id, v_team2_id);
+    AND tm.team_id = v_team1_id;
+
+  -- Calculate team 2 score
+  SELECT COALESCE(SUM(fr.points_earned), 0) INTO v_score2
+  FROM public.frame_results fr
+  JOIN public.team_members tm ON tm.event_player_id = fr.event_player_id
+  WHERE fr.bracket_match_id = p_bracket_match_id
+    AND tm.team_id = v_team2_id;
 
   RETURN QUERY SELECT v_score1, v_score2;
 END;
