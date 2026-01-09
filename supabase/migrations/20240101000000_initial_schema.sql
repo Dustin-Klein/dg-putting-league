@@ -72,7 +72,7 @@ CREATE TABLE public.league_admins (
 );
 
 -- Player number sequence
-CREATE SEQUENCE public.player_number_seq;
+CREATE SEQUENCE IF NOT EXISTS public.player_number_seq;
 
 -- Players
 CREATE TABLE public.players (

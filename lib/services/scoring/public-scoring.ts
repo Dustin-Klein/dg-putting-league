@@ -255,16 +255,25 @@ export async function recordScore(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<void> {
+  const timings: Record<string, number> = {};
+  let t = Date.now();
+
   // Create client once and reuse for all operations
   const supabase = await createClient();
+  timings['a_createClient'] = Date.now() - t;
+
+  t = Date.now();
   const event = await validateAccessCode(accessCode, supabase);
+  timings['b_validateAccessCode'] = Date.now() - t;
 
   // Verify bracket match belongs to event and get opponent info
+  t = Date.now();
   const { data: bracketMatch } = await supabase
     .from('bracket_match')
     .select('id, event_id, status, opponent1, opponent2')
     .eq('id', bracketMatchId)
     .single();
+  timings['c_getBracketMatch'] = Date.now() - t;
 
   if (!bracketMatch || bracketMatch.event_id !== event.id) {
     throw new NotFoundError('Match not found');
@@ -292,20 +301,24 @@ export async function recordScore(
   const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
 
   // Parallel: Get team IDs and get/create frame simultaneously
+  t = Date.now();
   const [teamIds, frame] = await Promise.all([
     getTeamIdsFromParticipants(supabase, participantIds),
     getOrCreateFrame(supabase, bracketMatchId, frameNumber),
   ]);
+  timings['d_parallel_teamIds_frame'] = Date.now() - t;
 
   if (teamIds.length === 0) {
     throw new BadRequestError('Match teams not found');
   }
 
   // Parallel: Verify player in teams and get existing result simultaneously
+  t = Date.now();
   const [playerInMatch, existingResult] = await Promise.all([
     verifyPlayerInTeams(supabase, eventPlayerId, teamIds),
     getPlayerFrameResult(supabase, frame.id, eventPlayerId),
   ]);
+  timings['e_parallel_verify_existingResult'] = Date.now() - t;
 
   if (!playerInMatch) {
     throw new BadRequestError('Player is not in this match');
@@ -317,11 +330,14 @@ export async function recordScore(
     orderInFrame = existingResult.order_in_frame;
   } else {
     // Optimized: fetch only max order instead of all results
+    t = Date.now();
     const maxOrder = await getMaxOrderInFrame(supabase, frame.id);
+    timings['f_getMaxOrder'] = Date.now() - t;
     orderInFrame = maxOrder + 1;
   }
 
   // Upsert the result using repository
+  t = Date.now();
   await upsertFrameResult(supabase, {
     matchFrameId: frame.id,
     eventPlayerId,
@@ -330,14 +346,19 @@ export async function recordScore(
     pointsEarned,
     orderInFrame,
   });
+  timings['g_upsertFrameResult'] = Date.now() - t;
 
   // Update bracket match status to Running if Ready
   if (bracketMatch.status === 2) { // Ready
+    t = Date.now();
     await supabase
       .from('bracket_match')
       .update({ status: 3 }) // Running
       .eq('id', bracketMatchId);
+    timings['h_updateStatus'] = Date.now() - t;
   }
+
+  console.log('[PERF] recordScore timings:', JSON.stringify(timings));
 }
 
 /**
