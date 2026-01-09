@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
-import type { MatchFrame, FrameResult } from '@/lib/types/scoring';
+import type { MatchFrame } from '@/lib/types/scoring';
 
 // Partial type for queries without results join
 export type FrameData = Omit<MatchFrame, 'results'>;
@@ -84,105 +84,4 @@ export async function getMatchFrame(
   }
 
   return frame as MatchFrame;
-}
-
-/**
- * Upsert a frame result (create or update)
- */
-export async function upsertFrameResult(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  data: {
-    matchFrameId: string;
-    eventPlayerId: string;
-    bracketMatchId: number;
-    puttsMade: number;
-    pointsEarned: number;
-    orderInFrame: number;
-  }
-): Promise<FrameResult> {
-  const { data: result, error } = await supabase
-    .from('frame_results')
-    .upsert(
-      {
-        match_frame_id: data.matchFrameId,
-        event_player_id: data.eventPlayerId,
-        bracket_match_id: data.bracketMatchId,
-        putts_made: data.puttsMade,
-        points_earned: data.pointsEarned,
-        order_in_frame: data.orderInFrame,
-      },
-      { onConflict: 'match_frame_id,event_player_id' }
-    )
-    .select()
-    .single();
-
-  if (error || !result) {
-    throw new InternalError(`Failed to upsert frame result: ${error?.message}`);
-  }
-
-  return result as FrameResult;
-}
-
-/**
- * Get existing results for a frame to determine order
- */
-export async function getFrameResults(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  frameId: string
-): Promise<FrameResult[]> {
-  const { data: results, error } = await supabase
-    .from('frame_results')
-    .select('*')
-    .eq('match_frame_id', frameId);
-
-  if (error) {
-    throw new InternalError(`Failed to fetch frame results: ${error.message}`);
-  }
-
-  return (results || []) as FrameResult[];
-}
-
-/**
- * Get the maximum order_in_frame for a frame
- * Optimized: Uses SQL aggregation instead of fetching all rows
- */
-export async function getMaxOrderInFrame(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  frameId: string
-): Promise<number> {
-  const { data, error } = await supabase
-    .from('frame_results')
-    .select('order_in_frame')
-    .eq('match_frame_id', frameId)
-    .order('order_in_frame', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError(`Failed to fetch max order_in_frame: ${error.message}`);
-  }
-
-  return data?.order_in_frame ?? 0;
-}
-
-/**
- * Get a specific player's result for a frame
- */
-export async function getPlayerFrameResult(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  frameId: string,
-  eventPlayerId: string
-): Promise<FrameResult | null> {
-  const { data: result, error } = await supabase
-    .from('frame_results')
-    .select('*')
-    .eq('match_frame_id', frameId)
-    .eq('event_player_id', eventPlayerId)
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError(`Failed to fetch player frame result: ${error.message}`);
-  }
-
-  return result as FrameResult | null;
 }

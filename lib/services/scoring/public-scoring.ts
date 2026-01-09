@@ -9,7 +9,7 @@ import {
 } from '@/lib/errors';
 import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
-import { getOrCreateFrame, getPlayerFrameResult, getMaxOrderInFrame, upsertFrameResult } from '@/lib/repositories/frame-repository';
+import { getOrCreateFrame } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
 import type {
   PublicEventInfo,
@@ -303,35 +303,27 @@ export async function recordScore(
     throw new BadRequestError('Match teams not found');
   }
 
-  // Parallel: Verify player in teams and get existing result simultaneously
-  const [playerInMatch, existingResult] = await Promise.all([
-    verifyPlayerInTeams(supabase, eventPlayerId, teamIds),
-    getPlayerFrameResult(supabase, frame.id, eventPlayerId),
-  ]);
+  // Verify player is in this match
+  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
 
   if (!playerInMatch) {
     throw new BadRequestError('Player is not in this match');
   }
 
-  // Determine order in frame for this player
-  let orderInFrame: number;
-  if (existingResult?.order_in_frame) {
-    orderInFrame = existingResult.order_in_frame;
-  } else {
-    // Optimized: fetch only max order instead of all results
-    const maxOrder = await getMaxOrderInFrame(supabase, frame.id);
-    orderInFrame = maxOrder + 1;
-  }
-
-  // Upsert the result using repository
-  await upsertFrameResult(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
-    orderInFrame,
+  // Atomically upsert the frame result with correct order_in_frame
+  // This RPC handles the race condition where concurrent requests could
+  // both read the same max order and assign duplicate order values
+  const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
+    p_match_frame_id: frame.id,
+    p_event_player_id: eventPlayerId,
+    p_bracket_match_id: bracketMatchId,
+    p_putts_made: puttsMade,
+    p_points_earned: pointsEarned,
   });
+
+  if (upsertError) {
+    throw new InternalError(`Failed to record score: ${upsertError.message}`);
+  }
   // Update bracket match status to Running if Ready
   if (bracketMatch.status === 2) { // Ready
     await supabase
@@ -396,33 +388,27 @@ export async function recordScoreAndGetMatch(
     throw new BadRequestError('Match teams not found');
   }
 
-  // Parallel: Verify player in teams and get existing result simultaneously
-  const [playerInMatch, existingResult] = await Promise.all([
-    verifyPlayerInTeams(supabase, eventPlayerId, teamIds),
-    getPlayerFrameResult(supabase, frame.id, eventPlayerId),
-  ]);
+  // Verify player is in this match
+  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
 
   if (!playerInMatch) {
     throw new BadRequestError('Player is not in this match');
   }
 
-  let orderInFrame: number;
-  if (existingResult?.order_in_frame) {
-    orderInFrame = existingResult.order_in_frame;
-  } else {
-    const maxOrder = await getMaxOrderInFrame(supabase, frame.id);
-    orderInFrame = maxOrder + 1;
-  }
-
-  // Upsert the result
-  await upsertFrameResult(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
-    orderInFrame,
+  // Atomically upsert the frame result with correct order_in_frame
+  // This RPC handles the race condition where concurrent requests could
+  // both read the same max order and assign duplicate order values
+  const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
+    p_match_frame_id: frame.id,
+    p_event_player_id: eventPlayerId,
+    p_bracket_match_id: bracketMatchId,
+    p_putts_made: puttsMade,
+    p_points_earned: pointsEarned,
   });
+
+  if (upsertError) {
+    throw new InternalError(`Failed to record score: ${upsertError.message}`);
+  }
 
   // Update bracket match status to Running if Ready
   const newStatus = bracketMatch.status === 2 ? 3 : bracketMatch.status;
