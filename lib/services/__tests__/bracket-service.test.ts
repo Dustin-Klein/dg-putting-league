@@ -21,7 +21,6 @@ import {
   createMockQueryBuilder,
   createMockEventWithDetails,
   createMockTeam,
-  createMockBracketMatch,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -62,7 +61,6 @@ jest.mock('brackets-manager', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { getEventTeams } from '@/lib/services/team';
-import { BracketsManager } from 'brackets-manager';
 import {
   createBracket,
   getBracket,
@@ -71,28 +69,6 @@ import {
   assignLaneToMatch,
   bracketExists,
 } from '../bracket/bracket-service';
-
-// Helper to create a fully chainable mock for Supabase queries
-function createFullyChainableMock(finalResult: { data: unknown; error: unknown }) {
-  const mock: Record<string, jest.Mock> = {};
-  const chainMethods = ['select', 'insert', 'update', 'delete', 'eq', 'neq', 'in', 'not', 'ilike', 'gte', 'lte', 'limit'];
-
-  chainMethods.forEach((method) => {
-    mock[method] = jest.fn().mockReturnValue(mock);
-  });
-
-  // Order needs special handling for double chaining
-  mock.order = jest.fn().mockImplementation(() => {
-    const orderResult = { ...mock };
-    orderResult.order = jest.fn().mockResolvedValue(finalResult);
-    return orderResult;
-  });
-
-  mock.single = jest.fn().mockResolvedValue(finalResult);
-  mock.maybeSingle = jest.fn().mockResolvedValue(finalResult);
-
-  return mock;
-}
 
 describe('Bracket Service', () => {
   let mockSupabase: MockSupabaseClient;

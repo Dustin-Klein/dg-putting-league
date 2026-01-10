@@ -15,11 +15,9 @@ import {
 } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockUser,
   createMockEventWithDetails,
   createMockEventPlayer,
   createMockEventPlayers,
-  createMockLeagueAdmin,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -52,7 +50,6 @@ jest.mock('@/lib/repositories/event-player-repository', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import {

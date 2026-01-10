@@ -10,13 +10,10 @@
 import { BadRequestError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockUser,
   createMockEventWithDetails,
   createMockEventPlayers,
   createMockTeam,
-  createMockLeagueAdmin,
   MockSupabaseClient,
-  MockEventPlayer,
 } from './test-utils';
 import type { PoolAssignment } from '../event-player/event-player-service';
 
@@ -53,11 +50,9 @@ jest.mock('@/lib/repositories/event-repository', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
-import * as eventRepo from '@/lib/repositories/event-repository';
 import { generateTeams, getEventTeams, computeTeamPairings } from '../team/team-service';
 
 describe('Team Service', () => {
