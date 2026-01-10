@@ -18,10 +18,12 @@ import {
 
 // Mock crypto.randomUUID
 const mockUUID = 'generated-uuid-123';
-global.crypto = {
-  ...global.crypto,
-  randomUUID: jest.fn().mockReturnValue(mockUUID),
-};
+const randomUuidSpy = jest
+  .spyOn(global.crypto, 'randomUUID')
+  .mockReturnValue(mockUUID);
+afterAll(() => {
+  randomUuidSpy.mockRestore();
+});
 
 // Mock dependencies
 jest.mock('@/lib/supabase/server', () => ({

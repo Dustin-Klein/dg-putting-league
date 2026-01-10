@@ -127,8 +127,9 @@ describe('Event Service', () => {
     it('should throw ForbiddenError when event not found', async () => {
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue(null);
 
-      await expect(requireEventAdmin(eventId)).rejects.toThrow(ForbiddenError);
-      await expect(requireEventAdmin(eventId)).rejects.toThrow('Event not found');
+      await expect(requireEventAdmin(eventId)).rejects.toThrow(
+        new ForbiddenError('Event not found')
+      );
     });
 
     it('should throw ForbiddenError when user is not league admin', async () => {

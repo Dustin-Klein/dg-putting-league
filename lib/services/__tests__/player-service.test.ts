@@ -103,14 +103,13 @@ describe('Player Service', () => {
       const existingPlayer = createMockPlayer({ id: 'existing-player-123' });
       (playerRepo.getPlayerByEmail as jest.Mock).mockResolvedValue(existingPlayer);
 
-      try {
-        await createPlayer(validInput);
-        fail('Expected BadRequestError to be thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(BadRequestError);
-        expect((error as BadRequestError).message).toBe('A player with this email already exists');
-        expect((error as unknown as { playerId: string }).playerId).toBe('existing-player-123');
-      }
+      await expect(createPlayer(validInput)).rejects.toThrow(
+        expect.objectContaining({
+          name: 'BadRequestError',
+          message: 'A player with this email already exists',
+          playerId: 'existing-player-123',
+        })
+      );
     });
 
     it('should skip email check when no email provided', async () => {
@@ -213,6 +212,7 @@ describe('Player Service', () => {
         'test\\%user\\_name\\\\special',
         10
       );
+      expect(playerRepo.searchPlayersByNumber).not.toHaveBeenCalled();
     });
 
     it('should trim whitespace from query', async () => {
