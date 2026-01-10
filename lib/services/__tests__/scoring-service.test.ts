@@ -51,7 +51,6 @@ jest.mock('@/lib/services/scoring/match-completion', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { releaseAndReassignLanePublic } from '@/lib/services/lane';
 import { getOrCreateFrame } from '@/lib/repositories/frame-repository';
 import {
   getPublicTeamFromParticipant,
@@ -64,7 +63,6 @@ import {
   getMatchesForScoring,
   getMatchForScoring,
   recordScore,
-  recordScoreAndGetMatch,
   completeMatchPublic,
 } from '../scoring/public-scoring';
 
@@ -151,7 +149,7 @@ describe('Scoring Service', () => {
       const queryBuilder = createMockQueryBuilder({ data: mockEvent, error: null });
       existingClient.from.mockReturnValue(queryBuilder);
 
-      const result = await validateAccessCode('ABC123', existingClient as any);
+      const result = await validateAccessCode('ABC123', existingClient as MockSupabaseClient);
 
       expect(result).toEqual(mockEvent);
       expect(createClient).not.toHaveBeenCalled();
