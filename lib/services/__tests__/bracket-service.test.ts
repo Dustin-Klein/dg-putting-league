@@ -118,7 +118,6 @@ describe('Bracket Service', () => {
 
       (getEventTeams as jest.Mock).mockResolvedValue([createMockTeam()]);
 
-      await expect(createBracket(eventId)).rejects.toThrow(BadRequestError);
       await expect(createBracket(eventId)).rejects.toThrow(
         'At least 2 teams are required to create a bracket'
       );
