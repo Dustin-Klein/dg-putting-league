@@ -523,9 +523,13 @@ export async function getMatchForScoringById(
       )
     `)
     .eq('id', bracketMatchId)
-    .single();
+    .maybeSingle();
 
-  if (error || !bracketMatch) {
+  if (error) {
+    throw new InternalError(`Failed to fetch bracket match: ${error.message}`);
+  }
+
+  if (!bracketMatch) {
     return null;
   }
 
@@ -557,11 +561,15 @@ export async function bracketStageExists(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('bracket_stage')
     .select('id')
     .eq('tournament_id', eventId)
     .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to check bracket stage: ${error.message}`);
+  }
 
   return !!data;
 }
