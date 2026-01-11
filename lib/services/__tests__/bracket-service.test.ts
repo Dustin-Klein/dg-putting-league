@@ -227,6 +227,15 @@ describe('Bracket Service', () => {
       expect(result).toBe(false);
       expect(bracketStageExists).toHaveBeenCalledWith(mockSupabase, eventId);
     });
+
+    it('should propagate InternalError when repository throws database error', async () => {
+      (bracketStageExists as jest.Mock).mockRejectedValue(
+        new InternalError('Failed to check bracket stage: DB error')
+      );
+
+      await expect(bracketExists(eventId)).rejects.toThrow(InternalError);
+      await expect(bracketExists(eventId)).rejects.toThrow('Failed to check bracket stage');
+    });
   });
 
   describe('updateMatchResult', () => {

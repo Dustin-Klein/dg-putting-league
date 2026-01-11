@@ -290,6 +290,19 @@ describe('Scoring Service', () => {
         'Match does not belong to this event'
       );
     });
+
+    it('should propagate InternalError when repository throws database error', async () => {
+      (getMatchForScoringById as jest.Mock).mockRejectedValue(
+        new InternalError('Failed to fetch bracket match: DB error')
+      );
+
+      await expect(getMatchForScoring(accessCode, bracketMatchId)).rejects.toThrow(
+        InternalError
+      );
+      await expect(getMatchForScoring(accessCode, bracketMatchId)).rejects.toThrow(
+        'Failed to fetch bracket match'
+      );
+    });
   });
 
   describe('recordScore', () => {
