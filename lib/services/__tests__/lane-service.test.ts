@@ -35,7 +35,6 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
   getMatchLaneAssignments: jest.fn(),
   getEventStatus: jest.fn(),
   getAvailableLanes: jest.fn(),
-  getBracketStage: jest.fn(),
   getUnassignedReadyMatches: jest.fn(),
   assignLaneToMatch: jest.fn(),
   releaseMatchLane: jest.fn(),
@@ -44,10 +43,15 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
   getLaneById: jest.fn(),
 }));
 
+jest.mock('@/lib/repositories/bracket-repository', () => ({
+  getBracketStage: jest.fn(),
+}));
+
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
+import { getBracketStage } from '@/lib/repositories/bracket-repository';
 import {
   createEventLanes,
   getEventLanes,
@@ -190,7 +194,7 @@ describe('Lane Service', () => {
 
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
       (laneRepo.assignLaneToMatch as jest.Mock).mockResolvedValue(true);
 
@@ -221,7 +225,7 @@ describe('Lane Service', () => {
     it('should return 0 when no bracket stage exists', async () => {
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue(null);
+      (getBracketStage as jest.Mock).mockResolvedValue(null);
 
       const result = await autoAssignLanes(eventId);
 
@@ -231,7 +235,7 @@ describe('Lane Service', () => {
     it('should return 0 when no unassigned matches', async () => {
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue([]);
 
       const result = await autoAssignLanes(eventId);
@@ -249,7 +253,7 @@ describe('Lane Service', () => {
 
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
       (laneRepo.assignLaneToMatch as jest.Mock).mockResolvedValue(true);
 
@@ -271,7 +275,7 @@ describe('Lane Service', () => {
 
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
       (laneRepo.assignLaneToMatch as jest.Mock)
         .mockResolvedValueOnce(true)
@@ -291,7 +295,7 @@ describe('Lane Service', () => {
       (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
-      (laneRepo.getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue([
         createMockBracketMatch({ id: 2 }),
       ]);

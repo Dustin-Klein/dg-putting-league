@@ -2,6 +2,7 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
+import { getBracketStage } from '@/lib/repositories/bracket-repository';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
 export type { Lane, LaneWithMatch } from '@/lib/types/bracket';
@@ -79,7 +80,7 @@ async function autoAssignLanesInternal(
   }
 
   // Get bracket stage
-  const stage = await laneRepo.getBracketStage(supabase, eventId);
+  const stage = await getBracketStage(supabase, eventId);
 
   if (!stage) {
     return 0;
