@@ -595,22 +595,24 @@ export async function getBracketStage(
 }
 
 /**
- * Link participants to teams in batch
+ * Link participants to teams in batch (parallel updates)
  */
 export async function linkParticipantsToTeams(
   supabase: Awaited<ReturnType<typeof createClient>>,
   mappings: Array<{ participantId: number; teamId: string }>
 ): Promise<void> {
-  for (const mapping of mappings) {
+  const updatePromises = mappings.map(async (mapping) => {
     const { error } = await supabase
       .from('bracket_participant')
       .update({ team_id: mapping.teamId })
       .eq('id', mapping.participantId);
 
     if (error) {
-      throw new InternalError(`Failed to link participant to team: ${error.message}`);
+      throw new InternalError(`Failed to link participant ${mapping.participantId} to team: ${error.message}`);
     }
-  }
+  });
+
+  await Promise.all(updatePromises);
 }
 
 /**
