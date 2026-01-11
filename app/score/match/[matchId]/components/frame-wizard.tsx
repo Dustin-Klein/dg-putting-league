@@ -11,10 +11,9 @@ import {
   ChevronLeft,
   Minus,
   Plus,
-  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
-import type { MatchInfo, PlayerInfo, TeamInfo } from './wizard-types';
+import type { MatchInfo, PlayerInfo, TeamInfo, ScoreState } from './wizard-types';
 import {
   STANDARD_FRAMES,
   MIN_PUTTS,
@@ -28,6 +27,7 @@ import {
 
 interface FrameWizardProps {
   match: MatchInfo;
+  localScores: ScoreState;
   bonusPointEnabled: boolean;
   currentFrame: number;
   isSaving: string | null;
@@ -41,6 +41,7 @@ interface FrameWizardProps {
 
 export function FrameWizard({
   match,
+  localScores,
   bonusPointEnabled,
   currentFrame,
   isSaving,
@@ -58,14 +59,26 @@ export function FrameWizard({
   const showOvertimePrompt = isLastRegularFrame && isTied && isCurrentFrameComplete();
   const needsMoreOvertime = needsOvertime(match);
 
+  // Helper to get score (local optimistic or server)
+  function getPlayerScore(eventPlayerId: string, frameNumber: number): number | null {
+    const key = getScoreKey(eventPlayerId, frameNumber);
+    // Prefer local optimistic score if available
+    if (localScores.has(key)) {
+      return localScores.get(key)!;
+    }
+    // Fall back to server data
+    const frame = match.frames.find(f => f.frame_number === frameNumber);
+    const result = frame?.results.find(r => r.event_player_id === eventPlayerId);
+    return result?.putts_made ?? null;
+  }
+
   // Check if all players have scored in current frame
   function isCurrentFrameComplete(): boolean {
     const allPlayers = [...match.team_one.players, ...match.team_two.players];
-    const frame = match.frames.find(f => f.frame_number === currentFrame);
 
     for (const player of allPlayers) {
-      const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
-      if (result?.putts_made === undefined) {
+      const score = getPlayerScore(player.event_player_id, currentFrame);
+      if (score === null) {
         return false;
       }
     }
@@ -156,6 +169,7 @@ export function FrameWizard({
               teamNumber={1}
               frameNumber={currentFrame}
               match={match}
+              localScores={localScores}
               bonusPointEnabled={bonusPointEnabled}
               isSaving={isSaving}
               onScoreChange={onScoreChange}
@@ -170,6 +184,7 @@ export function FrameWizard({
               teamNumber={2}
               frameNumber={currentFrame}
               match={match}
+              localScores={localScores}
               bonusPointEnabled={bonusPointEnabled}
               isSaving={isSaving}
               onScoreChange={onScoreChange}
@@ -245,6 +260,7 @@ interface TeamScoringSectionProps {
   teamNumber: 1 | 2;
   frameNumber: number;
   match: MatchInfo;
+  localScores: ScoreState;
   bonusPointEnabled: boolean;
   isSaving: string | null;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
@@ -255,6 +271,7 @@ function TeamScoringSection({
   teamNumber,
   frameNumber,
   match,
+  localScores,
   bonusPointEnabled,
   isSaving,
   onScoreChange,
@@ -263,13 +280,23 @@ function TeamScoringSection({
     ? 'bg-blue-50/50 dark:bg-blue-950/20'
     : 'bg-orange-50/50 dark:bg-orange-950/20';
 
-  // Calculate team's score for this frame
+  // Calculate team's score for this frame using local scores when available
   const frame = match.frames.find(f => f.frame_number === frameNumber);
   let frameScore = 0;
   for (const player of team.players) {
-    const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
-    if (result) {
-      frameScore += result.points_earned;
+    const key = getScoreKey(player.event_player_id, frameNumber);
+    let putts: number | undefined;
+
+    // Prefer local optimistic score
+    if (localScores.has(key)) {
+      putts = localScores.get(key);
+    } else {
+      const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
+      putts = result?.putts_made;
+    }
+
+    if (putts !== undefined) {
+      frameScore += calculatePoints(putts, bonusPointEnabled);
     }
   }
 
@@ -290,6 +317,7 @@ function TeamScoringSection({
             player={player}
             frameNumber={frameNumber}
             match={match}
+            localScores={localScores}
             bonusPointEnabled={bonusPointEnabled}
             isSaving={isSaving}
             onScoreChange={onScoreChange}
@@ -304,6 +332,7 @@ interface PlayerScoreRowProps {
   player: PlayerInfo;
   frameNumber: number;
   match: MatchInfo;
+  localScores: ScoreState;
   bonusPointEnabled: boolean;
   isSaving: string | null;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
@@ -313,14 +342,23 @@ function PlayerScoreRow({
   player,
   frameNumber,
   match,
+  localScores,
   bonusPointEnabled,
   isSaving,
   onScoreChange,
 }: PlayerScoreRowProps) {
-  const frame = match.frames.find(f => f.frame_number === frameNumber);
-  const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
-  const currentScore = result?.putts_made ?? null;
   const saveKey = getScoreKey(player.event_player_id, frameNumber);
+
+  // Prefer local optimistic score for immediate feedback
+  let currentScore: number | null;
+  if (localScores.has(saveKey)) {
+    currentScore = localScores.get(saveKey)!;
+  } else {
+    const frame = match.frames.find(f => f.frame_number === frameNumber);
+    const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
+    currentScore = result?.putts_made ?? null;
+  }
+
   const isCurrentlySaving = isSaving === saveKey;
 
   const handleIncrement = useCallback(() => {
@@ -372,11 +410,7 @@ function PlayerScoreRow({
             currentScore !== null && currentScore < 3 && 'border-primary'
           )}
         >
-          {isCurrentlySaving ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            currentScore ?? '-'
-          )}
+          {currentScore ?? '-'}
         </div>
 
         <Button
