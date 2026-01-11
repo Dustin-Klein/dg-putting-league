@@ -33,6 +33,23 @@ export default function MatchScoringPage({
   // Track if we're currently saving to avoid refetch during our own updates
   const isSavingRef = useRef(false);
 
+  // Pending saves with debounce info
+  interface PendingSave {
+    timer: NodeJS.Timeout;
+    eventPlayerId: string;
+    frameNumber: number;
+    puttsMade: number;
+  }
+  const pendingSavesRef = useRef<Map<string, PendingSave>>(new Map());
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    const pendingSaves = pendingSavesRef.current;
+    return () => {
+      pendingSaves.forEach((save) => clearTimeout(save.timer));
+    };
+  }, []);
+
   // Resolve params
   useEffect(() => {
     params.then((p) => setMatchId(p.matchId));
@@ -128,21 +145,14 @@ export default function MatchScoringPage({
     };
   }, [matchId, accessCode, fetchMatch]);
 
-  const handleScoreChange = async (
+  // Actual API call to save a score
+  const saveScoreToServer = useCallback(async (
+    saveKey: string,
     eventPlayerId: string,
     frameNumber: number,
     puttsMade: number
-  ): Promise<void> => {
+  ) => {
     if (!accessCode || !matchId) return;
-
-    const saveKey = getScoreKey(eventPlayerId, frameNumber);
-
-    // Optimistic update: immediately update local state for responsive UI
-    setLocalScores(prev => {
-      const next = new Map(prev);
-      next.set(saveKey, puttsMade);
-      return next;
-    });
 
     isSavingRef.current = true;
 
@@ -168,26 +178,80 @@ export default function MatchScoringPage({
       setMatch(updatedMatch);
 
       // Clear local score now that server has confirmed
-      setLocalScores(prev => {
-        const next = new Map(prev);
-        next.delete(saveKey);
-        return next;
-      });
+      // Only clear if no newer pending save exists for this key
+      if (!pendingSavesRef.current.has(saveKey)) {
+        setLocalScores(prev => {
+          const next = new Map(prev);
+          next.delete(saveKey);
+          return next;
+        });
+      }
     } catch (err) {
       console.error('Failed to save score:', err);
-      // Revert optimistic update on error
-      setLocalScores(prev => {
-        const next = new Map(prev);
-        next.delete(saveKey);
-        return next;
-      });
+      // Revert optimistic update on error only if no newer pending save
+      if (!pendingSavesRef.current.has(saveKey)) {
+        setLocalScores(prev => {
+          const next = new Map(prev);
+          next.delete(saveKey);
+          return next;
+        });
+      }
     } finally {
       isSavingRef.current = false;
     }
+  }, [accessCode, matchId, bonusPointEnabled]);
+
+  // Flush all pending saves immediately (call before navigation)
+  const flushPendingSaves = useCallback(() => {
+    pendingSavesRef.current.forEach((save, key) => {
+      clearTimeout(save.timer);
+      saveScoreToServer(key, save.eventPlayerId, save.frameNumber, save.puttsMade);
+    });
+    pendingSavesRef.current.clear();
+  }, [saveScoreToServer]);
+
+  const handleScoreChange = async (
+    eventPlayerId: string,
+    frameNumber: number,
+    puttsMade: number
+  ): Promise<void> => {
+    const saveKey = getScoreKey(eventPlayerId, frameNumber);
+
+    // Optimistic update: immediately update local state for responsive UI
+    setLocalScores(prev => {
+      const next = new Map(prev);
+      next.set(saveKey, puttsMade);
+      return next;
+    });
+
+    // Clear existing debounce timer for this key
+    const existing = pendingSavesRef.current.get(saveKey);
+    if (existing) {
+      clearTimeout(existing.timer);
+    }
+
+    // Set new debounce timer - only fires API call after 300ms of no changes
+    const timer = setTimeout(() => {
+      const pending = pendingSavesRef.current.get(saveKey);
+      if (pending) {
+        pendingSavesRef.current.delete(saveKey);
+        saveScoreToServer(saveKey, pending.eventPlayerId, pending.frameNumber, pending.puttsMade);
+      }
+    }, 300);
+
+    pendingSavesRef.current.set(saveKey, {
+      timer,
+      eventPlayerId,
+      frameNumber,
+      puttsMade,
+    });
   };
 
   const handleComplete = async () => {
     if (!accessCode || !matchId || !match) return;
+
+    // Flush any pending score saves before completing
+    flushPendingSaves();
 
     if (match.team_one_score === match.team_two_score) {
       setError('Scores are tied. Continue scoring in overtime until there is a winner.');
@@ -250,6 +314,8 @@ export default function MatchScoringPage({
   const handleNextFrame = () => {
     if (!match) return;
 
+    flushPendingSaves();
+
     const frameNumbers = getFrameNumbers(match);
     const currentIndex = frameNumbers.indexOf(currentFrame);
 
@@ -263,16 +329,19 @@ export default function MatchScoringPage({
   };
 
   const handlePrevFrame = () => {
+    flushPendingSaves();
     if (currentFrame > 1) {
       setCurrentFrame(currentFrame - 1);
     }
   };
 
   const handleGoToFrame = (frameNumber: number) => {
+    flushPendingSaves();
     setCurrentFrame(frameNumber);
   };
 
   const handleFinishScoring = () => {
+    flushPendingSaves();
     setWizardStage('review');
   };
 
