@@ -30,7 +30,6 @@ interface FrameWizardProps {
   localScores: ScoreState;
   bonusPointEnabled: boolean;
   currentFrame: number;
-  isSaving: string | null;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
   onNextFrame: () => void;
   onPrevFrame: () => void;
@@ -44,7 +43,6 @@ export function FrameWizard({
   localScores,
   bonusPointEnabled,
   currentFrame,
-  isSaving,
   onScoreChange,
   onNextFrame,
   onPrevFrame,
@@ -171,7 +169,6 @@ export function FrameWizard({
               match={match}
               localScores={localScores}
               bonusPointEnabled={bonusPointEnabled}
-              isSaving={isSaving}
               onScoreChange={onScoreChange}
             />
 
@@ -186,7 +183,6 @@ export function FrameWizard({
               match={match}
               localScores={localScores}
               bonusPointEnabled={bonusPointEnabled}
-              isSaving={isSaving}
               onScoreChange={onScoreChange}
             />
           </CardContent>
@@ -262,7 +258,6 @@ interface TeamScoringSectionProps {
   match: MatchInfo;
   localScores: ScoreState;
   bonusPointEnabled: boolean;
-  isSaving: string | null;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
 }
 
@@ -273,7 +268,6 @@ function TeamScoringSection({
   match,
   localScores,
   bonusPointEnabled,
-  isSaving,
   onScoreChange,
 }: TeamScoringSectionProps) {
   const bgColor = teamNumber === 1
@@ -319,7 +313,6 @@ function TeamScoringSection({
             match={match}
             localScores={localScores}
             bonusPointEnabled={bonusPointEnabled}
-            isSaving={isSaving}
             onScoreChange={onScoreChange}
           />
         ))}
@@ -334,7 +327,6 @@ interface PlayerScoreRowProps {
   match: MatchInfo;
   localScores: ScoreState;
   bonusPointEnabled: boolean;
-  isSaving: string | null;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
 }
 
@@ -344,22 +336,19 @@ function PlayerScoreRow({
   match,
   localScores,
   bonusPointEnabled,
-  isSaving,
   onScoreChange,
 }: PlayerScoreRowProps) {
-  const saveKey = getScoreKey(player.event_player_id, frameNumber);
+  const key = getScoreKey(player.event_player_id, frameNumber);
 
   // Prefer local optimistic score for immediate feedback
   let currentScore: number | null;
-  if (localScores.has(saveKey)) {
-    currentScore = localScores.get(saveKey)!;
+  if (localScores.has(key)) {
+    currentScore = localScores.get(key)!;
   } else {
     const frame = match.frames.find(f => f.frame_number === frameNumber);
     const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
     currentScore = result?.putts_made ?? null;
   }
-
-  const isCurrentlySaving = isSaving === saveKey;
 
   const handleIncrement = useCallback(() => {
     const newScore = currentScore === null ? 1 : Math.min(currentScore + 1, MAX_PUTTS);
@@ -396,7 +385,7 @@ function PlayerScoreRow({
           size="icon"
           className="h-12 w-12 rounded-full"
           onClick={handleDecrement}
-          disabled={isCurrentlySaving || currentScore === null || currentScore <= MIN_PUTTS}
+          disabled={currentScore === null || currentScore <= MIN_PUTTS}
           aria-label="Decrease score"
         >
           <Minus className="h-5 w-5" />
@@ -418,7 +407,7 @@ function PlayerScoreRow({
           size="icon"
           className="h-12 w-12 rounded-full"
           onClick={handleIncrement}
-          disabled={isCurrentlySaving || (currentScore !== null && currentScore >= MAX_PUTTS)}
+          disabled={currentScore !== null && currentScore >= MAX_PUTTS}
           aria-label="Increase score"
         >
           <Plus className="h-5 w-5" />

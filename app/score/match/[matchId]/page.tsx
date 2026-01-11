@@ -20,7 +20,6 @@ export default function MatchScoringPage({
   const [bonusPointEnabled, setBonusPointEnabled] = useState(true);
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState<string | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,7 +144,6 @@ export default function MatchScoringPage({
       return next;
     });
 
-    setIsSaving(saveKey);
     isSavingRef.current = true;
 
     try {
@@ -184,7 +182,6 @@ export default function MatchScoringPage({
         return next;
       });
     } finally {
-      setIsSaving(null);
       isSavingRef.current = false;
     }
   };
@@ -323,7 +320,6 @@ export default function MatchScoringPage({
           localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
           currentFrame={currentFrame}
-          isSaving={isSaving}
           onScoreChange={handleScoreChange}
           onNextFrame={handleNextFrame}
           onPrevFrame={handlePrevFrame}
