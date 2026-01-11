@@ -11,6 +11,15 @@ import {
   InternalError,
   NotFoundError,
 } from '@/lib/errors';
+import {
+  bracketStageExists,
+  getBracketParticipants,
+  linkParticipantsToTeams,
+  setEventIdOnMatches,
+  getMatchesByStageId,
+  updateMatchStatus,
+  getBracketStage,
+} from '@/lib/repositories/lane-repository';
 
 /**
  * Get the next power of 2 that is >= n
@@ -52,13 +61,9 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
   }
 
   // Check if bracket already exists
-  const { data: existingStage } = await supabase
-    .from('bracket_stage')
-    .select('id')
-    .eq('tournament_id', eventId)
-    .maybeSingle();
+  const exists = await bracketStageExists(supabase, eventId);
 
-  if (existingStage) {
+  if (exists) {
     throw new BadRequestError('Bracket has already been created for this event');
   }
 
@@ -100,36 +105,26 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
   });
 
   // Link participants to teams
-  const { data: participants } = await supabase
-    .from('bracket_participant')
-    .select('*')
-    .eq('tournament_id', eventId)
-    .order('id');
+  const participants = await getBracketParticipants(supabase, eventId);
 
-  if (participants) {
+  if (participants.length > 0) {
+    const mappings: Array<{ participantId: number; teamId: string }> = [];
     for (let i = 0; i < participants.length; i++) {
       const team = sortedTeams[i];
       if (team) {
-        await supabase
-          .from('bracket_participant')
-          .update({ team_id: team.id })
-          .eq('id', participants[i].id);
+        mappings.push({ participantId: participants[i].id, teamId: team.id });
       }
+    }
+    if (mappings.length > 0) {
+      await linkParticipantsToTeams(supabase, mappings);
     }
   }
 
   // Add event_id to all matches for easier querying
-  const { data: stage } = await supabase
-    .from('bracket_stage')
-    .select('id')
-    .eq('tournament_id', eventId)
-    .single();
+  const stage = await getBracketStage(supabase, eventId);
 
   if (stage) {
-    await supabase
-      .from('bracket_match')
-      .update({ event_id: eventId })
-      .eq('stage_id', stage.id);
+    await setEventIdOnMatches(supabase, stage.id, eventId);
   }
 
   // Set initial matches to ready status if they have both opponents
@@ -146,23 +141,14 @@ async function setInitialMatchesReady(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<void> {
-  const { data: stage } = await supabase
-    .from('bracket_stage')
-    .select('id')
-    .eq('tournament_id', eventId)
-    .single();
+  const stage = await getBracketStage(supabase, eventId);
 
   if (!stage) return;
 
   // Get first round matches that have both opponents
-  const { data: matches } = await supabase
-    .from('bracket_match')
-    .select('*')
-    .eq('stage_id', stage.id)
-    .not('opponent1', 'is', null)
-    .not('opponent2', 'is', null);
+  const matches = await getMatchesByStageId(supabase, stage.id);
 
-  if (!matches) return;
+  if (matches.length === 0) return;
 
   // Update matches where both opponents have IDs (not BYEs)
   for (const match of matches) {
@@ -170,10 +156,7 @@ async function setInitialMatchesReady(
     const opp2 = match.opponent2 as { id: number | null } | null;
 
     if (opp1?.id !== null && opp2?.id !== null) {
-      await supabase
-        .from('bracket_match')
-        .update({ status: Status.Ready })
-        .eq('id', match.id);
+      await updateMatchStatus(supabase, match.id, Status.Ready);
     }
   }
 }
@@ -408,14 +391,7 @@ export async function assignLaneToMatch(
  */
 export async function bracketExists(eventId: string): Promise<boolean> {
   const supabase = await createClient();
-
-  const { data } = await supabase
-    .from('bracket_stage')
-    .select('id')
-    .eq('tournament_id', eventId)
-    .maybeSingle();
-
-  return !!data;
+  return bracketStageExists(supabase, eventId);
 }
 
 export { Status } from 'brackets-model';

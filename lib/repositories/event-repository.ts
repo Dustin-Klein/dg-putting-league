@@ -318,3 +318,39 @@ export async function getEventByAccessCodeForQualification(
     status: string;
   } | null;
 }
+
+/**
+ * Get event by access code for bracket scoring
+ * Returns only events that are in bracket status
+ */
+export async function getEventByAccessCodeForBracket(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accessCode: string
+): Promise<{
+  id: string;
+  event_date: string;
+  location: string | null;
+  lane_count: number;
+  bonus_point_enabled: boolean;
+  status: string;
+} | null> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('id, event_date, location, lane_count, bonus_point_enabled, status')
+    .eq('access_code', accessCode)
+    .eq('status', 'bracket')
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
+  }
+
+  return event as {
+    id: string;
+    event_date: string;
+    location: string | null;
+    lane_count: number;
+    bonus_point_enabled: boolean;
+    status: string;
+  } | null;
+}

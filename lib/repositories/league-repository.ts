@@ -187,3 +187,26 @@ export async function fetchLeague(
 
   return league as LeagueData;
 }
+
+/**
+ * Get league admin by user and league
+ * Returns the admin record if the user is an admin of the league, null otherwise
+ */
+export async function getLeagueAdminByUserAndLeague(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string,
+  userId: string
+): Promise<{ id: string } | null> {
+  const { data: leagueAdmin, error } = await supabase
+    .from('league_admins')
+    .select('id')
+    .eq('league_id', leagueId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !leagueAdmin) {
+    return null;
+  }
+
+  return leagueAdmin as { id: string };
+}
