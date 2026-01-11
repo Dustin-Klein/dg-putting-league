@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client';
 import { MatchSetup } from './components/match-setup';
 import { FrameWizard } from './components/frame-wizard';
 import { ReviewSubmit } from './components/review-submit';
-import type { WizardStage, MatchInfo } from './components/wizard-types';
-import { STANDARD_FRAMES, getFrameNumbers } from './components/wizard-types';
+import type { WizardStage, MatchInfo, ScoreState } from './components/wizard-types';
+import { STANDARD_FRAMES, getFrameNumbers, getScoreKey } from './components/wizard-types';
 
 export default function MatchScoringPage({
   params,
@@ -27,6 +27,9 @@ export default function MatchScoringPage({
   // Wizard state
   const [wizardStage, setWizardStage] = useState<WizardStage>('setup');
   const [currentFrame, setCurrentFrame] = useState(1);
+
+  // Optimistic local scores for immediate UI feedback
+  const [localScores, setLocalScores] = useState<ScoreState>(new Map());
 
   // Track if we're currently saving to avoid refetch during our own updates
   const isSavingRef = useRef(false);
@@ -133,7 +136,15 @@ export default function MatchScoringPage({
   ): Promise<void> => {
     if (!accessCode || !matchId) return;
 
-    const saveKey = `${eventPlayerId}-${frameNumber}`;
+    const saveKey = getScoreKey(eventPlayerId, frameNumber);
+
+    // Optimistic update: immediately update local state for responsive UI
+    setLocalScores(prev => {
+      const next = new Map(prev);
+      next.set(saveKey, puttsMade);
+      return next;
+    });
+
     setIsSaving(saveKey);
     isSavingRef.current = true;
 
@@ -157,8 +168,21 @@ export default function MatchScoringPage({
 
       const updatedMatch = await response.json();
       setMatch(updatedMatch);
+
+      // Clear local score now that server has confirmed
+      setLocalScores(prev => {
+        const next = new Map(prev);
+        next.delete(saveKey);
+        return next;
+      });
     } catch (err) {
       console.error('Failed to save score:', err);
+      // Revert optimistic update on error
+      setLocalScores(prev => {
+        const next = new Map(prev);
+        next.delete(saveKey);
+        return next;
+      });
     } finally {
       setIsSaving(null);
       isSavingRef.current = false;
@@ -296,6 +320,7 @@ export default function MatchScoringPage({
       return (
         <FrameWizard
           match={match}
+          localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
           currentFrame={currentFrame}
           isSaving={isSaving}
