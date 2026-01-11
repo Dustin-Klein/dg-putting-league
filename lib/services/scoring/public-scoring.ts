@@ -12,12 +12,12 @@ import { completeMatch } from './match-completion';
 import { getOrCreateFrame } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket } from '@/lib/repositories/event-repository';
+import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
 import {
-  getLaneLabelsForEvent,
   getMatchesForScoringByEvent,
   getMatchForScoringById,
   updateMatchStatus,
-} from '@/lib/repositories/lane-repository';
+} from '@/lib/repositories/bracket-repository';
 import type {
   PublicEventInfo,
   PublicMatchInfo,

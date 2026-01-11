@@ -19,7 +19,7 @@ import {
   getMatchesByStageId,
   updateMatchStatus,
   getBracketStage,
-} from '@/lib/repositories/lane-repository';
+} from '@/lib/repositories/bracket-repository';
 
 /**
  * Get the next power of 2 that is >= n

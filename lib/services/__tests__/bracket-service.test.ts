@@ -44,6 +44,13 @@ jest.mock('@/lib/services/team', () => ({
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
   SupabaseBracketStorage: jest.fn().mockImplementation(() => ({})),
+  bracketStageExists: jest.fn(),
+  getBracketParticipants: jest.fn(),
+  linkParticipantsToTeams: jest.fn(),
+  setEventIdOnMatches: jest.fn(),
+  getMatchesByStageId: jest.fn(),
+  updateMatchStatus: jest.fn(),
+  getBracketStage: jest.fn(),
 }));
 
 jest.mock('brackets-manager', () => ({
@@ -61,6 +68,7 @@ jest.mock('brackets-manager', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { getEventTeams } from '@/lib/services/team';
+import { bracketStageExists } from '@/lib/repositories/bracket-repository';
 import {
   createBracket,
   getBracket,
@@ -96,12 +104,7 @@ describe('Bracket Service', () => {
     it('should throw BadRequestError when bracket already exists', async () => {
       const event = createMockEventWithDetails({ id: eventId, status: 'bracket' });
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      const stageQueryBuilder = createMockQueryBuilder({
-        data: { id: 'existing-stage' },
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(stageQueryBuilder);
+      (bracketStageExists as jest.Mock).mockResolvedValue(true);
 
       await expect(createBracket(eventId)).rejects.toThrow(BadRequestError);
       await expect(createBracket(eventId)).rejects.toThrow(
@@ -112,10 +115,7 @@ describe('Bracket Service', () => {
     it('should throw BadRequestError when less than 2 teams', async () => {
       const event = createMockEventWithDetails({ id: eventId, status: 'bracket' });
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      const stageQueryBuilder = createMockQueryBuilder({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(stageQueryBuilder);
-
+      (bracketStageExists as jest.Mock).mockResolvedValue(false);
       (getEventTeams as jest.Mock).mockResolvedValue([createMockTeam()]);
 
       await expect(createBracket(eventId)).rejects.toThrow(
@@ -211,24 +211,21 @@ describe('Bracket Service', () => {
     const eventId = 'event-123';
 
     it('should return true when bracket exists', async () => {
-      const queryBuilder = createMockQueryBuilder({
-        data: { id: 'stage-123' },
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (bracketStageExists as jest.Mock).mockResolvedValue(true);
 
       const result = await bracketExists(eventId);
 
       expect(result).toBe(true);
+      expect(bracketStageExists).toHaveBeenCalledWith(mockSupabase, eventId);
     });
 
     it('should return false when bracket does not exist', async () => {
-      const queryBuilder = createMockQueryBuilder({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (bracketStageExists as jest.Mock).mockResolvedValue(false);
 
       const result = await bracketExists(eventId);
 
       expect(result).toBe(false);
+      expect(bracketStageExists).toHaveBeenCalledWith(mockSupabase, eventId);
     });
   });
 
