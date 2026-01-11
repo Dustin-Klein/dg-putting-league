@@ -202,9 +202,13 @@ export async function getLeagueAdminByUserAndLeague(
     .select('id')
     .eq('league_id', leagueId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
-  if (error || !leagueAdmin) {
+  if (error) {
+    throw new InternalError(`Failed to fetch league admin: ${error.message}`);
+  }
+
+  if (!leagueAdmin) {
     return null;
   }
 

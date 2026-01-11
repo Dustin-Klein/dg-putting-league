@@ -6,7 +6,7 @@
  * - requireLeagueAdmin()
  */
 
-import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
+import { UnauthorizedError, ForbiddenError, InternalError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
   createMockUser,
@@ -158,6 +158,15 @@ describe('Auth Service', () => {
 
       expect(result.user.id).toBe(userId);
       expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
+    });
+
+    it('should propagate InternalError when repository throws database error', async () => {
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockRejectedValue(
+        new InternalError('Failed to fetch league admin: DB error')
+      );
+
+      await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(InternalError);
+      await expect(requireLeagueAdmin(leagueId)).rejects.toThrow('Failed to fetch league admin');
     });
   });
 });
