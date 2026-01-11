@@ -1,6 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
+import { getLeagueAdminByUserAndLeague } from '@/lib/repositories/league-repository';
 
 export async function requireAuthenticatedUser() {
     const supabase = await createClient();
@@ -21,12 +22,7 @@ export async function requireLeagueAdmin(leagueId: string) {
     const supabase = await createClient();
     const user = await requireAuthenticatedUser();
 
-    const { data: leagueAdmin } = await supabase
-        .from('league_admins')
-        .select('id')
-        .eq('league_id', leagueId)
-        .eq('user_id', user.id)
-        .single();
+    const leagueAdmin = await getLeagueAdminByUserAndLeague(supabase, leagueId, user.id);
 
     if (!leagueAdmin) {
         throw new ForbiddenError('Insufficient permissions');

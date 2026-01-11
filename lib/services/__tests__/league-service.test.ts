@@ -30,6 +30,10 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/services/auth', () => ({
+  requireAuthenticatedUser: jest.fn(),
+}));
+
 jest.mock('@/lib/repositories/league-repository', () => ({
   getLeagueById: jest.fn(),
   getLeagueAdminsForUser: jest.fn(),
@@ -44,6 +48,7 @@ jest.mock('@/lib/repositories/league-repository', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
+import { requireAuthenticatedUser } from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository';
 import { getLeague, getUserAdminLeagues, createLeague } from '../league/league-service';
 
@@ -167,10 +172,7 @@ describe('League Service', () => {
   describe('createLeague', () => {
     beforeEach(() => {
       const mockUser = createMockUser({ id: 'user-123' });
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
     });
 
     it('should create a league with name and city', async () => {
@@ -187,6 +189,7 @@ describe('League Service', () => {
       const result = await createLeague({ name: 'New League', city: 'New York' });
 
       expect(result).toEqual(expectedLeague);
+      expect(requireAuthenticatedUser).toHaveBeenCalled();
       expect(leagueRepo.insertLeague).toHaveBeenCalledWith(
         mockSupabase,
         mockUUID,
@@ -240,22 +243,12 @@ describe('League Service', () => {
     });
 
     it('should throw UnauthorizedError when not authenticated', async () => {
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: null },
-        error: null,
-      });
+      (requireAuthenticatedUser as jest.Mock).mockRejectedValue(
+        new UnauthorizedError('Authentication required')
+      );
 
       await expect(createLeague({ name: 'Test League' })).rejects.toThrow(UnauthorizedError);
       await expect(createLeague({ name: 'Test League' })).rejects.toThrow('Authentication required');
-    });
-
-    it('should throw UnauthorizedError when auth returns error', async () => {
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: null },
-        error: new Error('Auth failed'),
-      });
-
-      await expect(createLeague({ name: 'Test League' })).rejects.toThrow(UnauthorizedError);
     });
 
     it('should throw BadRequestError when name is missing', async () => {
@@ -287,10 +280,7 @@ describe('League Service', () => {
 
     it('should set the creating user as owner', async () => {
       const ownerId = 'owner-user-456';
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: createMockUser({ id: ownerId }) },
-        error: null,
-      });
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: ownerId }));
 
       (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
       (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);

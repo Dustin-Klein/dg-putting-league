@@ -1,10 +1,8 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { LeagueWithRole, LeagueAdminRole } from '@/lib/types/league';
-import {
-  UnauthorizedError,
-  BadRequestError,
-} from '@/lib/errors';
+import { BadRequestError } from '@/lib/errors';
+import { requireAuthenticatedUser } from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository';
 
 /**
@@ -65,12 +63,7 @@ type CreateLeagueInput = {
  */
 export async function createLeague(input: CreateLeagueInput) {
   const supabase = await createClient();
-
-  // Auth check
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    throw new UnauthorizedError('Authentication required');
-  }
+  const user = await requireAuthenticatedUser();
 
   const { name, city } = input;
 

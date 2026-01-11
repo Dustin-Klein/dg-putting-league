@@ -9,7 +9,6 @@
 import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockQueryBuilder,
   createMockUser,
   createMockLeagueAdmin,
   MockSupabaseClient,
@@ -20,8 +19,13 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/repositories/league-repository', () => ({
+  getLeagueAdminByUserAndLeague: jest.fn(),
+}));
+
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
+import { getLeagueAdminByUserAndLeague } from '@/lib/repositories/league-repository';
 import { requireAuthenticatedUser, requireLeagueAdmin } from '../auth/auth-service';
 
 describe('Auth Service', () => {
@@ -95,27 +99,17 @@ describe('Auth Service', () => {
         user_id: 'user-123',
       });
 
-      const queryBuilder = createMockQueryBuilder({
-        data: mockAdmin,
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
 
       const result = await requireLeagueAdmin(leagueId);
 
       expect(result.user.id).toBe('user-123');
       expect(result.isAdmin).toBe(true);
-      expect(mockSupabase.from).toHaveBeenCalledWith('league_admins');
-      expect(queryBuilder.eq).toHaveBeenCalledWith('league_id', leagueId);
-      expect(queryBuilder.eq).toHaveBeenCalledWith('user_id', 'user-123');
+      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, leagueId, 'user-123');
     });
 
     it('should throw ForbiddenError when user is not a league admin', async () => {
-      const queryBuilder = createMockQueryBuilder({
-        data: null,
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(ForbiddenError);
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow('Insufficient permissions');
@@ -137,16 +131,12 @@ describe('Auth Service', () => {
         user_id: 'user-123',
       });
 
-      const queryBuilder = createMockQueryBuilder({
-        data: mockAdmin,
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
 
       const result = await requireLeagueAdmin(differentLeagueId);
 
       expect(result.isAdmin).toBe(true);
-      expect(queryBuilder.eq).toHaveBeenCalledWith('league_id', differentLeagueId);
+      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, differentLeagueId, 'user-123');
     });
 
     it('should check admin status for the authenticated user', async () => {
@@ -162,16 +152,12 @@ describe('Auth Service', () => {
         user_id: userId,
       });
 
-      const queryBuilder = createMockQueryBuilder({
-        data: mockAdmin,
-        error: null,
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
 
       const result = await requireLeagueAdmin(leagueId);
 
       expect(result.user.id).toBe(userId);
-      expect(queryBuilder.eq).toHaveBeenCalledWith('user_id', userId);
+      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
     });
   });
 });

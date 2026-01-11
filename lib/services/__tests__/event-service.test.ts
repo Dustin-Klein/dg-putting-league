@@ -19,12 +19,10 @@ import {
 } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockQueryBuilder,
   createMockUser,
   createMockEvent,
   createMockEventWithDetails,
   createMockEventPlayers,
-  createMockLeagueAdmin,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -35,6 +33,7 @@ jest.mock('@/lib/supabase/server', () => ({
 
 jest.mock('@/lib/services/auth', () => ({
   requireAuthenticatedUser: jest.fn(),
+  requireLeagueAdmin: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/event-repository', () => ({
@@ -69,7 +68,7 @@ jest.mock('next/navigation', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
+import { requireLeagueAdmin } from '@/lib/services/auth';
 import * as eventRepo from '@/lib/repositories/event-repository';
 import { computePoolAssignments } from '@/lib/services/event-player';
 import { computeTeamPairings } from '@/lib/services/team';
@@ -106,22 +105,15 @@ describe('Event Service', () => {
     const eventId = 'event-123';
     const leagueId = 'league-123';
 
-    beforeEach(() => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
-    });
-
     it('should return supabase client when user is event admin', async () => {
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue(leagueId);
-
-      const mockAdmin = createMockLeagueAdmin({ league_id: leagueId, user_id: 'user-123' });
-      const queryBuilder = createMockQueryBuilder({ data: mockAdmin, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
 
       const result = await requireEventAdmin(eventId);
 
       expect(result.supabase).toBeDefined();
       expect(eventRepo.getEventLeagueId).toHaveBeenCalledWith(mockSupabase, eventId);
+      expect(requireLeagueAdmin).toHaveBeenCalledWith(leagueId);
     });
 
     it('should throw ForbiddenError when event not found', async () => {
@@ -134,15 +126,14 @@ describe('Event Service', () => {
 
     it('should throw ForbiddenError when user is not league admin', async () => {
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue(leagueId);
-
-      const queryBuilder = createMockQueryBuilder({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
 
       await expect(requireEventAdmin(eventId)).rejects.toThrow(ForbiddenError);
     });
 
     it('should require authentication', async () => {
-      (requireAuthenticatedUser as jest.Mock).mockRejectedValue(
+      (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue(leagueId);
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(
         new UnauthorizedError('Not authenticated')
       );
 
@@ -179,15 +170,7 @@ describe('Event Service', () => {
     const leagueId = 'league-123';
 
     it('should return events for league when user is admin', async () => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-
-      const mockAdmin = createMockLeagueAdmin({ league_id: leagueId, user_id: 'user-123' });
-      const queryBuilder = createMockQueryBuilder({ data: mockAdmin, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
 
       const mockEvents = [
         createMockEvent({ id: 'event-1', league_id: leagueId }),
@@ -198,32 +181,20 @@ describe('Event Service', () => {
       const result = await getEventsByLeagueId(leagueId);
 
       expect(result).toEqual(mockEvents);
+      expect(requireLeagueAdmin).toHaveBeenCalledWith(leagueId);
       expect(eventRepo.getEventsByLeagueId).toHaveBeenCalledWith(mockSupabase, leagueId);
     });
 
     it('should throw UnauthorizedError when not authenticated', async () => {
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: null },
-        error: null,
-      });
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new UnauthorizedError('Authentication required'));
 
       await expect(getEventsByLeagueId(leagueId)).rejects.toThrow(UnauthorizedError);
     });
 
     it('should throw ForbiddenError when not league admin', async () => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-
-      const queryBuilder = createMockQueryBuilder({ data: null, error: { message: 'Not found' } });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
 
       await expect(getEventsByLeagueId(leagueId)).rejects.toThrow(ForbiddenError);
-      await expect(getEventsByLeagueId(leagueId)).rejects.toThrow(
-        'User is not an admin of this league'
-      );
     });
   });
 
@@ -231,13 +202,8 @@ describe('Event Service', () => {
     const eventId = 'event-123';
 
     it('should delete event when user is admin', async () => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-
-      const mockAdmin = createMockLeagueAdmin();
-      const queryBuilder = createMockQueryBuilder({ data: mockAdmin, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
 
       (eventRepo.deleteEvent as jest.Mock).mockResolvedValue(undefined);
 
@@ -247,12 +213,8 @@ describe('Event Service', () => {
     });
 
     it('should throw ForbiddenError when not admin', async () => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-
-      const queryBuilder = createMockQueryBuilder({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
 
       await expect(deleteEvent(eventId)).rejects.toThrow(ForbiddenError);
     });
@@ -428,13 +390,8 @@ describe('Event Service', () => {
     const eventId = 'event-123';
 
     it('should update event when user is admin', async () => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-
-      const mockAdmin = createMockLeagueAdmin();
-      const queryBuilder = createMockQueryBuilder({ data: mockAdmin, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
 
       const updateData = { location: 'New Location', lane_count: 6 };
       const updatedEvent = createMockEvent({ ...updateData });
@@ -451,13 +408,8 @@ describe('Event Service', () => {
     const eventId = 'event-123';
 
     beforeEach(() => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-
-      const mockAdmin = createMockLeagueAdmin();
-      const queryBuilder = createMockQueryBuilder({ data: mockAdmin, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
     });
 
     it('should transition event to bracket successfully', async () => {

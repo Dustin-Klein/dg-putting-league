@@ -3,12 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { EventWithDetails } from '@/lib/types/event';
 import {
-  UnauthorizedError,
   ForbiddenError,
   BadRequestError,
   InternalError,
 } from '@/lib/errors';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
+import { requireLeagueAdmin } from '@/lib/services/auth';
 import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
 import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
@@ -20,7 +19,6 @@ import * as eventRepo from '@/lib/repositories/event-repository';
  */
 export async function requireEventAdmin(eventId: string) {
   const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
 
   const leagueId = await eventRepo.getEventLeagueId(supabase, eventId);
 
@@ -28,16 +26,7 @@ export async function requireEventAdmin(eventId: string) {
     throw new ForbiddenError('Event not found');
   }
 
-  const { data: leagueAdmin } = await supabase
-    .from('league_admins')
-    .select('id')
-    .eq('league_id', leagueId)
-    .eq('user_id', user.id)
-    .single();
-
-  if (!leagueAdmin) {
-    throw new ForbiddenError();
-  }
+  await requireLeagueAdmin(leagueId);
 
   return { supabase };
 }
@@ -61,24 +50,7 @@ export async function getEventWithPlayers(eventId: string) {
 export async function getEventsByLeagueId(leagueId: string) {
   const supabase = await createClient();
 
-  // Auth check
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    throw new UnauthorizedError();
-  }
-
-  // Authorization check
-  const { data: leagueAdmin, error: adminError } = await supabase
-    .from('league_admins')
-    .select('id')
-    .eq('league_id', leagueId)
-    .eq('user_id', user.id)
-    .single();
-
-  if (adminError || !leagueAdmin) {
-    throw new ForbiddenError('User is not an admin of this league');
-  }
+  await requireLeagueAdmin(leagueId);
 
   return eventRepo.getEventsByLeagueId(supabase, leagueId);
 }
