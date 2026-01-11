@@ -51,6 +51,9 @@ jest.mock('@/lib/repositories/event-repository', () => ({
 
 jest.mock('@/lib/repositories/lane-repository', () => ({
   getLaneLabelsForEvent: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/bracket-repository', () => ({
   getMatchesForScoringByEvent: jest.fn(),
   getMatchForScoringById: jest.fn(),
   updateMatchStatus: jest.fn(),
@@ -69,12 +72,12 @@ import {
   verifyPlayerInTeams,
 } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket } from '@/lib/repositories/event-repository';
+import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
 import {
-  getLaneLabelsForEvent,
   getMatchesForScoringByEvent,
   getMatchForScoringById,
   updateMatchStatus,
-} from '@/lib/repositories/lane-repository';
+} from '@/lib/repositories/bracket-repository';
 import { calculatePoints } from '../scoring/points-calculator';
 import {
   validateAccessCode,
