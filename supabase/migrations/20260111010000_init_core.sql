@@ -38,5 +38,6 @@ CREATE TYPE stat_type AS ENUM (
 );
 
 CREATE SEQUENCE IF NOT EXISTS public.player_number_seq;
+GRANT USAGE, SELECT ON SEQUENCE public.player_number_seq TO anon, authenticated, service_role;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
