@@ -10,14 +10,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_order SMALLINT;
 BEGIN
-  SELECT COALESCE(MAX(order_in_frame),0)+1
-  INTO v_order
-  FROM public.frame_results
-  WHERE match_frame_id = p_match_frame_id;
-
   INSERT INTO public.frame_results (
     match_frame_id,
     event_player_id,
@@ -26,14 +19,15 @@ BEGIN
     points_earned,
     order_in_frame
   )
-  VALUES (
+  SELECT
     p_match_frame_id,
     p_event_player_id,
     p_bracket_match_id,
     p_putts_made,
     p_points_earned,
-    v_order
-  )
+    COALESCE(MAX(order_in_frame), 0) + 1
+  FROM public.frame_results
+  WHERE match_frame_id = p_match_frame_id
   ON CONFLICT (match_frame_id, event_player_id)
   DO UPDATE SET
     putts_made = EXCLUDED.putts_made,
