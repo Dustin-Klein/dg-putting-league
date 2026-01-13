@@ -1,3 +1,8 @@
+-- ============================================================================
+-- 10_seed_data.sql
+-- Test Data
+-- ============================================================================
+
 INSERT INTO public.players (full_name, email) VALUES 
 ('Name One', 'fake1@gmail.com'),
 ('Name Two', 'fake2@gmail.com'),
