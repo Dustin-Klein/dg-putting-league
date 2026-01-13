@@ -46,6 +46,10 @@ BEGIN
   SET lane_id = p_lane_id
   WHERE id = p_match_id AND event_id = p_event_id;
 
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Match not found: %', p_match_id;
+  END IF;
+
   RETURN true;
 END;
 $$;
