@@ -41,38 +41,37 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
                 className="ml-2"
                 onClick={() => {
                   navigator.clipboard.writeText(event.access_code);
-                  // You could add a toast here if needed
                 }}
               >
                 Copy
               </Button>
             </div>
           </div>
-          
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Putt Distance</h3>
             <p className="text-lg font-medium">{event.putt_distance_ft} ft</p>
           </div>
-          
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Lanes</h3>
             <p className="text-lg font-medium">{event.lane_count}</p>
           </div>
-          
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
             <p className="text-lg font-medium">
               {event.players?.filter(p => p.has_paid).length || 0}/{event.players?.length || 0} paid
             </p>
           </div>
-          
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Bonus Points</h3>
             <p className="text-lg font-medium">
               {event.bonus_point_enabled ? 'Enabled' : 'Disabled'}
             </p>
           </div>
-          
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Qualification Round</h3>
             <p className="text-lg font-medium">

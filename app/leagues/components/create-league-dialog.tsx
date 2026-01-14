@@ -27,7 +27,7 @@ export function CreateLeagueDialog() {
       });
 
       const data = await response.json().catch(() => ({}));
-      
+
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to create league');
       }
@@ -35,16 +35,11 @@ export function CreateLeagueDialog() {
       if (!data?.id) {
         throw new Error('Missing league ID in response');
       }
-      
-      toast({
-        title: 'Success',
-        description: 'Your new league has been created successfully!',
-      });
 
       setOpen(false);
       router.push(`/league/${data.id}`);
       router.refresh();
-      
+
       return data;
     } catch (error) {
       console.error('Error creating league:', error);
@@ -68,7 +63,7 @@ export function CreateLeagueDialog() {
             <p className="text-muted-foreground mb-6">
               Fill in the details below to create a new league.
             </p>
-            
+
             <LeagueForm
               onSubmit={handleSubmit}
               onCancel={() => setOpen(false)}

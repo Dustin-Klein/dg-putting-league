@@ -114,20 +114,6 @@ export default function QualificationScoringPage() {
       setNextFrameNumber((prev) => prev + 1);
       setSelectedPutts(null);
 
-      // Show success toast
-      const pointsText = data.frame.points_earned === 1 ? 'point' : 'points';
-      toast({
-        title: 'Score Recorded',
-        description: `Frame ${data.frame.frame_number}: ${data.frame.putts_made} putts = ${data.frame.points_earned} ${pointsText}`,
-      });
-
-      // If player is now complete, show completion message
-      if (data.player.is_complete) {
-        toast({
-          title: 'Qualification Complete!',
-          description: `Total score: ${data.player.total_points} points`,
-        });
-      }
     } catch (err) {
       toast({
         title: 'Error',

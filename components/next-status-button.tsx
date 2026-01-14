@@ -57,7 +57,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
 
     try {
       setIsUpdating(true);
-      
+
       const response = await fetch(`/api/event/${event.id}`, {
         method: 'PATCH',
         headers: {
@@ -76,11 +76,6 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         }
         throw new Error(message);
       }
-
-      toast({
-        title: 'Success',
-        description: `Event status updated to ${statusLabelMap[nextStatus]}`,
-      });
 
       onStatusUpdate?.();
       setIsDialogOpen(false);
