@@ -16,13 +16,6 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
 
-const statusLabelMap = {
-  'created': 'Created',
-  'pre-bracket': 'Pre-Bracket',
-  'bracket': 'Bracket',
-  'completed': 'Completed',
-} as const;
-
 const nextStatusMap = {
   'created': 'pre-bracket',
   'pre-bracket': 'bracket',
