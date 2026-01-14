@@ -193,6 +193,7 @@ export default function BracketPage({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
+              aria-label="Zoom out"
               onClick={() => setScale(Math.max(25, scale - 10))}
               disabled={scale <= 25}
             >
