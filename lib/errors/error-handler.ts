@@ -6,6 +6,13 @@ import {
   ForbiddenError,
 } from "./custom-errors";
 
+/**
+ * Converts domain errors to appropriate HTTP responses.
+ * Maps custom error types to their corresponding status codes.
+ * Unknown errors are logged and returned as 500 Internal Server Error.
+ * @param error - The error to handle
+ * @returns NextResponse with appropriate status code and error message
+ */
 export function handleError(error: unknown) {
   if (error instanceof UnauthorizedError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
