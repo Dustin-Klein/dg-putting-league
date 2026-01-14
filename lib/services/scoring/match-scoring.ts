@@ -18,7 +18,6 @@ import type {
   RecordFrameResultInput,
 } from '@/lib/types/scoring';
 
-// Re-export types for consumers
 export type {
   BracketMatchWithDetails,
   OpponentData,
@@ -29,7 +28,6 @@ export type {
   RecordFrameResultInput,
 } from '@/lib/types/scoring';
 
-// Re-export calculatePoints for backwards compatibility
 export { calculatePoints } from './points-calculator';
 
 /**
@@ -44,12 +42,10 @@ export async function recordScoreAdmin(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Validate putts early (before any DB calls)
   if (puttsMade < 0 || puttsMade > 3) {
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  // Fetch event and bracket match in parallel
   const [eventRes, bracketMatchRes] = await Promise.all([
     supabase.from('events').select('bonus_point_enabled').eq('id', eventId).single(),
     supabase.from('bracket_match').select('id, status').eq('id', bracketMatchId).eq('event_id', eventId).single(),
@@ -69,10 +65,7 @@ export async function recordScoreAdmin(
     throw new BadRequestError('Match is already completed');
   }
 
-  // Calculate points
   const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
-
-  // Get or create the frame
   const isOvertime = frameNumber > 5;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
@@ -91,15 +84,13 @@ export async function recordScoreAdmin(
     throw new InternalError(`Failed to record score: ${upsertError.message}`);
   }
 
-  // Start match if it's in Ready status
-  if (bracketMatch.status === 2) { // Ready
+  if (bracketMatch.status === 2) { // Ready status
     await supabase
       .from('bracket_match')
-      .update({ status: 3 }) // Running
+      .update({ status: 3 }) // Running status
       .eq('id', bracketMatchId);
   }
 
-  // Return updated match
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
 
@@ -140,7 +131,6 @@ export async function getBracketMatchWithDetails(
     throw new NotFoundError('Bracket match not found');
   }
 
-  // Get teams from participants
   const opponent1 = bracketMatch.opponent1 as OpponentData | null;
   const opponent2 = bracketMatch.opponent2 as OpponentData | null;
 
@@ -171,7 +161,6 @@ export async function getOrCreateFrame(
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify bracket match belongs to event
   const { data: bracketMatch, error: matchError } = await supabase
     .from('bracket_match')
     .select('id, event_id')
@@ -186,7 +175,6 @@ export async function getOrCreateFrame(
     throw new NotFoundError('Bracket match not found');
   }
 
-  // Try to find existing frame
   const { data: existingFrame, error: frameQueryError } = await supabase
     .from('match_frames')
     .select(`
@@ -204,7 +192,6 @@ export async function getOrCreateFrame(
     return existingFrame as MatchFrame;
   }
 
-  // Create new frame
   const { data: newFrame, error } = await supabase
     .from('match_frames')
     .insert({
@@ -235,7 +222,6 @@ export async function recordFrameResult(
 ): Promise<FrameResult> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify frame belongs to a bracket match in this event
   const { data: frame, error: frameError } = await supabase
     .from('match_frames')
     .select('id, bracket_match_id, bracket_match:bracket_match(event_id)')
@@ -250,7 +236,6 @@ export async function recordFrameResult(
     throw new NotFoundError('Frame not found');
   }
 
-  // Validate putts and points
   if (input.putts_made < 0 || input.putts_made > 3) {
     throw new BadRequestError('Putts made must be between 0 and 3');
   }
@@ -296,15 +281,12 @@ export async function recordFullFrame(
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Get or create the frame
   const frame = await getOrCreateFrame(eventId, bracketMatchId, frameNumber, isOvertime);
 
-  // Record all results
   for (const result of results) {
     await recordFrameResult(eventId, frame.id, result);
   }
 
-  // Fetch updated frame with results
   const { data: updatedFrame, error } = await supabase
     .from('match_frames')
     .select(`
@@ -330,24 +312,18 @@ export async function completeBracketMatch(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Get match with current scores
   const match = await getBracketMatchWithDetails(eventId, bracketMatchId);
-
   const score1 = match.opponent1?.score ?? 0;
   const score2 = match.opponent2?.score ?? 0;
 
-  // Use shared match completion logic
   await completeMatch(supabase, eventId, bracketMatchId, {
     team1Score: score1,
     team2Score: score2,
   });
 
-  // Release the lane and auto-assign to next ready match
-  // This runs after completeMatch() which may have set new matches to Ready
   try {
     await releaseMatchLaneAndReassign(eventId, bracketMatchId);
   } catch (laneError) {
-    // Log but don't fail - lane management is secondary to match completion
     console.error('Failed to release lane and reassign:', laneError);
   }
 
@@ -370,13 +346,11 @@ export async function completeMatchWithFinalScores(
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
   }
 
-  // Use shared match completion logic (sets scores and updates bracket)
   await completeMatch(supabase, eventId, bracketMatchId, {
     team1Score,
     team2Score,
   });
 
-  // Release the lane and auto-assign to next ready match
   try {
     await releaseMatchLaneAndReassign(eventId, bracketMatchId);
   } catch (laneError) {
@@ -395,7 +369,6 @@ export async function startBracketMatch(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify bracket match belongs to event
   const { data: bracketMatch, error: matchError } = await supabase
     .from('bracket_match')
     .select('id')
@@ -412,7 +385,7 @@ export async function startBracketMatch(
 
   const { error } = await supabase
     .from('bracket_match')
-    .update({ status: 3 }) // Running
+    .update({ status: 3 }) // Running status
     .eq('id', bracketMatchId);
 
   if (error) {

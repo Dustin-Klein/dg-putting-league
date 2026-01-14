@@ -2,6 +2,12 @@ import 'server-only';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/**
+ * Outputs a structured JSON log line to the console.
+ * @param level - Log severity level
+ * @param message - Log message
+ * @param meta - Optional metadata object to include
+ */
 function log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
   const payload: Record<string, unknown> = {
     level,
@@ -25,6 +31,10 @@ function log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
   }
 }
 
+/**
+ * Structured JSON logger for server-side logging.
+ * Each log entry includes timestamp, level, message, and optional metadata.
+ */
 export const logger = {
   debug: (message: string, meta?: Record<string, unknown>) => log('debug', message, meta),
   info: (message: string, meta?: Record<string, unknown>) => log('info', message, meta),

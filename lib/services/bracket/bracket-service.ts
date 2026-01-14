@@ -74,24 +74,20 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
     throw new BadRequestError('At least 2 teams are required to create a bracket');
   }
 
-  // Create storage adapter and manager
   const storage = new SupabaseBracketStorage(supabase, eventId);
   const manager = new BracketsManager(storage);
 
-  // Create participants from teams (sorted by seed)
   const sortedTeams = [...teams].sort((a, b) => (a.seed || 0) - (b.seed || 0));
 
   // brackets-manager requires participant count to be a power of 2
-  // Add BYEs (null) to fill up to the next power of 2
   const bracketSize = nextPowerOf2(sortedTeams.length);
   const seeding: (string | null)[] = sortedTeams.map((team) => team.pool_combo);
 
-  // Add BYEs to fill the bracket
+  // Fill remaining slots with BYEs
   while (seeding.length < bracketSize) {
     seeding.push(null);
   }
 
-  // Create the double elimination stage
   await manager.create.stage({
     tournamentId: eventId as unknown as number,
     name: 'Double Elimination',
@@ -104,7 +100,6 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
     },
   });
 
-  // Link participants to teams
   const participants = await getBracketParticipants(supabase, eventId);
 
   if (participants.length > 0) {
@@ -120,17 +115,14 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
     }
   }
 
-  // Add event_id to all matches for easier querying
   const stage = await getBracketStage(supabase, eventId);
 
   if (stage) {
     await setEventIdOnMatches(supabase, stage.id, eventId);
   }
 
-  // Set initial matches to ready status if they have both opponents
   await setInitialMatchesReady(supabase, eventId);
 
-  // Return the created bracket data
   return getBracket(eventId);
 }
 
@@ -145,12 +137,9 @@ async function setInitialMatchesReady(
 
   if (!stage) return;
 
-  // Get first round matches that have both opponents
   const matches = await getMatchesByStageId(supabase, stage.id);
-
   if (matches.length === 0) return;
 
-  // Update matches where both opponents have IDs (not BYEs)
   for (const match of matches) {
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
@@ -167,7 +156,6 @@ async function setInitialMatchesReady(
 export async function getBracket(eventId: string): Promise<BracketData> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Get stage
   const { data: stage, error: stageError } = await supabase
     .from('bracket_stage')
     .select('*')
@@ -178,14 +166,12 @@ export async function getBracket(eventId: string): Promise<BracketData> {
     throw new NotFoundError('Bracket not found for this event');
   }
 
-  // Get groups
   const { data: groups } = await supabase
     .from('bracket_group')
     .select('*')
     .eq('stage_id', stage.id)
     .order('number');
 
-  // Get rounds
   const { data: rounds } = await supabase
     .from('bracket_round')
     .select('*')
@@ -193,7 +179,6 @@ export async function getBracket(eventId: string): Promise<BracketData> {
     .order('group_id')
     .order('number');
 
-  // Get matches
   const { data: matches } = await supabase
     .from('bracket_match')
     .select('*')
@@ -201,7 +186,6 @@ export async function getBracket(eventId: string): Promise<BracketData> {
     .order('round_id')
     .order('number');
 
-  // Get participants
   const { data: participants } = await supabase
     .from('bracket_participant')
     .select('*')
@@ -230,7 +214,6 @@ export async function getBracketWithTeams(eventId: string): Promise<{
 
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Get participant-team mappings
   const { data: participantsWithTeams } = await supabase
     .from('bracket_participant')
     .select('id, team_id')
@@ -262,7 +245,6 @@ export async function updateMatchResult(
 ): Promise<Match> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Verify match belongs to this event
   const { data: match, error: matchError } = await supabase
     .from('bracket_match')
     .select('*, bracket_stage!inner(tournament_id)')
@@ -277,11 +259,9 @@ export async function updateMatchResult(
     throw new BadRequestError('Match does not belong to this event');
   }
 
-  // Create storage adapter and manager
   const storage = new SupabaseBracketStorage(supabase, eventId);
   const manager = new BracketsManager(storage);
 
-  // Determine winner based on scores if not provided
   let result1: 'win' | 'loss' | 'draw' | undefined;
   let result2: 'win' | 'loss' | 'draw' | undefined;
 
@@ -301,7 +281,6 @@ export async function updateMatchResult(
       result2 = 'win';
     }
   } else if (opponent1Score !== opponent2Score) {
-    // Determine winner by score
     if (opponent1Score > opponent2Score) {
       result1 = 'win';
       result2 = 'loss';
@@ -311,14 +290,12 @@ export async function updateMatchResult(
     }
   }
 
-  // Update match using brackets-manager
   await manager.update.match({
     id: matchId,
     opponent1: { score: opponent1Score, result: result1 },
     opponent2: { score: opponent2Score, result: result2 },
   });
 
-  // Fetch and return updated match
   const { data: updatedMatch, error: updateError } = await supabase
     .from('bracket_match')
     .select('*')
@@ -369,7 +346,6 @@ export async function assignLaneToMatch(
 ): Promise<void> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Use atomic RPC for lane assignment
   const { data: assigned, error } = await supabase
     .rpc('assign_lane_to_match', {
       p_event_id: eventId,

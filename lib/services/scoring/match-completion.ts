@@ -4,7 +4,6 @@ import { SupabaseBracketStorage } from '@/lib/repositories/bracket-repository';
 import { BadRequestError, InternalError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
 
-// Re-export for consumers
 export type { MatchScores } from '@/lib/types/scoring';
 
 /**
@@ -27,7 +26,6 @@ export async function completeMatch(
 
   const team1Won = team1Score > team2Score;
 
-  // Use brackets-manager to update the match (handles bracket progression)
   const storage = new SupabaseBracketStorage(supabase, eventId);
   const manager = new BracketsManager(storage);
 
