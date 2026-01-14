@@ -57,3 +57,7 @@ supabase/.temp/storage-migration
 supabase/.temp/storage-version
 
 .claude/
+
+# Claude Code temp files
+nul
+tmpclaude*
