@@ -178,6 +178,7 @@ export function PlayerManagement({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to add player to event'
       });
+      throw error;
     } finally {
       setIsAddingPlayer(false);
     }
