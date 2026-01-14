@@ -107,7 +107,7 @@ export function PlayerManagement({
   }, [players, onPlayersUpdate]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<{id: string; name: string; identifier: string}[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; identifier: string }[]>([]);
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -130,7 +130,7 @@ export function PlayerManagement({
         excludeEventId: event.id
       });
       const response = await fetch(`/api/players/search?${searchParams.toString()}`);
-      
+
       if (!response.ok) {
         throw new Error('Search failed');
       }
@@ -157,31 +157,31 @@ export function PlayerManagement({
 
   // Handle adding a player to the event
   const handleAddPlayer = async (playerId: string) => {
-  try {
-    setIsAddingPlayer(true);
-    const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to add player');
+    try {
+      setIsAddingPlayer(true);
+      const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to add player');
+      }
+      // Update state with returned event player
+      if (data?.data) {
+        setPlayers((prev) => [...prev, data.data]);
+      }
+    } catch (error) {
+      console.error('Error adding player:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to add player to event'
+      });
+    } finally {
+      setIsAddingPlayer(false);
     }
-    // Update state with returned event player
-    if (data?.data) {
-      setPlayers((prev) => [...prev, data.data]);
-    }
-  } catch (error) {
-    console.error('Error adding player:', error);
-    toast({
-      title: 'Error',
-      description: error instanceof Error ? error.message : 'Failed to add player to event'
-    });
-  } finally {
-    setIsAddingPlayer(false);
-  }
-};
+  };
 
   // Reset form when dialog is closed
   const handleDialogOpenChange = (open: boolean) => {
@@ -216,7 +216,7 @@ export function PlayerManagement({
       });
 
       const responseData = await response.json();
-      
+
       if (!response.ok) {
         // If player already exists, use their ID
         if (response.status === 400 && responseData.playerId) {
@@ -229,12 +229,7 @@ export function PlayerManagement({
 
       const { playerId } = responseData;
       await handleAddPlayer(playerId);
-      
-      toast({
-        title: 'Success',
-        description: 'Player added successfully',
-      });
-      
+
       setIsDialogOpen(false);
     } catch (error) {
       console.error('Error creating player:', error);
@@ -286,15 +281,15 @@ export function PlayerManagement({
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update payment status');
       }
 
       // Update the UI without refreshing
-      const updatedPlayers = players.map(player => 
-        player.id === eventPlayerId 
-          ? { ...player, has_paid: !currentStatus } 
+      const updatedPlayers = players.map(player =>
+        player.id === eventPlayerId
+          ? { ...player, has_paid: !currentStatus }
           : player
       );
       setPlayers(updatedPlayers);
@@ -310,291 +305,291 @@ export function PlayerManagement({
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Players</h2>
-            {isAdmin && event.status === 'pre-bracket' && (
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add Player
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>Add Player to Event</DialogTitle>
-                  </DialogHeader>
-                  <div className="relative mt-4">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="search"
-                      placeholder="Search players..."
-                      className="pl-10"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        const query = e.target.value;
-                        setSearchQuery(query);
-                        handleSearch(query);
-                      }}
-                    />
-                    {isSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                  
-                  {searchQuery && !isSearching && searchResults.length === 0 && (
-                    <div className="mt-4 p-4 bg-muted/50 rounded-md">
-                      <p className="text-sm text-muted-foreground mb-4">
-                        No players found. Would you like to add a new player?
-                      </p>
-                      <Button 
-                        variant="outline" 
-                        className="w-full"
-                        onClick={() => setShowAddForm(true)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add New Player
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {searchQuery && !isSearching && searchResults.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <div className="max-h-60 overflow-y-auto space-y-2">
-                        {searchResults.map((player) => (
-                          <div
-                            key={player.id}
-                            className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
-                            onClick={() => {
-                              handleAddPlayer(player.id);
-                              handleDialogOpenChange(false);
-                            }}
-                          >
-                            <div>
-                              <div className="font-medium">{player.name}</div>
-                              <div className="text-xs text-muted-foreground">{player.identifier}</div>
-                            </div>
-                            <Plus className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        ))}
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setShowAddForm(true)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add New Player
-                      </Button>
-                    </div>
-                  )}
-                  {showAddForm && (
-                    <div className="mt-4 bg-card border rounded-lg p-4">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-medium">Add New Player</h3>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => {
-                            setShowAddForm(false);
-                            setSearchQuery('');
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <form ref={formRef} onSubmit={async (e) => {
-                        e.preventDefault();
-                        const formData = new FormData(e.currentTarget);
-                        const name = formData.get('name')?.toString().trim();
-                        const email = formData.get('email')?.toString().trim();
-                        
-                        // Basic validation
-                        if (!name) {
-                          toast({
-                            title: 'Error',
-                            description: 'Name is required',
-                          });
-                          return;
-                        }
-
-                        // Simple email validation (only if provided)
-                        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                          toast({
-                            title: 'Error',
-                            description: 'Please enter a valid email address',
-                          });
-                          return;
-                        }
-                        
-                        try {
-                          await handleCreatePlayer(formData);
-                        } catch (error) {
-                          console.error('Form submission error:', error);
-                        }
-                      }} className="space-y-4">
-                        <div className="space-y-4">
-                          <div>
-                            <label htmlFor="name" className="text-sm font-medium mb-1 block">
-                              Full Name <span className="text-destructive">*</span>
-                            </label>
-                            <Input
-                              id="name"
-                              name="name"
-                              placeholder="Player's full name"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="email" className="text-sm font-medium mb-1 block">
-                              Email
-                            </label>
-                            <Input
-                              id="email"
-                              name="email"
-                              type="email"
-                              placeholder="player@example.com"
-                            />
-                          </div>
-                          <div>
-                            <label htmlFor="pool" className="text-sm font-medium mb-1 block">
-                              Default Pool <span className="text-destructive">*</span>
-                            </label>
-                            <Select value={selectedPool} onValueChange={(value: 'A' | 'B') => setSelectedPool(value)}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select pool" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="A">Pool A</SelectItem>
-                                <SelectItem value="B">Pool B</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="flex justify-end space-x-2 pt-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              setShowAddForm(false);
-                              setSearchQuery('');
-                            }}
-                            disabled={isAddingPlayer}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="submit" disabled={isAddingPlayer}>
-                            {isAddingPlayer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Add Player
-                          </Button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Identifier</TableHead>
-                  <TableHead>Registered</TableHead>
-                  <TableHead>Paid</TableHead>
-                  {showQualificationColumn && <TableHead>Qualification</TableHead>}
-                  {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {players && players.length > 0 ? (
-                  players.map((eventPlayer) => (
-                    <TableRow key={eventPlayer.id}>
-                      <TableCell className="font-medium">
-                        {eventPlayer.player.full_name}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {eventPlayer.player.player_number ? `#${eventPlayer.player.player_number}` : 'N/A'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(eventPlayer.created_at), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleTogglePayment(eventPlayer.id, eventPlayer.player.id, eventPlayer.has_paid)}
-                          disabled={!isAdmin || event.status !== 'pre-bracket'}
-                          className="p-0 h-auto"
-                        >
-                          {eventPlayer.has_paid ? (
-                            <CheckCircle2 className="h-5 w-5 text-green-500" />
-                          ) : (
-                            <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
-                          )}
-                          <span className="sr-only">
-                            {eventPlayer.has_paid ? 'Mark as unpaid' : 'Mark as paid'}
-                          </span>
-                        </Button>
-                      </TableCell>
-                      {showQualificationColumn && (
-                        <TableCell>
-                          {eventPlayer.has_paid ? (
-                            (() => {
-                              const status = qualificationStatus[eventPlayer.id];
-                              if (!status) {
-                                return <span className="text-muted-foreground text-sm">-</span>;
-                              }
-                              return (
-                                <div className="flex items-center gap-2">
-                                  {status.is_complete ? (
-                                    <Trophy className="h-4 w-4 text-yellow-500" />
-                                  ) : null}
-                                  <div className="flex flex-col gap-1 min-w-[80px]">
-                                    <div className="flex items-center justify-between text-xs">
-                                      <span>{status.frames_completed}/{status.total_frames_required}</span>
-                                      <span className="font-mono font-medium">{status.total_points}pts</span>
-                                    </div>
-                                    <Progress
-                                      value={status.total_frames_required > 0 ? (status.frames_completed / status.total_frames_required) * 100 : 0}
-                                      className="h-1.5"
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <span className="text-muted-foreground text-xs">Pay to qualify</span>
-                          )}
-                        </TableCell>
-                      )}
-                      {isAdmin && event.status === 'pre-bracket' && (
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemovePlayer(eventPlayer.id)}
-                            disabled={isAddingPlayer}
-                          >
-                            <X className="h-4 w-4" />
-                            <span className="sr-only">Remove</span>
-                          </Button>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={3 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
-                      No players registered yet.
-                    </TableCell>
-                  </TableRow>
+        <h2 className="text-2xl font-bold">Players</h2>
+        {isAdmin && event.status === 'pre-bracket' && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Player
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Add Player to Event</DialogTitle>
+              </DialogHeader>
+              <div className="relative mt-4">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search players..."
+                  className="pl-10"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    const query = e.target.value;
+                    setSearchQuery(query);
+                    handleSearch(query);
+                  }}
+                />
+                {isSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                 )}
-              </TableBody>
-            </Table>
+              </div>
+
+              {searchQuery && !isSearching && searchResults.length === 0 && (
+                <div className="mt-4 p-4 bg-muted/50 rounded-md">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    No players found. Would you like to add a new player?
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowAddForm(true)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add New Player
+                  </Button>
+                </div>
+              )}
+
+              {searchQuery && !isSearching && searchResults.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="max-h-60 overflow-y-auto space-y-2">
+                    {searchResults.map((player) => (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
+                        onClick={() => {
+                          handleAddPlayer(player.id);
+                          handleDialogOpenChange(false);
+                        }}
+                      >
+                        <div>
+                          <div className="font-medium">{player.name}</div>
+                          <div className="text-xs text-muted-foreground">{player.identifier}</div>
+                        </div>
+                        <Plus className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowAddForm(true)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add New Player
+                  </Button>
+                </div>
+              )}
+              {showAddForm && (
+                <div className="mt-4 bg-card border rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-medium">Add New Player</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <form ref={formRef} onSubmit={async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    const name = formData.get('name')?.toString().trim();
+                    const email = formData.get('email')?.toString().trim();
+
+                    // Basic validation
+                    if (!name) {
+                      toast({
+                        title: 'Error',
+                        description: 'Name is required',
+                      });
+                      return;
+                    }
+
+                    // Simple email validation (only if provided)
+                    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                      toast({
+                        title: 'Error',
+                        description: 'Please enter a valid email address',
+                      });
+                      return;
+                    }
+
+                    try {
+                      await handleCreatePlayer(formData);
+                    } catch (error) {
+                      console.error('Form submission error:', error);
+                    }
+                  }} className="space-y-4">
+                    <div className="space-y-4">
+                      <div>
+                        <label htmlFor="name" className="text-sm font-medium mb-1 block">
+                          Full Name <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          id="name"
+                          name="name"
+                          placeholder="Player's full name"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="email" className="text-sm font-medium mb-1 block">
+                          Email
+                        </label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          placeholder="player@example.com"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="pool" className="text-sm font-medium mb-1 block">
+                          Default Pool <span className="text-destructive">*</span>
+                        </label>
+                        <Select value={selectedPool} onValueChange={(value: 'A' | 'B') => setSelectedPool(value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select pool" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="A">Pool A</SelectItem>
+                            <SelectItem value="B">Pool B</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setShowAddForm(false);
+                          setSearchQuery('');
+                        }}
+                        disabled={isAddingPlayer}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={isAddingPlayer}>
+                        {isAddingPlayer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Add Player
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Identifier</TableHead>
+              <TableHead>Registered</TableHead>
+              <TableHead>Paid</TableHead>
+              {showQualificationColumn && <TableHead>Qualification</TableHead>}
+              {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {players && players.length > 0 ? (
+              players.map((eventPlayer) => (
+                <TableRow key={eventPlayer.id}>
+                  <TableCell className="font-medium">
+                    {eventPlayer.player.full_name}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {eventPlayer.player.player_number ? `#${eventPlayer.player.player_number}` : 'N/A'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {format(new Date(eventPlayer.created_at), 'MMM d, yyyy')}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleTogglePayment(eventPlayer.id, eventPlayer.player.id, eventPlayer.has_paid)}
+                      disabled={!isAdmin || event.status !== 'pre-bracket'}
+                      className="p-0 h-auto"
+                    >
+                      {eventPlayer.has_paid ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <span className="sr-only">
+                        {eventPlayer.has_paid ? 'Mark as unpaid' : 'Mark as paid'}
+                      </span>
+                    </Button>
+                  </TableCell>
+                  {showQualificationColumn && (
+                    <TableCell>
+                      {eventPlayer.has_paid ? (
+                        (() => {
+                          const status = qualificationStatus[eventPlayer.id];
+                          if (!status) {
+                            return <span className="text-muted-foreground text-sm">-</span>;
+                          }
+                          return (
+                            <div className="flex items-center gap-2">
+                              {status.is_complete ? (
+                                <Trophy className="h-4 w-4 text-yellow-500" />
+                              ) : null}
+                              <div className="flex flex-col gap-1 min-w-[80px]">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span>{status.frames_completed}/{status.total_frames_required}</span>
+                                  <span className="font-mono font-medium">{status.total_points}pts</span>
+                                </div>
+                                <Progress
+                                  value={status.total_frames_required > 0 ? (status.frames_completed / status.total_frames_required) * 100 : 0}
+                                  className="h-1.5"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Pay to qualify</span>
+                      )}
+                    </TableCell>
+                  )}
+                  {isAdmin && event.status === 'pre-bracket' && (
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemovePlayer(eventPlayer.id)}
+                        disabled={isAddingPlayer}
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Remove</span>
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={3 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
+                  No players registered yet.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

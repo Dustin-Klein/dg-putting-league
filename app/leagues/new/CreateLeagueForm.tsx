@@ -26,20 +26,15 @@ export function CreateLeagueForm({ userId }: CreateLeagueFormProps) {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to create league');
       }
-      
-      toast({
-        title: 'Success',
-        description: 'Your new league has been created successfully.',
-      });
 
       // Redirect to the new league's page
       router.push(`/league/${data.id}`);
       router.refresh();
-      
+
       return data;
     } catch (error) {
       console.error('Error creating league:', error);

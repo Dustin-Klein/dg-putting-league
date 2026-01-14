@@ -35,7 +35,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       });
 
       const data = await response.json().catch(() => ({}));
-      
+
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to create event');
       }
@@ -43,11 +43,6 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       if (!data?.id) {
         throw new Error('Missing event ID in response');
       }
-      
-      toast({
-        title: 'Success',
-        description: 'Event created successfully',
-      });
 
       setOpen(false);
       router.push(`/event/${data.id}`);
@@ -75,7 +70,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
             <p className="text-muted-foreground mb-6">
               Fill in the details below to create a new event for this league.
             </p>
-            
+
             <EventForm
               onSubmit={handleSubmit}
               onCancel={() => setOpen(false)}
