@@ -38,7 +38,6 @@ export function CreateLeagueDialog() {
 
       setOpen(false);
       router.push(`/league/${data.id}`);
-      router.refresh();
 
       return data;
     } catch (error) {
