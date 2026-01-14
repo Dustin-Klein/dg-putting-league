@@ -50,8 +50,8 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       });
 
       setOpen(false);
-      router.refresh();
-      
+      router.push(`/event/${data.id}`);
+
       return data;
     } catch (error) {
       console.error('Error creating event:', error);
