@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { createClient } from '@/lib/supabase/client';
+import { useDebouncedCallback } from 'use-debounce';
 
 interface QualificationStatus {
   event_player_id: string;
@@ -116,8 +117,8 @@ export function PlayerManagement({
 
   const showQualificationColumn = event.qualification_round_enabled && event.status === 'pre-bracket';
 
-  // Handle search input change
-  const handleSearch = useCallback(async (query: string) => {
+  // Handle search input change (debounced to reduce API calls)
+  const handleSearch = useDebouncedCallback(async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       return;
@@ -153,7 +154,7 @@ export function PlayerManagement({
     } finally {
       setIsSearching(false);
     }
-  }, [event.id, toast]);
+  }, 300);
 
   // Handle adding a player to the event
   const handleAddPlayer = async (playerId: string) => {
