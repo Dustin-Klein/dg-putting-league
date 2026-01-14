@@ -7,7 +7,8 @@ import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog } from '../bracket/components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Maximize2 } from 'lucide-react';
+import Link from 'next/link';
 
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
@@ -136,15 +137,27 @@ export function BracketSection({ eventId }: BracketSectionProps) {
         <h2 className="text-2xl font-bold">
           {bracketData.bracket.stage.name}
         </h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchBracket}
-          disabled={loading}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchBracket}
+            disabled={loading}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+          >
+            <Link href={`/event/${eventId}/bracket`}>
+              <Maximize2 className="mr-2 h-4 w-4" />
+              Full View
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <BracketView

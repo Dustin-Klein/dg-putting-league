@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
@@ -27,6 +27,7 @@ export default function BracketPage({
   const [error, setError] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [scale, setScale] = useState(100);
 
   // Resolve params
   useEffect(() => {
@@ -185,21 +186,74 @@ export default function BracketPage({
             {bracketData.bracket.stage.name}
           </h1>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchBracket}
-          disabled={loading}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-4">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setScale(Math.max(25, scale - 10))}
+              disabled={scale <= 25}
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <input
+              type="range"
+              value={scale}
+              onChange={(e) => setScale(Number(e.target.value))}
+              min={25}
+              max={150}
+              step={5}
+              className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setScale(Math.min(150, scale + 10))}
+              disabled={scale >= 150}
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground w-12 text-center">
+              {scale}%
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setScale(100)}
+              disabled={scale === 100}
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchBracket}
+            disabled={loading}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      <BracketView
-        data={bracketData}
-        onMatchClick={handleMatchClick}
-      />
+      <div className="overflow-auto">
+        <div
+          style={{
+            transform: `scale(${scale / 100})`,
+            transformOrigin: 'top left',
+          }}
+        >
+          <BracketView
+            data={bracketData}
+            onMatchClick={handleMatchClick}
+          />
+        </div>
+      </div>
 
       {eventId && (
         <MatchScoringDialog
