@@ -33,23 +33,6 @@ export default function MatchScoringPage({
   // Track if we're currently saving to avoid refetch during our own updates
   const isSavingRef = useRef(false);
 
-  // Pending saves with debounce info
-  interface PendingSave {
-    timer: NodeJS.Timeout;
-    eventPlayerId: string;
-    frameNumber: number;
-    puttsMade: number;
-  }
-  const pendingSavesRef = useRef<Map<string, PendingSave>>(new Map());
-
-  // Cleanup debounce timers on unmount
-  useEffect(() => {
-    const pendingSaves = pendingSavesRef.current;
-    return () => {
-      pendingSaves.forEach((save) => clearTimeout(save.timer));
-    };
-  }, []);
-
   // Resolve params
   useEffect(() => {
     params.then((p) => setMatchId(p.matchId));
@@ -145,113 +128,89 @@ export default function MatchScoringPage({
     };
   }, [matchId, accessCode, fetchMatch]);
 
-  // Actual API call to save a score
-  const saveScoreToServer = useCallback(async (
-    saveKey: string,
-    eventPlayerId: string,
-    frameNumber: number,
-    puttsMade: number
-  ) => {
-    if (!accessCode || !matchId) return;
+  // Save all local scores for a frame to the server
+  const saveFrameScores = useCallback(async (frameNumber: number): Promise<boolean> => {
+    if (!accessCode || !matchId || !match) return true;
+
+    // Collect all local scores for this frame
+    const allPlayers = [...match.team_one.players, ...match.team_two.players];
+    const frameScores: Array<{ event_player_id: string; putts_made: number }> = [];
+
+    for (const player of allPlayers) {
+      const key = getScoreKey(player.event_player_id, frameNumber);
+      const localScore = localScores.get(key);
+      if (localScore !== undefined) {
+        frameScores.push({
+          event_player_id: player.event_player_id,
+          putts_made: localScore,
+        });
+      }
+    }
+
+    // Only call API if there are local scores to save
+    if (frameScores.length === 0) return true;
 
     isSavingRef.current = true;
 
     try {
-      const response = await fetch(`/api/score/match/${matchId}`, {
+      const response = await fetch(`/api/score/match/${matchId}/batch`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           access_code: accessCode,
           frame_number: frameNumber,
-          event_player_id: eventPlayerId,
-          putts_made: puttsMade,
-          bonus_point_enabled: bonusPointEnabled,
+          scores: frameScores,
         }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to save score');
+        throw new Error(data.error || 'Failed to save scores');
       }
 
       const updatedMatch = await response.json();
       setMatch(updatedMatch);
 
-      // Clear local score now that server has confirmed
-      // Only clear if no newer pending save exists for this key
-      if (!pendingSavesRef.current.has(saveKey)) {
-        setLocalScores(prev => {
-          const next = new Map(prev);
-          next.delete(saveKey);
-          return next;
-        });
-      }
+      // Clear local scores for this frame now that server confirmed
+      setLocalScores(prev => {
+        const next = new Map(prev);
+        for (const player of allPlayers) {
+          const key = getScoreKey(player.event_player_id, frameNumber);
+          next.delete(key);
+        }
+        return next;
+      });
+
+      return true;
     } catch (err) {
-      console.error('Failed to save score:', err);
-      // Revert optimistic update on error only if no newer pending save
-      if (!pendingSavesRef.current.has(saveKey)) {
-        setLocalScores(prev => {
-          const next = new Map(prev);
-          next.delete(saveKey);
-          return next;
-        });
-      }
+      console.error('Failed to save frame scores:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save scores');
+      return false;
     } finally {
       isSavingRef.current = false;
     }
-  }, [accessCode, matchId, bonusPointEnabled]);
+  }, [accessCode, matchId, match, localScores]);
 
-  // Flush all pending saves immediately (call before navigation)
-  const flushPendingSaves = useCallback(() => {
-    pendingSavesRef.current.forEach((save, key) => {
-      clearTimeout(save.timer);
-      saveScoreToServer(key, save.eventPlayerId, save.frameNumber, save.puttsMade);
-    });
-    pendingSavesRef.current.clear();
-  }, [saveScoreToServer]);
-
-  const handleScoreChange = async (
+  // Simple score change - just updates local state, no API call
+  const handleScoreChange = (
     eventPlayerId: string,
     frameNumber: number,
     puttsMade: number
-  ): Promise<void> => {
+  ): void => {
     const saveKey = getScoreKey(eventPlayerId, frameNumber);
-
-    // Optimistic update: immediately update local state for responsive UI
     setLocalScores(prev => {
       const next = new Map(prev);
       next.set(saveKey, puttsMade);
       return next;
-    });
-
-    // Clear existing debounce timer for this key
-    const existing = pendingSavesRef.current.get(saveKey);
-    if (existing) {
-      clearTimeout(existing.timer);
-    }
-
-    // Set new debounce timer - only fires API call after 300ms of no changes
-    const timer = setTimeout(() => {
-      const pending = pendingSavesRef.current.get(saveKey);
-      if (pending) {
-        pendingSavesRef.current.delete(saveKey);
-        saveScoreToServer(saveKey, pending.eventPlayerId, pending.frameNumber, pending.puttsMade);
-      }
-    }, 300);
-
-    pendingSavesRef.current.set(saveKey, {
-      timer,
-      eventPlayerId,
-      frameNumber,
-      puttsMade,
     });
   };
 
   const handleComplete = async () => {
     if (!accessCode || !matchId || !match) return;
 
-    // Flush any pending score saves before completing
-    flushPendingSaves();
+    // Save any pending scores before completing
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) return;
 
     if (match.team_one_score === match.team_two_score) {
       setError('Scores are tied. Continue scoring in overtime until there is a winner.');
@@ -311,10 +270,11 @@ export default function MatchScoringPage({
     setWizardStage('scoring');
   };
 
-  const handleNextFrame = () => {
+  const handleNextFrame = async () => {
     if (!match) return;
 
-    flushPendingSaves();
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) return;
 
     const frameNumbers = getFrameNumbers(match);
     const currentIndex = frameNumbers.indexOf(currentFrame);
@@ -328,20 +288,26 @@ export default function MatchScoringPage({
     }
   };
 
-  const handlePrevFrame = () => {
-    flushPendingSaves();
+  const handlePrevFrame = async () => {
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) return;
+
     if (currentFrame > 1) {
       setCurrentFrame(currentFrame - 1);
     }
   };
 
-  const handleGoToFrame = (frameNumber: number) => {
-    flushPendingSaves();
+  const handleGoToFrame = async (frameNumber: number) => {
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) return;
+
     setCurrentFrame(frameNumber);
   };
 
-  const handleFinishScoring = () => {
-    flushPendingSaves();
+  const handleFinishScoring = async () => {
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) return;
+
     setWizardStage('review');
   };
 

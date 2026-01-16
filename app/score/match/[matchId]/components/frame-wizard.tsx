@@ -30,11 +30,11 @@ interface FrameWizardProps {
   localScores: ScoreState;
   bonusPointEnabled: boolean;
   currentFrame: number;
-  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
-  onNextFrame: () => void;
-  onPrevFrame: () => void;
-  onGoToFrame: (frameNumber: number) => void;
-  onFinish: () => void;
+  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
+  onNextFrame: () => Promise<void>;
+  onPrevFrame: () => Promise<void>;
+  onGoToFrame: (frameNumber: number) => Promise<void>;
+  onFinish: () => Promise<void>;
   onBack: () => void;
 }
 
@@ -258,7 +258,7 @@ interface TeamScoringSectionProps {
   match: MatchInfo;
   localScores: ScoreState;
   bonusPointEnabled: boolean;
-  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
+  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
 }
 
 function TeamScoringSection({
@@ -327,7 +327,7 @@ interface PlayerScoreRowProps {
   match: MatchInfo;
   localScores: ScoreState;
   bonusPointEnabled: boolean;
-  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => Promise<void>;
+  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
 }
 
 function PlayerScoreRow({

@@ -84,6 +84,7 @@ import {
   getMatchesForScoring,
   getMatchForScoring,
   recordScore,
+  batchRecordScoresAndGetMatch,
   completeMatchPublic,
 } from '../scoring/public-scoring';
 
@@ -473,6 +474,190 @@ describe('Scoring Service', () => {
       await expect(completeMatchPublic(accessCode, bracketMatchId)).rejects.toThrow(
         'Match cannot be completed with a tied score'
       );
+    });
+  });
+
+  describe('batchRecordScoresAndGetMatch', () => {
+    const accessCode = 'ABC123';
+    const bracketMatchId = 1;
+    const frameNumber = 1;
+
+    beforeEach(() => {
+      const mockEvent = createMockEvent({
+        id: 'event-123',
+        status: 'bracket',
+        bonus_point_enabled: true,
+      });
+      const eventQueryBuilder = createMockQueryBuilder({ data: mockEvent, error: null });
+
+      const mockMatch = createMockBracketMatch({
+        id: bracketMatchId,
+        event_id: 'event-123',
+        status: 2,
+      });
+      const matchQueryBuilder = createMockQueryBuilder({ data: mockMatch, error: null });
+
+      const mockMatchData = {
+        opponent1: { id: 1, score: 5 },
+        opponent2: { id: 2, score: 3 },
+        round_id: 1,
+        number: 1,
+        lane_id: null,
+        frames: [],
+      };
+      const matchDataQueryBuilder = createMockQueryBuilder({ data: mockMatchData, error: null });
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'events') return eventQueryBuilder;
+        if (table === 'bracket_match') {
+          // Return different builders depending on the query
+          return {
+            ...matchQueryBuilder,
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                single: jest.fn()
+                  .mockResolvedValueOnce({ data: mockMatch, error: null })
+                  .mockResolvedValue({ data: mockMatchData, error: null }),
+              }),
+            }),
+          };
+        }
+        return createMockQueryBuilder();
+      });
+
+      (getTeamIdsFromParticipants as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
+      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(true);
+      (getOrCreateFrame as jest.Mock).mockResolvedValue(
+        createMockMatchFrame({ id: 'frame-123' })
+      );
+      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
+
+      const mockTeam = { id: 'team-1', pool_combo: 'Team 1', players: [] };
+      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue(mockTeam);
+
+      mockSupabase.rpc.mockResolvedValue({ error: null });
+    });
+
+    it('should record multiple scores for a frame in one call', async () => {
+      const scores = [
+        { event_player_id: 'ep-1', putts_made: 2 },
+        { event_player_id: 'ep-2', putts_made: 3 },
+      ];
+
+      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
+
+      expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
+        p_match_frame_id: 'frame-123',
+        p_event_player_id: 'ep-1',
+        p_bracket_match_id: bracketMatchId,
+        p_putts_made: 2,
+        p_points_earned: 2,
+      });
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
+        p_match_frame_id: 'frame-123',
+        p_event_player_id: 'ep-2',
+        p_bracket_match_id: bracketMatchId,
+        p_putts_made: 3,
+        p_points_earned: 4, // bonus point enabled
+      });
+    });
+
+    it('should throw BadRequestError for invalid putts values', async () => {
+      const scores = [
+        { event_player_id: 'ep-1', putts_made: 5 }, // Invalid
+      ];
+
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow(BadRequestError);
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow('Putts must be between 0 and 3');
+    });
+
+    it('should throw BadRequestError when match is already completed', async () => {
+      const mockEvent = createMockEvent({ id: 'event-123', status: 'bracket' });
+      const eventQueryBuilder = createMockQueryBuilder({ data: mockEvent, error: null });
+
+      const mockMatch = createMockBracketMatch({
+        id: bracketMatchId,
+        event_id: 'event-123',
+        status: 4, // Completed
+      });
+      const matchQueryBuilder = createMockQueryBuilder({ data: mockMatch, error: null });
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'events') return eventQueryBuilder;
+        if (table === 'bracket_match') return matchQueryBuilder;
+        return createMockQueryBuilder();
+      });
+
+      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
+
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow(BadRequestError);
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow('Match is already completed');
+    });
+
+    it('should throw BadRequestError when any player is not in match', async () => {
+      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(false);
+
+      const scores = [{ event_player_id: 'ep-invalid', putts_made: 2 }];
+
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow(BadRequestError);
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow('Player is not in this match');
+    });
+
+    it('should update match status from Ready to Running', async () => {
+      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
+
+      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
+
+      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, bracketMatchId, 3);
+    });
+
+    it('should handle empty scores array gracefully', async () => {
+      const scores: Array<{ event_player_id: string; putts_made: number }> = [];
+
+      const result = await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
+
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+      expect(result).toBeDefined();
+    });
+
+    it('should calculate points using event bonus_point_enabled setting', async () => {
+      // Already tested in the first test - 3 putts with bonus enabled = 4 points
+      const scores = [
+        { event_player_id: 'ep-1', putts_made: 3 },
+      ];
+
+      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
+        p_match_frame_id: 'frame-123',
+        p_event_player_id: 'ep-1',
+        p_bracket_match_id: bracketMatchId,
+        p_putts_made: 3,
+        p_points_earned: 4, // bonus enabled
+      });
+    });
+
+    it('should throw InternalError when RPC fails', async () => {
+      mockSupabase.rpc.mockResolvedValue({ error: { message: 'RPC failed' } });
+
+      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
+
+      await expect(
+        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
+      ).rejects.toThrow(InternalError);
     });
   });
 });
