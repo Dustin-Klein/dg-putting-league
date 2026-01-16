@@ -7,7 +7,7 @@ import { MatchSetup } from './components/match-setup';
 import { FrameWizard } from './components/frame-wizard';
 import { ReviewSubmit } from './components/review-submit';
 import type { WizardStage, MatchInfo, ScoreState } from './components/wizard-types';
-import { STANDARD_FRAMES, getFrameNumbers, getScoreKey } from './components/wizard-types';
+import { STANDARD_FRAMES, getFrameNumbers, getScoreKey, areScoresTiedWithLocalScores } from './components/wizard-types';
 
 export default function MatchScoringPage({
   params,
@@ -273,14 +273,17 @@ export default function MatchScoringPage({
   const handleNextFrame = async () => {
     if (!match) return;
 
+    // Check if tied before saving (local scores will be cleared after save)
+    const isTiedBeforeSave = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled);
+
     const saved = await saveFrameScores(currentFrame);
     if (!saved) return;
 
     const frameNumbers = getFrameNumbers(match);
     const currentIndex = frameNumbers.indexOf(currentFrame);
 
-    // Check if we need overtime
-    if (currentFrame >= STANDARD_FRAMES && match.team_one_score === match.team_two_score) {
+    // Check if we need overtime using pre-save tie status
+    if (currentFrame >= STANDARD_FRAMES && isTiedBeforeSave) {
       // Add overtime frame
       setCurrentFrame(currentFrame + 1);
     } else if (currentIndex < frameNumbers.length - 1) {
