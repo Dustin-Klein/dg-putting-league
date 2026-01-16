@@ -399,6 +399,156 @@ export async function recordScoreAndGetMatch(
 }
 
 /**
+ * Input for a single score in a batch operation
+ */
+export interface BatchScoreInput {
+  event_player_id: string;
+  putts_made: number;
+}
+
+/**
+ * Record multiple scores for a single frame and return updated match
+ * This reduces API calls by batching all frame scores into one request
+ */
+export async function batchRecordScoresAndGetMatch(
+  accessCode: string,
+  bracketMatchId: number,
+  frameNumber: number,
+  scores: BatchScoreInput[]
+): Promise<PublicMatchInfo> {
+  const supabase = await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
+
+  // Verify bracket match belongs to event and get opponent info
+  const { data: bracketMatch } = await supabase
+    .from('bracket_match')
+    .select('id, event_id, status, opponent1, opponent2')
+    .eq('id', bracketMatchId)
+    .single();
+
+  if (!bracketMatch || bracketMatch.event_id !== event.id) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (bracketMatch.status === 4) {
+    throw new BadRequestError('Match is already completed');
+  }
+
+  const opponent1 = bracketMatch.opponent1 as { id: number | null } | null;
+  const opponent2 = bracketMatch.opponent2 as { id: number | null } | null;
+  const participantIds = [opponent1?.id, opponent2?.id].filter((id): id is number => id !== null);
+
+  if (participantIds.length === 0) {
+    throw new BadRequestError('Match has no participants yet');
+  }
+
+  // Validate all scores upfront
+  for (const score of scores) {
+    if (score.putts_made < 0 || score.putts_made > 3) {
+      throw new BadRequestError('Putts must be between 0 and 3');
+    }
+  }
+
+  // Get team IDs and frame once for all scores
+  const [teamIds, frame] = await Promise.all([
+    getTeamIdsFromParticipants(supabase, participantIds),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+  ]);
+
+  if (teamIds.length === 0) {
+    throw new BadRequestError('Match teams not found');
+  }
+
+  // Verify all players are in this match
+  for (const score of scores) {
+    const playerInMatch = await verifyPlayerInTeams(supabase, score.event_player_id, teamIds);
+    if (!playerInMatch) {
+      throw new BadRequestError('Player is not in this match');
+    }
+  }
+
+  // Record each score using existing atomic RPC
+  for (const score of scores) {
+    const pointsEarned = calculatePoints(score.putts_made, event.bonus_point_enabled);
+
+    const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
+      p_match_frame_id: frame.id,
+      p_event_player_id: score.event_player_id,
+      p_bracket_match_id: bracketMatchId,
+      p_putts_made: score.putts_made,
+      p_points_earned: pointsEarned,
+    });
+
+    if (upsertError) {
+      throw new InternalError(`Failed to record score: ${upsertError.message}`);
+    }
+  }
+
+  // Update bracket match status to Running if Ready
+  let newStatus = bracketMatch.status;
+  if (bracketMatch.status === 2 && scores.length > 0) {
+    newStatus = 3;
+    await updateMatchStatus(supabase, bracketMatchId, newStatus);
+  }
+
+  // Fetch updated match data
+  const [laneMap, teamsResult, framesResult] = await Promise.all([
+    getLaneLabelsForEvent(supabase, event.id),
+    Promise.all([
+      getPublicTeamFromParticipant(supabase, opponent1?.id ?? null),
+      getPublicTeamFromParticipant(supabase, opponent2?.id ?? null),
+    ]),
+    supabase
+      .from('bracket_match')
+      .select(`
+        opponent1,
+        opponent2,
+        round_id,
+        number,
+        lane_id,
+        frames:match_frames(
+          id,
+          frame_number,
+          is_overtime,
+          results:frame_results(
+            id,
+            event_player_id,
+            putts_made,
+            points_earned
+          )
+        )
+      `)
+      .eq('id', bracketMatchId)
+      .single(),
+  ]);
+
+  const [team_one, team_two] = teamsResult;
+  const matchData = framesResult.data;
+
+  if (!team_one || !team_two || !matchData) {
+    throw new NotFoundError('Match data not found');
+  }
+
+  const updatedOpponent1 = matchData.opponent1 as { id?: number; score?: number } | null;
+  const updatedOpponent2 = matchData.opponent2 as { id?: number; score?: number } | null;
+
+  return {
+    id: bracketMatchId,
+    round_id: matchData.round_id,
+    number: matchData.number,
+    status: newStatus,
+    lane_id: matchData.lane_id,
+    lane_label: matchData.lane_id ? laneMap[matchData.lane_id] || null : null,
+    team_one,
+    team_two,
+    team_one_score: updatedOpponent1?.score ?? 0,
+    team_two_score: updatedOpponent2?.score ?? 0,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    frames: ((matchData.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
+  };
+}
+
+/**
  * Complete a match (public, access-code authenticated)
  */
 export async function completeMatchPublic(
