@@ -21,8 +21,9 @@ import {
   getScoreKey,
   isOvertimeFrame,
   getFrameNumbers,
-  needsOvertime,
   calculatePoints,
+  areScoresTiedWithLocalScores,
+  getTotalTeamScore,
 } from './wizard-types';
 
 interface FrameWizardProps {
@@ -53,9 +54,12 @@ export function FrameWizard({
   const frameNumbers = getFrameNumbers(match);
   const isOvertime = isOvertimeFrame(currentFrame);
   const isLastRegularFrame = currentFrame === STANDARD_FRAMES;
-  const isTied = match.team_one_score === match.team_two_score;
+  const isTied = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled);
   const showOvertimePrompt = isLastRegularFrame && isTied && isCurrentFrameComplete();
-  const needsMoreOvertime = needsOvertime(match);
+
+  // Calculate live scores including local scores for display
+  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled);
+  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled);
 
   // Helper to get score (local optimistic or server)
   function getPlayerScore(eventPlayerId: string, frameNumber: number): number | null {
@@ -87,7 +91,8 @@ export function FrameWizard({
   // Determine if we can proceed
   const frameComplete = isCurrentFrameComplete();
   const isLastFrame = currentFrame === Math.max(...frameNumbers);
-  const canFinish = frameComplete && !isTied;
+  // Can finish if frame is complete, not tied, and we're past regular frames or on the last frame
+  const canFinish = frameComplete && !isTied && (isOvertime || isLastFrame);
 
   // Progress calculation
   const totalFrames = Math.max(STANDARD_FRAMES, frameNumbers.length);
@@ -117,7 +122,7 @@ export function FrameWizard({
           <Progress value={progress} className="h-2" />
           <div className="flex justify-between text-xs text-muted-foreground mt-1">
             <span>Frame {currentFrame} of {isOvertime ? `${STANDARD_FRAMES}+OT` : STANDARD_FRAMES}</span>
-            <span>{match.team_one_score} - {match.team_two_score}</span>
+            <span>{teamOneTotal} - {teamTwoTotal}</span>
           </div>
         </div>
 
@@ -212,7 +217,7 @@ export function FrameWizard({
             Previous
           </Button>
 
-          {canFinish && isLastFrame && !needsMoreOvertime ? (
+          {canFinish ? (
             <Button
               className="flex-1 h-14"
               onClick={onFinish}
@@ -351,7 +356,7 @@ function PlayerScoreRow({
   }
 
   const handleIncrement = useCallback(() => {
-    const newScore = currentScore === null ? 1 : Math.min(currentScore + 1, MAX_PUTTS);
+    const newScore = currentScore === null ? 0 : Math.min(currentScore + 1, MAX_PUTTS);
     onScoreChange(player.event_player_id, frameNumber, newScore);
   }, [currentScore, player.event_player_id, frameNumber, onScoreChange]);
 

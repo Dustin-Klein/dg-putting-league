@@ -185,3 +185,45 @@ export function getFrameNumbers(match: MatchInfo): number[] {
 export function isOvertimeFrame(frameNumber: number): boolean {
   return frameNumber > STANDARD_FRAMES;
 }
+
+/**
+ * Calculate total team score across all frames, including local scores
+ */
+export function getTotalTeamScore(
+  team: TeamInfo,
+  match: MatchInfo,
+  localScores: ScoreState,
+  bonusPointEnabled: boolean
+): number {
+  let total = 0;
+
+  // Get max frame from server data
+  let maxFrame = Math.max(STANDARD_FRAMES, ...match.frames.map(f => f.frame_number));
+
+  // Also check local scores for frames not yet on server (e.g., new overtime frame)
+  for (const key of localScores.keys()) {
+    const frameNumber = parseInt(key.split('-').pop() || '0', 10);
+    if (frameNumber > maxFrame) {
+      maxFrame = frameNumber;
+    }
+  }
+
+  for (let frameNumber = 1; frameNumber <= maxFrame; frameNumber++) {
+    total += getTeamFrameScore(team, frameNumber, match, localScores, bonusPointEnabled);
+  }
+
+  return total;
+}
+
+/**
+ * Check if scores are tied using local scores for accurate detection
+ */
+export function areScoresTiedWithLocalScores(
+  match: MatchInfo,
+  localScores: ScoreState,
+  bonusPointEnabled: boolean
+): boolean {
+  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled);
+  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled);
+  return teamOneTotal === teamTwoTotal;
+}
