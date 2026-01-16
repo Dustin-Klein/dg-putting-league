@@ -121,33 +121,27 @@ export function FrameWizard({
           </div>
         </div>
 
-        {/* Progress indicator */}
-        <div className="mb-4">
-          <Progress value={progress} className="h-2" />
-          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>Frame {currentFrame} of {isOvertime ? `${STANDARD_FRAMES}+OT` : STANDARD_FRAMES}</span>
-            <span>{teamOneTotal} - {teamTwoTotal}</span>
+        {/* Prominent total score display */}
+        <div className="mb-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center justify-center gap-4">
+            <div className="text-center">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Team 1</div>
+              <div className="text-4xl font-bold font-mono">{teamOneTotal}</div>
+            </div>
+            <div className="text-2xl text-muted-foreground font-light">–</div>
+            <div className="text-center">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Team 2</div>
+              <div className="text-4xl font-bold font-mono">{teamTwoTotal}</div>
+            </div>
           </div>
         </div>
 
-        {/* Frame navigation dots */}
-        <div className="flex justify-center gap-2 mb-6">
-          {frameNumbers.map((num) => (
-            <button
-              key={num}
-              onClick={() => onGoToFrame(num)}
-              className={cn(
-                'w-8 h-8 rounded-full text-sm font-medium transition-all',
-                num === currentFrame
-                  ? 'bg-primary text-primary-foreground scale-110'
-                  : 'bg-muted hover:bg-muted/80',
-                num > STANDARD_FRAMES && 'bg-yellow-200 dark:bg-yellow-900'
-              )}
-              aria-label={`Go to frame ${num}`}
-            >
-              {num > STANDARD_FRAMES ? `O${num - STANDARD_FRAMES}` : num}
-            </button>
-          ))}
+        {/* Progress indicator */}
+        <div className="mb-6">
+          <Progress value={progress} className="h-2" />
+          <div className="text-xs text-muted-foreground mt-1 text-center">
+            Frame {currentFrame} of {isOvertime ? `${STANDARD_FRAMES}+OT` : STANDARD_FRAMES}
+          </div>
         </div>
 
         {/* Overtime notice */}
@@ -158,6 +152,18 @@ export function FrameWizard({
             </p>
             <p className="text-xs text-yellow-700 dark:text-yellow-300">
               Continue until there&apos;s a winner
+            </p>
+          </div>
+        )}
+
+        {/* Overtime prompt */}
+        {showOvertimePrompt && (
+          <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
+            <p className="font-medium text-orange-800 dark:text-orange-200">
+              Scores are tied!
+            </p>
+            <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+              Continue to overtime to determine a winner
             </p>
           </div>
         )}
@@ -197,17 +203,25 @@ export function FrameWizard({
           </CardContent>
         </Card>
 
-        {/* Overtime prompt */}
-        {showOvertimePrompt && (
-          <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
-            <p className="font-medium text-orange-800 dark:text-orange-200">
-              Scores are tied!
-            </p>
-            <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-              Continue to overtime to determine a winner
-            </p>
-          </div>
-        )}
+        {/* Frame navigation dots */}
+        <div className="flex justify-center gap-2 mt-6 mb-4">
+          {frameNumbers.map((num) => (
+            <button
+              key={num}
+              onClick={() => onGoToFrame(num)}
+              className={cn(
+                'w-8 h-8 rounded-full text-sm font-medium transition-all',
+                num === currentFrame
+                  ? 'bg-primary text-primary-foreground scale-110'
+                  : 'bg-muted hover:bg-muted/80',
+                num > STANDARD_FRAMES && 'bg-yellow-200 dark:bg-yellow-900'
+              )}
+              aria-label={`Go to frame ${num}`}
+            >
+              {num > STANDARD_FRAMES ? `O${num - STANDARD_FRAMES}` : num}
+            </button>
+          ))}
+        </div>
 
         {/* Navigation buttons */}
         <div className="flex gap-3">
