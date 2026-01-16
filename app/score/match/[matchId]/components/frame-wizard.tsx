@@ -321,7 +321,7 @@ function TeamScoringSection({
     <div className={cn('rounded-lg p-3', bgColor)}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-muted-foreground">
-          Team {teamNumber} - {team.pool_combo}
+          #{team.seed} - {team.pool_combo}
         </span>
         <Badge variant="secondary" className="font-mono">
           {frameScore} pts

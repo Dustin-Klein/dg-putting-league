@@ -41,6 +41,7 @@ export interface MatchInfo {
   bracket_match_id: number;
   round_name: string;
   status: string;
+  lane_label: string | null;
   team_one: TeamInfo;
   team_two: TeamInfo;
   team_one_score: number;

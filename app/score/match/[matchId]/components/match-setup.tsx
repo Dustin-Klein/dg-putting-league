@@ -23,9 +23,16 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <Badge variant={match.status === 'completed' ? 'secondary' : 'default'}>
-            {match.status === 'completed' ? 'Completed' : match.round_name}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {match.lane_label && (
+              <Badge variant="secondary" className="text-base px-3 py-1">
+                {match.lane_label}
+              </Badge>
+            )}
+            <Badge variant={match.status === 'completed' ? 'secondary' : 'default'}>
+              {match.status === 'completed' ? 'Completed' : match.round_name}
+            </Badge>
+          </div>
         </div>
 
         {/* Match Info Card */}
