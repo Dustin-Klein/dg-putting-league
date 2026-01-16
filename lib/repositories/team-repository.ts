@@ -212,6 +212,33 @@ export async function verifyPlayerInTeams(
 }
 
 /**
+ * Verify multiple players are members of the given teams (batch operation)
+ * Returns true if ALL unique players in the list are found in the teams
+ */
+export async function verifyPlayersInTeams(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventPlayerIds: string[],
+  teamIds: string[]
+): Promise<boolean> {
+  if (teamIds.length === 0 || eventPlayerIds.length === 0) return false;
+
+  const uniquePlayerIds = [...new Set(eventPlayerIds)];
+
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('event_player_id')
+    .in('team_id', teamIds)
+    .in('event_player_id', uniquePlayerIds);
+
+  if (error) {
+    throw new InternalError(`Failed to verify players in teams: ${error.message}`);
+  }
+
+  const foundPlayerIds = new Set(data?.map(d => d.event_player_id));
+  return uniquePlayerIds.every(id => foundPlayerIds.has(id));
+}
+
+/**
  * Get team IDs from bracket participant IDs
  */
 export async function getTeamIdsFromParticipants(
