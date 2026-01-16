@@ -552,8 +552,9 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
     return `Round ${displayRoundNumber}`;
   };
 
-  // Separate groups into main brackets (winners/losers) and grand final
-  const mainBrackets = groupsWithRounds.filter((g) => g.number === 1 || g.number === 2);
+  // Separate groups into winners, losers, and grand final
+  const winnersBracket = groupsWithRounds.find((g) => g.number === 1);
+  const losersBracket = groupsWithRounds.find((g) => g.number === 2);
   const grandFinal = groupsWithRounds.find((g) => g.number === 3);
 
   const renderGroup = (group: GroupWithRounds) => {
@@ -638,18 +639,15 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
   };
 
   return (
-    <div className="flex gap-8">
-      {/* Left side: Winners and Losers brackets stacked */}
-      <div className="flex-1 space-y-8">
-        {mainBrackets.map((group) => renderGroup(group))}
+    <div className="space-y-8">
+      {/* Winners bracket + Grand Final side by side, vertically centered */}
+      <div className="flex items-center gap-8">
+        {winnersBracket && renderGroup(winnersBracket)}
+        {grandFinal && renderGroup(grandFinal)}
       </div>
 
-      {/* Right side: Grand Final */}
-      {grandFinal && (
-        <div className="flex-shrink-0 flex flex-col justify-center">
-          {renderGroup(grandFinal)}
-        </div>
-      )}
+      {/* Losers bracket below */}
+      {losersBracket && renderGroup(losersBracket)}
     </div>
   );
 }
