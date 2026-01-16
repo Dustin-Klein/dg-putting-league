@@ -507,7 +507,6 @@ describe('Scoring Service', () => {
         lane_id: null,
         frames: [],
       };
-      const matchDataQueryBuilder = createMockQueryBuilder({ data: mockMatchData, error: null });
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'events') return eventQueryBuilder;
