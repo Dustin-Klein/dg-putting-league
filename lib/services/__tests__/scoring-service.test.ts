@@ -546,20 +546,24 @@ describe('Scoring Service', () => {
 
       await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
 
-      expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
-        p_match_frame_id: 'frame-123',
-        p_event_player_id: 'ep-1',
-        p_bracket_match_id: bracketMatchId,
-        p_putts_made: 2,
-        p_points_earned: 2,
-      });
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
-        p_match_frame_id: 'frame-123',
-        p_event_player_id: 'ep-2',
-        p_bracket_match_id: bracketMatchId,
-        p_putts_made: 3,
-        p_points_earned: 4, // bonus point enabled
+      expect(mockSupabase.rpc).toHaveBeenCalledTimes(1);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('bulk_upsert_frame_results', {
+        p_results: [
+          {
+            match_frame_id: 'frame-123',
+            event_player_id: 'ep-1',
+            bracket_match_id: bracketMatchId,
+            putts_made: 2,
+            points_earned: 2,
+          },
+          {
+            match_frame_id: 'frame-123',
+            event_player_id: 'ep-2',
+            bracket_match_id: bracketMatchId,
+            putts_made: 3,
+            points_earned: 4, // bonus point enabled
+          },
+        ],
       });
     });
 
@@ -641,12 +645,16 @@ describe('Scoring Service', () => {
 
       await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
 
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_frame_result_atomic', {
-        p_match_frame_id: 'frame-123',
-        p_event_player_id: 'ep-1',
-        p_bracket_match_id: bracketMatchId,
-        p_putts_made: 3,
-        p_points_earned: 4, // bonus enabled
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('bulk_upsert_frame_results', {
+        p_results: [
+          {
+            match_frame_id: 'frame-123',
+            event_player_id: 'ep-1',
+            bracket_match_id: bracketMatchId,
+            putts_made: 3,
+            points_earned: 4, // bonus enabled
+          },
+        ],
       });
     });
 
