@@ -467,20 +467,22 @@ export async function batchRecordScoresAndGetMatch(
     }
   }
 
-  // Record each score using existing atomic RPC
-  for (const score of scores) {
-    const pointsEarned = calculatePoints(score.putts_made, event.bonus_point_enabled);
+  // Record all scores in a single batch operation
+  if (scores.length > 0) {
+    const resultsToUpsert = scores.map((score) => ({
+      match_frame_id: frame.id,
+      event_player_id: score.event_player_id,
+      bracket_match_id: bracketMatchId,
+      putts_made: score.putts_made,
+      points_earned: calculatePoints(score.putts_made, event.bonus_point_enabled),
+    }));
 
-    const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
-      p_match_frame_id: frame.id,
-      p_event_player_id: score.event_player_id,
-      p_bracket_match_id: bracketMatchId,
-      p_putts_made: score.putts_made,
-      p_points_earned: pointsEarned,
+    const { error: bulkUpsertError } = await supabase.rpc('bulk_upsert_frame_results', {
+      p_results: resultsToUpsert,
     });
 
-    if (upsertError) {
-      throw new InternalError(`Failed to record score: ${upsertError.message}`);
+    if (bulkUpsertError) {
+      throw new InternalError(`Failed to record scores: ${bulkUpsertError.message}`);
     }
   }
 
