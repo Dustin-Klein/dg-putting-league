@@ -59,7 +59,22 @@ function isByeMatch(match: Match): boolean {
 
   // Hide if one opponent is null (BYE match)
   // Hide if both opponents are null (empty/unused match slot)
-  return opp1IsLiterallyNull || opp2IsLiterallyNull;
+  if (opp1IsLiterallyNull || opp2IsLiterallyNull) {
+    return true;
+  }
+
+  // Hide archived matches that were never played (no scores recorded)
+  // This handles the grand final reset match when WB champion wins the first GF
+  if (match.status === Status.Archived) {
+    const opp1 = match.opponent1 as { score?: number } | null;
+    const opp2 = match.opponent2 as { score?: number } | null;
+    const hasScores = opp1?.score !== undefined || opp2?.score !== undefined;
+    if (!hasScores) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hasVisibleMatches(matches: Match[]): boolean {
