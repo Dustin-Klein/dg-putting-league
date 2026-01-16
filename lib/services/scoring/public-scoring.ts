@@ -10,7 +10,7 @@ import {
 import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
 import { getOrCreateFrame } from '@/lib/repositories/frame-repository';
-import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
+import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
 import {
@@ -460,10 +460,12 @@ export async function batchRecordScoresAndGetMatch(
   }
 
   // Verify all players are in this match
-  for (const score of scores) {
-    const playerInMatch = await verifyPlayerInTeams(supabase, score.event_player_id, teamIds);
-    if (!playerInMatch) {
-      throw new BadRequestError('Player is not in this match');
+  if (scores.length > 0) {
+    const playerIdsToVerify = scores.map(s => s.event_player_id);
+    const allPlayersInMatch = await verifyPlayersInTeams(supabase, playerIdsToVerify, teamIds);
+
+    if (!allPlayersInMatch) {
+      throw new BadRequestError('One or more players are not in this match');
     }
   }
 

@@ -43,6 +43,7 @@ jest.mock('@/lib/repositories/team-repository', () => ({
   getPublicTeamFromParticipant: jest.fn(),
   getTeamIdsFromParticipants: jest.fn(),
   verifyPlayerInTeams: jest.fn(),
+  verifyPlayersInTeams: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/event-repository', () => ({
@@ -70,6 +71,7 @@ import {
   getPublicTeamFromParticipant,
   getTeamIdsFromParticipants,
   verifyPlayerInTeams,
+  verifyPlayersInTeams,
 } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
@@ -527,6 +529,7 @@ describe('Scoring Service', () => {
 
       (getTeamIdsFromParticipants as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
       (verifyPlayerInTeams as jest.Mock).mockResolvedValue(true);
+      (verifyPlayersInTeams as jest.Mock).mockResolvedValue(true);
       (getOrCreateFrame as jest.Mock).mockResolvedValue(
         createMockMatchFrame({ id: 'frame-123' })
       );
@@ -608,7 +611,7 @@ describe('Scoring Service', () => {
     });
 
     it('should throw BadRequestError when any player is not in match', async () => {
-      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(false);
+      (verifyPlayersInTeams as jest.Mock).mockResolvedValue(false);
 
       const scores = [{ event_player_id: 'ep-invalid', putts_made: 2 }];
 
@@ -617,7 +620,7 @@ describe('Scoring Service', () => {
       ).rejects.toThrow(BadRequestError);
       await expect(
         batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow('Player is not in this match');
+      ).rejects.toThrow('One or more players are not in this match');
     });
 
     it('should update match status from Ready to Running', async () => {
