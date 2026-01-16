@@ -570,7 +570,7 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
           {GROUP_NAMES[group.number] || `Group ${group.number}`}
         </h2>
 
-        <div className="overflow-x-auto pb-4">
+        <div className="pb-4">
           {/* Round headers row */}
           <div className="flex min-w-max mb-4">
             {visibleRounds.map((round, visibleIndex) => (
