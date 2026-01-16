@@ -51,7 +51,11 @@ export function FrameWizard({
   onFinish,
   onBack,
 }: FrameWizardProps) {
-  const frameNumbers = getFrameNumbers(match);
+  // Get frame numbers and ensure current frame is included (for new overtime frames)
+  const baseFrameNumbers = getFrameNumbers(match);
+  const frameNumbers = baseFrameNumbers.includes(currentFrame)
+    ? baseFrameNumbers
+    : [...baseFrameNumbers, currentFrame].sort((a, b) => a - b);
   const isOvertime = isOvertimeFrame(currentFrame);
   const isLastRegularFrame = currentFrame === STANDARD_FRAMES;
   const isTied = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled);
