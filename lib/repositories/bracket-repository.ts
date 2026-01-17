@@ -673,3 +673,107 @@ export async function getMatchesByStageId(
 
   return (matches || []) as Array<{ id: number; opponent1: unknown; opponent2: unknown; status: number }>;
 }
+
+export interface MatchWithGroupInfo {
+  id: number;
+  group_id: number;
+  round_id: number;
+  status: number;
+  opponent1: { id?: number; score?: number; result?: string } | null;
+  opponent2: { id?: number; score?: number; result?: string } | null;
+  round: {
+    number: number;
+    group: {
+      number: number;
+    };
+  };
+}
+
+/**
+ * Get a match with its round and group information
+ */
+export async function getMatchWithGroupInfo(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number
+): Promise<MatchWithGroupInfo | null> {
+  const { data: match, error } = await supabase
+    .from('bracket_match')
+    .select(`
+      id,
+      group_id,
+      round_id,
+      status,
+      opponent1,
+      opponent2,
+      round:bracket_round!inner(
+        number,
+        group:bracket_group!inner(
+          number
+        )
+      )
+    `)
+    .eq('id', matchId)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch match with group info: ${error.message}`);
+  }
+
+  return match as unknown as MatchWithGroupInfo | null;
+}
+
+/**
+ * Get the second grand final match (reset match) for a given group
+ */
+export async function getSecondGrandFinalMatch(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  groupId: number
+): Promise<{ id: number; status: number } | null> {
+  // Get all rounds in this group, ordered by number
+  const { data: rounds, error: roundsError } = await supabase
+    .from('bracket_round')
+    .select('id, number')
+    .eq('group_id', groupId)
+    .order('number', { ascending: true });
+
+  if (roundsError) {
+    throw new InternalError(`Failed to fetch rounds: ${roundsError.message}`);
+  }
+
+  // The second round in the grand final group contains the reset match
+  if (!rounds || rounds.length < 2) {
+    return null;
+  }
+
+  const secondRoundId = rounds[1].id;
+
+  // Get the match in the second round
+  const { data: match, error: matchError } = await supabase
+    .from('bracket_match')
+    .select('id, status')
+    .eq('round_id', secondRoundId)
+    .maybeSingle();
+
+  if (matchError) {
+    throw new InternalError(`Failed to fetch second GF match: ${matchError.message}`);
+  }
+
+  return match;
+}
+
+/**
+ * Archive a match (set status to Archived = 5)
+ */
+export async function archiveMatch(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('bracket_match')
+    .update({ status: 5 }) // Status.Archived = 5
+    .eq('id', matchId);
+
+  if (error) {
+    throw new InternalError(`Failed to archive match: ${error.message}`);
+  }
+}
