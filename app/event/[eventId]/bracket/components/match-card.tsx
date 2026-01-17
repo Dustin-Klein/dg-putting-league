@@ -132,12 +132,14 @@ const isComplete =
             </Badge>
           )}
         </div>
-        <Badge
-          variant="outline"
-          className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}
-        >
-          {getStatusLabel(match.status)}
-        </Badge>
+        {showScore && (
+          <Badge
+            variant="outline"
+            className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}
+          >
+            {getStatusLabel(match.status)}
+          </Badge>
+        )}
       </div>
       <CardContent className="p-0 divide-y">
         <OpponentRow
