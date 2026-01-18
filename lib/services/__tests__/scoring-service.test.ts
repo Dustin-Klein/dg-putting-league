@@ -284,7 +284,10 @@ describe('Scoring Service', () => {
       const mockEvent = createMockEvent({ status: 'bracket' });
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
 
-      const result = await validateAccessCode('ABC123', existingClient as any);
+      const result = await validateAccessCode(
+        'ABC123',
+        existingClient as unknown as Parameters<typeof validateAccessCode>[1]
+      );
 
       expect(result).toEqual(mockEvent);
       expect(getEventByAccessCodeForBracket).toHaveBeenCalledWith(existingClient, 'ABC123');
