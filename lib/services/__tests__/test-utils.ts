@@ -198,7 +198,6 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     qualification_round_enabled: false,
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
-    participant_count: 0,
     ...overrides,
   };
 }
@@ -225,10 +224,11 @@ export function createMockEventWithDetails(
   eventOverrides: Partial<MockEvent> = {},
   players: MockEventPlayer[] = []
 ): MockEventWithDetails {
+  const baseEvent = createMockEvent(eventOverrides);
   return {
-    ...createMockEvent(eventOverrides),
+    ...baseEvent,
     players,
-    participant_count: players.length,
+    participant_count: baseEvent.participant_count ?? players.length,
   };
 }
 
