@@ -168,7 +168,6 @@ describe('Scoring Service', () => {
       });
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
-      const mockMatches = [{ id: 1 }];
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
       (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
@@ -219,7 +218,7 @@ describe('Scoring Service', () => {
 
       // Pass lowercase code, expect it to work (repo uses ilike)
       await getEventScoringContext('abc123');
-      
+
       // Verify we passed the code to the repo (repo handles insensitive check)
       expect(getEventStatusByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
     });
