@@ -150,6 +150,12 @@ describe('Qualification Service', () => {
 
       const result = await getPlayersForQualification(accessCode);
 
+      expect(qualificationRepo.getOrCreateQualificationRound).toHaveBeenCalledWith(
+        mockSupabase,
+        mockEvent.id,
+        mockEvent.qualification_frame_count
+      );
+
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
         event_player_id: 'ep-1',
@@ -225,6 +231,12 @@ describe('Qualification Service', () => {
       );
 
       const result = await getPlayerQualificationData(accessCode, eventPlayerId);
+
+      expect(qualificationRepo.getOrCreateQualificationRound).toHaveBeenCalledWith(
+        mockSupabase,
+        mockEvent.id,
+        mockEvent.qualification_frame_count
+      );
 
       expect(result.event).toEqual(mockEvent);
       expect(result.player.frames_completed).toBe(2);
@@ -328,6 +340,12 @@ describe('Qualification Service', () => {
         eventPlayerId,
         frameNumber,
         puttsMade
+      );
+
+      expect(qualificationRepo.getOrCreateQualificationRound).toHaveBeenCalledWith(
+        mockSupabase,
+        'event-123',
+        5
       );
 
       expect(result.frame).toEqual(mockFrame);
@@ -545,6 +563,12 @@ describe('Qualification Service', () => {
       );
 
       const result = await getBatchPlayerQualificationData(accessCode, eventPlayerIds);
+
+      expect(qualificationRepo.getOrCreateQualificationRound).toHaveBeenCalledWith(
+        mockSupabase,
+        mockEvent.id,
+        mockEvent.qualification_frame_count
+      );
 
       expect(result.event).toEqual(mockEvent);
       expect(result.round.id).toBe('round-123');

@@ -29,6 +29,7 @@ export interface PublicQualificationEventInfo {
   lane_count: number;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
+  qualification_frame_count: number;
   status: string;
 }
 
@@ -73,7 +74,7 @@ export async function getPlayersForQualification(
   const supabase = await createClient();
 
   // Get or create qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
+  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
 
   // Get all paid event players
   const paidPlayers = await qualificationRepo.getPaidEventPlayers(supabase, event.id);
@@ -125,7 +126,7 @@ export async function getPlayerQualificationData(
   }
 
   // Get qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
+  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
 
   // Get player's frames
   const frames = await qualificationRepo.getPlayerQualificationFrames(supabase, event.id, eventPlayerId);
@@ -182,7 +183,7 @@ export async function recordQualificationScore(
   }
 
   // Get qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
+  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
 
   // Get existing frames to check if this would exceed the limit
   const existingFrames = await qualificationRepo.getPlayerQualificationFrames(supabase, event.id, eventPlayerId);
@@ -274,8 +275,8 @@ export async function getBatchPlayerQualificationData(
   const event = await validateQualificationAccessCode(accessCode);
   const supabase = await createClient();
 
-  // Get or create qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id);
+  // Get qualification round
+  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
 
   // Bulk fetch all event players (1 query instead of N)
   const eventPlayers = await eventPlayerRepo.getEventPlayersBulk(supabase, eventPlayerIds);
