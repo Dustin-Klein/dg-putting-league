@@ -50,7 +50,7 @@ export async function createPlayer(input: CreatePlayerInput) {
 }
 
 /**
- * Search for players by name or player number
+ * Search for players by name or player number (requires authentication)
  */
 export async function searchPlayers(query: string | null, excludeEventId?: string) {
   if (!query) {
@@ -60,6 +60,26 @@ export async function searchPlayers(query: string | null, excludeEventId?: strin
   const supabase = await createClient();
   await requireAuthenticatedUser();
 
+  return searchPlayersInternal(supabase, query, excludeEventId);
+}
+
+/**
+ * Search for players by name or player number (public, no auth required)
+ */
+export async function searchPlayersPublic(query: string | null) {
+  if (!query) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  return searchPlayersInternal(supabase, query);
+}
+
+async function searchPlayersInternal(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  query: string,
+  excludeEventId?: string
+) {
   // Sanitize and validate input to prevent filter injection
   const trimmed = query.trim();
   // Escape \, % and _ used by LIKE to avoid unintended wildcards

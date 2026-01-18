@@ -15,3 +15,6 @@ export * from './bracket';
 
 // Scoring types
 export * from './scoring';
+
+// Player statistics types
+export * from './player-statistics';
