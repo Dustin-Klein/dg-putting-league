@@ -246,6 +246,7 @@ export function MatchScoringDialog({
           body: JSON.stringify({
             team1_score: score1,
             team2_score: score2,
+            is_correction: isCorrectionMode && isCompleted,
           }),
         }
       );
