@@ -196,6 +196,8 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     access_code: 'ABC123',
     bonus_point_enabled: true,
     qualification_round_enabled: false,
+    bracket_frame_count: 5,
+    qualification_frame_count: 5,
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
     ...overrides,
@@ -212,6 +214,8 @@ export interface MockEvent {
   access_code: string;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
+  bracket_frame_count: number;
+  qualification_frame_count: number;
   created_at: string;
   putt_distance_ft: number;
   participant_count?: number;

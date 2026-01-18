@@ -8,6 +8,7 @@ export interface PublicEventInfo {
   location: string | null;
   lane_count: number;
   bonus_point_enabled: boolean;
+  bracket_frame_count: number;
   status: string;
 }
 
@@ -71,6 +72,7 @@ export interface BracketMatchWithDetails {
   team_one?: TeamWithPlayers;
   team_two?: TeamWithPlayers;
   frames?: MatchFrame[];
+  bracket_frame_count: number;
 }
 
 export interface OpponentData {

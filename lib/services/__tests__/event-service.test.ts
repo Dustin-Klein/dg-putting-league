@@ -114,6 +114,8 @@ describe('Event Service', () => {
       putt_distance_ft: 15,
       access_code: 'TEST2026',
       qualification_round_enabled: false,
+      bracket_frame_count: 5,
+      qualification_frame_count: 5,
     };
 
     it('should create event successfully when user is admin and code is unique', async () => {

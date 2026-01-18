@@ -66,6 +66,8 @@ export async function createEvent(data: {
   putt_distance_ft: number;
   access_code: string;
   qualification_round_enabled: boolean;
+  bracket_frame_count: number;
+  qualification_frame_count: number;
 }) {
   const supabase = await createClient();
 

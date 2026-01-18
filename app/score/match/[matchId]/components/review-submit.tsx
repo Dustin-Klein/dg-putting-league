@@ -6,10 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Check, Loader2, Trophy, Edit } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import type { MatchInfo, PlayerInfo } from './wizard-types';
-import { STANDARD_FRAMES, getFrameNumbers } from './wizard-types';
+import { getFrameNumbers } from './wizard-types';
 
 interface ReviewSubmitProps {
   match: MatchInfo;
+  standardFrames: number;
   isCompleting: boolean;
   error: string | null;
   onSubmit: () => void;
@@ -19,13 +20,14 @@ interface ReviewSubmitProps {
 
 export function ReviewSubmit({
   match,
+  standardFrames,
   isCompleting,
   error,
   onSubmit,
   onEditFrame,
   onBack,
 }: ReviewSubmitProps) {
-  const frameNumbers = getFrameNumbers(match);
+  const frameNumbers = getFrameNumbers(match, standardFrames);
   const isTied = match.team_one_score === match.team_two_score;
 
   const team1Wins = match.team_one_score > match.team_two_score;
@@ -129,7 +131,7 @@ export function ReviewSubmit({
                         key={num}
                         className={cn(
                           "text-center p-2 font-medium min-w-[40px]",
-                          num > STANDARD_FRAMES && "bg-yellow-50 dark:bg-yellow-950/20"
+                          num > standardFrames && "bg-yellow-50 dark:bg-yellow-950/20"
                         )}
                       >
                         <button
@@ -137,7 +139,7 @@ export function ReviewSubmit({
                           className="hover:underline flex items-center justify-center gap-0.5 mx-auto"
                           title={`Edit frame ${num}`}
                         >
-                          {num > STANDARD_FRAMES ? `O${num - STANDARD_FRAMES}` : num}
+                          {num > standardFrames ? `O${num - standardFrames}` : num}
                           <Edit className="h-3 w-3 opacity-50" />
                         </button>
                       </th>
@@ -163,6 +165,7 @@ export function ReviewSubmit({
                       player={player}
                       match={match}
                       frameNumbers={frameNumbers}
+                      standardFrames={standardFrames}
                     />
                   ))}
 
@@ -181,6 +184,7 @@ export function ReviewSubmit({
                       player={player}
                       match={match}
                       frameNumbers={frameNumbers}
+                      standardFrames={standardFrames}
                     />
                   ))}
                 </tbody>
@@ -230,9 +234,10 @@ interface PlayerScoreRowProps {
   player: PlayerInfo;
   match: MatchInfo;
   frameNumbers: number[];
+  standardFrames: number;
 }
 
-function PlayerScoreRow({ player, match, frameNumbers }: PlayerScoreRowProps) {
+function PlayerScoreRow({ player, match, frameNumbers, standardFrames }: PlayerScoreRowProps) {
   // Calculate total points for player
   let totalPoints = 0;
   for (const frame of match.frames) {
@@ -259,7 +264,7 @@ function PlayerScoreRow({ player, match, frameNumbers }: PlayerScoreRowProps) {
             key={frameNum}
             className={cn(
               "text-center p-2 font-mono",
-              frameNum > STANDARD_FRAMES && "bg-yellow-50/50 dark:bg-yellow-950/10",
+              frameNum > standardFrames && "bg-yellow-50/50 dark:bg-yellow-950/10",
               putts === 3 && "text-green-600 font-bold"
             )}
           >

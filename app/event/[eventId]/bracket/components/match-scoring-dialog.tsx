@@ -32,8 +32,6 @@ interface MatchScoringDialogProps {
   isCorrectionMode?: boolean;
 }
 
-const STANDARD_FRAMES = 5;
-
 export function MatchScoringDialog({
   match,
   eventId,
@@ -289,10 +287,13 @@ export function MatchScoringDialog({
   const isCompleted = matchDetails?.status === 4 || matchDetails?.status === 5;
   const isEditingLocked = isCompleted && !isCorrectionMode;
 
+  // Get the standard frame count from event settings
+  const standardFrames = matchDetails?.bracket_frame_count ?? 5;
+
   // Determine how many frames to show
   const maxFrameNumber = Math.max(
-    STANDARD_FRAMES,
-    ...(matchDetails?.frames?.map((f) => f.frame_number) || [STANDARD_FRAMES])
+    standardFrames,
+    ...(matchDetails?.frames?.map((f) => f.frame_number) || [standardFrames])
   );
   const frameNumbers = Array.from({ length: maxFrameNumber }, (_, i) => i + 1);
 
@@ -301,7 +302,7 @@ export function MatchScoringDialog({
     matchDetails &&
     team1Score === team2Score &&
     matchDetails.frames &&
-    matchDetails.frames.length >= STANDARD_FRAMES &&
+    matchDetails.frames.length >= standardFrames &&
     matchDetails.frames.every((f) => f.results?.length === 4);
 
   if (needsOvertime && frameNumbers.length === maxFrameNumber) {
@@ -411,10 +412,10 @@ export function MatchScoringDialog({
                               key={num}
                               className={cn(
                                 "text-center p-3 font-medium min-w-[60px]",
-                                num > STANDARD_FRAMES && "bg-yellow-50 dark:bg-yellow-950/20"
+                                num > standardFrames && "bg-yellow-50 dark:bg-yellow-950/20"
                               )}
                             >
-                              {num > STANDARD_FRAMES ? `OT${num - STANDARD_FRAMES}` : num}
+                              {num > standardFrames ? `OT${num - standardFrames}` : num}
                             </th>
                           ))}
                           <th className="text-center p-3 font-medium bg-muted min-w-[70px]">
@@ -439,6 +440,7 @@ export function MatchScoringDialog({
                                 key={player.event_player_id}
                                 player={player}
                                 frameNumbers={frameNumbers}
+                                standardFrames={standardFrames}
                                 getScore={getPlayerScore}
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
@@ -465,6 +467,7 @@ export function MatchScoringDialog({
                                 key={player.event_player_id}
                                 player={player}
                                 frameNumbers={frameNumbers}
+                                standardFrames={standardFrames}
                                 getScore={getPlayerScore}
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
@@ -608,6 +611,7 @@ export function MatchScoringDialog({
 interface PlayerRowProps {
   player: PlayerInTeam;
   frameNumbers: number[];
+  standardFrames: number;
   getScore: (eventPlayerId: string, frameNumber: number) => number | null;
   getTotalPoints: (eventPlayerId: string) => number;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
@@ -618,6 +622,7 @@ interface PlayerRowProps {
 function PlayerRow({
   player,
   frameNumbers,
+  standardFrames,
   getScore,
   getTotalPoints,
   onScoreChange,
@@ -642,7 +647,7 @@ function PlayerRow({
             key={frameNum}
             className={cn(
               "text-center p-1",
-              frameNum > STANDARD_FRAMES && "bg-yellow-50/50 dark:bg-yellow-950/10"
+              frameNum > standardFrames && "bg-yellow-50/50 dark:bg-yellow-950/10"
             )}
           >
             <ScoreInput

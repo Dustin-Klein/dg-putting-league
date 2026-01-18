@@ -47,8 +47,9 @@ export async function recordScoreAdmin(
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  const [eventConfig, bracketMatchRes] = await Promise.all([
+  const [eventConfig, eventFrameCount, bracketMatchRes] = await Promise.all([
     getEventScoringConfig(supabase, eventId),
+    supabase.from('events').select('bracket_frame_count').eq('id', eventId).single(),
     supabase.from('bracket_match').select('id, status').eq('id', bracketMatchId).eq('event_id', eventId).single(),
   ]);
 
@@ -72,8 +73,9 @@ export async function recordScoreAdmin(
     }
   }
 
+  const bracketFrameCount = eventFrameCount.data?.bracket_frame_count ?? 5;
   const pointsEarned = calculatePoints(puttsMade, eventConfig.bonus_point_enabled);
-  const isOvertime = frameNumber > 5;
+  const isOvertime = frameNumber > bracketFrameCount;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
   // Atomically upsert the frame result with correct order_in_frame
@@ -111,28 +113,38 @@ export async function getBracketMatchWithDetails(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: bracketMatch, error } = await supabase
-    .from('bracket_match')
-    .select(`
-      *,
-      frames:match_frames(
-        id,
-        bracket_match_id,
-        frame_number,
-        is_overtime,
-        results:frame_results(
+  const [bracketMatchRes, eventRes] = await Promise.all([
+    supabase
+      .from('bracket_match')
+      .select(`
+        *,
+        frames:match_frames(
           id,
-          match_frame_id,
-          event_player_id,
-          putts_made,
-          points_earned,
-          order_in_frame
+          bracket_match_id,
+          frame_number,
+          is_overtime,
+          results:frame_results(
+            id,
+            match_frame_id,
+            event_player_id,
+            putts_made,
+            points_earned,
+            order_in_frame
+          )
         )
-      )
-    `)
-    .eq('id', bracketMatchId)
-    .eq('event_id', eventId)
-    .single();
+      `)
+      .eq('id', bracketMatchId)
+      .eq('event_id', eventId)
+      .single(),
+    supabase
+      .from('events')
+      .select('bracket_frame_count')
+      .eq('id', eventId)
+      .single(),
+  ]);
+
+  const { data: bracketMatch, error } = bracketMatchRes;
+  const { data: eventData } = eventRes;
 
   if (error || !bracketMatch) {
     throw new NotFoundError('Bracket match not found');
@@ -154,6 +166,7 @@ export async function getBracketMatchWithDetails(
     team_two,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
+    bracket_frame_count: eventData?.bracket_frame_count ?? 5,
   } as BracketMatchWithDetails;
 }
 
