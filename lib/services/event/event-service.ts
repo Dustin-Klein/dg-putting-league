@@ -72,8 +72,9 @@ export async function createEvent(data: {
   // 1. Auth check
   await requireLeagueAdmin(data.league_id);
 
-  // 2. Business logic: Unique access code check
-  const isUnique = await eventRepo.isAccessCodeUnique(supabase, data.access_code);
+  // 2. Normalize and check access code uniqueness
+  const accessCode = data.access_code.trim();
+  const isUnique = await eventRepo.isAccessCodeUnique(supabase, accessCode);
   if (!isUnique) {
     throw new BadRequestError('An event with this access code already exists');
   }
@@ -85,6 +86,7 @@ export async function createEvent(data: {
   // 4. Create event via repo
   return eventRepo.createEvent(supabase, {
     ...data,
+    access_code: accessCode,
     event_date: formattedDate,
     status: 'created',
   });
