@@ -5,6 +5,7 @@ import {
   recordScoreAdmin,
   completeBracketMatch,
   completeMatchWithFinalScores,
+  correctMatchScores,
 } from '@/lib/services/scoring/match-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 
@@ -17,6 +18,7 @@ const recordScoreSchema = z.object({
 const finalScoreSchema = z.object({
   team1_score: z.number().min(0),
   team2_score: z.number().min(0),
+  is_correction: z.boolean().optional(),
 });
 
 /**
@@ -63,14 +65,11 @@ export async function POST(
       throw new BadRequestError('Invalid score data');
     }
 
-    const { team1_score, team2_score } = parsed.data;
+    const { team1_score, team2_score, is_correction } = parsed.data;
 
-    const match = await completeMatchWithFinalScores(
-      eventId,
-      bracketMatchId,
-      team1_score,
-      team2_score
-    );
+    const match = is_correction
+      ? await correctMatchScores(eventId, bracketMatchId, team1_score, team2_score)
+      : await completeMatchWithFinalScores(eventId, bracketMatchId, team1_score, team2_score);
 
     return NextResponse.json(match);
   } catch (error) {

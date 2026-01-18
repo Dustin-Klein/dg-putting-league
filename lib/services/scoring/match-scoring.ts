@@ -396,6 +396,65 @@ export async function startBracketMatch(
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
 
+/**
+ * Correct scores on an already-completed match without re-triggering bracket progression.
+ * Used for score corrections after a match has been completed.
+ */
+export async function correctMatchScores(
+  eventId: string,
+  bracketMatchId: number,
+  team1Score: number,
+  team2Score: number
+): Promise<BracketMatchWithDetails> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  if (team1Score === team2Score) {
+    throw new BadRequestError('Scores cannot be tied - there must be a winner');
+  }
+
+  const { data: match, error: matchError } = await supabase
+    .from('bracket_match')
+    .select('id, status, opponent1, opponent2')
+    .eq('id', bracketMatchId)
+    .eq('event_id', eventId)
+    .single();
+
+  if (matchError || !match) {
+    throw new NotFoundError('Bracket match not found');
+  }
+
+  const isCompleted = match.status === 4 || match.status === 5;
+  if (!isCompleted) {
+    throw new BadRequestError('Score correction is only valid for completed matches');
+  }
+
+  const team1Won = team1Score > team2Score;
+  const opponent1 = match.opponent1 as { id?: number; position?: number } | null;
+  const opponent2 = match.opponent2 as { id?: number; position?: number } | null;
+
+  const { error: updateError } = await supabase
+    .from('bracket_match')
+    .update({
+      opponent1: {
+        ...opponent1,
+        score: team1Score,
+        result: team1Won ? 'win' : 'loss',
+      },
+      opponent2: {
+        ...opponent2,
+        score: team2Score,
+        result: team1Won ? 'loss' : 'win',
+      },
+    })
+    .eq('id', bracketMatchId);
+
+  if (updateError) {
+    throw new InternalError(`Failed to correct scores: ${updateError.message}`);
+  }
+
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
+}
+
 // Legacy aliases for backwards compatibility during migration
 // These can be removed once all callers are updated
 export const getMatchWithDetails = getBracketMatchWithDetails;
