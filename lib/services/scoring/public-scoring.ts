@@ -262,11 +262,12 @@ export async function recordScore(
 
   // Calculate points using server-validated event setting (not client-provided value)
   const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
+  const isOvertime = frameNumber > event.bracket_frame_count;
 
   // Parallel: Get team IDs and get/create frame simultaneously
   const [teamIds, frame] = await Promise.all([
     getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
   ]);
 
   if (teamIds.length === 0) {
@@ -344,11 +345,12 @@ export async function recordScoreAndGetMatch(
   }
 
   const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
+  const isOvertime = frameNumber > event.bracket_frame_count;
 
   // Parallel: Get team IDs and get/create frame simultaneously
   const [teamIds, frame] = await Promise.all([
     getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
   ]);
 
   if (teamIds.length === 0) {
@@ -496,9 +498,10 @@ export async function batchRecordScoresAndGetMatch(
   }
 
   // Get team IDs and frame once for all scores
+  const isOvertime = frameNumber > event.bracket_frame_count;
   const [teamIds, frame] = await Promise.all([
     getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber),
+    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
   ]);
 
   if (teamIds.length === 0) {

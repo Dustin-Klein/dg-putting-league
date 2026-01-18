@@ -81,7 +81,10 @@ export async function recordScoreAdmin(
     }
   }
 
-  const bracketFrameCount = eventFrameCount.data?.bracket_frame_count ?? 5;
+  const bracketFrameCount = eventFrameCount.data?.bracket_frame_count;
+  if (bracketFrameCount === undefined || bracketFrameCount === null) {
+    throw new InternalError('Event bracket frame count is missing');
+  }
   const pointsEarned = calculatePoints(puttsMade, eventConfig.bonus_point_enabled);
   const isOvertime = frameNumber > bracketFrameCount;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
@@ -158,6 +161,10 @@ export async function getBracketMatchWithDetails(
     throw new NotFoundError('Bracket match not found');
   }
 
+  if (!eventData) {
+    throw new InternalError('Event scoring configuration not found');
+  }
+
   const opponent1 = bracketMatch.opponent1 as OpponentData | null;
   const opponent2 = bracketMatch.opponent2 as OpponentData | null;
 
@@ -174,7 +181,7 @@ export async function getBracketMatchWithDetails(
     team_two,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
-    bracket_frame_count: eventData?.bracket_frame_count ?? 5,
+    bracket_frame_count: eventData.bracket_frame_count,
   } as BracketMatchWithDetails;
 }
 
@@ -185,7 +192,7 @@ export async function getOrCreateFrame(
   eventId: string,
   bracketMatchId: number,
   frameNumber: number,
-  isOvertime = false
+  isOvertime: boolean
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 
@@ -305,7 +312,7 @@ export async function recordFullFrame(
   bracketMatchId: number,
   frameNumber: number,
   results: RecordFrameResultInput[],
-  isOvertime = false
+  isOvertime: boolean
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 

@@ -288,7 +288,22 @@ export function MatchScoringDialog({
   const isEditingLocked = isCompleted && !isCorrectionMode;
 
   // Get the standard frame count from event settings
-  const standardFrames = matchDetails?.bracket_frame_count ?? 5;
+  const standardFrames = matchDetails?.bracket_frame_count;
+
+  if (standardFrames === undefined || standardFrames === null) {
+    if (matchDetails) {
+      return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent>
+            <div className="p-6 text-center text-destructive">
+              Error: Match scoring configuration missing (frame count).
+            </div>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    return null;
+  }
 
   // Determine how many frames to show
   const maxFrameNumber = Math.max(

@@ -2,7 +2,6 @@
  * Types and constants for the match scoring wizard
  */
 
-export const STANDARD_FRAMES = 5;
 export const MIN_PUTTS = 0;
 export const MAX_PUTTS = 3;
 
@@ -147,7 +146,7 @@ export function areScoresTied(match: MatchInfo): boolean {
 /**
  * Determine if overtime is needed
  */
-export function needsOvertime(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): boolean {
+export function needsOvertime(match: MatchInfo, standardFrames: number): boolean {
   return (
     areScoresTied(match) &&
     match.frames.length >= standardFrames &&
@@ -158,7 +157,7 @@ export function needsOvertime(match: MatchInfo, standardFrames: number = STANDAR
 /**
  * Get the maximum frame number to display
  */
-export function getMaxFrameNumber(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): number {
+export function getMaxFrameNumber(match: MatchInfo, standardFrames: number): number {
   return Math.max(
     standardFrames,
     ...match.frames.map(f => f.frame_number)
@@ -168,7 +167,7 @@ export function getMaxFrameNumber(match: MatchInfo, standardFrames: number = STA
 /**
  * Get all frame numbers that should be available
  */
-export function getFrameNumbers(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): number[] {
+export function getFrameNumbers(match: MatchInfo, standardFrames: number): number[] {
   const maxFrame = getMaxFrameNumber(match, standardFrames);
   const frames = Array.from({ length: maxFrame }, (_, i) => i + 1);
 
@@ -183,7 +182,7 @@ export function getFrameNumbers(match: MatchInfo, standardFrames: number = STAND
 /**
  * Check if a frame is an overtime frame
  */
-export function isOvertimeFrame(frameNumber: number, standardFrames: number = STANDARD_FRAMES): boolean {
+export function isOvertimeFrame(frameNumber: number, standardFrames: number): boolean {
   return frameNumber > standardFrames;
 }
 
@@ -195,7 +194,7 @@ export function getTotalTeamScore(
   match: MatchInfo,
   localScores: ScoreState,
   bonusPointEnabled: boolean,
-  standardFrames: number = STANDARD_FRAMES
+  standardFrames: number
 ): number {
   let total = 0;
 
@@ -224,7 +223,7 @@ export function areScoresTiedWithLocalScores(
   match: MatchInfo,
   localScores: ScoreState,
   bonusPointEnabled: boolean,
-  standardFrames: number = STANDARD_FRAMES
+  standardFrames: number
 ): boolean {
   const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled, standardFrames);
   const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled, standardFrames);

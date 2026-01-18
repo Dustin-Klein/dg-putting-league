@@ -49,7 +49,7 @@ export interface PlayerQualificationStatus {
 export async function getOrCreateQualificationRound(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
-  frameCount: number = 5
+  frameCount: number
 ): Promise<QualificationRound> {
   // Try to get existing round
   const { data: existingRound, error: fetchError } = await supabase
@@ -285,7 +285,10 @@ export async function getEventPlayersQualificationStatus(
 ): Promise<PlayerQualificationStatus[]> {
   // Get qualification round
   const round = await getQualificationRoundFull(supabase, eventId);
-  const frameCount = round?.frame_count ?? 5;
+  if (!round) {
+    throw new InternalError('Qualification round configuration not found');
+  }
+  const frameCount = round.frame_count;
 
   // Get all paid event players
   const { data: eventPlayers, error: playersError } = await supabase
