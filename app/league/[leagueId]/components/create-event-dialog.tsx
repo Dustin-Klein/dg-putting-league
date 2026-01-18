@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { formatForDatabase } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/use-toast';
 import { EventForm, type EventFormValues } from './event-form';
 
 interface CreateEventDialogProps {
@@ -14,11 +13,12 @@ interface CreateEventDialogProps {
 export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { toast } = useToast();
 
   const handleSubmit = async (values: EventFormValues) => {
     setIsLoading(true);
+    setError(null);
 
     try {
       const response = await fetch(`/api/league/${leagueId}`, {
@@ -48,13 +48,10 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       router.push(`/event/${data.id}`);
 
       return data;
-    } catch (error) {
-      console.error('Error creating event:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create event',
-      });
-      throw error;
+    } catch (err) {
+      console.error('Error creating event:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create event');
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +59,10 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>Create Event</Button>
+      <Button onClick={() => {
+        setOpen(true);
+        setError(null);
+      }}>Create Event</Button>
       {open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background p-6 rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -76,6 +76,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
               onCancel={() => setOpen(false)}
               isLoading={isLoading}
               submitButtonText="Create Event"
+              error={error}
             />
           </div>
         </div>

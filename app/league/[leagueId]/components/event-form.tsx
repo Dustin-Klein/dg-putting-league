@@ -46,6 +46,7 @@ interface EventFormProps {
   submitButtonText?: string;
   showCancelButton?: boolean;
   defaultValues?: Partial<EventFormValues>;
+  error?: string | null;
 }
 
 export function EventForm({
@@ -55,6 +56,7 @@ export function EventForm({
   submitButtonText = 'Create Event',
   showCancelButton = true,
   defaultValues,
+  error,
 }: EventFormProps) {
   // Generate initial code
   const initialCode = (() => {
@@ -260,6 +262,12 @@ export function EventForm({
             </FormItem>
           )}
         />
+
+        {error && (
+          <div className="text-sm font-medium text-destructive text-right mb-2">
+            {error}
+          </div>
+        )}
 
         <div className="flex justify-end space-x-4">
           {showCancelButton && onCancel && (
