@@ -62,8 +62,14 @@ export async function recordScoreAdmin(
   }
 
   const isCompletedOrArchived = bracketMatch.status === 4 || bracketMatch.status === 5;
-  if (isCompletedOrArchived && eventConfig.status !== 'bracket') {
-    throw new BadRequestError('Score corrections only allowed during bracket phase');
+  if (isCompletedOrArchived) {
+    if (eventConfig.status !== 'bracket') {
+      throw new BadRequestError('Score corrections for completed matches are only allowed during the bracket phase');
+    }
+  } else {
+    if (eventConfig.status !== 'bracket') {
+      throw new BadRequestError('Scoring is only allowed during the bracket phase');
+    }
   }
 
   const pointsEarned = calculatePoints(puttsMade, eventConfig.bonus_point_enabled);
