@@ -52,8 +52,9 @@ export async function validateQualificationAccessCode(
   accessCode: string
 ): Promise<PublicQualificationEventInfo> {
   const supabase = await createClient();
+  const cleanedAccessCode = accessCode.trim();
 
-  const event = await eventRepo.getEventByAccessCodeForQualification(supabase, accessCode);
+  const event = await eventRepo.getEventByAccessCodeForQualification(supabase, cleanedAccessCode);
 
   if (!event) {
     throw new NotFoundError('Invalid access code or event is not accepting qualification scores');

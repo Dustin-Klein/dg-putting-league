@@ -299,7 +299,7 @@ export async function getEventByAccessCodeForQualification(
   const { data: event, error } = await supabase
     .from('events')
     .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, status')
-    .eq('access_code', accessCode)
+    .ilike('access_code', accessCode)
     .eq('status', 'pre-bracket')
     .eq('qualification_round_enabled', true)
     .maybeSingle();
@@ -337,7 +337,7 @@ export async function getEventByAccessCodeForBracket(
   const { data: event, error } = await supabase
     .from('events')
     .select('id, event_date, location, lane_count, bonus_point_enabled, status')
-    .eq('access_code', accessCode)
+    .ilike('access_code', accessCode)
     .eq('status', 'bracket')
     .maybeSingle();
 
@@ -373,4 +373,81 @@ export async function getEventScoringConfig(
   }
 
   return event as { status: EventStatus; bonus_point_enabled: boolean } | null;
+}
+
+/**
+ * Get event basic info by access code (case insensitive)
+ */
+export async function getEventStatusByAccessCode(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accessCode: string
+): Promise<{
+  id: string;
+  status: EventStatus;
+  qualification_round_enabled: boolean;
+} | null> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('id, status, qualification_round_enabled')
+    .ilike('access_code', accessCode)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
+  }
+
+  return event as {
+    id: string;
+    status: EventStatus;
+    qualification_round_enabled: boolean;
+  } | null;
+}
+
+/**
+ * Check if an access code is already in use (case insensitive)
+ */
+export async function isAccessCodeUnique(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accessCode: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('events')
+    .select('id')
+    .ilike('access_code', accessCode)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Error checking access code uniqueness: ${error.message}`);
+  }
+
+  return !data;
+}
+
+/**
+ * Create a new event
+ */
+export async function createEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  data: {
+    league_id: string;
+    event_date: string;
+    location: string | null;
+    lane_count: number;
+    putt_distance_ft: number;
+    access_code: string;
+    qualification_round_enabled: boolean;
+    status: EventStatus;
+  }
+): Promise<EventData> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .insert(data)
+    .select()
+    .single();
+
+  if (error) {
+    throw new InternalError(`Failed to create event: ${error.message}`);
+  }
+
+  return event as EventData;
 }
