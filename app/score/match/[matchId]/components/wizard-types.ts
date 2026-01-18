@@ -147,10 +147,10 @@ export function areScoresTied(match: MatchInfo): boolean {
 /**
  * Determine if overtime is needed
  */
-export function needsOvertime(match: MatchInfo): boolean {
+export function needsOvertime(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): boolean {
   return (
     areScoresTied(match) &&
-    match.frames.length >= STANDARD_FRAMES &&
+    match.frames.length >= standardFrames &&
     match.frames.every(f => f.results.length === 4)
   );
 }
@@ -158,9 +158,9 @@ export function needsOvertime(match: MatchInfo): boolean {
 /**
  * Get the maximum frame number to display
  */
-export function getMaxFrameNumber(match: MatchInfo): number {
+export function getMaxFrameNumber(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): number {
   return Math.max(
-    STANDARD_FRAMES,
+    standardFrames,
     ...match.frames.map(f => f.frame_number)
   );
 }
@@ -168,12 +168,12 @@ export function getMaxFrameNumber(match: MatchInfo): number {
 /**
  * Get all frame numbers that should be available
  */
-export function getFrameNumbers(match: MatchInfo): number[] {
-  const maxFrame = getMaxFrameNumber(match);
+export function getFrameNumbers(match: MatchInfo, standardFrames: number = STANDARD_FRAMES): number[] {
+  const maxFrame = getMaxFrameNumber(match, standardFrames);
   const frames = Array.from({ length: maxFrame }, (_, i) => i + 1);
 
   // Add overtime frame if needed
-  if (needsOvertime(match) && frames.length === maxFrame) {
+  if (needsOvertime(match, standardFrames) && frames.length === maxFrame) {
     frames.push(maxFrame + 1);
   }
 
@@ -183,8 +183,8 @@ export function getFrameNumbers(match: MatchInfo): number[] {
 /**
  * Check if a frame is an overtime frame
  */
-export function isOvertimeFrame(frameNumber: number): boolean {
-  return frameNumber > STANDARD_FRAMES;
+export function isOvertimeFrame(frameNumber: number, standardFrames: number = STANDARD_FRAMES): boolean {
+  return frameNumber > standardFrames;
 }
 
 /**
@@ -194,12 +194,13 @@ export function getTotalTeamScore(
   team: TeamInfo,
   match: MatchInfo,
   localScores: ScoreState,
-  bonusPointEnabled: boolean
+  bonusPointEnabled: boolean,
+  standardFrames: number = STANDARD_FRAMES
 ): number {
   let total = 0;
 
   // Get max frame from server data
-  let maxFrame = Math.max(STANDARD_FRAMES, ...match.frames.map(f => f.frame_number));
+  let maxFrame = Math.max(standardFrames, ...match.frames.map(f => f.frame_number));
 
   // Also check local scores for frames not yet on server (e.g., new overtime frame)
   for (const key of localScores.keys()) {
@@ -222,9 +223,10 @@ export function getTotalTeamScore(
 export function areScoresTiedWithLocalScores(
   match: MatchInfo,
   localScores: ScoreState,
-  bonusPointEnabled: boolean
+  bonusPointEnabled: boolean,
+  standardFrames: number = STANDARD_FRAMES
 ): boolean {
-  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled);
-  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled);
+  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled, standardFrames);
+  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled, standardFrames);
   return teamOneTotal === teamTwoTotal;
 }

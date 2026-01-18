@@ -15,7 +15,6 @@ import {
 import { cn } from '@/lib/utils/utils';
 import type { MatchInfo, PlayerInfo, TeamInfo, ScoreState } from './wizard-types';
 import {
-  STANDARD_FRAMES,
   MIN_PUTTS,
   MAX_PUTTS,
   getScoreKey,
@@ -30,6 +29,7 @@ interface FrameWizardProps {
   match: MatchInfo;
   localScores: ScoreState;
   bonusPointEnabled: boolean;
+  standardFrames: number;
   currentFrame: number;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
   onNextFrame: () => Promise<void>;
@@ -43,6 +43,7 @@ export function FrameWizard({
   match,
   localScores,
   bonusPointEnabled,
+  standardFrames,
   currentFrame,
   onScoreChange,
   onNextFrame,
@@ -52,18 +53,18 @@ export function FrameWizard({
   onBack,
 }: FrameWizardProps) {
   // Get frame numbers and ensure current frame is included (for new overtime frames)
-  const baseFrameNumbers = getFrameNumbers(match);
+  const baseFrameNumbers = getFrameNumbers(match, standardFrames);
   const frameNumbers = baseFrameNumbers.includes(currentFrame)
     ? baseFrameNumbers
     : [...baseFrameNumbers, currentFrame].sort((a, b) => a - b);
-  const isOvertime = isOvertimeFrame(currentFrame);
-  const isLastRegularFrame = currentFrame === STANDARD_FRAMES;
-  const isTied = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled);
+  const isOvertime = isOvertimeFrame(currentFrame, standardFrames);
+  const isLastRegularFrame = currentFrame === standardFrames;
+  const isTied = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled, standardFrames);
   const showOvertimePrompt = isLastRegularFrame && isTied && isCurrentFrameComplete();
 
   // Calculate live scores including local scores for display
-  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled);
-  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled);
+  const teamOneTotal = getTotalTeamScore(match.team_one, match, localScores, bonusPointEnabled, standardFrames);
+  const teamTwoTotal = getTotalTeamScore(match.team_two, match, localScores, bonusPointEnabled, standardFrames);
 
   // Helper to get score (local optimistic or server)
   function getPlayerScore(eventPlayerId: string, frameNumber: number): number | null {
@@ -99,7 +100,7 @@ export function FrameWizard({
   const canFinish = frameComplete && !isTied && (isOvertime || isLastFrame);
 
   // Progress calculation
-  const totalFrames = Math.max(STANDARD_FRAMES, frameNumbers.length);
+  const totalFrames = Math.max(standardFrames, frameNumbers.length);
   const progress = (currentFrame / totalFrames) * 100;
 
   return (
@@ -116,7 +117,7 @@ export function FrameWizard({
               variant={isOvertime ? 'destructive' : 'default'}
               className="text-sm"
             >
-              {isOvertime ? `OT${currentFrame - STANDARD_FRAMES}` : `Frame ${currentFrame}`}
+              {isOvertime ? `OT${currentFrame - standardFrames}` : `Frame ${currentFrame}`}
             </Badge>
           </div>
         </div>
@@ -140,7 +141,7 @@ export function FrameWizard({
         <div className="mb-6">
           <Progress value={progress} className="h-2" />
           <div className="text-xs text-muted-foreground mt-1 text-center">
-            Frame {currentFrame} of {isOvertime ? `${STANDARD_FRAMES}+OT` : STANDARD_FRAMES}
+            Frame {currentFrame} of {isOvertime ? `${standardFrames}+OT` : standardFrames}
           </div>
         </div>
 
@@ -148,7 +149,7 @@ export function FrameWizard({
         {isOvertime && (
           <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-center">
             <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-              Overtime Frame {currentFrame - STANDARD_FRAMES}
+              Overtime Frame {currentFrame - standardFrames}
             </p>
             <p className="text-xs text-yellow-700 dark:text-yellow-300">
               Continue until there&apos;s a winner
@@ -172,7 +173,7 @@ export function FrameWizard({
         <Card className="mb-6">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg text-center">
-              {isOvertime ? `Overtime ${currentFrame - STANDARD_FRAMES}` : `Frame ${currentFrame}`}
+              {isOvertime ? `Overtime ${currentFrame - standardFrames}` : `Frame ${currentFrame}`}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -214,11 +215,11 @@ export function FrameWizard({
                 num === currentFrame
                   ? 'bg-primary text-primary-foreground scale-110'
                   : 'bg-muted hover:bg-muted/80',
-                num > STANDARD_FRAMES && 'bg-yellow-200 dark:bg-yellow-900'
+                num > standardFrames && 'bg-yellow-200 dark:bg-yellow-900'
               )}
               aria-label={`Go to frame ${num}`}
             >
-              {num > STANDARD_FRAMES ? `O${num - STANDARD_FRAMES}` : num}
+              {num > standardFrames ? `O${num - standardFrames}` : num}
             </button>
           ))}
         </div>

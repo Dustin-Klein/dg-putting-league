@@ -13,6 +13,8 @@ export interface EventData {
   location: string | null;
   putt_distance_ft: number | null;
   qualification_round_enabled: boolean;
+  bracket_frame_count: number;
+  qualification_frame_count: number;
   access_code: string | null;
   created_at: string;
 }
@@ -332,11 +334,12 @@ export async function getEventByAccessCodeForBracket(
   location: string | null;
   lane_count: number;
   bonus_point_enabled: boolean;
+  bracket_frame_count: number;
   status: string;
 } | null> {
   const { data: event, error } = await supabase
     .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, status')
+    .select('id, event_date, location, lane_count, bonus_point_enabled, bracket_frame_count, status')
     .ilike('access_code', accessCode)
     .eq('status', 'bracket')
     .maybeSingle();
@@ -351,6 +354,7 @@ export async function getEventByAccessCodeForBracket(
     location: string | null;
     lane_count: number;
     bonus_point_enabled: boolean;
+    bracket_frame_count: number;
     status: string;
   } | null;
 }
@@ -436,6 +440,8 @@ export async function createEvent(
     putt_distance_ft: number;
     access_code: string;
     qualification_round_enabled: boolean;
+    bracket_frame_count: number;
+    qualification_frame_count: number;
     status: EventStatus;
   }
 ): Promise<EventData> {

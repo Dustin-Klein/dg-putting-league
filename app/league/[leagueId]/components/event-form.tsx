@@ -35,6 +35,8 @@ export const eventFormSchema = z.object({
   putt_distance_ft: z.coerce.number().positive('Distance must be greater than 0').default(15),
   access_code: z.string().min(4, 'Access code must be at least 4 characters'),
   qualification_round_enabled: z.boolean().default(false),
+  bracket_frame_count: z.coerce.number().int().min(1).max(10).default(5),
+  qualification_frame_count: z.coerce.number().int().min(1).max(10).default(5),
 });
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
@@ -74,9 +76,13 @@ export function EventForm({
       lane_count: 1,
       putt_distance_ft: 15,
       access_code: initialCode,
+      bracket_frame_count: 5,
+      qualification_frame_count: 5,
       ...defaultValues,
     },
   });
+
+  const qualificationRoundEnabled = form.watch('qualification_round_enabled');
 
   const generateRandomCode = (length: number = 6): string => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -208,6 +214,29 @@ export function EventForm({
 
         <FormField
           control={form.control}
+          name="bracket_frame_count"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Bracket Frames</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  {...field}
+                  disabled={isLoading}
+                />
+              </FormControl>
+              <FormDescription>
+                Number of frames per match in bracket play (1-10)
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="qualification_round_enabled"
           render={({ field }) => (
             <FormItem className="w-full">
@@ -230,6 +259,31 @@ export function EventForm({
             </FormItem>
           )}
         />
+
+        {qualificationRoundEnabled && (
+          <FormField
+            control={form.control}
+            name="qualification_frame_count"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Qualification Frames</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    {...field}
+                    disabled={isLoading}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Number of frames per player in qualification round (1-10)
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}

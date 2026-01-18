@@ -12,6 +12,8 @@ export interface Event {
   putt_distance_ft: number;
   access_code: string;
   qualification_round_enabled: boolean;
+  bracket_frame_count: number;
+  qualification_frame_count: number;
   created_at: string;
   participant_count?: number;
 }
@@ -29,6 +31,8 @@ export interface EventWithDetails {
   access_code: string;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
+  bracket_frame_count: number;
+  qualification_frame_count: number;
   created_at: string;
   players: import('./player').EventPlayer[];
   teams?: import('./team').Team[];

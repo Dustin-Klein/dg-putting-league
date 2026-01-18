@@ -7,7 +7,7 @@ import { MatchSetup } from './components/match-setup';
 import { FrameWizard } from './components/frame-wizard';
 import { ReviewSubmit } from './components/review-submit';
 import type { WizardStage, MatchInfo, ScoreState } from './components/wizard-types';
-import { STANDARD_FRAMES, getFrameNumbers, getScoreKey, areScoresTiedWithLocalScores } from './components/wizard-types';
+import { getFrameNumbers, getScoreKey, areScoresTiedWithLocalScores } from './components/wizard-types';
 
 export default function MatchScoringPage({
   params,
@@ -18,6 +18,7 @@ export default function MatchScoringPage({
   const [matchId, setMatchId] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [bonusPointEnabled, setBonusPointEnabled] = useState(true);
+  const [bracketFrameCount, setBracketFrameCount] = useState(5);
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -74,7 +75,7 @@ export default function MatchScoringPage({
     }
     setAccessCode(code);
 
-    // Get bonus point setting from event
+    // Get event settings
     const fetchEvent = async () => {
       const response = await fetch('/api/score', {
         method: 'POST',
@@ -84,6 +85,7 @@ export default function MatchScoringPage({
       if (response.ok) {
         const data = await response.json();
         setBonusPointEnabled(data.event.bonus_point_enabled);
+        setBracketFrameCount(data.event.bracket_frame_count ?? 5);
       }
     };
     fetchEvent();
@@ -245,7 +247,7 @@ export default function MatchScoringPage({
     // If match already has scores, start from where they left off
     if (match && match.frames.length > 0) {
       // Find the first incomplete frame
-      const frameNumbers = getFrameNumbers(match);
+      const frameNumbers = getFrameNumbers(match, bracketFrameCount);
       const allPlayers = [...match.team_one.players, ...match.team_two.players];
 
       for (const frameNum of frameNumbers) {
@@ -274,16 +276,16 @@ export default function MatchScoringPage({
     if (!match) return;
 
     // Check if tied before saving (local scores will be cleared after save)
-    const isTiedBeforeSave = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled);
+    const isTiedBeforeSave = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled, bracketFrameCount);
 
     const saved = await saveFrameScores(currentFrame);
     if (!saved) return;
 
-    const frameNumbers = getFrameNumbers(match);
+    const frameNumbers = getFrameNumbers(match, bracketFrameCount);
     const currentIndex = frameNumbers.indexOf(currentFrame);
 
     // Check if we need overtime using pre-save tie status
-    if (currentFrame >= STANDARD_FRAMES && isTiedBeforeSave) {
+    if (currentFrame >= bracketFrameCount && isTiedBeforeSave) {
       // Add overtime frame
       setCurrentFrame(currentFrame + 1);
     } else if (currentIndex < frameNumbers.length - 1) {
@@ -357,6 +359,7 @@ export default function MatchScoringPage({
           match={match}
           localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
+          standardFrames={bracketFrameCount}
           currentFrame={currentFrame}
           onScoreChange={handleScoreChange}
           onNextFrame={handleNextFrame}
@@ -371,6 +374,7 @@ export default function MatchScoringPage({
       return (
         <ReviewSubmit
           match={match}
+          standardFrames={bracketFrameCount}
           isCompleting={isCompleting}
           error={error}
           onSubmit={handleComplete}
