@@ -47,6 +47,9 @@ export function AuthButton() {
       <Button asChild variant="ghost">
         <Link href="/score">Score</Link>
       </Button>
+      <Button asChild variant="ghost">
+        <Link href="/players">Players</Link>
+      </Button>
       {user ? (
         <>
           <Button asChild variant="ghost">
