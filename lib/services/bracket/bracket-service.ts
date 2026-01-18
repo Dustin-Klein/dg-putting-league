@@ -20,6 +20,8 @@ import {
   updateMatchStatus,
   getBracketStage,
 } from '@/lib/repositories/bracket-repository';
+import { getEventById } from '@/lib/repositories/event-repository';
+import type { EventStatus } from '@/lib/types/event';
 
 /**
  * Get the next power of 2 that is >= n
@@ -208,11 +210,15 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   bracket: BracketData;
   teams: Team[];
   participantTeamMap: Record<number, Team>;
+  eventStatus?: EventStatus;
 }> {
-  const bracket = await getBracket(eventId);
-  const teams = await getEventTeams(eventId);
-
   const { supabase } = await requireEventAdmin(eventId);
+
+  const [bracket, teams, event] = await Promise.all([
+    getBracket(eventId),
+    getEventTeams(eventId),
+    getEventById(supabase, eventId),
+  ]);
 
   const { data: participantsWithTeams } = await supabase
     .from('bracket_participant')
@@ -230,7 +236,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     }
   }
 
-  return { bracket, teams, participantTeamMap };
+  return { bracket, teams, participantTeamMap, eventStatus: event?.status };
 }
 
 /**

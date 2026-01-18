@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils/utils';
 import { Status } from 'brackets-model';
 import { getStatusLabel, getStatusColor } from '@/lib/types/bracket';
+import { Pencil } from 'lucide-react';
 
 interface OpponentData {
   id: number | null;
@@ -23,6 +24,7 @@ interface MatchCardProps {
   laneLabel?: string;
   onClick?: () => void;
   isClickable?: boolean;
+  isCorrectionMode?: boolean;
 }
 
 function getTeamName(team?: Team): string {
@@ -93,6 +95,7 @@ export function MatchCard({
   laneLabel,
   onClick,
   isClickable = false,
+  isCorrectionMode = false,
 }: MatchCardProps) {
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
@@ -132,14 +135,19 @@ const isComplete =
             </Badge>
           )}
         </div>
-        {showScore && (
-          <Badge
-            variant="outline"
-            className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}
-          >
-            {getStatusLabel(match.status)}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1">
+          {showScore && (
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}
+            >
+              {getStatusLabel(match.status)}
+            </Badge>
+          )}
+          {isCorrectionMode && (
+            <Pencil className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+          )}
+        </div>
       </div>
       <CardContent className="p-0 divide-y">
         <OpponentRow

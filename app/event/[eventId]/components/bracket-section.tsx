@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Match } from 'brackets-model';
+import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog } from '../bracket/components';
@@ -162,6 +163,7 @@ export function BracketSection({ eventId }: BracketSectionProps) {
 
       <BracketView
         data={bracketData}
+        eventStatus={bracketData.eventStatus}
         onMatchClick={handleMatchClick}
       />
 
@@ -173,6 +175,11 @@ export function BracketSection({ eventId }: BracketSectionProps) {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onScoreSubmit={handleScoreSubmit}
+        isCorrectionMode={
+          bracketData?.eventStatus === 'bracket' &&
+          selectedMatch !== null &&
+          (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+        }
       />
     </div>
   );

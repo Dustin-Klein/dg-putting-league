@@ -10,6 +10,7 @@ import { completeMatch } from './match-completion';
 import { calculatePoints } from './points-calculator';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import { getOrCreateFrame as getOrCreateFrameRepo } from '@/lib/repositories/frame-repository';
+import { getEventScoringConfig } from '@/lib/repositories/event-repository';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -46,13 +47,12 @@ export async function recordScoreAdmin(
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  const [eventRes, bracketMatchRes] = await Promise.all([
-    supabase.from('events').select('bonus_point_enabled').eq('id', eventId).single(),
+  const [eventConfig, bracketMatchRes] = await Promise.all([
+    getEventScoringConfig(supabase, eventId),
     supabase.from('bracket_match').select('id, status').eq('id', bracketMatchId).eq('event_id', eventId).single(),
   ]);
 
-  const { data: event, error: eventError } = eventRes;
-  if (eventError || !event) {
+  if (!eventConfig) {
     throw new NotFoundError('Event not found');
   }
 
@@ -61,11 +61,12 @@ export async function recordScoreAdmin(
     throw new NotFoundError('Bracket match not found');
   }
 
-  if (bracketMatch.status === 4) { // Completed
-    throw new BadRequestError('Match is already completed');
+  const isCompletedOrArchived = bracketMatch.status === 4 || bracketMatch.status === 5;
+  if (isCompletedOrArchived && eventConfig.status !== 'bracket') {
+    throw new BadRequestError('Score corrections only allowed during bracket phase');
   }
 
-  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
+  const pointsEarned = calculatePoints(puttsMade, eventConfig.bonus_point_enabled);
   const isOvertime = frameNumber > 5;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
