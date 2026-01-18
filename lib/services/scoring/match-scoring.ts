@@ -47,6 +47,14 @@ export async function recordScoreAdmin(
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
+  if (!Number.isInteger(frameNumber) || frameNumber < 1) {
+    throw new BadRequestError('Frame number must be a positive integer');
+  }
+  
+  if (frameNumber > 50) {
+    throw new BadRequestError('Frame number exceeds maximum allowed limit');
+  }
+
   const [eventConfig, eventFrameCount, bracketMatchRes] = await Promise.all([
     getEventScoringConfig(supabase, eventId),
     supabase.from('events').select('bracket_frame_count').eq('id', eventId).single(),
