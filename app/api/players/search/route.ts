@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { searchPlayers } from '@/lib/services/player';
+import { searchPlayers, searchPlayersPublic } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,11 @@ export async function GET(request: Request) {
       throw new BadRequestError('Invalid query parameters');
     }
 
-    const results = await searchPlayers(parsed.data.query, parsed.data.excludeEventId);
+    // Use authenticated search if excludeEventId is provided (admin feature)
+    // Otherwise use public search (no auth required)
+    const results = parsed.data.excludeEventId
+      ? await searchPlayers(parsed.data.query, parsed.data.excludeEventId)
+      : await searchPlayersPublic(parsed.data.query);
 
     return NextResponse.json({ results });
   } catch (error) {

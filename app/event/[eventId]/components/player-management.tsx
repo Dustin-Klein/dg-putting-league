@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -509,7 +510,16 @@ export function PlayerManagement({
               players.map((eventPlayer) => (
                 <TableRow key={eventPlayer.id}>
                   <TableCell className="font-medium">
-                    {eventPlayer.player.full_name}
+                    {eventPlayer.player.player_number ? (
+                      <Link
+                        href={`/player/${eventPlayer.player.player_number}`}
+                        className="hover:underline"
+                      >
+                        {eventPlayer.player.full_name}
+                      </Link>
+                    ) : (
+                      eventPlayer.player.full_name
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">

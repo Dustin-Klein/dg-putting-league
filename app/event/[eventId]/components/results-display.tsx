@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
@@ -285,13 +286,31 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
                       {poolAMember && (
                         <div className="flex items-center gap-2">
                           <Badge variant="default" className="text-xs">A</Badge>
-                          <span>{poolAMember.event_player.player.full_name}</span>
+                          {poolAMember.event_player.player.player_number ? (
+                            <Link
+                              href={`/player/${poolAMember.event_player.player.player_number}`}
+                              className="hover:underline"
+                            >
+                              {poolAMember.event_player.player.full_name}
+                            </Link>
+                          ) : (
+                            <span>{poolAMember.event_player.player.full_name}</span>
+                          )}
                         </div>
                       )}
                       {poolBMember && (
                         <div className="flex items-center gap-2">
                           <Badge variant="default" className="text-xs bg-blue-500">B</Badge>
-                          <span>{poolBMember.event_player.player.full_name}</span>
+                          {poolBMember.event_player.player.player_number ? (
+                            <Link
+                              href={`/player/${poolBMember.event_player.player.player_number}`}
+                              className="hover:underline"
+                            >
+                              {poolBMember.event_player.player.full_name}
+                            </Link>
+                          ) : (
+                            <span>{poolBMember.event_player.player.full_name}</span>
+                          )}
                         </div>
                       )}
                     </div>

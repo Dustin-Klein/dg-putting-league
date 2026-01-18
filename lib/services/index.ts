@@ -5,6 +5,7 @@ export * from './event-player';
 export * from './lane';
 export * from './league';
 export * from './player';
+export * from './player-statistics';
 export * from './qualification';
 export * from './scoring';
 export * from './team';
