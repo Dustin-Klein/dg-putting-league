@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
+import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog } from './components';
@@ -251,6 +252,7 @@ export default function BracketPage({
         >
           <BracketView
             data={bracketData}
+            eventStatus={bracketData.eventStatus}
             onMatchClick={handleMatchClick}
           />
         </div>
@@ -265,6 +267,11 @@ export default function BracketPage({
           open={isDialogOpen}
           onOpenChange={setIsDialogOpen}
           onScoreSubmit={handleScoreSubmit}
+          isCorrectionMode={
+            bracketData?.eventStatus === 'bracket' &&
+            selectedMatch !== null &&
+            (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+          }
         />
       )}
     </div>

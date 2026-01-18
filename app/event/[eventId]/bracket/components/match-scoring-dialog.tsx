@@ -29,6 +29,7 @@ interface MatchScoringDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onScoreSubmit: () => void;
+  isCorrectionMode?: boolean;
 }
 
 const STANDARD_FRAMES = 5;
@@ -39,6 +40,7 @@ export function MatchScoringDialog({
   open,
   onOpenChange,
   onScoreSubmit,
+  isCorrectionMode = false,
 }: MatchScoringDialogProps) {
   const [matchDetails, setMatchDetails] = useState<BracketMatchWithDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -283,7 +285,8 @@ export function MatchScoringDialog({
 
   const team1Score = matchDetails?.opponent1?.score ?? 0;
   const team2Score = matchDetails?.opponent2?.score ?? 0;
-  const isCompleted = matchDetails?.status === 4;
+  const isCompleted = matchDetails?.status === 4 || matchDetails?.status === 5;
+  const isEditingLocked = isCompleted && !isCorrectionMode;
 
   // Determine how many frames to show
   const maxFrameNumber = Math.max(
@@ -319,6 +322,12 @@ export function MatchScoringDialog({
             }
           </DialogDescription>
         </DialogHeader>
+
+        {isCorrectionMode && (
+          <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-md text-sm">
+            Correcting completed match scores. Changes will not affect bracket progression.
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -433,7 +442,7 @@ export function MatchScoringDialog({
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
                                 isSaving={isSaving}
-                                isCompleted={isCompleted}
+                                isCompleted={isEditingLocked}
                               />
                             ))}
                           </>
@@ -459,7 +468,7 @@ export function MatchScoringDialog({
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
                                 isSaving={isSaving}
-                                isCompleted={isCompleted}
+                                isCompleted={isEditingLocked}
                               />
                             ))}
                           </>
@@ -526,7 +535,7 @@ export function MatchScoringDialog({
                   value={finalScore1}
                   onChange={(e) => setFinalScore1(e.target.value)}
                   className="text-2xl font-mono text-center h-14"
-                  disabled={isCompleted || isCompleting}
+                  disabled={isEditingLocked || isCompleting}
                 />
               </div>
 
@@ -549,7 +558,7 @@ export function MatchScoringDialog({
                   value={finalScore2}
                   onChange={(e) => setFinalScore2(e.target.value)}
                   className="text-2xl font-mono text-center h-14"
-                  disabled={isCompleted || isCompleting}
+                  disabled={isEditingLocked || isCompleting}
                 />
               </div>
 
@@ -560,7 +569,7 @@ export function MatchScoringDialog({
               )}
 
               {/* Save Button */}
-              {!isCompleted && (
+              {!isEditingLocked && (
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     variant="outline"

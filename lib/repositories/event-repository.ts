@@ -354,3 +354,23 @@ export async function getEventByAccessCodeForBracket(
     status: string;
   } | null;
 }
+
+/**
+ * Get event scoring configuration for validation
+ */
+export async function getEventScoringConfig(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<{ status: EventStatus; bonus_point_enabled: boolean } | null> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('status, bonus_point_enabled')
+    .eq('id', eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event scoring config: ${error.message}`);
+  }
+
+  return event as { status: EventStatus; bonus_point_enabled: boolean } | null;
+}

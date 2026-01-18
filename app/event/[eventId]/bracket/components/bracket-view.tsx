@@ -4,12 +4,14 @@ import { useMemo, Fragment } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
+import type { EventStatus } from '@/lib/types/event';
 import { Status } from 'brackets-model';
 import { MatchCard } from './match-card';
 import { GROUP_NAMES } from '@/lib/types/bracket';
 
 interface BracketViewProps {
   data: BracketWithTeams;
+  eventStatus?: EventStatus;
   onMatchClick?: (match: Match) => void;
 }
 
@@ -131,7 +133,7 @@ function RoundConnector({ matches }: { matches: Match[] }) {
   );
 }
 
-export function BracketView({ data, onMatchClick }: BracketViewProps) {
+export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
 
   // Organize matches by group and round
@@ -280,7 +282,13 @@ export function BracketView({ data, onMatchClick }: BracketViewProps) {
                         onClick={() => onMatchClick?.(match)}
                         isClickable={
                           match.status === Status.Ready ||
-                          match.status === Status.Running
+                          match.status === Status.Running ||
+                          (eventStatus === 'bracket' &&
+                            (match.status === Status.Completed || match.status === Status.Archived))
+                        }
+                        isCorrectionMode={
+                          eventStatus === 'bracket' &&
+                          (match.status === Status.Completed || match.status === Status.Archived)
                         }
                       />
                     )

@@ -1,5 +1,6 @@
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import type { Team } from './team';
+import type { EventStatus } from './event';
 
 /**
  * Lane for match assignment
@@ -38,6 +39,7 @@ export interface BracketWithTeams {
   participantTeamMap: Record<number, Team>;
   lanes: Lane[];
   laneMap: Record<string, string>;
+  eventStatus?: EventStatus;
 }
 
 /**
