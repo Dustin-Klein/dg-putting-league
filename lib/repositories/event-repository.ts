@@ -296,11 +296,12 @@ export async function getEventByAccessCodeForQualification(
   lane_count: number;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
+  qualification_frame_count: number;
   status: string;
 } | null> {
   const { data: event, error } = await supabase
     .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, status')
+    .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, qualification_frame_count, status')
     .ilike('access_code', accessCode)
     .eq('status', 'pre-bracket')
     .eq('qualification_round_enabled', true)
@@ -317,6 +318,7 @@ export async function getEventByAccessCodeForQualification(
     lane_count: number;
     bonus_point_enabled: boolean;
     qualification_round_enabled: boolean;
+    qualification_frame_count: number;
     status: string;
   } | null;
 }
