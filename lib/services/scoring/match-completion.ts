@@ -5,7 +5,10 @@ import {
   getMatchWithGroupInfo,
   getSecondGrandFinalMatch,
   archiveMatch,
-} from '@/lib/repositories/bracket-repository'; import { BadRequestError, InternalError } from '@/lib/errors';
+  updateMatchStatus,
+} from '@/lib/repositories/bracket-repository';
+import { MatchStatus } from '@/lib/types/bracket';
+import { BadRequestError, InternalError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -59,16 +62,18 @@ const GRAND_FINAL_GROUP_NUMBER = 3;
 const FIRST_GF_ROUND_NUMBER = 1;
 
 /**
- * Handle grand final completion: if the WB champion wins the first grand final,
- * archive the second grand final (reset match) to prevent it from being playable.
+ * Handle grand final completion: manage the second grand final (reset match)
+ * based on the outcome of the first grand final match.
  *
  * In double elimination grand finals:
  * - opponent1 is the WB champion (0 losses)
  * - opponent2 is the LB champion (1 loss)
  * - If opponent1 wins → tournament over, archive reset match
- * - If opponent2 wins → reset match is needed, keep it Ready
+ * - If opponent2 wins → reset match is needed, ensure it's Ready
+ *
+ * This function handles both initial completion and score corrections.
  */
-async function handleGrandFinalCompletion(
+export async function handleGrandFinalCompletion(
   supabase: SupabaseClient,
   completedMatchId: number,
   opponent1Won: boolean
@@ -83,12 +88,19 @@ async function handleGrandFinalCompletion(
   if (groupNumber !== GRAND_FINAL_GROUP_NUMBER) return;
   if (roundNumber !== FIRST_GF_ROUND_NUMBER) return;
 
-  // This is the first grand final match
-  // If opponent1 (WB champion) won, archive the reset match
+  // This is the first grand final match - find the reset match
+  const secondGFMatch = await getSecondGrandFinalMatch(supabase, match.group_id);
+  if (!secondGFMatch) return;
+
   if (opponent1Won) {
-    const secondGFMatch = await getSecondGrandFinalMatch(supabase, match.group_id);
-    if (secondGFMatch) {
+    // WB champion won - archive the reset match if not already archived
+    if (secondGFMatch.status !== MatchStatus.Archived) {
       await archiveMatch(supabase, secondGFMatch.id);
+    }
+  } else {
+    // LB champion won - ensure the reset match is playable
+    if (secondGFMatch.status === MatchStatus.Archived) {
+      await updateMatchStatus(supabase, secondGFMatch.id, MatchStatus.Ready);
     }
   }
 }

@@ -6,7 +6,7 @@ import {
   InternalError,
   NotFoundError,
 } from '@/lib/errors';
-import { completeMatch } from './match-completion';
+import { completeMatch, handleGrandFinalCompletion } from './match-completion';
 import { calculatePoints } from './points-calculator';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import { getOrCreateFrame as getOrCreateFrameRepo } from '@/lib/repositories/frame-repository';
@@ -451,6 +451,9 @@ export async function correctMatchScores(
   if (updateError) {
     throw new InternalError(`Failed to correct scores: ${updateError.message}`);
   }
+
+  // Handle grand final reset match archiving/un-archiving if winner changed
+  await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won);
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
