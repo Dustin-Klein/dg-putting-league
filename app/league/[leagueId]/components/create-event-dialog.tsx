@@ -51,7 +51,6 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
     } catch (err) {
       console.error('Error creating event:', err);
       setError(err instanceof Error ? err.message : 'Failed to create event');
-      throw err;
     } finally {
       setIsLoading(false);
     }
