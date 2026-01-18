@@ -66,7 +66,7 @@ export function createMockQueryBuilder(
   // Make all methods return the mock for chaining
   Object.keys(mockQuery).forEach((key) => {
     if (key !== 'single' && key !== 'maybeSingle') {
-      (mockQuery as Record<string, jest.Mock>)[key].mockReturnThis();
+      ((mockQuery as unknown) as Record<string, jest.Mock>)[key].mockReturnThis();
     }
   });
 
@@ -165,6 +165,7 @@ export function createMockEventPlayer(
     pfa_score: null,
     scoring_method: null,
     player,
+    created_at: '2024-01-01T00:00:00Z',
     ...overrides,
   };
 }
@@ -178,6 +179,7 @@ export interface MockEventPlayer {
   pfa_score: number | null;
   scoring_method: 'qualification' | 'pfa' | 'default' | null;
   player: MockPlayer;
+  created_at: string;
 }
 
 /**
@@ -195,6 +197,8 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     bonus_point_enabled: true,
     qualification_round_enabled: false,
     created_at: '2024-01-01T00:00:00Z',
+    putt_distance_ft: 15,
+    participant_count: 0,
     ...overrides,
   };
 }
@@ -206,10 +210,12 @@ export interface MockEvent {
   location: string | null;
   status: 'created' | 'pre-bracket' | 'bracket' | 'completed';
   lane_count: number;
-  access_code: string | null;
+  access_code: string;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
   created_at: string;
+  putt_distance_ft: number;
+  participant_count?: number;
 }
 
 /**
@@ -222,11 +228,13 @@ export function createMockEventWithDetails(
   return {
     ...createMockEvent(eventOverrides),
     players,
+    participant_count: players.length,
   };
 }
 
 export interface MockEventWithDetails extends MockEvent {
   players: MockEventPlayer[];
+  participant_count: number;
 }
 
 /**

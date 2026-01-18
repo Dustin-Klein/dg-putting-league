@@ -284,7 +284,8 @@ describe('Scoring Service', () => {
       const mockEvent = createMockEvent({ status: 'bracket' });
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
 
-      const result = await validateAccessCode('ABC123', existingClient as MockSupabaseClient);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await validateAccessCode('ABC123', existingClient as any);
 
       expect(result).toEqual(mockEvent);
       expect(getEventByAccessCodeForBracket).toHaveBeenCalledWith(existingClient, 'ABC123');
