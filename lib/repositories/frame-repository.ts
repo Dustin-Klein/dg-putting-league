@@ -13,11 +13,8 @@ export async function getOrCreateFrame(
   supabase: Awaited<ReturnType<typeof createClient>>,
   bracketMatchId: number,
   frameNumber: number,
-  isOvertime?: boolean
+  isOvertime: boolean
 ): Promise<FrameData> {
-  // Default isOvertime based on frame number if not provided
-  const overtimeValue = isOvertime ?? frameNumber > 5;
-
   // Try to find existing frame
   const { data: existingFrame, error: frameQueryError } = await supabase
     .from('match_frames')
@@ -40,7 +37,7 @@ export async function getOrCreateFrame(
     .insert({
       bracket_match_id: bracketMatchId,
       frame_number: frameNumber,
-      is_overtime: overtimeValue,
+      is_overtime: isOvertime,
     })
     .select('id, bracket_match_id, frame_number, is_overtime')
     .single();

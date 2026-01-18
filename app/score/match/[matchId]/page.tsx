@@ -18,7 +18,7 @@ export default function MatchScoringPage({
   const [matchId, setMatchId] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [bonusPointEnabled, setBonusPointEnabled] = useState(true);
-  const [bracketFrameCount, setBracketFrameCount] = useState(5);
+  const [bracketFrameCount, setBracketFrameCount] = useState<number | null>(null);
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -85,7 +85,7 @@ export default function MatchScoringPage({
       if (response.ok) {
         const data = await response.json();
         setBonusPointEnabled(data.event.bonus_point_enabled);
-        setBracketFrameCount(data.event.bracket_frame_count ?? 5);
+        setBracketFrameCount(data.event.bracket_frame_count);
       }
     };
     fetchEvent();
@@ -244,6 +244,8 @@ export default function MatchScoringPage({
 
   // Wizard navigation handlers
   const handleBeginScoring = () => {
+    if (bracketFrameCount === null) return;
+
     // If match already has scores, start from where they left off
     if (match && match.frames.length > 0) {
       // Find the first incomplete frame
@@ -273,7 +275,7 @@ export default function MatchScoringPage({
   };
 
   const handleNextFrame = async () => {
-    if (!match) return;
+    if (!match || bracketFrameCount === null) return;
 
     // Check if tied before saving (local scores will be cleared after save)
     const isTiedBeforeSave = areScoresTiedWithLocalScores(match, localScores, bonusPointEnabled, bracketFrameCount);
@@ -334,7 +336,7 @@ export default function MatchScoringPage({
   };
 
   // Loading state
-  if (isLoading || !match) {
+  if (isLoading || !match || bracketFrameCount === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading match...</div>

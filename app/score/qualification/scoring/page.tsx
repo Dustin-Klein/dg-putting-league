@@ -206,12 +206,12 @@ export default function QualificationScoringPage() {
     );
   }
 
-  if (error) {
+  if (error || !round) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
-            <p className="text-destructive mb-4">{error}</p>
+            <p className="text-destructive mb-4">{error || 'Qualification round not found'}</p>
             <Button onClick={handleBack}>Back to Player Selection</Button>
           </CardContent>
         </Card>
@@ -219,7 +219,7 @@ export default function QualificationScoringPage() {
     );
   }
 
-  const frameCount = round?.frame_count || 5;
+  const frameCount = round.frame_count;
   const frameNumbers = Array.from({ length: frameCount }, (_, i) => i + 1);
   const allComplete = players.every((p) => p.is_complete);
 
