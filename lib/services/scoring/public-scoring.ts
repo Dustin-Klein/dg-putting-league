@@ -11,13 +11,17 @@ import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
 import { getOrCreateFrame } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
-import { getEventByAccessCodeForBracket } from '@/lib/repositories/event-repository';
+import { getEventByAccessCodeForBracket, getEventStatusByAccessCode } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
+import {
+  validateQualificationAccessCode,
+  getPlayersForQualification,
+} from '@/lib/services/qualification';
 import type {
   PublicEventInfo,
   PublicMatchInfo,
@@ -34,6 +38,47 @@ export type {
 } from '@/lib/types/scoring';
 
 /**
+ * Get event scoring context based on access code
+ * Determines if event is in qualification or bracket mode
+ */
+export async function getEventScoringContext(accessCode: string) {
+  const supabase = await createClient();
+  const cleanedAccessCode = accessCode.trim();
+  const eventCheck = await getEventStatusByAccessCode(supabase, cleanedAccessCode);
+
+  if (!eventCheck) {
+    throw new NotFoundError('Invalid access code');
+  }
+
+  // Handle qualification mode
+  if (eventCheck.status === 'pre-bracket' && eventCheck.qualification_round_enabled) {
+    const event = await validateQualificationAccessCode(cleanedAccessCode);
+    const players = await getPlayersForQualification(cleanedAccessCode);
+
+    return {
+      mode: 'qualification' as const,
+      event,
+      players,
+    };
+  }
+
+  // Handle bracket mode
+  if (eventCheck.status === 'bracket') {
+    const event = await validateAccessCode(cleanedAccessCode, supabase);
+    const matches = await getMatchesForScoring(cleanedAccessCode);
+
+    return {
+      mode: 'bracket' as const,
+      event,
+      matches,
+    };
+  }
+
+  // Event is not in a scoreable state
+  throw new BadRequestError('Event is not accepting scores at this time');
+}
+
+/**
  * Validate access code and get event info
  * @param accessCode - The event access code
  * @param supabaseClient - Optional existing Supabase client (for connection reuse)
@@ -43,8 +88,9 @@ export async function validateAccessCode(
   supabaseClient?: Awaited<ReturnType<typeof createClient>>
 ): Promise<PublicEventInfo> {
   const supabase = supabaseClient ?? await createClient();
+  const cleanedAccessCode = accessCode.trim();
 
-  const event = await getEventByAccessCodeForBracket(supabase, accessCode);
+  const event = await getEventByAccessCodeForBracket(supabase, cleanedAccessCode);
 
   if (!event) {
     throw new NotFoundError('Invalid access code or event is not in bracket play');

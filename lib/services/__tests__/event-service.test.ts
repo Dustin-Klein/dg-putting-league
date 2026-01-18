@@ -44,6 +44,8 @@ jest.mock('@/lib/repositories/event-repository', () => ({
   getQualificationRound: jest.fn(),
   getQualificationFrameCounts: jest.fn(),
   updateEvent: jest.fn(),
+  isAccessCodeUnique: jest.fn(),
+  createEvent: jest.fn(),
 }));
 
 jest.mock('@/lib/services/event-player', () => ({
@@ -79,6 +81,7 @@ import {
   requireEventAdmin,
   getEventWithPlayers,
   getEventsByLeagueId,
+  createEvent,
   deleteEvent,
   validateEventStatusTransition,
   updateEvent,
@@ -99,6 +102,64 @@ describe('Event Service', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+  });
+
+  describe('createEvent', () => {
+    const leagueId = 'league-123';
+    const eventData = {
+      league_id: leagueId,
+      event_date: '2026-01-20',
+      location: 'Test Location',
+      lane_count: 4,
+      putt_distance_ft: 15,
+      access_code: 'TEST2026',
+      qualification_round_enabled: false,
+    };
+
+    it('should create event successfully when user is admin and code is unique', async () => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+      (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(true);
+      (eventRepo.createEvent as jest.Mock).mockResolvedValue(createMockEvent(eventData));
+
+      const result = await createEvent(eventData);
+
+      expect(result).toBeDefined();
+      expect(requireLeagueAdmin).toHaveBeenCalledWith(leagueId);
+      expect(eventRepo.isAccessCodeUnique).toHaveBeenCalledWith(mockSupabase, eventData.access_code);
+      expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, {
+        ...eventData,
+        status: 'created',
+      });
+    });
+
+    it('should throw BadRequestError when access code already exists', async () => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+      (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(false);
+
+      await expect(createEvent(eventData)).rejects.toThrow(BadRequestError);
+      await expect(createEvent(eventData)).rejects.toThrow('An event with this access code already exists');
+    });
+
+    it('should throw ForbiddenError when user is not league admin', async () => {
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
+
+      await expect(createEvent(eventData)).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should format date correctly', async () => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+      (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(true);
+      (eventRepo.createEvent as jest.Mock).mockResolvedValue(createMockEvent(eventData));
+
+      await createEvent({
+        ...eventData,
+        event_date: '2026-01-20T12:00:00.000Z',
+      });
+
+      expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, expect.objectContaining({
+        event_date: '2026-01-20',
+      }));
+    });
   });
 
   describe('requireEventAdmin', () => {

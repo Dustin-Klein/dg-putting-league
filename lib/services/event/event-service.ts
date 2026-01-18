@@ -56,6 +56,41 @@ export async function getEventsByLeagueId(leagueId: string) {
 }
 
 /**
+ * Create a new event with validation
+ */
+export async function createEvent(data: {
+  league_id: string;
+  event_date: string;
+  location: string | null;
+  lane_count: number;
+  putt_distance_ft: number;
+  access_code: string;
+  qualification_round_enabled: boolean;
+}) {
+  const supabase = await createClient();
+
+  // 1. Auth check
+  await requireLeagueAdmin(data.league_id);
+
+  // 2. Business logic: Unique access code check
+  const isUnique = await eventRepo.isAccessCodeUnique(supabase, data.access_code);
+  if (!isUnique) {
+    throw new BadRequestError('An event with this access code already exists');
+  }
+
+  // 3. Format date
+  const eventDate = new Date(data.event_date);
+  const formattedDate = eventDate.toISOString().split('T')[0];
+
+  // 4. Create event via repo
+  return eventRepo.createEvent(supabase, {
+    ...data,
+    event_date: formattedDate,
+    status: 'created',
+  });
+}
+
+/**
  * Delete an event and all related records
  */
 export async function deleteEvent(eventId: string) {
