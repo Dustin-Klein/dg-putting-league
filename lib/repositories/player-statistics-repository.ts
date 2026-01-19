@@ -362,11 +362,10 @@ export async function getPlacementsForEvents(
 
   const eventsNeedingCalculation = eventIds.filter((id) => !eventsWithStoredPlacements.has(id));
 
-  const calculatedPlacements: EventPlacementData[] = [];
-  for (const eventId of eventsNeedingCalculation) {
-    const placements = await calculateEventPlacements(supabase, eventId);
-    calculatedPlacements.push(...placements);
-  }
+  const results = await Promise.all(
+    eventsNeedingCalculation.map((eventId) => calculateEventPlacements(supabase, eventId))
+  );
+  const calculatedPlacements = results.flat();
 
   return [...storedPlacements, ...calculatedPlacements];
 }
