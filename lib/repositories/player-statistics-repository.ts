@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
 import type { Player } from '@/lib/types/player';
+import * as eventPlacementRepo from './event-placement-repository';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -348,7 +349,7 @@ export interface EventPlacementData {
 }
 
 /**
- * Get placements for events (calculated from bracket results)
+ * Get placements for events (uses stored placements with fallback to calculation)
  */
 export async function getPlacementsForEvents(
   supabase: SupabaseClient,
@@ -356,17 +357,21 @@ export async function getPlacementsForEvents(
 ): Promise<EventPlacementData[]> {
   if (eventIds.length === 0) return [];
 
-  const allPlacements: EventPlacementData[] = [];
+  const storedPlacements = await eventPlacementRepo.getStoredPlacementsForEvents(supabase, eventIds);
+  const eventsWithStoredPlacements = new Set(storedPlacements.map((p) => p.eventId));
 
-  for (const eventId of eventIds) {
+  const eventsNeedingCalculation = eventIds.filter((id) => !eventsWithStoredPlacements.has(id));
+
+  const calculatedPlacements: EventPlacementData[] = [];
+  for (const eventId of eventsNeedingCalculation) {
     const placements = await calculateEventPlacements(supabase, eventId);
-    allPlacements.push(...placements);
+    calculatedPlacements.push(...placements);
   }
 
-  return allPlacements;
+  return [...storedPlacements, ...calculatedPlacements];
 }
 
-async function calculateEventPlacements(
+export async function calculateEventPlacements(
   supabase: SupabaseClient,
   eventId: string
 ): Promise<EventPlacementData[]> {
@@ -396,7 +401,7 @@ async function calculateEventPlacements(
     .from('bracket_match')
     .select('id, round_id, opponent1, opponent2, status')
     .eq('event_id', eventId)
-    .eq('status', 4);
+    .in('status', [4, 5]);
 
   if (!matches || matches.length === 0) return [];
 

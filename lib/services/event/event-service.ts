@@ -13,6 +13,8 @@ import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
 import { autoAssignLanes } from '@/lib/services/lane';
 import * as eventRepo from '@/lib/repositories/event-repository';
+import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
+import * as eventPlacementRepo from '@/lib/repositories/event-placement-repository';
 
 /**
  * Ensure the current user is an admin of the event's league
@@ -245,5 +247,19 @@ export async function transitionEventToBracket(
     } catch (error) {
       console.error('Auto-assign lanes error:', error);
     }
+  }
+}
+
+/**
+ * Finalize event placements when transitioning to completed status.
+ * Calculates final placements from bracket results and stores them for fast retrieval.
+ */
+export async function finalizeEventPlacements(eventId: string): Promise<void> {
+  const supabase = await createClient();
+
+  const placements = await playerStatsRepo.calculateEventPlacements(supabase, eventId);
+
+  if (placements.length > 0) {
+    await eventPlacementRepo.storeEventPlacements(supabase, placements);
   }
 }
