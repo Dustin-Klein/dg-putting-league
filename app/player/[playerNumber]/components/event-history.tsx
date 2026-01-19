@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatPlacement } from '@/lib/utils';
+import { formatPlacement } from '@/lib/utils/format-utils';
 import type { PlayerEventHistory } from '@/lib/types/player-statistics';
 
 interface EventHistoryProps {
