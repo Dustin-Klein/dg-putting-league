@@ -40,7 +40,7 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
         const data = await response.json();
         setProfile(data);
         setError(null);
-      } catch (err) {
+      } catch {
         setError('Failed to load player profile');
       } finally {
         setLoading(false);

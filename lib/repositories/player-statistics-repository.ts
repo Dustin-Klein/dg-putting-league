@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { InternalError, NotFoundError } from '@/lib/errors';
+import { InternalError } from '@/lib/errors';
 import type { Player } from '@/lib/types/player';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -413,9 +413,6 @@ async function calculateEventPlacements(
       participantTeamMap.set(p.id, p.team_id);
     }
   }
-
-  const groupMap = new Map(groups.map(g => [g.id, g.number]));
-  const roundMap = new Map(rounds.map(r => [r.id, { number: r.number, groupId: r.group_id }]));
 
   const placements: EventPlacementData[] = [];
   const placedTeamIds = new Set<string>();
