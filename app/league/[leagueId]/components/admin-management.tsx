@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +34,7 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const fetchAdmins = async () => {
+  const fetchAdmins = useCallback(async () => {
     try {
       const response = await fetch(`/api/league/${leagueId}/admins`);
       if (!response.ok) {
@@ -52,11 +52,11 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [leagueId, toast]);
 
   useEffect(() => {
     fetchAdmins();
-  }, [leagueId]);
+  }, [fetchAdmins]);
 
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,11 +74,6 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to add admin');
       }
-
-      toast({
-        title: 'Success',
-        description: 'Admin added successfully',
-      });
       setEmail('');
       setDialogOpen(false);
       fetchAdmins();
@@ -107,11 +102,6 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to remove admin');
       }
-
-      toast({
-        title: 'Success',
-        description: 'Admin removed successfully',
-      });
       fetchAdmins();
     } catch (error) {
       console.error('Error removing admin:', error);
