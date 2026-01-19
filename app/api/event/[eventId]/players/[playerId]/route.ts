@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addPlayerToEvent, removePlayerFromEvent, updatePlayerPayment } from '@/lib/services/event-player';
 import { BadRequestError, handleError } from '@/lib/errors';
-import { logger } from '@/lib/utils/logger';
 
 export async function POST(
   req: Request,
@@ -17,7 +16,6 @@ export async function POST(
     }
 
     const newEventPlayer = await addPlayerToEvent(eventId, playerId);
-    logger.info('player_added_to_event', { eventId, playerId, eventPlayerId: newEventPlayer.id });
 
     return NextResponse.json({ success: true, data: newEventPlayer });
   } catch (error) {
@@ -35,7 +33,6 @@ export async function DELETE(
 
     // removePlayerFromEvent returns success regardless; add an existence check by attempting delete and verifying affected row
     await removePlayerFromEvent(eventId, playerId);
-    logger.info('player_removed_from_event', { eventId, eventPlayerId: playerId });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -64,7 +61,6 @@ export async function PATCH(
     }
 
     const updated = await updatePlayerPayment(eventId, playerId, parsed.hasPaid);
-    logger.info('player_payment_updated', { eventId, playerId, hasPaid: parsed.hasPaid });
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
