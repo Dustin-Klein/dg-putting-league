@@ -13,6 +13,11 @@ export interface LeagueAdminData {
   role: string;
 }
 
+export interface LeagueAdminRecord {
+  user_id: string;
+  role: string;
+}
+
 /**
  * Get league by ID
  */
@@ -213,4 +218,101 @@ export async function getLeagueAdminByUserAndLeague(
   }
 
   return leagueAdmin as { id: string };
+}
+
+/**
+ * Get all admins for a league
+ */
+export async function getLeagueAdmins(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string
+): Promise<LeagueAdminRecord[]> {
+  const { data: admins, error } = await supabase
+    .from('league_admins')
+    .select('user_id, role')
+    .eq('league_id', leagueId);
+
+  if (error || !admins) {
+    return [];
+  }
+
+  return admins as LeagueAdminRecord[];
+}
+
+/**
+ * Look up user ID by email via RPC
+ */
+export async function getUserIdByEmail(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  email: string
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_user_id_by_email', {
+    email_param: email,
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as string;
+}
+
+/**
+ * Get user email by ID via RPC
+ */
+export async function getUserEmailById(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_user_email_by_id', {
+    user_id_param: userId,
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as string;
+}
+
+/**
+ * Check if a user is the league owner
+ */
+export async function isLeagueOwner(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('league_admins')
+    .select('id')
+    .eq('league_id', leagueId)
+    .eq('user_id', userId)
+    .eq('role', 'owner')
+    .maybeSingle();
+
+  if (error || !data) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Delete a league admin
+ */
+export async function deleteLeagueAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string,
+  userId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('league_admins')
+    .delete()
+    .eq('league_id', leagueId)
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new InternalError(`Failed to delete league admin: ${error.message}`);
+  }
 }
