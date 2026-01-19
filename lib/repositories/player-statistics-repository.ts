@@ -173,6 +173,7 @@ export async function getTeamInfoForEventPlayers(
 
 export interface BracketMatchResult {
   teamId: string;
+  eventId: string;
   bracketMatchId: number;
   result: 'win' | 'loss' | null;
 }
@@ -182,14 +183,18 @@ export interface BracketMatchResult {
  */
 export async function getBracketMatchResultsForTeams(
   supabase: SupabaseClient,
-  teamIds: string[]
+  teamIds: string[],
+  eventIds: string[]
 ): Promise<BracketMatchResult[]> {
-  if (teamIds.length === 0) return [];
+  if (teamIds.length === 0 || eventIds.length === 0) return [];
 
+  // Query participants filtered by both team_id AND tournament_id (event)
+  // This ensures we get the correct participant IDs for each event
   const { data: participants, error: participantError } = await supabase
     .from('bracket_participant')
-    .select('id, team_id')
-    .in('team_id', teamIds);
+    .select('id, team_id, tournament_id')
+    .in('team_id', teamIds)
+    .in('tournament_id', eventIds);
 
   if (participantError) {
     throw new InternalError(`Failed to fetch bracket participants: ${participantError.message}`);
@@ -197,19 +202,19 @@ export async function getBracketMatchResultsForTeams(
 
   if (!participants || participants.length === 0) return [];
 
-  const participantToTeam = new Map<number, string>();
-  const participantIds: number[] = [];
+  // Map participant ID to {teamId, eventId}
+  const participantInfo = new Map<number, { teamId: string; eventId: string }>();
   for (const p of participants) {
-    if (p.team_id) {
-      participantToTeam.set(p.id, p.team_id);
-      participantIds.push(p.id);
+    if (p.team_id && p.tournament_id) {
+      participantInfo.set(p.id, { teamId: p.team_id, eventId: p.tournament_id });
     }
   }
 
   const { data: matches, error: matchError } = await supabase
     .from('bracket_match')
-    .select('id, opponent1, opponent2')
-    .eq('status', 4); // Completed matches only
+    .select('id, event_id, opponent1, opponent2')
+    .in('event_id', eventIds)
+    .in('status', [4, 5]); // Completed (4) or Archived (5) matches
 
   if (matchError) {
     throw new InternalError(`Failed to fetch bracket matches: ${matchError.message}`);
@@ -222,20 +227,23 @@ export async function getBracketMatchResultsForTeams(
   for (const match of matches) {
     const opp1 = match.opponent1 as { id?: number; result?: string } | null;
     const opp2 = match.opponent2 as { id?: number; result?: string } | null;
+    const eventId = match.event_id as string;
 
-    if (opp1?.id && participantToTeam.has(opp1.id)) {
-      const teamId = participantToTeam.get(opp1.id)!;
+    if (opp1?.id && participantInfo.has(opp1.id)) {
+      const info = participantInfo.get(opp1.id)!;
       results.push({
-        teamId,
+        teamId: info.teamId,
+        eventId,
         bracketMatchId: match.id,
         result: opp1.result === 'win' ? 'win' : opp1.result === 'loss' ? 'loss' : null,
       });
     }
 
-    if (opp2?.id && participantToTeam.has(opp2.id)) {
-      const teamId = participantToTeam.get(opp2.id)!;
+    if (opp2?.id && participantInfo.has(opp2.id)) {
+      const info = participantInfo.get(opp2.id)!;
       results.push({
-        teamId,
+        teamId: info.teamId,
+        eventId,
         bracketMatchId: match.id,
         result: opp2.result === 'win' ? 'win' : opp2.result === 'loss' ? 'loss' : null,
       });
@@ -243,6 +251,35 @@ export async function getBracketMatchResultsForTeams(
   }
 
   return results;
+}
+
+/**
+ * Get aggregated match wins and losses for teams per event.
+ * Returns a map keyed by "eventId:teamId" to track records separately per event.
+ */
+export async function getMatchRecordsForTeams(
+  supabase: SupabaseClient,
+  teamIds: string[],
+  eventIds: string[]
+): Promise<Map<string, { wins: number; losses: number }>> {
+  const bracketResults = await getBracketMatchResultsForTeams(supabase, teamIds, eventIds);
+
+  // Key by eventId:teamId to get per-event records
+  const resultsByEventTeam = new Map<string, { wins: number; losses: number }>();
+  for (const result of bracketResults) {
+    const key = `${result.eventId}:${result.teamId}`;
+    if (!resultsByEventTeam.has(key)) {
+      resultsByEventTeam.set(key, { wins: 0, losses: 0 });
+    }
+    const record = resultsByEventTeam.get(key)!;
+    if (result.result === 'win') {
+      record.wins++;
+    } else if (result.result === 'loss') {
+      record.losses++;
+    }
+  }
+
+  return resultsByEventTeam;
 }
 
 export interface FrameResultData {
