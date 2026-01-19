@@ -1,6 +1,7 @@
 "use client";
 
 import { EventsList } from './events-list';
+import { AdminManagement } from './admin-management';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { EventData } from '@/lib/repositories/event-repository';
@@ -11,10 +12,11 @@ interface EventsContentProps {
   league: { name: string; city?: string | null };
   events: EventWithParticipantCount[];
   isAdmin: boolean;
+  isOwner: boolean;
   leagueId: string;
 }
 
-export function EventsContent({ league, events, isAdmin, leagueId }: EventsContentProps) {
+export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: EventsContentProps) {
   return (
     <div className="container mx-auto p-4">
       <div className="mb-6">
@@ -38,6 +40,8 @@ export function EventsContent({ league, events, isAdmin, leagueId }: EventsConte
           leagueId={leagueId}
           isAdmin={isAdmin}
         />
+
+        {isOwner && <AdminManagement leagueId={leagueId} />}
       </div>
     </div>
   );

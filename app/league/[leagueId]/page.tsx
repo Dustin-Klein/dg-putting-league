@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { EventsContent } from './events-content';
 import { getEventsByLeagueId } from '@/lib/services/event';
-import { getLeague } from '@/lib/services/league';
+import { getLeague, checkIsLeagueOwner } from '@/lib/services/league';
 import { requireLeagueAdmin } from '@/lib/services/auth';
 
 export const dynamic = 'force-dynamic';
@@ -26,13 +26,17 @@ export default async function LeagueEventsPage({
       redirect('/leagues');
   }
 
-  const eventsWithParticipantCount = await getEventsByLeagueId(leagueId)
+  const [eventsWithParticipantCount, isOwner] = await Promise.all([
+    getEventsByLeagueId(leagueId),
+    checkIsLeagueOwner(leagueId),
+  ]);
 
   return (
-    <EventsContent 
+    <EventsContent
       league={league}
       events={eventsWithParticipantCount}
       isAdmin={isAdmin}
+      isOwner={isOwner}
       leagueId={params.leagueId}
     />
   );
