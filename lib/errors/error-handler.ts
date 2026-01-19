@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import {
   UnauthorizedError,
   BadRequestError,
@@ -14,6 +15,9 @@ import {
  * @returns NextResponse with appropriate status code and error message
  */
 export function handleError(error: unknown) {
+  if (error instanceof ZodError) {
+    return NextResponse.json({ error: error.issues }, { status: 400 });
+  }
   if (error instanceof UnauthorizedError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
