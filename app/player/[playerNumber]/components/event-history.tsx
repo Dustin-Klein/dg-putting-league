@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatPlacement } from '@/lib/utils';
 import type { PlayerEventHistory } from '@/lib/types/player-statistics';
 
 interface EventHistoryProps {
@@ -26,14 +27,6 @@ export function EventHistory({ eventHistory }: EventHistoryProps) {
       </div>
     );
   }
-
-  const formatPlacement = (place: number | null): string => {
-    if (place === null) return '-';
-    if (place === 1) return '1st';
-    if (place === 2) return '2nd';
-    if (place === 3) return '3rd';
-    return `${place}th`;
-  };
 
   const getPlacementVariant = (place: number | null): "default" | "secondary" | "outline" => {
     if (place === 1) return "default";
