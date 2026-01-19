@@ -1,13 +1,45 @@
 -- Look up user ID by email (for adding admins)
-CREATE OR REPLACE FUNCTION public.get_user_id_by_email(email_param text)
-RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  SELECT id FROM auth.users WHERE email = lower(trim(email_param)) LIMIT 1;
+-- Only callable by league owners to prevent email enumeration
+CREATE OR REPLACE FUNCTION public.get_user_id_by_email(league_id_param uuid, email_param text)
+RETURNS uuid
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT u.id
+  FROM auth.users u
+  WHERE u.email = lower(trim(email_param))
+    AND EXISTS (
+      SELECT 1 FROM public.league_admins la
+      WHERE la.league_id = league_id_param
+        AND la.user_id = auth.uid()
+        AND la.role = 'owner'
+    )
+  LIMIT 1;
 $$;
 
 -- Look up user email by ID (for displaying admin list)
-CREATE OR REPLACE FUNCTION public.get_user_email_by_id(user_id_param uuid)
-RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  SELECT email FROM auth.users WHERE id = user_id_param LIMIT 1;
+-- Only returns email if caller is an admin of the same league as the target user
+CREATE OR REPLACE FUNCTION public.get_user_email_by_id(league_id_param uuid, user_id_param uuid)
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT u.email
+  FROM auth.users u
+  WHERE u.id = user_id_param
+    AND EXISTS (
+      SELECT 1 FROM public.league_admins la
+      WHERE la.league_id = league_id_param
+        AND la.user_id = user_id_param
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.league_admins la
+      WHERE la.league_id = league_id_param
+        AND la.user_id = auth.uid()
+    )
+  LIMIT 1;
 $$;
 
 -- Check if user is the league owner (bypasses RLS)
@@ -25,8 +57,8 @@ AS $$
   );
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_user_id_by_email(text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_user_email_by_id(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_id_by_email(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_email_by_id(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_league_owner(uuid, uuid) TO authenticated;
 
 CREATE POLICY "Enable insert for authenticated users"

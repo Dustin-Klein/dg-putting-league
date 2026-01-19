@@ -426,6 +426,7 @@ describe('League Service', () => {
 
       expect(leagueRepo.getUserIdByEmail).toHaveBeenCalledWith(
         mockSupabase,
+        leagueId,
         expectedNormalizedEmail
       );
     });

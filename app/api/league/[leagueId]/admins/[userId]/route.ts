@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { handleError } from '@/lib/errors';
 import { removeLeagueAdmin } from '@/lib/services/league';
 
-type RouteParams = { params: { leagueId: string; userId: string } };
+type RouteParams = { params: Promise<{ leagueId: string; userId: string }> };
 
 const paramsSchema = z.object({
   leagueId: z.uuid("Invalid league ID"),
@@ -15,7 +15,7 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
-    const { leagueId, userId } = paramsSchema.parse(params);
+    const { leagueId, userId } = paramsSchema.parse(await params);
 
     await removeLeagueAdmin(leagueId, userId);
     return NextResponse.json({ success: true });
