@@ -42,23 +42,24 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
     playerStatsRepo.getPlacementsForEvents(supabase, eventIds),
   ]);
 
-  // Second: fetch bracket results (depends on team info)
+  // Second: fetch match records (depends on team info)
   const teamIds = [...new Set([...teamInfoMap.values()].map((ti) => ti.teamId))];
-  const bracketResults = await playerStatsRepo.getBracketMatchResultsForTeams(
+  const matchRecordsByTeam = await playerStatsRepo.getMatchRecordsForTeams(
     supabase,
-    teamIds
+    teamIds,
+    eventIds
   );
 
   const eventHistory = buildEventHistory(
     eventParticipations,
     teamInfoMap,
-    bracketResults,
+    matchRecordsByTeam,
     placements
   );
 
   const statistics = calculateStatistics(
     eventParticipations,
-    bracketResults,
+    matchRecordsByTeam,
     frameResults,
     placements,
     teamInfoMap
@@ -87,7 +88,7 @@ function createEmptyStatistics(): PlayerStatistics {
 function buildEventHistory(
   participations: playerStatsRepo.EventParticipation[],
   teamInfoMap: Map<string, playerStatsRepo.TeamInfo>,
-  bracketResults: playerStatsRepo.BracketMatchResult[],
+  matchRecordsByTeam: Map<string, { wins: number; losses: number }>,
   placements: playerStatsRepo.EventPlacementData[]
 ): PlayerEventHistory[] {
   const placementMap = new Map<string, number>();
@@ -95,23 +96,11 @@ function buildEventHistory(
     placementMap.set(`${p.eventId}:${p.teamId}`, p.placement);
   }
 
-  const resultsByTeam = new Map<string, { wins: number; losses: number }>();
-  for (const result of bracketResults) {
-    if (!resultsByTeam.has(result.teamId)) {
-      resultsByTeam.set(result.teamId, { wins: 0, losses: 0 });
-    }
-    const record = resultsByTeam.get(result.teamId)!;
-    if (result.result === 'win') {
-      record.wins++;
-    } else if (result.result === 'loss') {
-      record.losses++;
-    }
-  }
-
   return participations.map((ep) => {
     const teamInfo = teamInfoMap.get(ep.eventPlayerId);
     const teamId = teamInfo?.teamId;
-    const record = teamId ? resultsByTeam.get(teamId) : undefined;
+    // matchRecordsByTeam is keyed by "eventId:teamId" to track per-event records
+    const record = teamId ? matchRecordsByTeam.get(`${ep.eventId}:${teamId}`) : undefined;
     const placement = teamId ? placementMap.get(`${ep.eventId}:${teamId}`) : undefined;
 
     return {
@@ -132,7 +121,7 @@ function buildEventHistory(
 
 function calculateStatistics(
   participations: playerStatsRepo.EventParticipation[],
-  bracketResults: playerStatsRepo.BracketMatchResult[],
+  matchRecordsByTeam: Map<string, { wins: number; losses: number }>,
   frameResults: playerStatsRepo.FrameResultData[],
   placements: playerStatsRepo.EventPlacementData[],
   teamInfoMap: Map<string, playerStatsRepo.TeamInfo>
@@ -142,16 +131,9 @@ function calculateStatistics(
   let totalWins = 0;
   let totalLosses = 0;
 
-  const playerTeamIds = new Set([...teamInfoMap.values()].map((ti) => ti.teamId));
-
-  for (const result of bracketResults) {
-    if (playerTeamIds.has(result.teamId)) {
-      if (result.result === 'win') {
-        totalWins++;
-      } else if (result.result === 'loss') {
-        totalLosses++;
-      }
-    }
+  for (const record of matchRecordsByTeam.values()) {
+    totalWins += record.wins;
+    totalLosses += record.losses;
   }
 
   const totalMatches = totalWins + totalLosses;
