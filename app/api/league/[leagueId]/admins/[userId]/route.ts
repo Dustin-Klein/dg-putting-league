@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 import { removeLeagueAdmin } from '@/lib/services/league';
 
 type RouteParams = { params: Promise<{ leagueId: string; userId: string }> };
@@ -15,6 +16,7 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    validateCsrfOrigin(request);
     const { leagueId, userId } = paramsSchema.parse(await params);
 
     await removeLeagueAdmin(leagueId, userId);
