@@ -418,6 +418,18 @@ describe('League Service', () => {
       );
     });
 
+    it('should normalize the email (trim and lowercase)', async () => {
+      const emailWithSpacesAndCaps = '  NewAdmin@Test.Com  ';
+      const expectedNormalizedEmail = 'newadmin@test.com';
+      
+      await addLeagueAdmin(leagueId, emailWithSpacesAndCaps);
+
+      expect(leagueRepo.getUserIdByEmail).toHaveBeenCalledWith(
+        mockSupabase,
+        expectedNormalizedEmail
+      );
+    });
+
     it('should throw ForbiddenError if not owner', async () => {
       (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
 

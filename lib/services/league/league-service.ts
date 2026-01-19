@@ -139,12 +139,13 @@ export async function addLeagueAdmin(leagueId: string, email: string): Promise<v
     throw new ForbiddenError('Only the league owner can add admins');
   }
 
+  const normalizedEmail = (email || '').trim().toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!email || !emailRegex.test(email)) {
+  if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
     throw new BadRequestError('Invalid email format');
   }
 
-  const targetUserId = await leagueRepo.getUserIdByEmail(supabase, email);
+  const targetUserId = await leagueRepo.getUserIdByEmail(supabase, normalizedEmail);
   if (!targetUserId) {
     throw new NotFoundError('No account found with that email');
   }
