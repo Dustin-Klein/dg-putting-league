@@ -153,15 +153,20 @@ function calculateStatistics(
   let firstPlaceFinishes = 0;
   let topThreeFinishes = 0;
 
-  for (const teamInfo of teamInfoMap.values()) {
-    for (const placement of placements) {
-      if (placement.teamId === teamInfo.teamId) {
-        if (placement.placement === 1) {
-          firstPlaceFinishes++;
-          topThreeFinishes++;
-        } else if (placement.placement <= 3) {
-          topThreeFinishes++;
-        }
+  const placementMap = new Map<string, number>();
+  for (const p of placements) {
+    placementMap.set(`${p.eventId}:${p.teamId}`, p.placement);
+  }
+
+  for (const p of participations) {
+    const teamInfo = teamInfoMap.get(p.eventPlayerId);
+    if (teamInfo) {
+      const placement = placementMap.get(`${p.eventId}:${teamInfo.teamId}`);
+      if (placement === 1) {
+        firstPlaceFinishes++;
+        topThreeFinishes++;
+      } else if (placement && placement <= 3) {
+        topThreeFinishes++;
       }
     }
   }
