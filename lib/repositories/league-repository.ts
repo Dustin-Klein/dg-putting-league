@@ -241,12 +241,15 @@ export async function getLeagueAdmins(
 
 /**
  * Look up user ID by email via RPC
+ * Requires the caller to be the owner of the specified league
  */
 export async function getUserIdByEmail(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string,
   email: string
 ): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_user_id_by_email', {
+    league_id_param: leagueId,
     email_param: email,
   });
 
@@ -259,12 +262,15 @@ export async function getUserIdByEmail(
 
 /**
  * Get user email by ID via RPC
+ * Only returns email if caller is an admin of the same league as the target user
  */
 export async function getUserEmailById(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string,
   userId: string
 ): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_user_email_by_id', {
+    league_id_param: leagueId,
     user_id_param: userId,
   });
 

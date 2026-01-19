@@ -106,7 +106,7 @@ export async function getLeagueAdminsForOwner(leagueId: string): Promise<LeagueA
 
   const adminsWithEmails = await Promise.all(
     admins.map(async (admin) => {
-      const email = await leagueRepo.getUserEmailById(supabase, admin.user_id);
+      const email = await leagueRepo.getUserEmailById(supabase, leagueId, admin.user_id);
       return {
         userId: admin.user_id,
         email: email ?? 'Unknown',
@@ -145,7 +145,7 @@ export async function addLeagueAdmin(leagueId: string, email: string): Promise<v
     throw new BadRequestError('Invalid email format');
   }
 
-  const targetUserId = await leagueRepo.getUserIdByEmail(supabase, normalizedEmail);
+  const targetUserId = await leagueRepo.getUserIdByEmail(supabase, leagueId, normalizedEmail);
   if (!targetUserId) {
     throw new NotFoundError('No account found with that email');
   }
