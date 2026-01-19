@@ -5,9 +5,13 @@
  * - getLeague()
  * - getUserAdminLeagues()
  * - createLeague()
+ * - getLeagueAdminsForOwner()
+ * - checkIsLeagueOwner()
+ * - addLeagueAdmin()
+ * - removeLeagueAdmin()
  */
 
-import { UnauthorizedError, BadRequestError } from '@/lib/errors';
+import { UnauthorizedError, BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
   createMockUser,
@@ -44,13 +48,27 @@ jest.mock('@/lib/repositories/league-repository', () => ({
   insertLeague: jest.fn(),
   insertLeagueAdmin: jest.fn(),
   fetchLeague: jest.fn(),
+  isLeagueOwner: jest.fn(),
+  getLeagueAdmins: jest.fn(),
+  getUserEmailById: jest.fn(),
+  getUserIdByEmail: jest.fn(),
+  getLeagueAdminByUserAndLeague: jest.fn(),
+  deleteLeagueAdmin: jest.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireAuthenticatedUser } from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository';
-import { getLeague, getUserAdminLeagues, createLeague } from '../league/league-service';
+import {
+  getLeague,
+  getUserAdminLeagues,
+  createLeague,
+  getLeagueAdminsForOwner,
+  checkIsLeagueOwner,
+  addLeagueAdmin,
+  removeLeagueAdmin,
+} from '../league/league-service';
 
 describe('League Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -294,6 +312,165 @@ describe('League Service', () => {
         ownerId,
         'owner'
       );
+    });
+  });
+
+  describe('getLeagueAdminsForOwner', () => {
+    const leagueId = 'league-123';
+    const userId = 'user-123';
+
+    beforeEach(() => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+    });
+
+    it('should return admins with emails for owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+      
+      const mockAdmins = [
+        createMockLeagueAdmin({ user_id: 'admin-1', role: 'owner' }),
+        createMockLeagueAdmin({ user_id: 'admin-2', role: 'admin' }),
+      ];
+      (leagueRepo.getLeagueAdmins as jest.Mock).mockResolvedValue(mockAdmins);
+      
+      (leagueRepo.getUserEmailById as jest.Mock)
+        .mockResolvedValueOnce('admin1@test.com')
+        .mockResolvedValueOnce('admin2@test.com');
+
+      const result = await getLeagueAdminsForOwner(leagueId);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        userId: 'admin-1',
+        email: 'admin1@test.com',
+        role: 'owner',
+      });
+      expect(result[1]).toEqual({
+        userId: 'admin-2',
+        email: 'admin2@test.com',
+        role: 'admin',
+      });
+    });
+
+    it('should handle missing emails', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+      
+      const mockAdmins = [createMockLeagueAdmin({ user_id: 'admin-1' })];
+      (leagueRepo.getLeagueAdmins as jest.Mock).mockResolvedValue(mockAdmins);
+      (leagueRepo.getUserEmailById as jest.Mock).mockResolvedValue(null);
+
+      const result = await getLeagueAdminsForOwner(leagueId);
+
+      expect(result[0].email).toBe('Unknown');
+    });
+
+    it('should throw ForbiddenError if not owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      await expect(getLeagueAdminsForOwner(leagueId)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('checkIsLeagueOwner', () => {
+    const leagueId = 'league-123';
+    const userId = 'user-123';
+
+    it('should return true if user is owner', async () => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+
+      const result = await checkIsLeagueOwner(leagueId);
+
+      expect(result).toBe(true);
+      expect(leagueRepo.isLeagueOwner).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
+    });
+
+    it('should return false if user is not owner', async () => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      const result = await checkIsLeagueOwner(leagueId);
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('addLeagueAdmin', () => {
+    const leagueId = 'league-123';
+    const userId = 'user-123';
+    const newAdminEmail = 'newadmin@test.com';
+    const newAdminId = 'user-456';
+
+    beforeEach(() => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+      (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(newAdminId);
+      (leagueRepo.getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+    });
+
+    it('should add a new admin', async () => {
+      await addLeagueAdmin(leagueId, newAdminEmail);
+
+      expect(leagueRepo.insertLeagueAdmin).toHaveBeenCalledWith(
+        mockSupabase,
+        leagueId,
+        newAdminId,
+        'admin'
+      );
+    });
+
+    it('should throw ForbiddenError if not owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should throw BadRequestError for invalid email', async () => {
+      await expect(addLeagueAdmin(leagueId, 'invalid-email')).rejects.toThrow(BadRequestError);
+    });
+
+    it('should throw NotFoundError if user not found', async () => {
+      (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(null);
+
+      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(NotFoundError);
+    });
+
+    it('should throw BadRequestError if user is already admin', async () => {
+      (leagueRepo.getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(
+        createMockLeagueAdmin()
+      );
+
+      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(BadRequestError);
+    });
+  });
+
+  describe('removeLeagueAdmin', () => {
+    const leagueId = 'league-123';
+    const userId = 'user-123';
+    const targetUserId = 'user-456';
+
+    beforeEach(() => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+    });
+
+    it('should remove an admin', async () => {
+      await removeLeagueAdmin(leagueId, targetUserId);
+
+      expect(leagueRepo.deleteLeagueAdmin).toHaveBeenCalledWith(
+        mockSupabase,
+        leagueId,
+        targetUserId
+      );
+    });
+
+    it('should throw ForbiddenError if not owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      await expect(removeLeagueAdmin(leagueId, targetUserId)).rejects.toThrow(ForbiddenError);
+    });
+
+    it('should throw BadRequestError if removing self', async () => {
+      await expect(removeLeagueAdmin(leagueId, userId)).rejects.toThrow(BadRequestError);
     });
   });
 });
