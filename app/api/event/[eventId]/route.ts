@@ -6,6 +6,7 @@ import {
   updateEvent,
   validateEventStatusTransition,
   transitionEventToBracket,
+  finalizeEventPlacements,
 } from '@/lib/services/event';
 import {
   handleError,
@@ -79,6 +80,11 @@ export async function PATCH(
         await transitionEventToBracket(resolvedParams.eventId, currentEvent);
         const updatedEvent = await getEventWithPlayers(resolvedParams.eventId);
         return NextResponse.json(updatedEvent);
+      }
+
+      // If transitioning to completed, finalize and store placements
+      if (currentEvent.status === 'bracket' && parsed.data.status === 'completed') {
+        await finalizeEventPlacements(resolvedParams.eventId);
       }
     }
 
