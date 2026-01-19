@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 import { getLeagueAdminsForOwner, addLeagueAdmin } from '@/lib/services/league';
 
 type RouteParams = { params: Promise<{ leagueId: string }> | { leagueId: string } };
@@ -32,6 +33,7 @@ export async function POST(
   { params: paramsPromise }: RouteParams
 ) {
   try {
+    validateCsrfOrigin(request);
     const params = await Promise.resolve(paramsPromise);
     const { leagueId } = paramsSchema.parse(params);
     const body = await request.json();
