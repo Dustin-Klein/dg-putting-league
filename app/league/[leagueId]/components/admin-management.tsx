@@ -76,7 +76,7 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
       }
       setEmail('');
       setDialogOpen(false);
-      fetchAdmins();
+      await fetchAdmins();
     } catch (error) {
       console.error('Error adding admin:', error);
       toast({
@@ -102,7 +102,7 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to remove admin');
       }
-      fetchAdmins();
+      await fetchAdmins();
     } catch (error) {
       console.error('Error removing admin:', error);
       toast({
