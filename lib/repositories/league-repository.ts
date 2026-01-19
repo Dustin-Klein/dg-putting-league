@@ -232,11 +232,11 @@ export async function getLeagueAdmins(
     .select('user_id, role')
     .eq('league_id', leagueId);
 
-  if (error || !admins) {
-    return [];
+  if (error) {
+    throw new InternalError(`Failed to fetch league admins: ${error.message}`);
   }
 
-  return admins as LeagueAdminRecord[];
+  return (admins || []) as LeagueAdminRecord[];
 }
 
 /**
