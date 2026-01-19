@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,14 +10,8 @@ import { StatsOverview } from './components/stats-overview';
 import { EventHistory } from './components/event-history';
 import type { PlayerProfile } from '@/lib/types/player-statistics';
 
-interface PlayerProfilePageProps {
-  params: Promise<{
-    playerNumber: string;
-  }>;
-}
-
-export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
-  const { playerNumber } = use(params);
+export default function PlayerProfilePage() {
+  const { playerNumber } = useParams();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
