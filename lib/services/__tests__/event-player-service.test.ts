@@ -44,6 +44,8 @@ jest.mock('@/lib/repositories/event-player-repository', () => ({
   getQualificationScore: jest.fn(),
   getAllEventPlayerIdsForPlayer: jest.fn(),
   getFrameResultsForEventPlayers: jest.fn(),
+  getAllEventPlayerIdsForPlayersBulk: jest.fn(),
+  getPfaScoresBulk: jest.fn(),
   updateEventPlayerPool: jest.fn(),
   getEventPlayersWithPools: jest.fn(),
 }));
@@ -337,8 +339,9 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayer as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getFrameResultsForEventPlayers as jest.Mock).mockResolvedValue([]);
+      // Mock bulk queries - return empty maps (no PFA history)
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
 
@@ -402,13 +405,16 @@ describe('Event Player Service', () => {
         players
       );
 
-      // First player has PFA history
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayer as jest.Mock)
-        .mockResolvedValueOnce(['ep-old-1'])
-        .mockResolvedValueOnce([]);
-      (eventPlayerRepo.getFrameResultsForEventPlayers as jest.Mock)
-        .mockResolvedValueOnce([{ points_earned: 3 }])
-        .mockResolvedValueOnce([]);
+      // Mock bulk queries - first player has PFA history, second doesn't
+      const playerEventPlayerMap = new Map<string, string[]>();
+      playerEventPlayerMap.set(players[0].player_id, ['ep-old-1']);
+      playerEventPlayerMap.set(players[1].player_id, []);
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(playerEventPlayerMap);
+
+      const pfaScores = new Map<string, { totalPoints: number; frameCount: number }>();
+      pfaScores.set(players[0].player_id, { totalPoints: 3, frameCount: 1 });
+      // Second player has no PFA data
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
 
       const result = await computePoolAssignments(eventId, event);
 
@@ -423,8 +429,9 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayer as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getFrameResultsForEventPlayers as jest.Mock).mockResolvedValue([]);
+      // Mock bulk queries - return empty maps (no PFA history)
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
 

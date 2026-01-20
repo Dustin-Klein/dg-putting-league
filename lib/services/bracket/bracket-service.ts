@@ -17,7 +17,7 @@ import {
   linkParticipantsToTeams,
   setEventIdOnMatches,
   getMatchesByStageId,
-  updateMatchStatus,
+  bulkUpdateMatchStatuses,
   getBracketStage,
 } from '@/lib/repositories/bracket-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
@@ -142,13 +142,20 @@ async function setInitialMatchesReady(
   const matches = await getMatchesByStageId(supabase, stage.id);
   if (matches.length === 0) return;
 
+  // Collect all match IDs that need Ready status
+  const matchIdsToUpdate: number[] = [];
   for (const match of matches) {
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
     if (opp1?.id !== null && opp2?.id !== null) {
-      await updateMatchStatus(supabase, match.id, Status.Ready);
+      matchIdsToUpdate.push(match.id);
     }
+  }
+
+  // Single bulk update
+  if (matchIdsToUpdate.length > 0) {
+    await bulkUpdateMatchStatuses(supabase, matchIdsToUpdate, Status.Ready);
   }
 }
 

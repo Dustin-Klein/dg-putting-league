@@ -310,3 +310,87 @@ export async function getFrameResultsForEventPlayers(
 
   return results || [];
 }
+
+/**
+ * Get all event_player IDs for multiple players in one query (bulk operation)
+ * Returns a Map where key is player_id and value is array of event_player IDs
+ */
+export async function getAllEventPlayerIdsForPlayersBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  playerIds: string[]
+): Promise<Map<string, string[]>> {
+  if (playerIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from('event_players')
+    .select('id, player_id')
+    .in('player_id', playerIds);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event players in bulk: ${error.message}`);
+  }
+
+  const result = new Map<string, string[]>();
+  for (const row of data ?? []) {
+    const existing = result.get(row.player_id) || [];
+    existing.push(row.id);
+    result.set(row.player_id, existing);
+  }
+
+  return result;
+}
+
+/**
+ * Get PFA scores for multiple players in one query (bulk operation)
+ * Returns a Map where key is player_id and value is { totalPoints, frameCount }
+ */
+export async function getPfaScoresBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  playerEventPlayerMap: Map<string, string[]>,
+  sinceDate: Date
+): Promise<Map<string, { totalPoints: number; frameCount: number }>> {
+  // Collect all event_player IDs
+  const allEventPlayerIds: string[] = [];
+  for (const eventPlayerIds of playerEventPlayerMap.values()) {
+    allEventPlayerIds.push(...eventPlayerIds);
+  }
+
+  if (allEventPlayerIds.length === 0) {
+    return new Map();
+  }
+
+  // Single query to get all frame results
+  const { data: results, error } = await supabase
+    .from('frame_results')
+    .select('event_player_id, points_earned')
+    .in('event_player_id', allEventPlayerIds)
+    .gte('recorded_at', sinceDate.toISOString());
+
+  if (error) {
+    throw new InternalError(`Failed to fetch frame results in bulk: ${error.message}`);
+  }
+
+  // Build reverse lookup: event_player_id -> player_id
+  const eventPlayerToPlayer = new Map<string, string>();
+  for (const [playerId, eventPlayerIds] of playerEventPlayerMap.entries()) {
+    for (const epId of eventPlayerIds) {
+      eventPlayerToPlayer.set(epId, playerId);
+    }
+  }
+
+  // Aggregate results by player_id
+  const playerScores = new Map<string, { totalPoints: number; frameCount: number }>();
+  for (const row of results ?? []) {
+    const playerId = eventPlayerToPlayer.get(row.event_player_id);
+    if (playerId) {
+      const existing = playerScores.get(playerId) || { totalPoints: 0, frameCount: 0 };
+      existing.totalPoints += row.points_earned;
+      existing.frameCount += 1;
+      playerScores.set(playerId, existing);
+    }
+  }
+
+  return playerScores;
+}
