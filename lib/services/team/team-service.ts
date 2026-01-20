@@ -107,20 +107,25 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
     });
   }
 
-  // Insert teams and collect their IDs
-  const teamIdMap: Map<number, string> = new Map();
+  // Prepare all teams data for bulk insert
+  const teamsData = teamsToCreate.map((t, i) => ({
+    eventId,
+    seed: i + 1,
+    poolCombo: `${t.poolAPlayer.player.full_name} & ${t.poolBPlayer.player.full_name}`,
+  }));
 
-  for (let i = 0; i < teamsToCreate.length; i++) {
-    const { poolAPlayer, poolBPlayer } = teamsToCreate[i];
-    const poolCombo = `${poolAPlayer.player.full_name} & ${poolBPlayer.player.full_name}`;
+  // Bulk insert teams (1 query)
+  const teamIds = await teamRepo.insertTeamsBulk(supabase, teamsData);
 
-    const teamId = await teamRepo.insertTeam(supabase, eventId, i + 1, poolCombo);
-    teamIdMap.set(i, teamId);
+  // Prepare all team members data for bulk insert
+  const membersData: Array<{ teamId: string; eventPlayerId: string; role: 'A_pool' | 'B_pool' }> = [];
+  teamsToCreate.forEach((t, i) => {
+    membersData.push({ teamId: teamIds[i], eventPlayerId: t.poolAPlayer.id, role: 'A_pool' });
+    membersData.push({ teamId: teamIds[i], eventPlayerId: t.poolBPlayer.id, role: 'B_pool' });
+  });
 
-    // Insert team members
-    await teamRepo.insertTeamMember(supabase, teamId, poolAPlayer.id, 'A_pool');
-    await teamRepo.insertTeamMember(supabase, teamId, poolBPlayer.id, 'B_pool');
-  }
+  // Bulk insert team members (1 query)
+  await teamRepo.insertTeamMembersBulk(supabase, membersData);
 
   // Fetch teams with members for seed calculation
   const teamsWithMembers = await teamRepo.getTeamsWithMembersForEvent(supabase, eventId);

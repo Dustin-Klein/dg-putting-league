@@ -37,6 +37,7 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
   getAvailableLanes: jest.fn(),
   getUnassignedReadyMatches: jest.fn(),
   assignLaneToMatch: jest.fn(),
+  bulkAssignLanesToMatches: jest.fn(),
   releaseMatchLane: jest.fn(),
   setLaneMaintenanceRPC: jest.fn(),
   setLaneIdleRPC: jest.fn(),
@@ -196,12 +197,20 @@ describe('Lane Service', () => {
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
       (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.assignLaneToMatch as jest.Mock).mockResolvedValue(true);
+      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(2);
 
       const result = await autoAssignLanes(eventId);
 
       expect(result).toBe(2);
-      expect(laneRepo.assignLaneToMatch).toHaveBeenCalledTimes(2);
+      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledTimes(1);
+      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledWith(
+        mockSupabase,
+        eventId,
+        [
+          { laneId: 'lane-1', matchId: 1 },
+          { laneId: 'lane-2', matchId: 2 },
+        ]
+      );
     });
 
     it('should return 0 when event is not in bracket status', async () => {
@@ -255,15 +264,19 @@ describe('Lane Service', () => {
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
       (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.assignLaneToMatch as jest.Mock).mockResolvedValue(true);
+      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1);
 
       const result = await autoAssignLanes(eventId);
 
       expect(result).toBe(1);
-      expect(laneRepo.assignLaneToMatch).toHaveBeenCalledTimes(1);
+      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledWith(
+        mockSupabase,
+        eventId,
+        [{ laneId: 'lane-1', matchId: 1 }]
+      );
     });
 
-    it('should count only successful assignments', async () => {
+    it('should return count from bulk assignment', async () => {
       const availableLanes = [
         createMockLane({ id: 'lane-1' }),
         createMockLane({ id: 'lane-2' }),
@@ -277,9 +290,7 @@ describe('Lane Service', () => {
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
       (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.assignLaneToMatch as jest.Mock)
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(false); // Second assignment fails
+      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1); // Only 1 succeeded
 
       const result = await autoAssignLanes(eventId);
 
@@ -294,12 +305,12 @@ describe('Lane Service', () => {
     it('should release lane and trigger auto-assign', async () => {
       (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
+      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane({ id: 'lane-1' })]);
       (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
       (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue([
         createMockBracketMatch({ id: 2 }),
       ]);
-      (laneRepo.assignLaneToMatch as jest.Mock).mockResolvedValue(true);
+      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1);
 
       const result = await releaseMatchLaneAndReassign(eventId, matchId);
 

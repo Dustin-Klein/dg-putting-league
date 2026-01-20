@@ -291,3 +291,35 @@ export async function getLaneLabelsForEvent(
 
   return laneMap;
 }
+
+/**
+ * Bulk assign lanes to matches using atomic RPC
+ * Returns the number of successful assignments
+ */
+export async function bulkAssignLanesToMatches(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  assignments: Array<{ laneId: string; matchId: number }>
+): Promise<number> {
+  if (assignments.length === 0) {
+    return 0;
+  }
+
+  const assignmentsJson = assignments.map(a => ({
+    lane_id: a.laneId,
+    match_id: a.matchId,
+  }));
+
+  const { data: count, error } = await supabase
+    .rpc('bulk_assign_lanes_to_matches', {
+      p_event_id: eventId,
+      p_assignments: assignmentsJson,
+    });
+
+  if (error) {
+    console.error(`RPC error bulk assigning lanes:`, error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
