@@ -239,15 +239,15 @@ export async function transitionEventToBracket(
       // Idempotent - bracket exists, continue
     } else {
       // Rollback the transition
-      console.error('Bracket creation failed, rolling back:', error);
+      const originalErrorMessage = error instanceof Error ? error.message : String(error);
       const { error: rollbackError } = await supabase.rpc('rollback_bracket_transition', {
         p_event_id: eventId,
       });
       if (rollbackError) {
         console.error('Rollback failed:', rollbackError);
         throw new InternalError(
-          `Bracket creation failed and rollback failed. Manual intervention required. ` +
-          `Original: ${error instanceof Error ? error.message : String(error)}`
+          `CRITICAL: Bracket creation failed and the automatic rollback also failed. Manual intervention required. ` +
+          `Original error: ${originalErrorMessage}. Rollback error: ${rollbackError.message}`
         );
       }
       throw new InternalError(

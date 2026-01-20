@@ -317,8 +317,7 @@ export async function bulkAssignLanesToMatches(
     });
 
   if (error) {
-    console.error(`RPC error bulk assigning lanes:`, error);
-    return 0;
+    throw new InternalError(`Failed to bulk assign lanes: ${error.message}`);
   }
 
   return count ?? 0;

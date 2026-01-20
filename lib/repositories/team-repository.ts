@@ -420,7 +420,7 @@ export async function insertTeamsBulk(
     .order('seed');
 
   if (error || !insertedTeams) {
-    throw new Error(`Failed to bulk insert teams: ${error?.message}`);
+    throw new InternalError(`Failed to bulk insert teams: ${error?.message}`);
   }
 
   return insertedTeams.map(t => t.id);
@@ -448,6 +448,6 @@ export async function insertTeamMembersBulk(
     .insert(membersToInsert);
 
   if (error) {
-    throw new Error(`Failed to bulk insert team members: ${error.message}`);
+    throw new InternalError(`Failed to bulk insert team members: ${error.message}`);
   }
 }
