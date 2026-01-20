@@ -235,8 +235,25 @@ export async function transitionEventToBracket(
   try {
     await createBracket(eventId, true);
   } catch (error) {
-    if (!(error instanceof BadRequestError && error.message.includes('already been created'))) {
-      throw error;
+    if (error instanceof BadRequestError && error.message.includes('already been created')) {
+      // Idempotent - bracket exists, continue
+    } else {
+      // Rollback the transition
+      console.error('Bracket creation failed, rolling back:', error);
+      const { error: rollbackError } = await supabase.rpc('rollback_bracket_transition', {
+        p_event_id: eventId,
+      });
+      if (rollbackError) {
+        console.error('Rollback failed:', rollbackError);
+        throw new InternalError(
+          `Bracket creation failed and rollback failed. Manual intervention required. ` +
+          `Original: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      throw new InternalError(
+        `Failed to create bracket. Transaction rolled back. ` +
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
