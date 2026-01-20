@@ -93,22 +93,23 @@ async function autoAssignLanesInternal(
     return 0;
   }
 
-  // Assign lanes to matches using atomic RPC
+  // Prepare assignments for bulk operation
   const maxAssignments = Math.min(availableLanes.length, unassignedMatches.length);
-  let successfulAssignments = 0;
 
-  for (let i = 0; i < maxAssignments; i++) {
-    const lane = availableLanes[i];
-    const match = unassignedMatches[i];
-
-    const assigned = await laneRepo.assignLaneToMatch(supabase, eventId, lane.id, match.id);
-
-    if (assigned) {
-      successfulAssignments++;
-    }
+  if (maxAssignments === 0) {
+    return 0;
   }
 
-  return successfulAssignments;
+  const assignments: Array<{ laneId: string; matchId: number }> = [];
+  for (let i = 0; i < maxAssignments; i++) {
+    assignments.push({
+      laneId: availableLanes[i].id,
+      matchId: unassignedMatches[i].id,
+    });
+  }
+
+  // Bulk assign lanes to matches (1 query instead of N)
+  return laneRepo.bulkAssignLanesToMatches(supabase, eventId, assignments);
 }
 
 /**

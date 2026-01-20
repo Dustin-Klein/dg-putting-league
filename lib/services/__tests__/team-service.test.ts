@@ -35,6 +35,8 @@ jest.mock('@/lib/repositories/team-repository', () => ({
   getTeamsForEvent: jest.fn(),
   insertTeam: jest.fn(),
   insertTeamMember: jest.fn(),
+  insertTeamsBulk: jest.fn(),
+  insertTeamMembersBulk: jest.fn(),
   getTeamsWithMembersForEvent: jest.fn(),
   updateTeamSeed: jest.fn(),
   getFullTeamsForEvent: jest.fn(),
@@ -83,10 +85,8 @@ describe('Team Service', () => {
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
       (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
       (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeam as jest.Mock)
-        .mockResolvedValueOnce('team-1')
-        .mockResolvedValueOnce('team-2');
-      (teamRepo.insertTeamMember as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
+      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',
@@ -114,8 +114,8 @@ describe('Team Service', () => {
       const result = await generateTeams(eventId);
 
       expect(result).toHaveLength(2);
-      expect(teamRepo.insertTeam).toHaveBeenCalledTimes(2);
-      expect(teamRepo.insertTeamMember).toHaveBeenCalledTimes(4); // 2 members per team
+      expect(teamRepo.insertTeamsBulk).toHaveBeenCalledTimes(1);
+      expect(teamRepo.insertTeamMembersBulk).toHaveBeenCalledTimes(1);
     });
 
     it('should generate teams for event in bracket status', async () => {
@@ -131,8 +131,8 @@ describe('Team Service', () => {
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
       (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
       (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeam as jest.Mock).mockResolvedValue('team-1');
-      (teamRepo.insertTeamMember as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1']);
+      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',
@@ -239,8 +239,8 @@ describe('Team Service', () => {
         .mockResolvedValueOnce(20) // Player 2
         .mockResolvedValueOnce(25) // Player 3
         .mockResolvedValueOnce(15); // Player 4
-      (teamRepo.insertTeam as jest.Mock).mockResolvedValue('team-1');
-      (teamRepo.insertTeamMember as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
+      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',
@@ -250,10 +250,19 @@ describe('Team Service', () => {
             { event_player_id: players[2].id },
           ],
         },
+        {
+          id: 'team-2',
+          seed: 2,
+          team_members: [
+            { event_player_id: players[1].id },
+            { event_player_id: players[3].id },
+          ],
+        },
       ]);
       (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
       (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
         createMockTeam({ id: 'team-1', seed: 1 }),
+        createMockTeam({ id: 'team-2', seed: 2 }),
       ]);
 
       await generateTeams(eventId);

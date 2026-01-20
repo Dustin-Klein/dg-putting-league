@@ -394,3 +394,60 @@ export async function getFullTeamsForEvent(
 
   return (finalTeams || []) as unknown as Team[];
 }
+
+/**
+ * Insert multiple teams at once (bulk operation)
+ * Returns array of team IDs in the same order as input
+ */
+export async function insertTeamsBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  teams: Array<{ eventId: string; seed: number; poolCombo: string }>
+): Promise<string[]> {
+  if (teams.length === 0) {
+    return [];
+  }
+
+  const teamsToInsert = teams.map(t => ({
+    event_id: t.eventId,
+    seed: t.seed,
+    pool_combo: t.poolCombo,
+  }));
+
+  const { data: insertedTeams, error } = await supabase
+    .from('teams')
+    .insert(teamsToInsert)
+    .select('id')
+    .order('seed');
+
+  if (error || !insertedTeams) {
+    throw new Error(`Failed to bulk insert teams: ${error?.message}`);
+  }
+
+  return insertedTeams.map(t => t.id);
+}
+
+/**
+ * Insert multiple team members at once (bulk operation)
+ */
+export async function insertTeamMembersBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  members: Array<{ teamId: string; eventPlayerId: string; role: 'A_pool' | 'B_pool' }>
+): Promise<void> {
+  if (members.length === 0) {
+    return;
+  }
+
+  const membersToInsert = members.map(m => ({
+    team_id: m.teamId,
+    event_player_id: m.eventPlayerId,
+    role: m.role,
+  }));
+
+  const { error } = await supabase
+    .from('team_members')
+    .insert(membersToInsert);
+
+  if (error) {
+    throw new Error(`Failed to bulk insert team members: ${error.message}`);
+  }
+}
