@@ -561,15 +561,37 @@ describe('Event Service', () => {
       await expect(transitionEventToBracket(eventId, event)).resolves.not.toThrow();
     });
 
-    it('should rethrow non-duplicate bracket errors', async () => {
+    it('should rollback transition when bracket creation fails with non-duplicate error', async () => {
       const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
 
       (computePoolAssignments as jest.Mock).mockResolvedValue([]);
       (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc.mockResolvedValue({ error: null });
-      (createBracket as jest.Mock).mockRejectedValue(new Error('Some other error'));
+      mockSupabase.rpc
+        .mockResolvedValueOnce({ error: null }) // transition RPC succeeds
+        .mockResolvedValueOnce({ error: null }); // rollback RPC succeeds
+      (createBracket as jest.Mock).mockRejectedValue(new Error('Database connection failed'));
 
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow('Some other error');
+      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
+        'Failed to create bracket. Transaction rolled back'
+      );
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('rollback_bracket_transition', {
+        p_event_id: eventId,
+      });
+    });
+
+    it('should throw with manual intervention message when both bracket and rollback fail', async () => {
+      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
+
+      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
+      (computeTeamPairings as jest.Mock).mockReturnValue([]);
+      mockSupabase.rpc
+        .mockResolvedValueOnce({ error: null }) // transition succeeds
+        .mockResolvedValueOnce({ error: { message: 'Rollback failed' } }); // rollback fails
+      (createBracket as jest.Mock).mockRejectedValue(new Error('Bracket error'));
+
+      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
+        'Manual intervention required'
+      );
     });
 
     it('should skip lane assignment when lane_count is 0', async () => {
