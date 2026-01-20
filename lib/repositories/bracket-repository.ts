@@ -555,6 +555,28 @@ export async function updateMatchStatus(
 }
 
 /**
+ * Bulk update match statuses (single query for multiple matches)
+ */
+export async function bulkUpdateMatchStatuses(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchIds: number[],
+  status: number
+): Promise<void> {
+  if (matchIds.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('bracket_match')
+    .update({ status })
+    .in('id', matchIds);
+
+  if (error) {
+    throw new InternalError(`Failed to bulk update match statuses: ${error.message}`);
+  }
+}
+
+/**
  * Check if bracket stage exists for an event
  */
 export async function bracketStageExists(

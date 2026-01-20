@@ -219,41 +219,57 @@ export async function computePoolAssignments(
   }
 
   // Calculate scores for each player
-  const playersWithScores = await Promise.all(
-    event.players.map(async (eventPlayer) => {
+  let playersWithScores: Array<{
+    eventPlayerId: string;
+    playerId: string;
+    playerName: string;
+    score: number;
+    scoringMethod: 'qualification' | 'pfa' | 'default';
+    defaultPool: 'A' | 'B';
+  }>;
+
+  if (event.qualification_round_enabled) {
+    playersWithScores = await Promise.all(
+      event.players.map(async (eventPlayer) => {
+        const score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
+        return {
+          eventPlayerId: eventPlayer.id,
+          playerId: eventPlayer.player_id,
+          playerName: eventPlayer.player.full_name,
+          score,
+          scoringMethod: 'qualification' as const,
+          defaultPool: (eventPlayer.player.default_pool || 'B') as 'A' | 'B',
+        };
+      })
+    );
+  } else {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const playerIds = event.players.map(ep => ep.player_id);
+
+    const playerEventPlayerMap = await eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk(
+      supabase,
+      playerIds
+    );
+
+    const pfaScores = await eventPlayerRepo.getPfaScoresBulk(
+      supabase,
+      playerEventPlayerMap,
+      sixMonthsAgo
+    );
+
+    playersWithScores = event.players.map((eventPlayer) => {
+      const pfaData = pfaScores.get(eventPlayer.player_id);
       let score: number;
       let scoringMethod: 'qualification' | 'pfa' | 'default';
 
-      if (event.qualification_round_enabled) {
-        // Calculate total qualification score
-        score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
-        scoringMethod = 'qualification';
+      if (pfaData && pfaData.frameCount > 0) {
+        score = pfaData.totalPoints / pfaData.frameCount;
+        scoringMethod = 'pfa';
       } else {
-        // Calculate PFA from last 6 months
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-        // Get all event_player records for this player (across all events)
-        const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(
-          supabase,
-          eventPlayer.player_id
-        );
-
-        const frameResults = await eventPlayerRepo.getFrameResultsForEventPlayers(
-          supabase,
-          eventPlayerIds,
-          sixMonthsAgo
-        );
-
-        if (frameResults.length > 0) {
-          const totalPoints = frameResults.reduce((sum, frame) => sum + frame.points_earned, 0);
-          score = totalPoints / frameResults.length;
-          scoringMethod = 'pfa';
-        } else {
-          // No frame history, use default_pool for scoring (0 for comparison)
-          score = 0;
-          scoringMethod = 'default';
-        }
+        score = 0;
+        scoringMethod = 'default';
       }
 
       return {
@@ -264,8 +280,8 @@ export async function computePoolAssignments(
         scoringMethod,
         defaultPool: (eventPlayer.player.default_pool || 'B') as 'A' | 'B',
       };
-    })
-  );
+    });
+  }
 
   // Sort players by score (descending), then by default_pool, then maintain database order
   playersWithScores.sort((a, b) => {
