@@ -92,8 +92,12 @@ function getMatchCenter(layout: MatchLayout): number {
 
 function calculateMidpoint(child1?: MatchLayout, child2?: MatchLayout): number {
   if (!child1 && !child2) return 0;
-  if (!child1) return child2!.yPosition;
-  if (!child2) return child1.yPosition;
+  if (!child1) {
+    return getMatchCenter(child2!) - MATCH_HEIGHT / 2;
+  }
+  if (!child2) {
+    return getMatchCenter(child1) - MATCH_HEIGHT / 2;
+  }
 
   const c1Center = getMatchCenter(child1);
   const c2Center = getMatchCenter(child2);
@@ -184,7 +188,7 @@ function RoundConnector({
   if (isSingleMatch) {
     const left = leftLayouts[0];
     const right = rightLayouts[0];
-    if (!left?.visible || !right?.visible) return <div className="w-9" />;
+    if (!left?.visible || !right?.visible) return <div className="w-9" style={{ height: totalHeight }} />;
 
     const leftCenter = getMatchCenter(left);
     const rightCenter = getMatchCenter(right);
