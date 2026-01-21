@@ -188,18 +188,23 @@ export async function updateEvent(
  * After atomic transaction succeeds:
  * 5. Create bracket structure (uses brackets-manager library)
  * 6. Auto-assign lanes to initial matches
+ *
+ * @param eventId - The event ID
+ * @param event - The event with details
+ * @param providedPoolAssignments - Optional pre-computed pool assignments (from preview)
+ * @param providedTeamPairings - Optional pre-computed team pairings (from preview)
  */
 export async function transitionEventToBracket(
   eventId: string,
-  event: EventWithDetails
+  event: EventWithDetails,
+  providedPoolAssignments?: PoolAssignment[],
+  providedTeamPairings?: TeamPairing[]
 ) {
   const { supabase } = await requireEventAdmin(eventId);
 
-  // Compute pool assignments (scoring and ranking)
-  const poolAssignments = await computePoolAssignments(eventId, event);
-
-  // Compute team pairings based on pool assignments
-  const teamPairings = computeTeamPairings(poolAssignments);
+  // Use provided pairings if available, otherwise compute new ones
+  const poolAssignments = providedPoolAssignments ?? await computePoolAssignments(eventId, event);
+  const teamPairings = providedTeamPairings ?? computeTeamPairings(poolAssignments);
 
   // Convert to JSON format for RPC
   const poolAssignmentsJson = poolAssignments.map((pa: PoolAssignment) => ({

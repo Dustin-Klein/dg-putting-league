@@ -11,10 +11,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
+import { TeamPreviewDialog } from '@/components/team-preview-dialog';
 
 const nextStatusMap = {
   'created': 'pre-bracket',
@@ -35,28 +35,53 @@ interface NextStatusButtonProps {
   onStatusUpdate?: () => void;
 }
 
+interface TeamPreviewData {
+  poolAssignments: Array<{
+    eventPlayerId: string;
+    playerId: string;
+    playerName: string;
+    pool: 'A' | 'B';
+    pfaScore: number;
+    scoringMethod: 'qualification' | 'pfa' | 'default';
+    defaultPool: 'A' | 'B';
+  }>;
+  teamPairings: Array<{
+    seed: number;
+    poolCombo: string;
+    combinedScore: number;
+    members: Array<{ eventPlayerId: string; role: 'A_pool' | 'B_pool' }>;
+  }>;
+}
+
 export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProps) {
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
 
   const currentStatus = event.status;
   const nextStatus = nextStatusMap[currentStatus];
   const isDisabled = currentStatus === 'completed' || !nextStatus;
   const buttonText = nextStatusLabels[currentStatus];
 
-  const handleStatusChange = async () => {
+  const handleStatusChange = async (previewData?: TeamPreviewData) => {
     if (!nextStatus) return;
 
     try {
       setIsUpdating(true);
+
+      const body: Record<string, unknown> = { status: nextStatus };
+      if (previewData) {
+        body.poolAssignments = previewData.poolAssignments;
+        body.teamPairings = previewData.teamPairings;
+      }
 
       const response = await fetch(`/api/event/${event.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -72,6 +97,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
 
       onStatusUpdate?.();
       setIsDialogOpen(false);
+      setIsPreviewDialogOpen(false);
     } catch (error) {
       console.error('Error updating status:', error);
       toast({
@@ -100,40 +126,63 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
     }
   };
 
+  const handleButtonClick = () => {
+    if (currentStatus === 'pre-bracket') {
+      setIsPreviewDialogOpen(true);
+    } else {
+      setIsDialogOpen(true);
+    }
+  };
+
+  const handlePreviewConfirm = async (data: TeamPreviewData) => {
+    await handleStatusChange(data);
+  };
+
   return (
-    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-      <DialogTrigger asChild>
-        <Button
-          disabled={isDisabled}
-          variant={currentStatus === 'completed' ? 'secondary' : 'default'}
-        >
-          {buttonText}
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirm Status Change</DialogTitle>
-          <DialogDescription>
-            {getConfirmationMessage()}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setIsDialogOpen(false)}
-            disabled={isUpdating}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleStatusChange}
-            disabled={isUpdating}
-          >
-            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {buttonText}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Button
+        disabled={isDisabled}
+        variant={currentStatus === 'completed' ? 'secondary' : 'default'}
+        onClick={handleButtonClick}
+      >
+        {buttonText}
+      </Button>
+
+      {/* Simple confirmation dialog for non-bracket transitions */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Status Change</DialogTitle>
+            <DialogDescription>
+              {getConfirmationMessage()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => handleStatusChange()}
+              disabled={isUpdating}
+            >
+              {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {buttonText}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Team preview dialog for pre-bracket to bracket transition */}
+      <TeamPreviewDialog
+        event={event}
+        open={isPreviewDialogOpen}
+        onOpenChange={setIsPreviewDialogOpen}
+        onConfirm={handlePreviewConfirm}
+      />
+    </>
   );
 }
