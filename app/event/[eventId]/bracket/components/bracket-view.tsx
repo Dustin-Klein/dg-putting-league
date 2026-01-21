@@ -69,8 +69,8 @@ function hasVisibleMatches(matches: Match[]): boolean {
 
 // Connector component to draw lines between rounds
 function RoundConnector({ matches }: { matches: Match[] }) {
-  // Match card height (88px) + gap (16px) = 104px per match slot
-  const halfHeight = 52;
+  // Match card height (~66px) + gap (16px) = ~82px per match slot
+  const halfHeight = 41;
 
   // Group matches into pairs for connectors
   const connectors: Array<{ top: boolean; bottom: boolean }> = [];
@@ -251,7 +251,7 @@ export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProp
             .filter((round) => hasVisibleMatches(round.matches))
             .map((round, visibleIndex, visibleRounds) => (
               <Fragment key={round.id}>
-                <div className="w-56 text-sm font-medium text-muted-foreground text-center">
+                <div className="w-64 text-sm font-medium text-muted-foreground text-center">
                   {getRoundName(group, round, visibleIndex)}
                 </div>
                 {visibleIndex < visibleRounds.length - 1 && (
@@ -270,7 +270,7 @@ export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProp
                   {round.matches.map((match) =>
                     isByeMatch(match) ? (
                       // Invisible placeholder to preserve bracket spacing for BYE matches
-                      <div key={match.id} className="w-56 h-[88px]" />
+                      <div key={match.id} className="w-64 h-[66px]" />
                     ) : (
                       <MatchCard
                         key={match.id}
