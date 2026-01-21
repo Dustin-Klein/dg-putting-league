@@ -110,7 +110,7 @@ export function MatchCard({
   const team1IsWinner = isComplete && opponent1?.result === 'win';
   const team2IsWinner = isComplete && opponent2?.result === 'win';
 
-  const laneNumber = laneLabel?.replace(/\D/g, '');
+  const laneNumber = laneLabel?.match(/\d+/)?.[0] || laneLabel;
 
   return (
     <Card
@@ -128,13 +128,13 @@ export function MatchCard({
       )}
       <div className="flex">
         <div className="flex flex-col items-center justify-center px-2 py-1 bg-muted/50 border-r min-w-[44px]">
-          <span className="text-s font-medium text-muted-foreground">
+          <span className="text-sm font-medium text-muted-foreground">
             M{matchNumber}
           </span>
           {laneNumber && (
             <div className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
-              <MapPin className="h-2.5 w-2.5" />
-              <span className="text-s font-medium">{laneNumber}</span>
+              <MapPin className="h-2.5 w-2.5" aria-hidden="true" />
+              <span className="text-sm font-medium">{laneNumber}</span>
             </div>
           )}
         </div>
