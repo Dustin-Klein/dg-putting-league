@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, Fragment } from 'react';
+import React, { useMemo, Fragment } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
@@ -28,6 +28,22 @@ interface RoundWithMatches extends Round {
 interface GroupWithRounds extends Group {
   rounds: RoundWithMatches[];
 }
+
+interface MatchLayout {
+  match: MatchWithTeamInfo;
+  yPosition: number;
+  visible: boolean;
+}
+
+interface RoundLayout {
+  round: RoundWithMatches;
+  matches: MatchLayout[];
+  height: number;
+}
+
+const MATCH_HEIGHT = 66;
+const MATCH_GAP = 16;
+const BYE_GAP = 20;
 
 function getTeamForParticipant(
   participantId: number | null,
@@ -67,68 +83,171 @@ function hasVisibleMatches(matches: Match[]): boolean {
   return matches.some((match) => !isByeMatch(match));
 }
 
-// Connector component to draw lines between rounds
-function RoundConnector({ matches }: { matches: Match[] }) {
-  // Match card height (~66px) + gap (16px) = ~82px per match slot
-  const halfHeight = 41;
+function getMatchCenter(layout: MatchLayout): number {
+  if (layout.visible) {
+    return layout.yPosition + MATCH_HEIGHT / 2;
+  }
+  return layout.yPosition + BYE_GAP / 2;
+}
 
-  // Group matches into pairs for connectors
-  const connectors: Array<{ top: boolean; bottom: boolean }> = [];
+function calculateMidpoint(child1?: MatchLayout, child2?: MatchLayout): number {
+  if (!child1 && !child2) return 0;
+  if (!child1) return child2!.yPosition;
+  if (!child2) return child1.yPosition;
 
-  for (let i = 0; i < matches.length; i += 2) {
-    const topMatch = matches[i];
-    const bottomMatch = matches[i + 1];
-    const topVisible = topMatch && !isByeMatch(topMatch);
-    const bottomVisible = bottomMatch && !isByeMatch(bottomMatch);
-    connectors.push({ top: topVisible, bottom: Boolean(bottomMatch) && bottomVisible });
+  const c1Center = getMatchCenter(child1);
+  const c2Center = getMatchCenter(child2);
+  return (c1Center + c2Center) / 2 - MATCH_HEIGHT / 2;
+}
+
+function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
+  const visibleRounds = group.rounds.filter(r => hasVisibleMatches(r.matches));
+  if (visibleRounds.length === 0) return [];
+
+  const layouts: RoundLayout[] = [];
+
+  // Process first visible round - visible matches get full height, byes get reduced space
+  const firstRound = visibleRounds[0];
+  let currentY = 0;
+  const firstRoundLayouts: MatchLayout[] = firstRound.matches.map(match => {
+    const visible = !isByeMatch(match);
+    const layout = { match, yPosition: currentY, visible };
+    if (visible) {
+      currentY += MATCH_HEIGHT + MATCH_GAP;
+    } else {
+      currentY += BYE_GAP;
+    }
+    return layout;
+  });
+  const firstRoundHeight = currentY > 0 ? currentY - (isByeMatch(firstRound.matches[firstRound.matches.length - 1]) ? BYE_GAP : MATCH_GAP) : 0;
+  layouts.push({
+    round: firstRound,
+    matches: firstRoundLayouts,
+    height: firstRoundHeight
+  });
+
+  // Process subsequent rounds - position at midpoint of children
+  for (let i = 1; i < visibleRounds.length; i++) {
+    const round = visibleRounds[i];
+    const prevLayout = layouts[i - 1];
+    const roundLayouts: MatchLayout[] = [];
+
+    for (let j = 0; j < round.matches.length; j++) {
+      const match = round.matches[j];
+      const visible = !isByeMatch(match);
+
+      // Find child matches (2 per parent in standard bracket)
+      const child1 = prevLayout.matches[j * 2];
+      const child2 = prevLayout.matches[j * 2 + 1];
+
+      // Calculate midpoint of visible children
+      const yPosition = calculateMidpoint(child1, child2);
+      roundLayouts.push({ match, yPosition, visible });
+    }
+
+    // Enforce minimum spacing between visible matches to prevent overlap
+    let lastVisibleBottom = -MATCH_GAP;
+    for (const layout of roundLayouts) {
+      if (layout.visible) {
+        const minY = lastVisibleBottom + MATCH_GAP;
+        if (layout.yPosition < minY) {
+          layout.yPosition = minY;
+        }
+        lastVisibleBottom = layout.yPosition + MATCH_HEIGHT;
+      }
+    }
+
+    const maxY = roundLayouts.reduce((max, l) =>
+      l.visible ? Math.max(max, l.yPosition + MATCH_HEIGHT) : max, 0);
+
+    layouts.push({ round, matches: roundLayouts, height: maxY });
   }
 
-  // Special case: single match (like grand final to reset)
-  const isSingleMatch = matches.length === 1;
+  // Normalize heights across all rounds to the maximum
+  const totalHeight = Math.max(...layouts.map(l => l.height));
+  layouts.forEach(l => l.height = totalHeight);
+
+  return layouts;
+}
+
+function RoundConnector({
+  leftLayouts,
+  rightLayouts,
+  totalHeight
+}: {
+  leftLayouts: MatchLayout[];
+  rightLayouts: MatchLayout[];
+  totalHeight: number;
+}) {
+  const isSingleMatch = leftLayouts.length === 1;
+
+  if (isSingleMatch) {
+    const left = leftLayouts[0];
+    const right = rightLayouts[0];
+    if (!left?.visible || !right?.visible) return <div className="w-9" />;
+
+    const leftCenter = getMatchCenter(left);
+    const rightCenter = getMatchCenter(right);
+
+    return (
+      <div className="relative w-9 mx-0" style={{ height: totalHeight }}>
+        <svg className="absolute inset-0 w-full h-full overflow-visible">
+          <line
+            x1="0" y1={leftCenter}
+            x2="36" y2={rightCenter}
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-muted-foreground/40"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  const connectorPaths: React.JSX.Element[] = [];
+  for (let j = 0; j < rightLayouts.length; j++) {
+    const right = rightLayouts[j];
+    const child1 = leftLayouts[j * 2];
+    const child2 = leftLayouts[j * 2 + 1];
+
+    if (!right?.visible) continue;
+
+    const rightCenter = getMatchCenter(right);
+
+    if (child1?.visible) {
+      const child1Center = getMatchCenter(child1);
+      connectorPaths.push(
+        <path
+          key={`${j}-top`}
+          d={`M 0 ${child1Center} H 12 V ${rightCenter} H 36`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-muted-foreground/40"
+        />
+      );
+    }
+
+    if (child2?.visible) {
+      const child2Center = getMatchCenter(child2);
+      connectorPaths.push(
+        <path
+          key={`${j}-bottom`}
+          d={`M 0 ${child2Center} H 12 V ${rightCenter} H 36`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-muted-foreground/40"
+        />
+      );
+    }
+  }
 
   return (
-    <div className="flex flex-col justify-around mx-2">
-      {isSingleMatch ? (
-        // Single straight line for 1-to-1 connections
-        !isByeMatch(matches[0]) && (
-          <div className="flex items-center">
-            <div className="w-6 border-t-2 border-muted-foreground/40" />
-          </div>
-        )
-      ) : (
-        connectors.map((connector, i) => {
-          // Skip if neither match is visible
-          if (!connector.top && !connector.bottom) {
-            return <div key={i} style={{ height: halfHeight * 2 }} />;
-          }
-
-          return (
-            <div key={i} className="flex items-center">
-              <div className="flex flex-col w-3">
-                {/* Top half - only show border if top match is visible */}
-                <div
-                  className={connector.top
-                    ? "border-t-2 border-r-2 border-muted-foreground/40 rounded-tr-sm"
-                    : ""
-                  }
-                  style={{ height: halfHeight }}
-                />
-                {/* Bottom half - only show border if bottom match is visible */}
-                <div
-                  className={connector.bottom
-                    ? "border-b-2 border-r-2 border-muted-foreground/40 rounded-br-sm"
-                    : ""
-                  }
-                  style={{ height: halfHeight }}
-                />
-              </div>
-              {(connector.top || connector.bottom) && (
-                <div className="w-3 border-t-2 border-muted-foreground/40" />
-              )}
-            </div>
-          );
-        })
-      )}
+    <div className="relative w-9 mx-0" style={{ height: totalHeight }}>
+      <svg className="absolute inset-0 w-full h-full overflow-visible">
+        {connectorPaths}
+      </svg>
     </div>
   );
 }
@@ -238,72 +357,80 @@ export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProp
   const losersBracket = groupsWithRounds.find((g) => g.number === 2);
   const grandFinal = groupsWithRounds.find((g) => g.number === 3);
 
-  const renderGroup = (group: GroupWithRounds) => (
-    <div key={group.id} className="space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">
-        {GROUP_NAMES[group.number] || `Group ${group.number}`}
-      </h2>
+  const renderGroup = (group: GroupWithRounds) => {
+    const roundLayouts = calculateGroupLayout(group);
+    if (roundLayouts.length === 0) return null;
 
-      <div className="pb-4">
-        {/* Round headers row */}
-        <div className="flex min-w-max mb-4">
-          {group.rounds
-            .filter((round) => hasVisibleMatches(round.matches))
-            .map((round, visibleIndex, visibleRounds) => (
-              <Fragment key={round.id}>
+    const totalHeight = roundLayouts[0]?.height || 0;
+
+    return (
+      <div key={group.id} className="space-y-4">
+        <h2 className="text-lg font-semibold text-foreground">
+          {GROUP_NAMES[group.number] || `Group ${group.number}`}
+        </h2>
+
+        <div className="pb-4">
+          {/* Round headers row */}
+          <div className="flex min-w-max mb-4">
+            {roundLayouts.map((layout, idx) => (
+              <Fragment key={layout.round.id}>
                 <div className="w-64 text-sm font-medium text-muted-foreground text-center">
-                  {getRoundName(group, round, visibleIndex)}
+                  {getRoundName(group, layout.round, idx)}
                 </div>
-                {visibleIndex < visibleRounds.length - 1 && (
-                  <div className="w-9" /> // Spacer for connector width
+                {idx < roundLayouts.length - 1 && (
+                  <div className="w-9" />
                 )}
               </Fragment>
             ))}
-        </div>
-        {/* Matches and connectors row */}
-        <div className="flex min-w-max items-stretch">
-          {group.rounds
-            .filter((round) => hasVisibleMatches(round.matches))
-            .map((round, visibleIndex, visibleRounds) => (
-              <Fragment key={round.id}>
-                <div className="flex flex-col gap-4 justify-around">
-                  {round.matches.map((match) =>
-                    isByeMatch(match) ? (
-                      // Invisible placeholder to preserve bracket spacing for BYE matches
-                      <div key={match.id} className="w-64 h-[66px]" />
-                    ) : (
-                      <MatchCard
+          </div>
+          {/* Matches and connectors row */}
+          <div className="flex min-w-max items-start">
+            {roundLayouts.map((layout, idx) => (
+              <Fragment key={layout.round.id}>
+                <div className="relative w-64" style={{ height: totalHeight }}>
+                  {layout.matches.map(({ match, yPosition, visible }) =>
+                    visible && (
+                      <div
                         key={match.id}
-                        match={match}
-                        team1={match.team1}
-                        team2={match.team2}
-                        matchNumber={matchNumberMap.get(match.id) || 0}
-                        laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
-                        onClick={() => onMatchClick?.(match)}
-                        isClickable={
-                          match.status === Status.Ready ||
-                          match.status === Status.Running ||
-                          (eventStatus === 'bracket' &&
-                            (match.status === Status.Completed || match.status === Status.Archived))
-                        }
-                        isCorrectionMode={
-                          eventStatus === 'bracket' &&
-                          (match.status === Status.Completed || match.status === Status.Archived)
-                        }
-                      />
+                        className="absolute left-0 right-0"
+                        style={{ top: yPosition }}
+                      >
+                        <MatchCard
+                          match={match}
+                          team1={match.team1}
+                          team2={match.team2}
+                          matchNumber={matchNumberMap.get(match.id) || 0}
+                          laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
+                          onClick={() => onMatchClick?.(match)}
+                          isClickable={
+                            match.status === Status.Ready ||
+                            match.status === Status.Running ||
+                            (eventStatus === 'bracket' &&
+                              (match.status === Status.Completed || match.status === Status.Archived))
+                          }
+                          isCorrectionMode={
+                            eventStatus === 'bracket' &&
+                            (match.status === Status.Completed || match.status === Status.Archived)
+                          }
+                        />
+                      </div>
                     )
                   )}
                 </div>
-                {/* Add connector lines between rounds (not after last round) */}
-                {visibleIndex < visibleRounds.length - 1 && (
-                  <RoundConnector matches={round.matches} />
+                {idx < roundLayouts.length - 1 && (
+                  <RoundConnector
+                    leftLayouts={layout.matches}
+                    rightLayouts={roundLayouts[idx + 1].matches}
+                    totalHeight={totalHeight}
+                  />
                 )}
               </Fragment>
             ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-8">

@@ -64,7 +64,7 @@ BEGIN
 
   -- 3. Insert Event
   INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status)
-  VALUES (v_league_id, CURRENT_DATE, 11, 20.0, 'TEST1234', 'pre-bracket')
+  VALUES (v_league_id, CURRENT_DATE, 4, 20.0, 'TEST1234', 'pre-bracket')
   RETURNING id INTO v_event_id;
 
   -- 4. Insert Players and Register them to the event
@@ -79,5 +79,40 @@ BEGIN
   INSERT INTO public.event_players (event_id, player_id, has_paid)
   SELECT v_event_id, id, true
   FROM new_players;
+
+  -- 5. Insert Additional Events and register existing players
+  
+  -- Event 2: 30 players
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status)
+  VALUES (v_league_id, CURRENT_DATE + 1, 4, 20.0, 'TESTEV02', 'pre-bracket')
+  RETURNING id INTO v_event_id;
+
+  INSERT INTO public.event_players (event_id, player_id, has_paid)
+  SELECT v_event_id, id, true
+  FROM public.players
+  ORDER BY player_number ASC
+  LIMIT 30;
+
+  -- Event 3: 12 players
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status)
+  VALUES (v_league_id, CURRENT_DATE + 2, 4, 20.0, 'TESTEV03', 'pre-bracket')
+  RETURNING id INTO v_event_id;
+
+  INSERT INTO public.event_players (event_id, player_id, has_paid)
+  SELECT v_event_id, id, true
+  FROM public.players
+  ORDER BY player_number ASC
+  LIMIT 12;
+
+  -- Event 4: 38 players
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status)
+  VALUES (v_league_id, CURRENT_DATE + 3, 4, 20.0, 'TESTEV04', 'pre-bracket')
+  RETURNING id INTO v_event_id;
+
+  INSERT INTO public.event_players (event_id, player_id, has_paid)
+  SELECT v_event_id, id, true
+  FROM public.players
+  ORDER BY player_number ASC
+  LIMIT 38;
 
 END $$;
