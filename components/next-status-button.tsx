@@ -64,24 +64,18 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
   const isDisabled = currentStatus === 'completed' || !nextStatus;
   const buttonText = nextStatusLabels[currentStatus];
 
-  const handleStatusChange = async (previewData?: TeamPreviewData) => {
+  const handleStatusChange = async () => {
     if (!nextStatus) return;
 
     try {
       setIsUpdating(true);
-
-      const body: Record<string, unknown> = { status: nextStatus };
-      if (previewData) {
-        body.poolAssignments = previewData.poolAssignments;
-        body.teamPairings = previewData.teamPairings;
-      }
 
       const response = await fetch(`/api/event/${event.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ status: nextStatus }),
       });
 
       if (!response.ok) {
@@ -97,12 +91,51 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
 
       onStatusUpdate?.();
       setIsDialogOpen(false);
-      setIsPreviewDialogOpen(false);
     } catch (error) {
       console.error('Error updating status:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to update event status',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleStartBracket = async (previewData: TeamPreviewData) => {
+    try {
+      setIsUpdating(true);
+
+      const response = await fetch(`/api/event/${event.id}/start-bracket`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          poolAssignments: previewData.poolAssignments,
+          teamPairings: previewData.teamPairings,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = 'Failed to start bracket';
+        try {
+          const errorData = await response.json();
+          message = errorData?.error || message;
+        } catch {
+          message = response.statusText || message;
+        }
+        throw new Error(message);
+      }
+
+      onStatusUpdate?.();
+      setIsPreviewDialogOpen(false);
+    } catch (error) {
+      console.error('Error starting bracket:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to start bracket',
         variant: 'destructive',
       });
     } finally {
@@ -135,7 +168,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
   };
 
   const handlePreviewConfirm = async (data: TeamPreviewData) => {
-    await handleStatusChange(data);
+    await handleStartBracket(data);
   };
 
   return (

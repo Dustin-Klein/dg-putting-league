@@ -150,7 +150,7 @@ export function TeamPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Team Preview</DialogTitle>
           <DialogDescription>
@@ -241,11 +241,12 @@ export function TeamPreviewDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="sm:justify-center items-center flex-wrap">
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
             disabled={isProcessing}
+            className="w-full sm:w-auto"
           >
             Cancel
           </Button>
@@ -253,6 +254,7 @@ export function TeamPreviewDialog({
             variant="outline"
             onClick={handleRegenerate}
             disabled={isProcessing}
+            className="w-full sm:w-auto"
           >
             {isRegenerating ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -264,6 +266,7 @@ export function TeamPreviewDialog({
           <Button
             onClick={handleConfirm}
             disabled={isProcessing || !previewData}
+            className="w-full sm:w-auto"
           >
             {isConfirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Confirm & Start Bracket Play
