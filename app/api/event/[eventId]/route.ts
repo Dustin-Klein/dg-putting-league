@@ -5,7 +5,6 @@ import {
   deleteEvent,
   updateEvent,
   validateEventStatusTransition,
-  transitionEventToBracket,
   finalizeEventPlacements,
 } from '@/lib/services/event';
 import {
@@ -13,37 +12,12 @@ import {
   BadRequestError,
 } from '@/lib/errors';
 
-const poolAssignmentSchema = z.object({
-  eventPlayerId: z.string(),
-  playerId: z.string(),
-  playerName: z.string(),
-  pool: z.enum(['A', 'B']),
-  pfaScore: z.number(),
-  scoringMethod: z.enum(['qualification', 'pfa', 'default']),
-  defaultPool: z.enum(['A', 'B']),
-});
-
-const teamMemberSchema = z.object({
-  eventPlayerId: z.string(),
-  role: z.enum(['A_pool', 'B_pool']),
-});
-
-const teamPairingSchema = z.object({
-  seed: z.number(),
-  poolCombo: z.string(),
-  combinedScore: z.number(),
-  members: z.array(teamMemberSchema),
-});
-
 const updateEventSchema = z.object({
   status: z.enum([
     'created',
     'pre-bracket',
-    'bracket',
     'completed',
   ]).optional(),
-  poolAssignments: z.array(poolAssignmentSchema).optional(),
-  teamPairings: z.array(teamPairingSchema).optional(),
 });
 
 export async function GET(
@@ -86,11 +60,10 @@ export async function PATCH(
     }
 
     const resolvedParams = await Promise.resolve(params);
-    
+
     // Get current event with players for validation
     const currentEvent = await getEventWithPlayers(resolvedParams.eventId);
-    
-    // If updating status, perform validation
+
     if (parsed.data.status) {
       await validateEventStatusTransition(
         resolvedParams.eventId,
@@ -98,20 +71,6 @@ export async function PATCH(
         currentEvent
       );
 
-      // If transitioning from pre-bracket to bracket, perform setup steps
-      // (transitionEventToBracket handles the status update internally)
-      if (currentEvent.status === 'pre-bracket' && parsed.data.status === 'bracket') {
-        await transitionEventToBracket(
-          resolvedParams.eventId,
-          currentEvent,
-          parsed.data.poolAssignments,
-          parsed.data.teamPairings
-        );
-        const updatedEvent = await getEventWithPlayers(resolvedParams.eventId);
-        return NextResponse.json(updatedEvent);
-      }
-
-      // If transitioning to completed, finalize and store placements
       if (currentEvent.status === 'bracket' && parsed.data.status === 'completed') {
         await finalizeEventPlacements(resolvedParams.eventId);
       }
