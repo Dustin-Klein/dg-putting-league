@@ -3,11 +3,9 @@
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils/utils';
 import { Status } from 'brackets-model';
-import { getStatusLabel, getStatusColor } from '@/lib/types/bracket';
-import { Pencil } from 'lucide-react';
+import { Pencil, MapPin } from 'lucide-react';
 
 interface OpponentData {
   id: number | null;
@@ -45,7 +43,7 @@ function OpponentRow({
 }) {
   if (!opponent || opponent.id === null) {
     return (
-      <div className="flex items-center justify-between px-3 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center justify-between px-2 py-1.5 text-sm text-muted-foreground">
         <span className="italic">TBD</span>
       </div>
     );
@@ -54,13 +52,13 @@ function OpponentRow({
   return (
     <div
       className={cn(
-        'flex items-center justify-between px-3 py-2 text-sm',
+        'flex items-center justify-between gap-2 px-2 py-1.5 text-sm',
         isWinner && 'bg-green-50 dark:bg-green-950/30'
       )}
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {team?.seed && (
-          <span className="text-xs text-muted-foreground font-medium">
+          <span className="text-xs text-muted-foreground font-medium shrink-0">
             #{team.seed}
           </span>
         )}
@@ -76,7 +74,7 @@ function OpponentRow({
       {showScore && opponent.score !== undefined && (
         <span
           className={cn(
-            'font-mono font-medium',
+            'font-mono font-medium shrink-0',
             isWinner && 'text-green-600 dark:text-green-400'
           )}
         >
@@ -100,69 +98,61 @@ export function MatchCard({
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
 
-const showScore =
-  match.status === Status.Running ||
-  match.status === Status.Completed ||
-  match.status === Status.Archived;
- 
-const isComplete =
-  match.status === Status.Completed ||
-  match.status === Status.Archived;
+  const showScore =
+    match.status === Status.Running ||
+    match.status === Status.Completed ||
+    match.status === Status.Archived;
+
+  const isComplete =
+    match.status === Status.Completed ||
+    match.status === Status.Archived;
 
   const team1IsWinner = isComplete && opponent1?.result === 'win';
   const team2IsWinner = isComplete && opponent2?.result === 'win';
 
+  const laneNumber = laneLabel?.replace(/\D/g, '');
+
   return (
     <Card
       className={cn(
-        'w-56 overflow-hidden transition-all',
+        'w-64 overflow-hidden transition-all relative',
         isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/50',
         match.status === Status.Running && 'ring-2 ring-blue-400'
       )}
       onClick={isClickable ? onClick : undefined}
     >
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-medium text-muted-foreground truncate">
-            Match {matchNumber}
+      {isCorrectionMode && (
+        <div className="absolute top-0 left-0">
+          <Pencil className="h-3 w-3 text-amber-600 dark:text-amber-400 m-1" />
+        </div>
+      )}
+      <div className="flex">
+        <div className="flex flex-col items-center justify-center px-2 py-1 bg-muted/50 border-r min-w-[44px]">
+          <span className="text-s font-medium text-muted-foreground">
+            M{matchNumber}
           </span>
-          {laneLabel && (
-            <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-            >
-              {laneLabel}
-            </Badge>
+          {laneNumber && (
+            <div className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
+              <MapPin className="h-2.5 w-2.5" />
+              <span className="text-s font-medium">{laneNumber}</span>
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {showScore && (
-            <Badge
-              variant="outline"
-              className={cn('text-[10px] px-1.5 py-0', getStatusColor(match.status))}
-            >
-              {getStatusLabel(match.status)}
-            </Badge>
-          )}
-          {isCorrectionMode && (
-            <Pencil className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-          )}
-        </div>
+        <CardContent className="p-0 divide-y flex-1">
+          <OpponentRow
+            opponent={opponent1}
+            team={team1}
+            isWinner={team1IsWinner}
+            showScore={showScore}
+          />
+          <OpponentRow
+            opponent={opponent2}
+            team={team2}
+            isWinner={team2IsWinner}
+            showScore={showScore}
+          />
+        </CardContent>
       </div>
-      <CardContent className="p-0 divide-y">
-        <OpponentRow
-          opponent={opponent1}
-          team={team1}
-          isWinner={team1IsWinner}
-          showScore={showScore}
-        />
-        <OpponentRow
-          opponent={opponent2}
-          team={team2}
-          isWinner={team2IsWinner}
-          showScore={showScore}
-        />
-      </CardContent>
     </Card>
   );
 }
