@@ -37,13 +37,12 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
         </Badge>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border w-fit">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-16">Seed</TableHead>
               <TableHead>Team Members</TableHead>
-              <TableHead>Pool Assignment</TableHead>
               <TableHead>Combined Score</TableHead>
             </TableRow>
           </TableHeader>
@@ -84,20 +83,6 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                             </Badge>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {poolAMember && (
-                        <Badge variant="outline" className="text-xs">
-                          Pool {poolAMember.event_player.pool}
-                        </Badge>
-                      )}
-                      {poolBMember && (
-                        <Badge variant="outline" className="text-xs">
-                          Pool {poolBMember.event_player.pool}
-                        </Badge>
                       )}
                     </div>
                   </TableCell>
