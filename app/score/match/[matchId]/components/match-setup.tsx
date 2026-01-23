@@ -15,7 +15,7 @@ interface MatchSetupProps {
 
 export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
   return (
-    <div className="min-h-screen bg-background p-4">
+    <div className="min-h-full bg-background p-4 pb-8">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

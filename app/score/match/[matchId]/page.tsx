@@ -338,7 +338,7 @@ export default function MatchScoringPage({
   // Loading state
   if (isLoading || !match || bracketFrameCount === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading match...</div>
       </div>
     );
