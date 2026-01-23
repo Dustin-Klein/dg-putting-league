@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function EventContent({
   event,
@@ -23,10 +24,22 @@ function EventContent({
 
   if (event.status === 'bracket') {
     return (
-      <>
-        <BracketSection eventId={event.id} />
-        <TeamDisplay event={event} isAdmin={isAdmin} />
-      </>
+      <Tabs defaultValue="bracket" className="w-full">
+        <div className="flex justify-center mb-6">
+          <TabsList>
+            <TabsTrigger value="bracket">Bracket</TabsTrigger>
+            <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="bracket" className="space-y-4">
+          <BracketSection eventId={event.id} />
+        </TabsContent>
+
+        <TabsContent value="teams">
+          <TeamDisplay event={event} isAdmin={isAdmin} />
+        </TabsContent>
+      </Tabs>
     );
   }
 

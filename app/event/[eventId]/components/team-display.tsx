@@ -1,7 +1,4 @@
-'use client';
-
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EventWithDetails } from '@/lib/types/event';
 import { Trophy, Users } from 'lucide-react';
 
@@ -37,112 +34,74 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
         </Badge>
       </div>
 
-      <div className="rounded-md border w-fit">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">Seed</TableHead>
-              <TableHead>Team Members</TableHead>
-              <TableHead>Combined Score</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {teams.map((team) => {
-              const poolAMember = team.team_members.find(member => member.role === 'A_pool');
-              const poolBMember = team.team_members.find(member => member.role === 'B_pool');
+      <div className="space-y-4">
+        {teams.map((team) => {
+          const poolAMember = team.team_members.find(member => member.role === 'A_pool');
+          const poolBMember = team.team_members.find(member => member.role === 'B_pool');
 
-              return (
-                <TableRow key={team.id}>
-                  <TableCell className="font-medium">
-                    <Badge variant="outline">#{team.seed}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      {poolAMember && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="text-xs">A</Badge>
-                          <span className="font-medium">
-                            {poolAMember.event_player.player.full_name}
-                          </span>
-                          {poolAMember.event_player.player.player_number && (
-                            <Badge variant="secondary" className="text-xs">
-                              #{poolAMember.event_player.player.player_number}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                      {poolBMember && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="text-xs bg-blue-500">B</Badge>
-                          <span className="font-medium">
-                            {poolBMember.event_player.player.full_name}
-                          </span>
-                          {poolBMember.event_player.player.player_number && (
-                            <Badge variant="secondary" className="text-xs">
-                              #{poolBMember.event_player.player.player_number}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
+          // Score calculation logic simplified for display
+          const poolAScore = poolAMember?.event_player.pfa_score;
+          const poolBScore = poolBMember?.event_player.pfa_score;
+          const poolAHasScore = poolAMember?.event_player.scoring_method !== 'default' && poolAScore != null;
+          const poolBHasScore = poolBMember?.event_player.scoring_method !== 'default' && poolBScore != null;
+          const combinedScore = (poolAScore ?? 0) + (poolBScore ?? 0);
+
+          const formatScore = (score: number | null | undefined, hasScore: boolean) => {
+            if (!hasScore) return 'X';
+            return score?.toFixed(1) ?? 'X';
+          };
+
+          const poolADisplay = formatScore(poolAScore, poolAHasScore);
+          const poolBDisplay = formatScore(poolBScore, poolBHasScore);
+
+          return (
+            <div key={team.id} className="flex items-center justify-between p-4 rounded-lg border bg-card text-card-foreground shadow-sm">
+              <div className="flex items-center gap-6">
+                {/* Team Identifier */}
+                <div className="flex flex-col">
+                  <span className="text-lg font-bold text-primary">#{team.seed}</span>
+                </div>
+
+                {/* Team Members */}
+                <div className="flex gap-8">
+                  {/* Pool A */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px]">A</Badge>
+                      <span className="font-medium text-sm">
+                        {poolAMember ? poolAMember.event_player.player.full_name : "TBD"}
+                      </span>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      {(() => {
-                        const poolAScore = poolAMember?.event_player.pfa_score;
-                        const poolBScore = poolBMember?.event_player.pfa_score;
-                        const poolAScoringMethod = poolAMember?.event_player.scoring_method;
-                        const poolBScoringMethod = poolBMember?.event_player.scoring_method;
+                    <span className="text-xs text-muted-foreground ml-7">Score: {poolADisplay}</span>
+                  </div>
 
-                        const poolAHasScore = poolAScoringMethod !== 'default' && poolAScore != null;
-                        const poolBHasScore = poolBScoringMethod !== 'default' && poolBScore != null;
-
-                        const formatScore = (score: number | null | undefined, hasScore: boolean) => {
-                          if (!hasScore) return 'X';
-                          return score?.toFixed(1) ?? 'X';
-                        };
-
-                        const poolADisplay = formatScore(poolAScore, poolAHasScore);
-                        const poolBDisplay = formatScore(poolBScore, poolBHasScore);
-
-                        if (!poolAHasScore && !poolBHasScore) {
-                          return (
-                            <span className="text-muted-foreground">
-                              {poolADisplay} + {poolBDisplay} = No data
-                            </span>
-                          );
-                        }
-
-                        if (!poolAHasScore || !poolBHasScore) {
-                          return (
-                            <span>
-                              <span className={!poolAHasScore ? 'text-muted-foreground' : ''}>
-                                {poolADisplay}
-                              </span>
-                              {' + '}
-                              <span className={!poolBHasScore ? 'text-muted-foreground' : ''}>
-                                {poolBDisplay}
-                              </span>
-                              {' = '}
-                              <span className="text-muted-foreground">Incomplete</span>
-                            </span>
-                          );
-                        }
-
-                        const combinedScore = (poolAScore ?? 0) + (poolBScore ?? 0);
-                        return (
-                          <span className="font-medium">
-                            {poolADisplay} + {poolBDisplay} = {combinedScore.toFixed(1)}
-                          </span>
-                        );
-                      })()}
+                  {/* Pool B */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-blue-500 hover:bg-blue-600">B</Badge>
+                      <span className="font-medium text-sm">
+                        {poolBMember ? poolBMember.event_player.player.full_name : "TBD"}
+                      </span>
                     </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    <span className="text-xs text-muted-foreground ml-7">Score: {poolBDisplay}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Combined Score */}
+              <div className="text-right">
+                <div className="text-2xl font-bold font-mono">
+                  {(!poolAHasScore || !poolBHasScore) ? (
+                    <span className="text-muted-foreground text-base">Incomplete</span>
+                  ) : (
+                    combinedScore.toFixed(1)
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="bg-muted/50 rounded-lg p-4">
