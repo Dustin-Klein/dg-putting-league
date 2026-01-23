@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronLeft,
+  Loader2,
   Minus,
   Plus,
 } from 'lucide-react';
@@ -52,6 +53,8 @@ export function FrameWizard({
   onFinish,
   onBack,
 }: FrameWizardProps) {
+  const [isSaving, setIsSaving] = useState(false);
+
   // Get frame numbers and ensure current frame is included (for new overtime frames)
   const baseFrameNumbers = getFrameNumbers(match, standardFrames);
   const frameNumbers = baseFrameNumbers.includes(currentFrame)
@@ -102,6 +105,24 @@ export function FrameWizard({
   // Progress calculation
   const totalFrames = Math.max(standardFrames, frameNumbers.length);
   const progress = (currentFrame / totalFrames) * 100;
+
+  const handleNextFrame = async () => {
+    setIsSaving(true);
+    try {
+      await onNextFrame();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFinish = async () => {
+    setIsSaving(true);
+    try {
+      await onFinish();
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col overflow-y-auto bg-background p-4">
@@ -239,18 +260,33 @@ export function FrameWizard({
           {canFinish ? (
             <Button
               className="flex-1 h-14"
-              onClick={onFinish}
+              onClick={handleFinish}
+              disabled={isSaving}
             >
-              Review Match
-              <ArrowRight className="ml-1 h-5 w-5" />
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-1 h-5 w-5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  Review Match
+                  <ArrowRight className="ml-1 h-5 w-5" />
+                </>
+              )}
             </Button>
           ) : (
             <Button
               className="flex-1 h-14"
-              onClick={onNextFrame}
-              disabled={!frameComplete}
+              onClick={handleNextFrame}
+              disabled={!frameComplete || isSaving}
             >
-              {isTied && isLastFrame ? (
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-1 h-5 w-5 animate-spin" />
+                  Saving...
+                </>
+              ) : isTied && isLastFrame ? (
                 <>
                   Overtime
                   <ArrowRight className="ml-1 h-5 w-5" />
