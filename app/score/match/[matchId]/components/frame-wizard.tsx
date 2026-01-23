@@ -101,10 +101,29 @@ export function FrameWizard({
   // Can finish if frame is complete, not tied, and we're past regular frames or on the last frame
   const canFinish = frameComplete && !isTied && (isOvertime || isLastFrame);
 
+  const handlePrevFrame = async () => {
+    setIsSaving(true);
+    try {
+      await onPrevFrame();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleNextFrame = async () => {
     setIsSaving(true);
     try {
       await onNextFrame();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleGoToFrame = async (frameNumber: number) => {
+    if (frameNumber === currentFrame) return;
+    setIsSaving(true);
+    try {
+      await onGoToFrame(frameNumber);
     } finally {
       setIsSaving(false);
     }
@@ -196,9 +215,10 @@ export function FrameWizard({
           {frameNumbers.map((num) => (
             <button
               key={num}
-              onClick={() => onGoToFrame(num)}
+              onClick={() => handleGoToFrame(num)}
+              disabled={isSaving}
               className={cn(
-                'w-7 h-7 rounded-full text-xs font-medium transition-all touch-manipulation',
+                'w-7 h-7 rounded-full text-xs font-medium transition-all touch-manipulation disabled:opacity-50',
                 num === currentFrame
                   ? 'bg-primary text-primary-foreground scale-110'
                   : 'bg-muted hover:bg-muted/80',
@@ -216,11 +236,17 @@ export function FrameWizard({
           <Button
             variant="outline"
             className="flex-1 h-12"
-            onClick={onPrevFrame}
-            disabled={currentFrame === 1}
+            onClick={handlePrevFrame}
+            disabled={currentFrame === 1 || isSaving}
           >
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            Prev
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Prev
+              </>
+            )}
           </Button>
 
           {canFinish ? (
