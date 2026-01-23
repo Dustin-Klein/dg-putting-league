@@ -104,8 +104,8 @@ export function FrameWizard({
   const progress = (currentFrame / totalFrames) * 100;
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-lg mx-auto">
+    <div className="h-full flex flex-col overflow-y-auto bg-background p-4">
+      <div className="flex-1 flex flex-col max-w-lg mx-auto w-full">
         {/* Header with back button and frame info */}
         <div className="flex items-center justify-between mb-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
@@ -225,7 +225,7 @@ export function FrameWizard({
         </div>
 
         {/* Navigation buttons */}
-        <div className="flex gap-3">
+        <div className="flex gap-3 sticky bottom-0 mt-auto pt-4 pb-2 bg-background">
           <Button
             variant="outline"
             className="flex-1 h-14"
@@ -407,7 +407,7 @@ function PlayerScoreRow({
         <Button
           variant="outline"
           size="icon"
-          className="h-12 w-12 rounded-full"
+          className="h-14 w-14 rounded-full"
           onClick={handleDecrement}
           disabled={currentScore === null || currentScore <= MIN_PUTTS}
           aria-label="Decrease score"
@@ -429,7 +429,7 @@ function PlayerScoreRow({
         <Button
           variant="outline"
           size="icon"
-          className="h-12 w-12 rounded-full"
+          className="h-14 w-14 rounded-full"
           onClick={handleIncrement}
           disabled={currentScore !== null && currentScore >= MAX_PUTTS}
           aria-label="Increase score"
