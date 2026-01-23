@@ -69,7 +69,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                     <div className="flex items-center gap-2 mb-1">
                       <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px]">A</Badge>
                       <span className="font-medium text-sm">
-                        {poolAMember ? poolAMember.event_player.player.full_name : "TBD"}
+                        {poolAMember?.event_player?.player?.full_name ?? "TBD"}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground ml-7">Score: {poolADisplay}</span>
@@ -80,7 +80,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                     <div className="flex items-center gap-2 mb-1">
                       <Badge className="h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-blue-500 hover:bg-blue-600">B</Badge>
                       <span className="font-medium text-sm">
-                        {poolBMember ? poolBMember.event_player.player.full_name : "TBD"}
+                        {poolBMember?.event_player?.player?.full_name ?? "TBD"}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground ml-7">Score: {poolBDisplay}</span>
