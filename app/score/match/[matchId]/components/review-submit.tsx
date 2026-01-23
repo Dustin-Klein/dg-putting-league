@@ -34,7 +34,7 @@ export function ReviewSubmit({
   const team2Wins = match.team_two_score > match.team_one_score;
 
   return (
-    <div className="min-h-screen bg-background p-4">
+    <div className="min-h-full bg-background p-4 pb-8">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
