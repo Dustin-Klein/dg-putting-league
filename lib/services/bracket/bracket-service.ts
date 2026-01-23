@@ -97,8 +97,8 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
     seeding,
     settings: {
       grandFinal: 'double', // WB winner must lose twice
-      seedOrdering: ['inner_outer'], // Use seeds as-is
-      balanceByes: true, // Distribute BYEs evenly
+      seedOrdering: ['inner_outer'],
+      balanceByes: true,
     },
   });
 
