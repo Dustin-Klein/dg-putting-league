@@ -2,9 +2,8 @@
 
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
   ArrowLeft,
   ArrowRight,
@@ -102,10 +101,6 @@ export function FrameWizard({
   // Can finish if frame is complete, not tied, and we're past regular frames or on the last frame
   const canFinish = frameComplete && !isTied && (isOvertime || isLastFrame);
 
-  // Progress calculation
-  const totalFrames = Math.max(standardFrames, frameNumbers.length);
-  const progress = (currentFrame / totalFrames) * 100;
-
   const handleNextFrame = async () => {
     setIsSaving(true);
     try {
@@ -125,79 +120,50 @@ export function FrameWizard({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto bg-background p-4">
+    <div className="h-full flex flex-col overflow-y-auto bg-background p-3">
       <div className="flex-1 flex flex-col max-w-lg mx-auto w-full">
-        {/* Header with back button and frame info */}
-        <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+        {/* Header with back button, score, and frame info */}
+        <div className="flex items-center justify-between mb-2">
+          <Button variant="ghost" size="sm" onClick={onBack} className="h-8 px-2">
             <ArrowLeft className="mr-1 h-4 w-4" />
             Setup
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-2xl font-bold font-mono">
+              <span>{teamOneTotal}</span>
+              <span className="text-muted-foreground text-lg">–</span>
+              <span>{teamTwoTotal}</span>
+            </div>
             <Badge
               variant={isOvertime ? 'destructive' : 'default'}
               className="text-sm"
             >
-              {isOvertime ? `OT${currentFrame - standardFrames}` : `Frame ${currentFrame}`}
+              {isOvertime ? `OT${currentFrame - standardFrames}` : `F${currentFrame}`}
             </Badge>
-          </div>
-        </div>
-
-        {/* Prominent total score display */}
-        <div className="mb-4 p-4 bg-muted/50 rounded-lg">
-          <div className="flex items-center justify-center gap-4">
-            <div className="text-center">
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Team 1</div>
-              <div className="text-4xl font-bold font-mono">{teamOneTotal}</div>
-            </div>
-            <div className="text-2xl text-muted-foreground font-light">–</div>
-            <div className="text-center">
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Team 2</div>
-              <div className="text-4xl font-bold font-mono">{teamTwoTotal}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Progress indicator */}
-        <div className="mb-6">
-          <Progress value={progress} className="h-2" />
-          <div className="text-xs text-muted-foreground mt-1 text-center">
-            Frame {currentFrame} of {isOvertime ? `${standardFrames}+OT` : standardFrames}
           </div>
         </div>
 
         {/* Overtime notice */}
         {isOvertime && (
-          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-center">
+          <div className="mb-2 p-2 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-center">
             <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-              Overtime Frame {currentFrame - standardFrames}
-            </p>
-            <p className="text-xs text-yellow-700 dark:text-yellow-300">
-              Continue until there&apos;s a winner
+              Overtime – Continue until there&apos;s a winner
             </p>
           </div>
         )}
 
         {/* Overtime prompt */}
         {showOvertimePrompt && (
-          <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
-            <p className="font-medium text-orange-800 dark:text-orange-200">
-              Scores are tied!
-            </p>
-            <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-              Continue to overtime to determine a winner
+          <div className="mb-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
+            <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+              Tied! Continue to overtime
             </p>
           </div>
         )}
 
         {/* Scoring Card */}
-        <Card className="mb-6">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-center">
-              {isOvertime ? `Overtime ${currentFrame - standardFrames}` : `Frame ${currentFrame}`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="mb-2">
+          <CardContent className="p-3">
             {/* Team 1 */}
             <TeamScoringSection
               team={match.team_one}
@@ -210,7 +176,7 @@ export function FrameWizard({
             />
 
             {/* Divider */}
-            <div className="my-4 border-t" />
+            <div className="my-2 border-t" />
 
             {/* Team 2 */}
             <TeamScoringSection
@@ -226,13 +192,13 @@ export function FrameWizard({
         </Card>
 
         {/* Frame navigation dots */}
-        <div className="flex justify-center gap-2 mt-6 mb-4">
+        <div className="flex justify-center gap-1.5 mb-2">
           {frameNumbers.map((num) => (
             <button
               key={num}
               onClick={() => onGoToFrame(num)}
               className={cn(
-                'w-8 h-8 rounded-full text-sm font-medium transition-all',
+                'w-7 h-7 rounded-full text-xs font-medium transition-all touch-manipulation',
                 num === currentFrame
                   ? 'bg-primary text-primary-foreground scale-110'
                   : 'bg-muted hover:bg-muted/80',
@@ -246,55 +212,49 @@ export function FrameWizard({
         </div>
 
         {/* Navigation buttons */}
-        <div className="flex gap-3 sticky bottom-0 mt-auto pt-4 pb-2 bg-background">
+        <div className="flex gap-2 sticky bottom-0 mt-auto pt-2 pb-1 bg-background">
           <Button
             variant="outline"
-            className="flex-1 h-14"
+            className="flex-1 h-12"
             onClick={onPrevFrame}
             disabled={currentFrame === 1}
           >
-            <ChevronLeft className="mr-1 h-5 w-5" />
-            Previous
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            Prev
           </Button>
 
           {canFinish ? (
             <Button
-              className="flex-1 h-14"
+              className="flex-1 h-12"
               onClick={handleFinish}
               disabled={isSaving}
             >
               {isSaving ? (
-                <>
-                  <Loader2 className="mr-1 h-5 w-5 animate-spin" />
-                  Saving...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  Review Match
-                  <ArrowRight className="ml-1 h-5 w-5" />
+                  Review
+                  <ArrowRight className="ml-1 h-4 w-4" />
                 </>
               )}
             </Button>
           ) : (
             <Button
-              className="flex-1 h-14"
+              className="flex-1 h-12"
               onClick={handleNextFrame}
               disabled={!frameComplete || isSaving}
             >
               {isSaving ? (
-                <>
-                  <Loader2 className="mr-1 h-5 w-5 animate-spin" />
-                  Saving...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : isTied && isLastFrame ? (
                 <>
                   Overtime
-                  <ArrowRight className="ml-1 h-5 w-5" />
+                  <ArrowRight className="ml-1 h-4 w-4" />
                 </>
               ) : (
                 <>
-                  Next Frame
-                  <ArrowRight className="ml-1 h-5 w-5" />
+                  Next
+                  <ArrowRight className="ml-1 h-4 w-4" />
                 </>
               )}
             </Button>
@@ -302,7 +262,7 @@ export function FrameWizard({
         </div>
 
         {!frameComplete && (
-          <p className="text-sm text-muted-foreground text-center mt-3">
+          <p className="text-xs text-muted-foreground text-center mt-1">
             Enter scores for all players to continue
           </p>
         )}
@@ -355,16 +315,16 @@ function TeamScoringSection({
   }
 
   return (
-    <div className={cn('rounded-lg p-3', bgColor)}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-muted-foreground">
-          #{team.seed} - {team.pool_combo}
+    <div className={cn('rounded-lg p-2', bgColor)}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          #{team.seed} {team.pool_combo}
         </span>
-        <Badge variant="secondary" className="font-mono">
+        <Badge variant="secondary" className="font-mono text-xs h-5">
           {frameScore} pts
         </Badge>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         {team.players.map((player) => (
           <PlayerScoreRow
             key={player.event_player_id}
@@ -424,15 +384,15 @@ function PlayerScoreRow({
   const points = currentScore !== null ? calculatePoints(currentScore, bonusPointEnabled) : null;
 
   return (
-    <div className="flex items-center justify-between bg-background/80 rounded-lg p-3">
+    <div className="flex items-center justify-between bg-background/80 rounded-lg p-2">
       {/* Player name (left side) */}
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{player.full_name}</div>
+        <div className="font-medium text-sm truncate">{player.full_name}</div>
         <div className="text-xs text-muted-foreground">
-          {player.role === 'A_pool' ? 'Pool A' : 'Pool B'}
+          {player.role === 'A_pool' ? 'A' : 'B'}
           {points !== null && (
-            <span className="ml-2 text-primary font-medium">
-              → {points} pts
+            <span className="ml-1 text-primary font-medium">
+              → {points}pt
             </span>
           )}
         </div>
@@ -443,7 +403,7 @@ function PlayerScoreRow({
         <Button
           variant="outline"
           size="icon"
-          className="h-14 w-14 rounded-full"
+          className="h-12 w-12 rounded-full"
           onClick={handleDecrement}
           disabled={currentScore === null || currentScore <= MIN_PUTTS}
           aria-label="Decrease score"
@@ -453,7 +413,7 @@ function PlayerScoreRow({
 
         <div
           className={cn(
-            'w-14 h-14 flex items-center justify-center text-2xl font-mono font-bold rounded-lg border-2',
+            'w-12 h-12 flex items-center justify-center text-xl font-mono font-bold rounded-lg border-2',
             currentScore === null && 'text-muted-foreground border-dashed',
             currentScore === 3 && 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300',
             currentScore !== null && currentScore < 3 && 'border-primary'
@@ -465,7 +425,7 @@ function PlayerScoreRow({
         <Button
           variant="outline"
           size="icon"
-          className="h-14 w-14 rounded-full"
+          className="h-12 w-12 rounded-full"
           onClick={handleIncrement}
           disabled={currentScore !== null && currentScore >= MAX_PUTTS}
           aria-label="Increase score"
