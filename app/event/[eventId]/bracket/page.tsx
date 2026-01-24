@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog } from './components';
+import { BracketView, MatchScoringDialog, PresentationOverlay } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
+import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
@@ -29,6 +30,13 @@ export default function BracketPage({
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
+  const [isMeasuring, setIsMeasuring] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { autoScale, recalculate } = useAutoScale(containerRef, contentRef);
 
   // Resolve params
   useEffect(() => {
@@ -98,6 +106,42 @@ export default function BracketPage({
       supabase.removeChannel(channel);
     };
   }, [eventId, fetchBracket]);
+
+  // Handle ESC key to exit presentation mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPresentationMode) {
+        setIsPresentationMode(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPresentationMode]);
+
+  // Handle measuring phase - render at scale 1, measure, then apply scale
+  useEffect(() => {
+    if (isMeasuring && isPresentationMode && bracketData) {
+      // Wait for DOM to render at scale 1, then measure
+      const rafId = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          recalculate();
+          setIsMeasuring(false);
+        });
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [isMeasuring, isPresentationMode, bracketData, recalculate]);
+
+  const enterPresentationMode = () => {
+    setIsMeasuring(true);
+    setIsPresentationMode(true);
+    setIsAutoScaleEnabled(true);
+  };
+
+  const exitPresentationMode = () => {
+    setIsPresentationMode(false);
+  };
 
   const handleMatchClick = (match: Match) => {
     if (!bracketData) return;
@@ -172,6 +216,60 @@ export default function BracketPage({
     );
   }
 
+  // Use scale 1 during measuring phase to get accurate dimensions
+  const effectiveScale = isMeasuring ? 1 : (isAutoScaleEnabled ? autoScale : scale / 100);
+
+  if (isPresentationMode) {
+    return (
+      <div className="fixed inset-0 z-40 bg-background">
+        <PresentationOverlay
+          stageName={bracketData.bracket.stage.name}
+          scale={effectiveScale}
+          isAutoScale={isAutoScaleEnabled}
+          onToggleAutoScale={() => setIsAutoScaleEnabled(!isAutoScaleEnabled)}
+          onRefresh={fetchBracket}
+          onExit={exitPresentationMode}
+          isRefreshing={loading}
+        />
+        <div
+          ref={containerRef}
+          className="w-full h-full overflow-hidden flex items-center justify-center"
+        >
+          <div
+            ref={contentRef}
+            style={{
+              transform: `scale(${effectiveScale})`,
+              transformOrigin: 'center center',
+            }}
+          >
+            <BracketView
+              data={bracketData}
+              eventStatus={bracketData.eventStatus}
+              onMatchClick={handleMatchClick}
+              compact
+            />
+          </div>
+        </div>
+        {eventId && (
+          <MatchScoringDialog
+            match={selectedMatch}
+            team1={selectedMatch?.team1}
+            team2={selectedMatch?.team2}
+            eventId={eventId}
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            onScoreSubmit={handleScoreSubmit}
+            isCorrectionMode={
+              bracketData?.eventStatus === 'bracket' &&
+              selectedMatch !== null &&
+              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -239,6 +337,14 @@ export default function BracketPage({
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={enterPresentationMode}
+          >
+            <Presentation className="mr-2 h-4 w-4" />
+            Present
           </Button>
         </div>
       </div>
