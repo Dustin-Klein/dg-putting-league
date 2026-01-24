@@ -122,16 +122,32 @@ export default function BracketPage({
   // Handle measuring phase - render at scale 1, measure, then apply scale
   useEffect(() => {
     if (isMeasuring && isPresentationMode && bracketData) {
-      // Wait for DOM to render at scale 1, then measure
-      const rafId = requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      let outerRaf: number;
+      let innerRaf: number;
+      outerRaf = requestAnimationFrame(() => {
+        innerRaf = requestAnimationFrame(() => {
           recalculate();
           setIsMeasuring(false);
         });
       });
-      return () => cancelAnimationFrame(rafId);
+      return () => {
+        cancelAnimationFrame(outerRaf);
+        cancelAnimationFrame(innerRaf);
+      };
     }
   }, [isMeasuring, isPresentationMode, bracketData, recalculate]);
+
+  // Recalculate scale when bracket data changes in presentation mode
+  const prevBracketDataRef = useRef(bracketData);
+  useEffect(() => {
+    if (isPresentationMode && !isMeasuring && bracketData !== prevBracketDataRef.current) {
+      prevBracketDataRef.current = bracketData;
+      const rafId = requestAnimationFrame(() => {
+        recalculate();
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [bracketData, isPresentationMode, isMeasuring, recalculate]);
 
   const enterPresentationMode = () => {
     setIsMeasuring(true);
@@ -240,6 +256,7 @@ export default function BracketPage({
             style={{
               transform: `scale(${effectiveScale})`,
               transformOrigin: 'center center',
+              visibility: isMeasuring ? 'hidden' : 'visible',
             }}
           >
             <BracketView

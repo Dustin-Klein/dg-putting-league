@@ -84,6 +84,7 @@ export function PresentationOverlay({
                 onClick={onExit}
                 className="h-8 w-8"
                 title="Exit presentation mode (Esc)"
+                aria-label="Exit presentation mode"
               >
                 <X className="h-4 w-4" />
               </Button>
