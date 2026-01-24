@@ -26,6 +26,7 @@ import type {
   PublicEventInfo,
   PublicMatchInfo,
 } from '@/lib/types/scoring';
+import { MatchStatus } from '@/lib/types/bracket';
 
 // Re-export types for consumers
 export type {
@@ -633,5 +634,10 @@ export async function completeMatchPublic(
     console.error('Failed to release lane and reassign:', laneError);
   }
 
-  return getMatchForScoring(accessCode, bracketMatchId, supabase);
+  // Return existing match data with updated status instead of re-fetching
+  // This avoids a redundant database query that can timeout under load
+  return {
+    ...match,
+    status: MatchStatus.Completed,
+  };
 }
