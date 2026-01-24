@@ -122,9 +122,8 @@ export default function BracketPage({
   // Handle measuring phase - render at scale 1, measure, then apply scale
   useEffect(() => {
     if (isMeasuring && isPresentationMode && bracketData) {
-      let outerRaf: number;
       let innerRaf: number;
-      outerRaf = requestAnimationFrame(() => {
+      const outerRaf = requestAnimationFrame(() => {
         innerRaf = requestAnimationFrame(() => {
           recalculate();
           setIsMeasuring(false);
