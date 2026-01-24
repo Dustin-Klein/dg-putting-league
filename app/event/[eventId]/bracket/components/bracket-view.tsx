@@ -13,6 +13,7 @@ interface BracketViewProps {
   data: BracketWithTeams;
   eventStatus?: EventStatus;
   onMatchClick?: (match: Match) => void;
+  compact?: boolean;
 }
 
 interface MatchWithTeamInfo extends Match {
@@ -256,7 +257,7 @@ function RoundConnector({
   );
 }
 
-export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProps) {
+export function BracketView({ data, eventStatus, onMatchClick, compact = false }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
 
   // Organize matches by group and round
@@ -368,14 +369,14 @@ export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProp
     const totalHeight = roundLayouts[0]?.height || 0;
 
     return (
-      <div key={group.id} className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">
+      <div key={group.id} className={compact ? 'space-y-1' : 'space-y-4'}>
+        <h2 className={`font-semibold text-foreground ${compact ? 'text-base' : 'text-lg'}`}>
           {GROUP_NAMES[group.number] || `Group ${group.number}`}
         </h2>
 
-        <div className="pb-4">
+        <div className={compact ? 'pb-1' : 'pb-4'}>
           {/* Round headers row */}
-          <div className="flex min-w-max mb-4">
+          <div className={`flex min-w-max ${compact ? 'mb-2' : 'mb-4'}`}>
             {roundLayouts.map((layout, idx) => (
               <Fragment key={layout.round.id}>
                 <div className="w-64 text-sm font-medium text-muted-foreground text-center">
@@ -437,9 +438,9 @@ export function BracketView({ data, eventStatus, onMatchClick }: BracketViewProp
   };
 
   return (
-    <div className="space-y-8">
+    <div className={compact ? 'space-y-2' : 'space-y-8'}>
       {/* Winners bracket + Grand Final side by side, vertically centered */}
-      <div className="flex items-center gap-8">
+      <div className={`flex items-center ${compact ? 'gap-4' : 'gap-8'}`}>
         {winnersBracket && renderGroup(winnersBracket)}
         {grandFinal && renderGroup(grandFinal)}
       </div>
