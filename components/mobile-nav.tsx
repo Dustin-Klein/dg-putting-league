@@ -30,22 +30,11 @@ export function MobileNav() {
     setMounted(true);
     const supabase = createClient();
 
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
-        setUser(data.user);
-      })
-      .catch(() => {
-        setUser(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
