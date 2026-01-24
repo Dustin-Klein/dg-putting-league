@@ -9,7 +9,11 @@ export function LogoutButton() {
 
   const logout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Proceed to login page regardless - session will expire eventually
+    }
     router.push("/auth/login");
   };
 
