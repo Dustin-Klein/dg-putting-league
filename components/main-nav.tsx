@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { AuthButton } from "@/components/auth-button";
+import { MobileNav } from "@/components/mobile-nav";
 
 export function MainNav() {
   return (
@@ -12,13 +13,20 @@ export function MainNav() {
             DG Putting League
           </Link>
         </div>
-        <div className="flex items-center gap-4">
+
+        {/* Desktop navigation */}
+        <div className="hidden md:flex items-center gap-4">
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
             <Suspense>
               <AuthButton />
             </Suspense>
           </div>
+        </div>
+
+        {/* Mobile navigation */}
+        <div className="flex md:hidden">
+          <MobileNav />
         </div>
       </div>
     </nav>
