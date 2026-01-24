@@ -100,4 +100,4 @@ supabase/migrations/      # Database schema migrations
 
 ## License
 
-MIT
+This project is source-available. Viewing is allowed, but reuse, redistribution, or deployment requires permission from the author.
