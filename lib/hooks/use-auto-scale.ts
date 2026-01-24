@@ -54,6 +54,7 @@ export function useAutoScale(
     };
 
     window.addEventListener('resize', handleResize);
+    recalculate();
 
     return () => {
       window.removeEventListener('resize', handleResize);
