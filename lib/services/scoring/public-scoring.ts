@@ -634,10 +634,16 @@ export async function completeMatchPublic(
     console.error('Failed to release lane and reassign:', laneError);
   }
 
-  // Return existing match data with updated status instead of re-fetching
-  // This avoids a redundant database query that can timeout under load
-  return {
-    ...match,
-    status: MatchStatus.Completed,
-  };
+  // Try to re-fetch the match for accurate data, but fall back to pre-fetched
+  // data with updated status if the query times out (the client redirects
+  // immediately anyway and doesn't use the response body)
+  try {
+    return await getMatchForScoring(accessCode, bracketMatchId, supabase);
+  } catch (fetchError) {
+    console.error('Failed to fetch updated match after completion:', fetchError);
+    return {
+      ...match,
+      status: MatchStatus.Completed,
+    };
+  }
 }
