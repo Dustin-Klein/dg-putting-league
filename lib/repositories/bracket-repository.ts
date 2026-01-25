@@ -607,10 +607,10 @@ export async function getBracketStage(
     .from('bracket_stage')
     .select('id')
     .eq('tournament_id', eventId)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    return null;
+    throw new InternalError(`Error fetching bracket stage: ${error.message}`);
   }
 
   return stage;
@@ -812,9 +812,13 @@ export async function fetchBracketStructure(
     .from('bracket_stage')
     .select('*')
     .eq('tournament_id', eventId)
-    .single();
+    .maybeSingle();
 
-  if (stageError || !stage) {
+  if (stageError) {
+    throw new InternalError(`Error fetching bracket stage: ${stageError.message}`);
+  }
+
+  if (!stage) {
     return null;
   }
 
