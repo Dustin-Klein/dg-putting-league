@@ -20,6 +20,11 @@ import {
   bulkUpdateMatchStatuses,
   getBracketStage,
   fetchBracketStructure,
+  getParticipantsWithTeamIds,
+  getMatchWithStage,
+  getReadyMatchesByStageId,
+  assignLaneToMatchRpc,
+  getMatchForScoringById,
 } from '@/lib/repositories/bracket-repository';
 import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent } from '@/lib/repositories/lane-repository';
@@ -231,48 +236,18 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
 export async function getBracket(eventId: string): Promise<BracketData> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: stage, error: stageError } = await supabase
-    .from('bracket_stage')
-    .select('*')
-    .eq('tournament_id', eventId)
-    .single();
+  const bracketStructure = await fetchBracketStructure(supabase, eventId);
 
-  if (stageError || !stage) {
+  if (!bracketStructure) {
     throw new NotFoundError('Bracket not found for this event');
   }
 
-  const { data: groups } = await supabase
-    .from('bracket_group')
-    .select('*')
-    .eq('stage_id', stage.id)
-    .order('number');
-
-  const { data: rounds } = await supabase
-    .from('bracket_round')
-    .select('*')
-    .eq('stage_id', stage.id)
-    .order('group_id')
-    .order('number');
-
-  const { data: matches } = await supabase
-    .from('bracket_match')
-    .select('*')
-    .eq('stage_id', stage.id)
-    .order('round_id')
-    .order('number');
-
-  const { data: participants } = await supabase
-    .from('bracket_participant')
-    .select('*')
-    .eq('tournament_id', eventId)
-    .order('id');
-
   return {
-    stage: stage as unknown as Stage,
-    groups: (groups || []) as unknown as Group[],
-    rounds: (rounds || []) as unknown as Round[],
-    matches: (matches || []) as unknown as Match[],
-    participants: (participants || []) as unknown as Participant[],
+    stage: bracketStructure.stage as unknown as Stage,
+    groups: bracketStructure.groups as unknown as Group[],
+    rounds: bracketStructure.rounds as unknown as Round[],
+    matches: bracketStructure.matches as unknown as Match[],
+    participants: bracketStructure.participants as unknown as Participant[],
   };
 }
 
@@ -287,25 +262,19 @@ export async function getBracketWithTeams(eventId: string): Promise<{
 }> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const [bracket, teams, event] = await Promise.all([
+  const [bracket, teams, event, participantsWithTeams] = await Promise.all([
     getBracket(eventId),
     getEventTeams(eventId),
     getEventById(supabase, eventId),
+    getParticipantsWithTeamIds(supabase, eventId),
   ]);
-
-  const { data: participantsWithTeams } = await supabase
-    .from('bracket_participant')
-    .select('id, team_id')
-    .eq('tournament_id', eventId);
 
   const participantTeamMap: Record<number, Team> = {};
 
-  if (participantsWithTeams) {
-    for (const p of participantsWithTeams) {
-      const team = teams.find((t) => t.id === p.team_id);
-      if (team) {
-        participantTeamMap[p.id] = team;
-      }
+  for (const p of participantsWithTeams) {
+    const team = teams.find((t) => t.id === p.team_id);
+    if (team) {
+      participantTeamMap[p.id] = team;
     }
   }
 
@@ -324,17 +293,13 @@ export async function updateMatchResult(
 ): Promise<Match> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: match, error: matchError } = await supabase
-    .from('bracket_match')
-    .select('*, bracket_stage!inner(tournament_id)')
-    .eq('id', matchId)
-    .single();
+  const match = await getMatchWithStage(supabase, matchId);
 
-  if (matchError || !match) {
+  if (!match) {
     throw new NotFoundError('Match not found');
   }
 
-  if ((match.bracket_stage as { tournament_id: string }).tournament_id !== eventId) {
+  if (match.bracket_stage.tournament_id !== eventId) {
     throw new BadRequestError('Match does not belong to this event');
   }
 
@@ -345,8 +310,8 @@ export async function updateMatchResult(
   let result2: 'win' | 'loss' | 'draw' | undefined;
 
   if (winnerId !== undefined) {
-    const opp1 = match.opponent1 as { id: number | null } | null;
-    const opp2 = match.opponent2 as { id: number | null } | null;
+    const opp1 = match.opponent1;
+    const opp2 = match.opponent2;
 
     if (winnerId === null) {
       // Draw
@@ -375,13 +340,9 @@ export async function updateMatchResult(
     opponent2: { score: opponent2Score, result: result2 },
   });
 
-  const { data: updatedMatch, error: updateError } = await supabase
-    .from('bracket_match')
-    .select('*')
-    .eq('id', matchId)
-    .single();
+  const updatedMatch = await getMatchForScoringById(supabase, matchId);
 
-  if (updateError || !updatedMatch) {
+  if (!updatedMatch) {
     throw new InternalError('Failed to fetch updated match');
   }
 
@@ -394,25 +355,13 @@ export async function updateMatchResult(
 export async function getReadyMatches(eventId: string): Promise<Match[]> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: stage } = await supabase
-    .from('bracket_stage')
-    .select('id')
-    .eq('tournament_id', eventId)
-    .single();
+  const stage = await getBracketStage(supabase, eventId);
 
   if (!stage) {
     throw new NotFoundError('Bracket not found');
   }
 
-  const { data: matches } = await supabase
-    .from('bracket_match')
-    .select('*')
-    .eq('stage_id', stage.id)
-    .eq('status', Status.Ready)
-    .order('round_id')
-    .order('number');
-
-  return (matches || []) as unknown as Match[];
+  return getReadyMatchesByStageId(supabase, stage.id);
 }
 
 /**
@@ -425,20 +374,7 @@ export async function assignLaneToMatch(
 ): Promise<void> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: assigned, error } = await supabase
-    .rpc('assign_lane_to_match', {
-      p_event_id: eventId,
-      p_lane_id: laneId,
-      p_match_id: matchId,
-    });
-
-  if (error) {
-    throw new InternalError(`Failed to assign lane to match: ${error.message}`);
-  }
-
-  if (!assigned) {
-    throw new BadRequestError('Lane is not available for assignment');
-  }
+  await assignLaneToMatchRpc(supabase, eventId, laneId, matchId);
 }
 
 /**

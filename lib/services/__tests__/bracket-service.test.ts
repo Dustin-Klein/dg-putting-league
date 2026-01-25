@@ -49,8 +49,19 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
   linkParticipantsToTeams: jest.fn(),
   setEventIdOnMatches: jest.fn(),
   getMatchesByStageId: jest.fn(),
+  bulkUpdateMatchStatuses: jest.fn(),
   updateMatchStatus: jest.fn(),
   getBracketStage: jest.fn(),
+  fetchBracketStructure: jest.fn(),
+  getParticipantsWithTeamIds: jest.fn(),
+  getMatchWithStage: jest.fn(),
+  getReadyMatchesByStageId: jest.fn(),
+  assignLaneToMatchRpc: jest.fn(),
+  getMatchForScoringById: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/event-repository', () => ({
+  getEventById: jest.fn(),
 }));
 
 jest.mock('brackets-manager', () => ({
@@ -68,7 +79,14 @@ jest.mock('brackets-manager', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { getEventTeams } from '@/lib/services/team';
-import { bracketStageExists } from '@/lib/repositories/bracket-repository';
+import {
+  bracketStageExists,
+  fetchBracketStructure,
+  getBracketStage,
+  getReadyMatchesByStageId,
+  assignLaneToMatchRpc,
+  getMatchWithStage,
+} from '@/lib/repositories/bracket-repository';
 import {
   createBracket,
   getBracket,
@@ -134,24 +152,29 @@ describe('Bracket Service', () => {
     const eventId = 'event-123';
 
     it('should throw NotFoundError when bracket not found', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
-      });
+      (fetchBracketStructure as jest.Mock).mockResolvedValue(null);
 
       await expect(getBracket(eventId)).rejects.toThrow(NotFoundError);
       await expect(getBracket(eventId)).rejects.toThrow('Bracket not found for this event');
     });
 
-    it('should throw NotFoundError when stage is null', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      });
+    it('should return bracket data when found', async () => {
+      const mockBracketData = {
+        stage: { id: 1, tournament_id: eventId },
+        groups: [{ id: 1, stage_id: 1 }],
+        rounds: [{ id: 1, stage_id: 1 }],
+        matches: [{ id: 1, stage_id: 1 }],
+        participants: [{ id: 1, tournament_id: eventId }],
+      };
+      (fetchBracketStructure as jest.Mock).mockResolvedValue(mockBracketData);
 
-      await expect(getBracket(eventId)).rejects.toThrow(NotFoundError);
+      const result = await getBracket(eventId);
+
+      expect(result.stage).toBeDefined();
+      expect(result.groups).toHaveLength(1);
+      expect(result.rounds).toHaveLength(1);
+      expect(result.matches).toHaveLength(1);
+      expect(result.participants).toHaveLength(1);
     });
   });
 
@@ -159,14 +182,22 @@ describe('Bracket Service', () => {
     const eventId = 'event-123';
 
     it('should throw NotFoundError when bracket not found', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      });
+      (getBracketStage as jest.Mock).mockResolvedValue(null);
 
       await expect(getReadyMatches(eventId)).rejects.toThrow(NotFoundError);
       await expect(getReadyMatches(eventId)).rejects.toThrow('Bracket not found');
+    });
+
+    it('should return ready matches when bracket exists', async () => {
+      (getBracketStage as jest.Mock).mockResolvedValue({ id: 1 });
+      const mockMatches = [{ id: 1, status: 2 }, { id: 2, status: 2 }];
+      (getReadyMatchesByStageId as jest.Mock).mockResolvedValue(mockMatches);
+
+      const result = await getReadyMatches(eventId);
+
+      expect(result).toEqual(mockMatches);
+      expect(getBracketStage).toHaveBeenCalledWith(mockSupabase, eventId);
+      expect(getReadyMatchesByStageId).toHaveBeenCalledWith(mockSupabase, 1);
     });
   });
 
@@ -176,19 +207,17 @@ describe('Bracket Service', () => {
     const laneId = 'lane-123';
 
     it('should assign lane to match successfully', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: true, error: null });
+      (assignLaneToMatchRpc as jest.Mock).mockResolvedValue(true);
 
       await expect(assignLaneToMatch(eventId, matchId, laneId)).resolves.not.toThrow();
 
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('assign_lane_to_match', {
-        p_event_id: eventId,
-        p_lane_id: laneId,
-        p_match_id: matchId,
-      });
+      expect(assignLaneToMatchRpc).toHaveBeenCalledWith(mockSupabase, eventId, laneId, matchId);
     });
 
     it('should throw InternalError on RPC failure', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: null, error: { message: 'RPC failed' } });
+      (assignLaneToMatchRpc as jest.Mock).mockRejectedValue(
+        new InternalError('Failed to assign lane to match: RPC failed')
+      );
 
       await expect(assignLaneToMatch(eventId, matchId, laneId)).rejects.toThrow(
         InternalError
@@ -196,7 +225,9 @@ describe('Bracket Service', () => {
     });
 
     it('should throw BadRequestError when lane not available', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: false, error: null });
+      (assignLaneToMatchRpc as jest.Mock).mockRejectedValue(
+        new BadRequestError('Lane is not available for assignment')
+      );
 
       await expect(assignLaneToMatch(eventId, matchId, laneId)).rejects.toThrow(
         BadRequestError
@@ -243,11 +274,7 @@ describe('Bracket Service', () => {
     const matchId = 1;
 
     it('should throw NotFoundError when match not found', async () => {
-      const queryBuilder = createMockQueryBuilder({
-        data: null,
-        error: { message: 'Not found' },
-      });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getMatchWithStage as jest.Mock).mockResolvedValue(null);
 
       await expect(updateMatchResult(eventId, matchId, 5, 3)).rejects.toThrow(
         NotFoundError
@@ -261,9 +288,7 @@ describe('Bracket Service', () => {
         opponent1: { id: 1 },
         opponent2: { id: 2 },
       };
-
-      const queryBuilder = createMockQueryBuilder({ data: mockMatch, error: null });
-      mockSupabase.from.mockReturnValue(queryBuilder);
+      (getMatchWithStage as jest.Mock).mockResolvedValue(mockMatch);
 
       await expect(updateMatchResult(eventId, matchId, 5, 3)).rejects.toThrow(
         BadRequestError

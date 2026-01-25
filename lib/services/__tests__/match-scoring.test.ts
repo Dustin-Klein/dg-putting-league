@@ -11,6 +11,24 @@ jest.mock('@/lib/services/event', () => ({
 
 jest.mock('@/lib/repositories/event-repository', () => ({
   getEventScoringConfig: jest.fn(),
+  getEventBracketFrameCount: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/bracket-repository', () => ({
+  getMatchByIdAndEvent: jest.fn(),
+  getMatchWithOpponents: jest.fn(),
+  updateMatchOpponentScores: jest.fn(),
+  updateMatchStatus: jest.fn(),
+  getMatchForScoringById: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/frame-repository', () => ({
+  getOrCreateFrame: jest.fn(),
+  getOrCreateFrameWithResults: jest.fn(),
+  getFrameWithBracketMatch: jest.fn(),
+  upsertFrameResult: jest.fn(),
+  upsertFrameResultAtomic: jest.fn(),
+  getMatchFrame: jest.fn(),
 }));
 
 import { requireEventAdmin } from '@/lib/services/event';
