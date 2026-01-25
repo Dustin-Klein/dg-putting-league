@@ -6,30 +6,19 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 export async function getAllLeagues(supabase: SupabaseClient): Promise<PublicLeague[]> {
   const { data: leagues, error } = await supabase
     .from('leagues')
-    .select('id, name, description')
+    .select('id, name, description, events(count)')
     .order('name');
 
   if (error || !leagues) {
     return [];
   }
 
-  const leaguesWithCounts = await Promise.all(
-    leagues.map(async (league) => {
-      const { count } = await supabase
-        .from('events')
-        .select('*', { count: 'exact', head: true })
-        .eq('league_id', league.id);
-
-      return {
-        id: league.id,
-        name: league.name,
-        description: league.description,
-        event_count: count ?? 0,
-      };
-    })
-  );
-
-  return leaguesWithCounts;
+  return leagues.map((league) => ({
+    id: league.id,
+    name: league.name,
+    description: league.description,
+    event_count: league.events[0]?.count ?? 0,
+  }));
 }
 
 export async function getLeagueWithEvents(
