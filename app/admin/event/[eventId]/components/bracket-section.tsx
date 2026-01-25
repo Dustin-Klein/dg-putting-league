@@ -153,7 +153,7 @@ export function BracketSection({ eventId }: BracketSectionProps) {
             size="sm"
             asChild
           >
-            <Link href={`/event/${eventId}/bracket`}>
+            <Link href={`/admin/event/${eventId}/bracket`}>
               <Maximize2 className="mr-2 h-4 w-4" />
               Full View
             </Link>

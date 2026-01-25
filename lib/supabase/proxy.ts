@@ -56,7 +56,10 @@ export async function updateSession(request: NextRequest) {
     !/^\/api\/score(?:\/|$)/.test(request.nextUrl.pathname) &&
     !/^\/players(?:\/|$)/.test(request.nextUrl.pathname) &&
     !/^\/player(?:\/|$)/.test(request.nextUrl.pathname) &&
-    !/^\/api\/player(?:s)?(?:\/|$)/.test(request.nextUrl.pathname)
+    !/^\/api\/player(?:s)?(?:\/|$)/.test(request.nextUrl.pathname) &&
+    !/^\/leagues(?:\/|$)/.test(request.nextUrl.pathname) &&
+    !/^\/event(?:\/|$)/.test(request.nextUrl.pathname) &&
+    !/^\/api\/public(?:\/|$)/.test(request.nextUrl.pathname)
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();

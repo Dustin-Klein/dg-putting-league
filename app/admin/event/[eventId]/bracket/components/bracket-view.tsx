@@ -408,12 +408,15 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                           onClick={() => onMatchClick?.(match)}
                           isClickable={
-                            match.status === Status.Ready ||
-                            match.status === Status.Running ||
-                            (eventStatus === 'bracket' &&
-                              (match.status === Status.Completed || match.status === Status.Archived))
+                            !!onMatchClick && (
+                              match.status === Status.Ready ||
+                              match.status === Status.Running ||
+                              (eventStatus === 'bracket' &&
+                                (match.status === Status.Completed || match.status === Status.Archived))
+                            )
                           }
                           isCorrectionMode={
+                            !!onMatchClick &&
                             eventStatus === 'bracket' &&
                             (match.status === Status.Completed || match.status === Status.Archived)
                           }

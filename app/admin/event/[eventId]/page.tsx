@@ -158,7 +158,7 @@ export default function EventPage({
   return (
     <div className="container mx-auto px-4 py-8">
       <Link
-        href={`/league/${event.league_id}`}
+        href={`/admin/leagues/${event.league_id}`}
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
       >
         <ChevronLeft className="w-4 h-4 mr-1" />

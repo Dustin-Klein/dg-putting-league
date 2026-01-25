@@ -53,7 +53,7 @@ export function AuthButton() {
       {user ? (
         <>
           <Button asChild variant="ghost">
-            <Link href="/leagues">My Leagues</Link>
+            <Link href="/admin/leagues">My Leagues</Link>
           </Button>
           Hey, {user.email}!
           <LogoutButton />

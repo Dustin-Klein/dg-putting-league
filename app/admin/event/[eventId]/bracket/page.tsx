@@ -2,14 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Match } from 'brackets-model';
+import { Status } from 'brackets-model';
+import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
+import { BracketView, MatchScoringDialog, PresentationOverlay } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
-export default function PublicBracketPage({
+interface MatchWithTeamInfo extends Match {
+  team1?: Team;
+  team2?: Team;
+}
+
+export default function BracketPage({
   params,
 }: {
   params: Promise<{ eventId: string }>;
@@ -19,6 +27,8 @@ export default function PublicBracketPage({
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
@@ -28,16 +38,18 @@ export default function PublicBracketPage({
   const contentRef = useRef<HTMLDivElement>(null);
   const { autoScale, recalculate } = useAutoScale(containerRef, contentRef);
 
+  // Resolve params
   useEffect(() => {
     params.then((p) => setEventId(p.eventId));
   }, [params]);
 
+  // Fetch bracket data
   const fetchBracket = useCallback(async () => {
     if (!eventId) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/public/event/${eventId}/bracket`);
+      const response = await fetch(`/api/event/${eventId}/bracket`);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -59,19 +71,22 @@ export default function PublicBracketPage({
     }
   }, [eventId]);
 
+  // Initial fetch
   useEffect(() => {
     if (eventId) {
       fetchBracket();
     }
   }, [eventId, fetchBracket]);
 
+  // Set up realtime subscription
   useEffect(() => {
     if (!eventId) return;
 
     const supabase = createClient();
 
+    // Subscribe to bracket_match changes
     const channel = supabase
-      .channel(`public-bracket-${eventId}`)
+      .channel(`bracket-${eventId}`)
       .on(
         'postgres_changes',
         {
@@ -81,6 +96,7 @@ export default function PublicBracketPage({
           filter: `event_id=eq.${eventId}`,
         },
         () => {
+          // Refetch bracket data when a match changes
           fetchBracket();
         }
       )
@@ -91,6 +107,7 @@ export default function PublicBracketPage({
     };
   }, [eventId, fetchBracket]);
 
+  // Handle ESC key to exit presentation mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isPresentationMode) {
@@ -102,6 +119,7 @@ export default function PublicBracketPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPresentationMode]);
 
+  // Handle measuring phase - render at scale 1, measure, then apply scale
   useEffect(() => {
     if (isMeasuring && isPresentationMode && bracketData) {
       let innerRaf: number;
@@ -118,6 +136,7 @@ export default function PublicBracketPage({
     }
   }, [isMeasuring, isPresentationMode, bracketData, recalculate]);
 
+  // Recalculate scale when bracket data changes in presentation mode
   const prevBracketDataRef = useRef(bracketData);
   useEffect(() => {
     if (isPresentationMode && !isMeasuring && bracketData !== prevBracketDataRef.current) {
@@ -137,6 +156,28 @@ export default function PublicBracketPage({
 
   const exitPresentationMode = () => {
     setIsPresentationMode(false);
+  };
+
+  const handleMatchClick = (match: Match) => {
+    if (!bracketData) return;
+
+    // Find team info for this match
+    const opp1 = match.opponent1 as { id: number | null } | null;
+    const opp2 = match.opponent2 as { id: number | null } | null;
+
+    const team1 = opp1?.id !== null
+      ? bracketData.participantTeamMap[opp1!.id!]
+      : undefined;
+    const team2 = opp2?.id !== null
+      ? bracketData.participantTeamMap[opp2!.id!]
+      : undefined;
+
+    setSelectedMatch({ ...match, team1, team2 });
+    setIsDialogOpen(true);
+  };
+
+  const handleScoreSubmit = () => {
+    fetchBracket();
   };
 
   if (loading && !bracketData) {
@@ -190,6 +231,7 @@ export default function PublicBracketPage({
     );
   }
 
+  // Use scale 1 during measuring phase to get accurate dimensions
   const effectiveScale = isMeasuring ? 1 : (isAutoScaleEnabled ? autoScale : scale / 100);
 
   if (isPresentationMode) {
@@ -219,10 +261,27 @@ export default function PublicBracketPage({
             <BracketView
               data={bracketData}
               eventStatus={bracketData.eventStatus}
+              onMatchClick={handleMatchClick}
               compact
             />
           </div>
         </div>
+        {eventId && (
+          <MatchScoringDialog
+            match={selectedMatch}
+            team1={selectedMatch?.team1}
+            team2={selectedMatch?.team2}
+            eventId={eventId}
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            onScoreSubmit={handleScoreSubmit}
+            isCorrectionMode={
+              bracketData?.eventStatus === 'bracket' &&
+              selectedMatch !== null &&
+              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+            }
+          />
+        )}
       </div>
     );
   }
@@ -243,6 +302,7 @@ export default function PublicBracketPage({
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          {/* Zoom controls */}
           <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
             <Button
               variant="ghost"
@@ -315,9 +375,27 @@ export default function PublicBracketPage({
           <BracketView
             data={bracketData}
             eventStatus={bracketData.eventStatus}
+            onMatchClick={handleMatchClick}
           />
         </div>
       </div>
+
+      {eventId && (
+        <MatchScoringDialog
+          match={selectedMatch}
+          team1={selectedMatch?.team1}
+          team2={selectedMatch?.team2}
+          eventId={eventId}
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onScoreSubmit={handleScoreSubmit}
+          isCorrectionMode={
+            bracketData?.eventStatus === 'bracket' &&
+            selectedMatch !== null &&
+            (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+          }
+        />
+      )}
     </div>
   );
 }

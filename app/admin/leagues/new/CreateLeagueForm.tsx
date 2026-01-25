@@ -32,7 +32,7 @@ export function CreateLeagueForm({ userId }: CreateLeagueFormProps) {
       }
 
       // Redirect to the new league's page
-      router.push(`/league/${data.id}`);
+      router.push(`/admin/leagues/${data.id}`);
       router.refresh();
 
       return data;

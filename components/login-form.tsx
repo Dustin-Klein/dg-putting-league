@@ -38,7 +38,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      router.push("/leagues");
+      router.push("/admin/leagues");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
