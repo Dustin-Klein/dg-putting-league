@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, LayoutGrid } from 'lucide-react';
+import Link from 'next/link';
 
 interface TeamInfo {
   id: string;
@@ -122,14 +123,28 @@ export default function MatchesPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Exit
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => accessCode && fetchMatches(accessCode)}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {event && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <Link href={`/event/${event.id}/bracket`}>
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  View Bracket
+                </Link>
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => accessCode && fetchMatches(accessCode)}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         <Card className="mb-6">

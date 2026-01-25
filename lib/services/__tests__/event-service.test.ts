@@ -219,13 +219,13 @@ describe('Event Service', () => {
     it('should redirect when eventId is empty', async () => {
       await getEventWithPlayers('');
 
-      expect(redirect).toHaveBeenCalledWith('/leagues');
+      expect(redirect).toHaveBeenCalledWith('/admin/leagues');
     });
 
     it('should redirect when eventId is falsy', async () => {
       await getEventWithPlayers(null as unknown as string);
 
-      expect(redirect).toHaveBeenCalledWith('/leagues');
+      expect(redirect).toHaveBeenCalledWith('/admin/leagues');
     });
   });
 

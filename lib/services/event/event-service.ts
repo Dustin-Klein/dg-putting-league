@@ -39,7 +39,7 @@ export async function requireEventAdmin(eventId: string) {
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
     console.error('No eventId provided');
-    redirect('/leagues');
+    redirect('/admin/leagues');
   }
 
   const supabase = await createClient();

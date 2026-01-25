@@ -47,7 +47,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       }
 
       setOpen(false);
-      router.push(`/event/${data.id}`);
+      router.push(`/admin/event/${data.id}`);
 
       return data;
     } catch (err) {

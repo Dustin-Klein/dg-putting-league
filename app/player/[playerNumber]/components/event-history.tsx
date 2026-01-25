@@ -55,7 +55,7 @@ export function EventHistory({ eventHistory }: EventHistoryProps) {
               <TableRow key={event.eventId}>
                 <TableCell>
                   <Link
-                    href={`/event/${event.eventId}`}
+                    href={`/event/${event.eventId}/bracket`}
                     className="hover:underline"
                   >
                     {format(new Date(event.eventDate), 'MMM d, yyyy')}
@@ -63,7 +63,7 @@ export function EventHistory({ eventHistory }: EventHistoryProps) {
                 </TableCell>
                 <TableCell>
                   <Link
-                    href={`/league/${event.leagueId}`}
+                    href={`/leagues/${event.leagueId}`}
                     className="hover:underline"
                   >
                     {event.leagueName}

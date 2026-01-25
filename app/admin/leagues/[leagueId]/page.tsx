@@ -20,10 +20,10 @@ export default async function LeagueEventsPage({
   try {
     league = await getLeague(leagueId);
   } catch {
-    redirect('/leagues');
+    redirect('/admin/leagues');
   } 
   if (!league) {
-      redirect('/leagues');
+      redirect('/admin/leagues');
   }
 
   const [eventsWithParticipantCount, isOwner] = await Promise.all([
