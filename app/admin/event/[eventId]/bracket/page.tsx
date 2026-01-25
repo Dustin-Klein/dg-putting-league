@@ -165,12 +165,8 @@ export default function BracketPage({
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
-    const team1 = opp1?.id !== null
-      ? bracketData.participantTeamMap[opp1!.id!]
-      : undefined;
-    const team2 = opp2?.id !== null
-      ? bracketData.participantTeamMap[opp2!.id!]
-      : undefined;
+    const team1 = bracketData.participantTeamMap[opp1?.id ?? -1];
+    const team2 = bracketData.participantTeamMap[opp2?.id ?? -1];
 
     setSelectedMatch({ ...match, team1, team2 });
     setIsDialogOpen(true);
