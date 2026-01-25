@@ -4,9 +4,10 @@ import { handleError } from '@/lib/errors';
 
 export async function GET(
   _req: Request,
-  { params }: { params: { leagueId: string } }
+  props: { params: Promise<{ leagueId: string }> }
 ) {
   try {
+    const params = await props.params;
     const { leagueId } = params;
     const league = await getPublicLeagueWithEvents(leagueId);
     return NextResponse.json(league);
