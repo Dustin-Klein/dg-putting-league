@@ -9,7 +9,12 @@ export async function getAllLeagues(supabase: SupabaseClient): Promise<PublicLea
     .select('id, name, description, events(count)')
     .order('name');
 
-  if (error || !leagues) {
+  if (error) {
+    console.error('Failed to fetch leagues:', error);
+    return [];
+  }
+
+  if (!leagues) {
     return [];
   }
 
@@ -31,7 +36,12 @@ export async function getLeagueWithEvents(
     .eq('id', leagueId)
     .single();
 
-  if (leagueError || !league) {
+  if (leagueError) {
+    console.error('Failed to fetch league:', leagueError);
+    return null;
+  }
+
+  if (!league) {
     return null;
   }
 
@@ -42,6 +52,7 @@ export async function getLeagueWithEvents(
     .order('event_date', { ascending: false });
 
   if (eventsError) {
+    console.error('Failed to fetch events for league:', eventsError);
     return null;
   }
 
