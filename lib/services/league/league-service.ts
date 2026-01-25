@@ -5,7 +5,6 @@ import type { PublicLeague, PublicLeagueDetail } from '@/lib/types/public';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { requireAuthenticatedUser } from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository';
-import * as publicRepo from '@/lib/repositories/public-repository';
 
 export interface LeagueAdminWithEmail {
   userId: string;
@@ -15,12 +14,12 @@ export interface LeagueAdminWithEmail {
 
 export async function getPublicLeagues(): Promise<PublicLeague[]> {
   const supabase = await createClient();
-  return publicRepo.getAllLeagues(supabase);
+  return leagueRepo.getAllLeagues(supabase);
 }
 
 export async function getPublicLeagueWithEvents(leagueId: string): Promise<PublicLeagueDetail> {
   const supabase = await createClient();
-  const league = await publicRepo.getLeagueWithEvents(supabase, leagueId);
+  const league = await leagueRepo.getLeagueWithEvents(supabase, leagueId);
 
   if (!league) {
     throw new NotFoundError('League not found');
