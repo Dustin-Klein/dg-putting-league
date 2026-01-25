@@ -9,8 +9,22 @@ import {
 import { completeMatch, handleGrandFinalCompletion } from './match-completion';
 import { calculatePoints } from './points-calculator';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
-import { getOrCreateFrame as getOrCreateFrameRepo } from '@/lib/repositories/frame-repository';
-import { getEventScoringConfig } from '@/lib/repositories/event-repository';
+import {
+  getOrCreateFrame as getOrCreateFrameRepo,
+  getOrCreateFrameWithResults,
+  getFrameWithBracketMatch,
+  upsertFrameResult,
+  upsertFrameResultAtomic,
+} from '@/lib/repositories/frame-repository';
+import { getMatchFrame } from '@/lib/repositories/frame-repository';
+import { getEventScoringConfig, getEventBracketFrameCount } from '@/lib/repositories/event-repository';
+import {
+  getMatchByIdAndEvent,
+  getMatchWithOpponents,
+  updateMatchOpponentScores,
+  updateMatchStatus,
+  getMatchForScoringById,
+} from '@/lib/repositories/bracket-repository';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -50,23 +64,22 @@ export async function recordScoreAdmin(
   if (!Number.isInteger(frameNumber) || frameNumber < 1) {
     throw new BadRequestError('Frame number must be a positive integer');
   }
-  
+
   if (frameNumber > 50) {
     throw new BadRequestError('Frame number exceeds maximum allowed limit');
   }
 
-  const [eventConfig, eventFrameCount, bracketMatchRes] = await Promise.all([
+  const [eventConfig, bracketFrameCount, bracketMatch] = await Promise.all([
     getEventScoringConfig(supabase, eventId),
-    supabase.from('events').select('bracket_frame_count').eq('id', eventId).single(),
-    supabase.from('bracket_match').select('id, status').eq('id', bracketMatchId).eq('event_id', eventId).single(),
+    getEventBracketFrameCount(supabase, eventId),
+    getMatchByIdAndEvent(supabase, bracketMatchId, eventId),
   ]);
 
   if (!eventConfig) {
     throw new NotFoundError('Event not found');
   }
 
-  const { data: bracketMatch, error: matchError } = bracketMatchRes;
-  if (matchError || !bracketMatch) {
+  if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
 
@@ -81,7 +94,6 @@ export async function recordScoreAdmin(
     }
   }
 
-  const bracketFrameCount = eventFrameCount.data?.bracket_frame_count;
   if (bracketFrameCount === undefined || bracketFrameCount === null) {
     throw new InternalError('Event bracket frame count is missing');
   }
@@ -89,26 +101,16 @@ export async function recordScoreAdmin(
   const isOvertime = frameNumber > bracketFrameCount;
   const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
 
-  // Atomically upsert the frame result with correct order_in_frame
-  // This RPC handles the race condition where concurrent requests could
-  // both read the same max order and assign duplicate order values
-  const { error: upsertError } = await supabase.rpc('upsert_frame_result_atomic', {
-    p_match_frame_id: frame.id,
-    p_event_player_id: eventPlayerId,
-    p_bracket_match_id: bracketMatchId,
-    p_putts_made: puttsMade,
-    p_points_earned: pointsEarned,
+  await upsertFrameResultAtomic(supabase, {
+    matchFrameId: frame.id,
+    eventPlayerId,
+    bracketMatchId,
+    puttsMade,
+    pointsEarned,
   });
 
-  if (upsertError) {
-    throw new InternalError(`Failed to record score: ${upsertError.message}`);
-  }
-
   if (bracketMatch.status === 2) { // Ready status
-    await supabase
-      .from('bracket_match')
-      .update({ status: 3 }) // Running status
-      .eq('id', bracketMatchId);
+    await updateMatchStatus(supabase, bracketMatchId, 3); // Running status
   }
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
@@ -124,44 +126,16 @@ export async function getBracketMatchWithDetails(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const [bracketMatchRes, eventRes] = await Promise.all([
-    supabase
-      .from('bracket_match')
-      .select(`
-        *,
-        frames:match_frames(
-          id,
-          bracket_match_id,
-          frame_number,
-          is_overtime,
-          results:frame_results(
-            id,
-            match_frame_id,
-            event_player_id,
-            putts_made,
-            points_earned,
-            order_in_frame
-          )
-        )
-      `)
-      .eq('id', bracketMatchId)
-      .eq('event_id', eventId)
-      .single(),
-    supabase
-      .from('events')
-      .select('bracket_frame_count')
-      .eq('id', eventId)
-      .single(),
+  const [bracketMatch, bracketFrameCount] = await Promise.all([
+    getMatchForScoringById(supabase, bracketMatchId),
+    getEventBracketFrameCount(supabase, eventId),
   ]);
 
-  const { data: bracketMatch, error } = bracketMatchRes;
-  const { data: eventData } = eventRes;
-
-  if (error || !bracketMatch) {
+  if (!bracketMatch || bracketMatch.event_id !== eventId) {
     throw new NotFoundError('Bracket match not found');
   }
 
-  if (!eventData) {
+  if (bracketFrameCount === null) {
     throw new InternalError('Event scoring configuration not found');
   }
 
@@ -181,7 +155,7 @@ export async function getBracketMatchWithDetails(
     team_two,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
-    bracket_frame_count: eventData.bracket_frame_count,
+    bracket_frame_count: bracketFrameCount,
   } as BracketMatchWithDetails;
 }
 
@@ -196,55 +170,13 @@ export async function getOrCreateFrame(
 ): Promise<MatchFrame> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: bracketMatch, error: matchError } = await supabase
-    .from('bracket_match')
-    .select('id, event_id')
-    .eq('id', bracketMatchId)
-    .eq('event_id', eventId)
-    .single();
+  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
 
-  if (matchError) {
-    throw new InternalError(`Failed to fetch bracket match: ${matchError.message}`);
-  }
   if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
 
-  const { data: existingFrame, error: frameQueryError } = await supabase
-    .from('match_frames')
-    .select(`
-      *,
-      results:frame_results(*)
-    `)
-    .eq('bracket_match_id', bracketMatchId)
-    .eq('frame_number', frameNumber)
-    .maybeSingle();
-
-  if (frameQueryError) {
-    throw new InternalError(`Failed to query frame: ${frameQueryError.message}`);
-  }
-  if (existingFrame) {
-    return existingFrame as MatchFrame;
-  }
-
-  const { data: newFrame, error } = await supabase
-    .from('match_frames')
-    .insert({
-      bracket_match_id: bracketMatchId,
-      frame_number: frameNumber,
-      is_overtime: isOvertime,
-    })
-    .select(`
-      *,
-      results:frame_results(*)
-    `)
-    .single();
-
-  if (error || !newFrame) {
-    throw new InternalError(`Failed to create frame: ${error?.message}`);
-  }
-
-  return newFrame as MatchFrame;
+  return getOrCreateFrameWithResults(supabase, bracketMatchId, frameNumber, isOvertime);
 }
 
 /**
@@ -257,17 +189,9 @@ export async function recordFrameResult(
 ): Promise<FrameResult> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: frame, error: frameError } = await supabase
-    .from('match_frames')
-    .select('id, bracket_match_id, bracket_match:bracket_match(event_id)')
-    .eq('id', matchFrameId)
-    .single();
+  const frame = await getFrameWithBracketMatch(supabase, matchFrameId);
 
-  if (frameError) {
-    throw new InternalError(`Failed to fetch frame: ${frameError.message}`);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!frame || (frame.bracket_match as any)?.event_id !== eventId) {
+  if (!frame || frame.bracket_match?.event_id !== eventId) {
     throw new NotFoundError('Frame not found');
   }
 
@@ -278,30 +202,14 @@ export async function recordFrameResult(
     throw new BadRequestError('Points earned must be between 0 and 4');
   }
 
-  // Upsert the frame result (includes denormalized bracket_match_id for robust cascade delete handling)
-  const { data: result, error } = await supabase
-    .from('frame_results')
-    .upsert(
-      {
-        match_frame_id: matchFrameId,
-        event_player_id: input.event_player_id,
-        bracket_match_id: frame.bracket_match_id,
-        putts_made: input.putts_made,
-        points_earned: input.points_earned,
-        order_in_frame: input.order_in_frame,
-      },
-      {
-        onConflict: 'match_frame_id,event_player_id',
-      }
-    )
-    .select()
-    .single();
-
-  if (error || !result) {
-    throw new InternalError(`Failed to record frame result: ${error?.message}`);
-  }
-
-  return result as FrameResult;
+  return upsertFrameResult(supabase, {
+    match_frame_id: matchFrameId,
+    event_player_id: input.event_player_id,
+    bracket_match_id: frame.bracket_match_id,
+    putts_made: input.putts_made,
+    points_earned: input.points_earned,
+    order_in_frame: input.order_in_frame,
+  });
 }
 
 /**
@@ -322,20 +230,7 @@ export async function recordFullFrame(
     await recordFrameResult(eventId, frame.id, result);
   }
 
-  const { data: updatedFrame, error } = await supabase
-    .from('match_frames')
-    .select(`
-      *,
-      results:frame_results(*)
-    `)
-    .eq('id', frame.id)
-    .single();
-
-  if (error || !updatedFrame) {
-    throw new InternalError('Failed to fetch updated frame');
-  }
-
-  return updatedFrame as MatchFrame;
+  return getMatchFrame(supabase, frame.id);
 }
 
 /**
@@ -404,28 +299,13 @@ export async function startBracketMatch(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const { data: bracketMatch, error: matchError } = await supabase
-    .from('bracket_match')
-    .select('id')
-    .eq('id', bracketMatchId)
-    .eq('event_id', eventId)
-    .single();
+  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
 
-  if (matchError) {
-    throw new InternalError(`Failed to fetch bracket match: ${matchError.message}`);
-  }
   if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
   }
 
-  const { error } = await supabase
-    .from('bracket_match')
-    .update({ status: 3 }) // Running status
-    .eq('id', bracketMatchId);
-
-  if (error) {
-    throw new InternalError(`Failed to start match: ${error.message}`);
-  }
+  await updateMatchStatus(supabase, bracketMatchId, 3); // Running status
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
@@ -446,14 +326,9 @@ export async function correctMatchScores(
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
   }
 
-  const { data: match, error: matchError } = await supabase
-    .from('bracket_match')
-    .select('id, status, opponent1, opponent2')
-    .eq('id', bracketMatchId)
-    .eq('event_id', eventId)
-    .single();
+  const match = await getMatchWithOpponents(supabase, bracketMatchId, eventId);
 
-  if (matchError || !match) {
+  if (!match) {
     throw new NotFoundError('Bracket match not found');
   }
 
@@ -463,28 +338,21 @@ export async function correctMatchScores(
   }
 
   const team1Won = team1Score > team2Score;
-  const opponent1 = match.opponent1 as { id?: number; position?: number } | null;
-  const opponent2 = match.opponent2 as { id?: number; position?: number } | null;
 
-  const { error: updateError } = await supabase
-    .from('bracket_match')
-    .update({
-      opponent1: {
-        ...opponent1,
-        score: team1Score,
-        result: team1Won ? 'win' : 'loss',
-      },
-      opponent2: {
-        ...opponent2,
-        score: team2Score,
-        result: team1Won ? 'loss' : 'win',
-      },
-    })
-    .eq('id', bracketMatchId);
-
-  if (updateError) {
-    throw new InternalError(`Failed to correct scores: ${updateError.message}`);
-  }
+  await updateMatchOpponentScores(
+    supabase,
+    bracketMatchId,
+    {
+      ...match.opponent1,
+      score: team1Score,
+      result: team1Won ? 'win' : 'loss',
+    },
+    {
+      ...match.opponent2,
+      score: team2Score,
+      result: team1Won ? 'loss' : 'win',
+    }
+  );
 
   // Handle grand final reset match archiving/un-archiving if winner changed
   await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won);

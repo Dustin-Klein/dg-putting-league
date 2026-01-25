@@ -459,3 +459,23 @@ export async function createEvent(
 
   return event as EventData;
 }
+
+/**
+ * Get event bracket frame count only
+ */
+export async function getEventBracketFrameCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<number | null> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('bracket_frame_count')
+    .eq('id', eventId)
+    .single();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event bracket frame count: ${error.message}`);
+  }
+
+  return event?.bracket_frame_count ?? null;
+}

@@ -6,9 +6,10 @@ import type {
   Storage,
   Table,
 } from 'brackets-manager';
-import type { Id } from 'brackets-model';
+import type { Id, Match } from 'brackets-model';
+import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
-import { InternalError } from '@/lib/errors';
+import { BadRequestError, InternalError } from '@/lib/errors';
 
 // Map brackets-manager table names to our Supabase table names
 const TABLE_MAP: Record<Table, string> = {
@@ -860,4 +861,199 @@ export async function fetchBracketStructure(
     matches: matchesResult.data || [],
     participants: participantsResult.data || [],
   };
+}
+
+export interface MatchByIdAndEvent {
+  id: number;
+  status: number;
+  event_id: string;
+  opponent1: { id: number | null } | null;
+  opponent2: { id: number | null } | null;
+}
+
+/**
+ * Get a bracket match by ID and event ID for validation
+ */
+export async function getMatchByIdAndEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number,
+  eventId: string
+): Promise<MatchByIdAndEvent | null> {
+  const { data: match, error } = await supabase
+    .from('bracket_match')
+    .select('id, status, event_id, opponent1, opponent2')
+    .eq('id', matchId)
+    .eq('event_id', eventId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw new InternalError(`Failed to fetch bracket match: ${error.message}`);
+  }
+
+  return match as MatchByIdAndEvent;
+}
+
+export interface MatchWithOpponents {
+  id: number;
+  status: number;
+  opponent1: { id?: number; position?: number; score?: number } | null;
+  opponent2: { id?: number; position?: number; score?: number } | null;
+}
+
+/**
+ * Get a bracket match with opponent data for score correction
+ */
+export async function getMatchWithOpponents(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number,
+  eventId: string
+): Promise<MatchWithOpponents | null> {
+  const { data: match, error } = await supabase
+    .from('bracket_match')
+    .select('id, status, opponent1, opponent2')
+    .eq('id', matchId)
+    .eq('event_id', eventId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw new InternalError(`Failed to fetch bracket match: ${error.message}`);
+  }
+
+  return match as MatchWithOpponents;
+}
+
+export interface OpponentScoreUpdate {
+  id?: number;
+  position?: number;
+  score: number;
+  result: 'win' | 'loss';
+}
+
+/**
+ * Update match opponent scores
+ */
+export async function updateMatchOpponentScores(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number,
+  opponent1: OpponentScoreUpdate,
+  opponent2: OpponentScoreUpdate
+): Promise<void> {
+  const { error } = await supabase
+    .from('bracket_match')
+    .update({
+      opponent1,
+      opponent2,
+    })
+    .eq('id', matchId);
+
+  if (error) {
+    throw new InternalError(`Failed to correct scores: ${error.message}`);
+  }
+}
+
+/**
+ * Get bracket participants with their team IDs for an event
+ */
+export async function getParticipantsWithTeamIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<Array<{ id: number; team_id: string | null }>> {
+  const { data: participants, error } = await supabase
+    .from('bracket_participant')
+    .select('id, team_id')
+    .eq('tournament_id', eventId);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch participants: ${error.message}`);
+  }
+
+  return (participants || []) as Array<{ id: number; team_id: string | null }>;
+}
+
+export interface MatchWithStage {
+  id: number;
+  opponent1: { id: number | null } | null;
+  opponent2: { id: number | null } | null;
+  bracket_stage: {
+    tournament_id: string;
+  };
+}
+
+/**
+ * Get a bracket match with its stage information for event validation
+ */
+export async function getMatchWithStage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number
+): Promise<MatchWithStage | null> {
+  const { data: match, error } = await supabase
+    .from('bracket_match')
+    .select('*, bracket_stage!inner(tournament_id)')
+    .eq('id', matchId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw new InternalError(`Failed to fetch match: ${error.message}`);
+  }
+
+  return match as unknown as MatchWithStage;
+}
+
+/**
+ * Get ready matches (status=Ready) for a stage
+ */
+export async function getReadyMatchesByStageId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  stageId: number
+): Promise<Match[]> {
+  const { data: matches, error } = await supabase
+    .from('bracket_match')
+    .select('*')
+    .eq('stage_id', stageId)
+    .eq('status', Status.Ready)
+    .order('round_id')
+    .order('number');
+
+  if (error) {
+    throw new InternalError(`Failed to fetch ready matches: ${error.message}`);
+  }
+
+  return (matches || []) as unknown as Match[];
+}
+
+/**
+ * Assign a lane to a match using atomic RPC
+ * Returns true if assignment was successful, false if lane is not available
+ */
+export async function assignLaneToMatchRpc(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  laneId: string,
+  matchId: number
+): Promise<boolean> {
+  const { data: assigned, error } = await supabase
+    .rpc('assign_lane_to_match', {
+      p_event_id: eventId,
+      p_lane_id: laneId,
+      p_match_id: matchId,
+    });
+
+  if (error) {
+    throw new InternalError(`Failed to assign lane to match: ${error.message}`);
+  }
+
+  if (!assigned) {
+    throw new BadRequestError('Lane is not available for assignment');
+  }
+
+  return true;
 }
