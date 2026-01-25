@@ -4,10 +4,10 @@ import { handleError } from '@/lib/errors';
 
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ eventId: string }> }
+  { params }: { params: { eventId: string } }
 ) {
   try {
-    const { eventId } = await params;
+    const { eventId } = params;
     const bracket = await getPublicBracket(eventId);
     return NextResponse.json(bracket);
   } catch (error) {

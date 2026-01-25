@@ -107,6 +107,14 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
       .order('label'),
   ]);
 
+  const results = [groupsResult, roundsResult, matchesResult, participantsResult, teamsResult, lanesResult];
+  for (const result of results) {
+    if (result.error) {
+      console.error('Error fetching bracket data:', result.error);
+      throw new NotFoundError('Bracket not found for this event');
+    }
+  }
+
   const groups = groupsResult.data || [];
   const rounds = roundsResult.data || [];
   const matches = matchesResult.data || [];
