@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPublicBracket } from '@/lib/services/public';
+import { getPublicBracket } from '@/lib/services/bracket/bracket-service';
 import { handleError } from '@/lib/errors';
 
 export async function GET(
