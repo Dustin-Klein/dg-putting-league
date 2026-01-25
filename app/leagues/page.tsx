@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getPublicLeagues } from '@/lib/services/public';
+import { getPublicLeagues } from '@/lib/services/league/league-service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const dynamic = 'force-dynamic';

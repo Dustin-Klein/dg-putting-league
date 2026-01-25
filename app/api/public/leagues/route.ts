@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPublicLeagues } from '@/lib/services/public';
+import { getPublicLeagues } from '@/lib/services/league/league-service';
 import { handleError } from '@/lib/errors';
 
 export async function GET() {

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getPublicLeagueWithEvents } from '@/lib/services/public';
+import { getPublicLeagueWithEvents } from '@/lib/services/league/league-service';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

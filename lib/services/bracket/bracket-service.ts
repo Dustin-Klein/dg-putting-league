@@ -19,9 +19,13 @@ import {
   getMatchesByStageId,
   bulkUpdateMatchStatuses,
   getBracketStage,
+  fetchBracketStructure,
 } from '@/lib/repositories/bracket-repository';
+import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
+import { getLanesForEvent } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
+import type { BracketWithTeams } from '@/lib/types/bracket';
 
 /**
  * Get the next power of 2 that is >= n
@@ -157,6 +161,68 @@ async function setInitialMatchesReady(
   if (matchIdsToUpdate.length > 0) {
     await bulkUpdateMatchStatuses(supabase, matchIdsToUpdate, Status.Ready);
   }
+}
+
+/**
+ * Get public bracket data with teams and lanes
+ */
+export async function getPublicBracket(eventId: string): Promise<BracketWithTeams> {
+  const supabase = await createClient();
+
+  // Get event to check it exists and get status
+  const event = await getEventById(supabase, eventId);
+
+  if (!event) {
+    throw new NotFoundError('Event not found');
+  }
+
+  // Only allow viewing bracket for events in bracket or completed status
+  if (event.status !== 'bracket' && event.status !== 'completed') {
+    throw new NotFoundError('Bracket not available for this event');
+  }
+
+  // Fetch all data in parallel
+  const [bracketStructure, teams, lanes] = await Promise.all([
+    fetchBracketStructure(supabase, eventId),
+    getFullTeamsForEvent(supabase, eventId),
+    getLanesForEvent(supabase, eventId),
+  ]);
+
+  if (!bracketStructure) {
+    throw new NotFoundError('Bracket not found for this event');
+  }
+
+  const { stage, groups, rounds, matches, participants } = bracketStructure;
+
+  // Build participant to team mapping
+  const participantTeamMap: Record<number, Team> = {};
+  for (const p of participants) {
+    const team = teams.find((t) => t.id === p.team_id);
+    if (team) {
+      participantTeamMap[p.id] = team;
+    }
+  }
+
+  // Build lane ID to label mapping
+  const laneMap: Record<string, string> = {};
+  for (const lane of lanes) {
+    laneMap[lane.id] = lane.label;
+  }
+
+  return {
+    bracket: {
+      stage: stage as unknown as Stage,
+      groups: groups as unknown as Group[],
+      rounds: rounds as unknown as Round[],
+      matches: matches as unknown as Match[],
+      participants: participants as unknown as Participant[],
+    },
+    teams,
+    participantTeamMap,
+    lanes,
+    laneMap,
+    eventStatus: event.status,
+  };
 }
 
 /**

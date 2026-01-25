@@ -799,3 +799,61 @@ export async function archiveMatch(
     throw new InternalError(`Failed to archive match: ${error.message}`);
   }
 }
+
+/**
+ * Fetch complete bracket structure (stage, groups, rounds, matches, participants)
+ */
+export async function fetchBracketStructure(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+) {
+  // Get bracket stage first
+  const { data: stage, error: stageError } = await supabase
+    .from('bracket_stage')
+    .select('*')
+    .eq('tournament_id', eventId)
+    .single();
+
+  if (stageError || !stage) {
+    return null;
+  }
+
+  // Get other bracket data in parallel
+  const [groupsResult, roundsResult, matchesResult, participantsResult] = await Promise.all([
+    supabase
+      .from('bracket_group')
+      .select('*')
+      .eq('stage_id', stage.id)
+      .order('number'),
+    supabase
+      .from('bracket_round')
+      .select('*')
+      .eq('stage_id', stage.id)
+      .order('group_id')
+      .order('number'),
+    supabase
+      .from('bracket_match')
+      .select('*')
+      .eq('stage_id', stage.id)
+      .order('round_id')
+      .order('number'),
+    supabase
+      .from('bracket_participant')
+      .select('*')
+      .eq('tournament_id', eventId)
+      .order('id'),
+  ]);
+
+  if (groupsResult.error) throw new InternalError(`Error fetching bracket groups: ${groupsResult.error.message}`);
+  if (roundsResult.error) throw new InternalError(`Error fetching bracket rounds: ${roundsResult.error.message}`);
+  if (matchesResult.error) throw new InternalError(`Error fetching bracket matches: ${matchesResult.error.message}`);
+  if (participantsResult.error) throw new InternalError(`Error fetching bracket participants: ${participantsResult.error.message}`);
+
+  return {
+    stage,
+    groups: groupsResult.data || [],
+    rounds: roundsResult.data || [],
+    matches: matchesResult.data || [],
+    participants: participantsResult.data || [],
+  };
+}
