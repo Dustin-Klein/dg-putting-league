@@ -31,6 +31,12 @@ jest.mock('@/lib/repositories/frame-repository', () => ({
   getMatchFrame: jest.fn(),
 }));
 
+jest.mock('@/lib/repositories/team-repository', () => ({
+  getTeamFromParticipant: jest.fn(),
+  getTeamIdsFromParticipants: jest.fn().mockResolvedValue(['team-1', 'team-2']),
+  verifyPlayerInTeams: jest.fn().mockResolvedValue(true),
+}));
+
 import { requireEventAdmin } from '@/lib/services/event';
 import { recordScoreAdmin } from '../scoring/match-scoring';
 

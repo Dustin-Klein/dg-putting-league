@@ -8,7 +8,7 @@ import {
 } from '@/lib/errors';
 import { completeMatch, handleGrandFinalCompletion } from './match-completion';
 import { calculatePoints } from './points-calculator';
-import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
+import { getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
 import {
   getOrCreateFrame as getOrCreateFrameRepo,
   getOrCreateFrameWithResults,
@@ -81,6 +81,16 @@ export async function recordScoreAdmin(
 
   if (!bracketMatch) {
     throw new NotFoundError('Bracket match not found');
+  }
+
+  // Verify player belongs to one of the teams in this match
+  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id !== null);
+  if (participantIds.length > 0) {
+    const teamIds = await getTeamIdsFromParticipants(supabase, participantIds);
+    const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
+    if (!playerInMatch) {
+      throw new BadRequestError('Player is not in this match');
+    }
   }
 
   const isCompletedOrArchived = bracketMatch.status === 4 || bracketMatch.status === 5;
