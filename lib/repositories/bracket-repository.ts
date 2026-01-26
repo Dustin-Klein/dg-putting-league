@@ -495,46 +495,86 @@ export interface SingleBracketMatchForScoring extends BracketMatchForScoring {
 
 /**
  * Get a single bracket match for scoring by ID
+ * Uses two parallel queries to avoid PostgREST 3-level nesting timeout issues
  */
 export async function getMatchForScoringById(
   supabase: Awaited<ReturnType<typeof createClient>>,
   bracketMatchId: number
 ): Promise<SingleBracketMatchForScoring | null> {
-  const { data: bracketMatch, error } = await supabase
-    .from('bracket_match')
-    .select(`
-      id,
-      status,
-      round_id,
-      number,
-      lane_id,
-      opponent1,
-      opponent2,
-      event_id,
-      frames:match_frames(
+  const [matchWithFrames, frameResultsResponse] = await Promise.all([
+    supabase
+      .from('bracket_match')
+      .select(`
         id,
-        frame_number,
-        is_overtime,
-        results:frame_results(
+        status,
+        round_id,
+        number,
+        lane_id,
+        opponent1,
+        opponent2,
+        event_id,
+        frames:match_frames(
           id,
-          event_player_id,
-          putts_made,
-          points_earned
+          frame_number,
+          is_overtime
         )
-      )
-    `)
-    .eq('id', bracketMatchId)
-    .maybeSingle();
+      `)
+      .eq('id', bracketMatchId)
+      .maybeSingle(),
+    supabase
+      .from('frame_results')
+      .select('id, match_frame_id, event_player_id, putts_made, points_earned')
+      .eq('bracket_match_id', bracketMatchId),
+  ]);
 
-  if (error) {
-    throw new InternalError(`Failed to fetch bracket match: ${error.message}`);
+  if (matchWithFrames.error) {
+    throw new InternalError(`Failed to fetch bracket match: ${matchWithFrames.error.message}`);
   }
 
-  if (!bracketMatch) {
+  if (frameResultsResponse.error) {
+    throw new InternalError(`Failed to fetch frame results: ${frameResultsResponse.error.message}`);
+  }
+
+  if (!matchWithFrames.data) {
     return null;
   }
 
-  return bracketMatch as unknown as SingleBracketMatchForScoring;
+  const resultsByFrameId = new Map<string, Array<{
+    id: string;
+    event_player_id: string;
+    putts_made: number;
+    points_earned: number;
+  }>>();
+
+  for (const result of frameResultsResponse.data) {
+    const frameId = result.match_frame_id;
+    if (!resultsByFrameId.has(frameId)) {
+      resultsByFrameId.set(frameId, []);
+    }
+    resultsByFrameId.get(frameId)!.push({
+      id: result.id,
+      event_player_id: result.event_player_id,
+      putts_made: result.putts_made,
+      points_earned: result.points_earned,
+    });
+  }
+
+  const framesWithResults = matchWithFrames.data.frames.map((frame) => ({
+    ...frame,
+    results: resultsByFrameId.get(frame.id) ?? [],
+  }));
+
+  return {
+    id: matchWithFrames.data.id,
+    status: matchWithFrames.data.status,
+    round_id: matchWithFrames.data.round_id,
+    number: matchWithFrames.data.number,
+    lane_id: matchWithFrames.data.lane_id,
+    opponent1: matchWithFrames.data.opponent1,
+    opponent2: matchWithFrames.data.opponent2,
+    event_id: matchWithFrames.data.event_id,
+    frames: framesWithResults,
+  } as SingleBracketMatchForScoring;
 }
 
 /**
