@@ -323,6 +323,8 @@ export async function updateMatchResult(
     } else if (winnerId === opp2?.id) {
       result1 = 'loss';
       result2 = 'win';
+    } else {
+      throw new BadRequestError('Winner ID does not match any opponent in this match');
     }
   } else if (opponent1Score !== opponent2Score) {
     if (opponent1Score > opponent2Score) {
