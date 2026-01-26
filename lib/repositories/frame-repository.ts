@@ -151,7 +151,7 @@ export async function getFrameWithBracketMatch(
     .from('match_frames')
     .select('id, bracket_match_id, bracket_match:bracket_match(event_id)')
     .eq('id', frameId)
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw new InternalError(`Failed to fetch frame: ${error.message}`);
