@@ -566,14 +566,7 @@ export async function getMatchForScoringById(
   }));
 
   return {
-    id: matchWithFrames.data.id,
-    status: matchWithFrames.data.status,
-    round_id: matchWithFrames.data.round_id,
-    number: matchWithFrames.data.number,
-    lane_id: matchWithFrames.data.lane_id,
-    opponent1: matchWithFrames.data.opponent1,
-    opponent2: matchWithFrames.data.opponent2,
-    event_id: matchWithFrames.data.event_id,
+    ...matchWithFrames.data,
     frames: framesWithResults,
   } as SingleBracketMatchForScoring;
 }
