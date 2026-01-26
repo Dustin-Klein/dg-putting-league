@@ -520,6 +520,7 @@ export async function getMatchForScoringById(
         )
       `)
       .eq('id', bracketMatchId)
+      .order('frame_number', { foreignTable: 'match_frames', ascending: true })
       .maybeSingle(),
     supabase
       .from('frame_results')
