@@ -19,7 +19,6 @@ import {
 } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockQueryBuilder,
   createMockEvent,
   createMockBracketMatch,
   createMockMatchFrame,

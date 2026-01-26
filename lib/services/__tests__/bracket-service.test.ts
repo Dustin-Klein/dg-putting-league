@@ -18,7 +18,6 @@ import {
 } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockQueryBuilder,
   createMockEventWithDetails,
   createMockTeam,
   MockSupabaseClient,
