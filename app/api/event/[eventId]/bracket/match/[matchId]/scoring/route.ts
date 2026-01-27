@@ -7,6 +7,7 @@ import {
   completeMatchWithFinalScores,
   correctMatchScores,
 } from '@/lib/services/scoring/match-scoring';
+import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const recordScoreSchema = z.object({
@@ -30,6 +31,7 @@ export async function GET(
 ) {
   try {
     const { eventId, matchId } = await params;
+    await requireEventAdmin(eventId);
     const bracketMatchId = parseInt(matchId, 10);
 
     if (isNaN(bracketMatchId)) {
@@ -52,6 +54,7 @@ export async function POST(
 ) {
   try {
     const { eventId, matchId } = await params;
+    await requireEventAdmin(eventId);
     const bracketMatchId = parseInt(matchId, 10);
 
     if (isNaN(bracketMatchId)) {
@@ -86,6 +89,7 @@ export async function PUT(
 ) {
   try {
     const { eventId, matchId } = await params;
+    await requireEventAdmin(eventId);
     const bracketMatchId = parseInt(matchId, 10);
 
     if (isNaN(bracketMatchId)) {
@@ -124,6 +128,7 @@ export async function PATCH(
 ) {
   try {
     const { eventId, matchId } = await params;
+    await requireEventAdmin(eventId);
     const bracketMatchId = parseInt(matchId, 10);
 
     if (isNaN(bracketMatchId)) {

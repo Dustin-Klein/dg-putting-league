@@ -6,6 +6,7 @@ import {
   completeMatchPublic,
 } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 
 const getMatchSchema = z.object({
   access_code: z.string().min(1),
@@ -31,6 +32,7 @@ export async function POST(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   try {
+    validateCsrfOrigin(req);
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
 
@@ -60,6 +62,7 @@ export async function PUT(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   try {
+    validateCsrfOrigin(req);
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
 
@@ -97,6 +100,7 @@ export async function PATCH(
   { params }: { params: Promise<{ matchId: string }> }
 ) {
   try {
+    validateCsrfOrigin(req);
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
 

@@ -65,10 +65,11 @@ export async function searchPlayersByName(
   searchTerm: string,
   limit: number = 10
 ): Promise<PlayerSearchResult[]> {
+  const escaped = searchTerm.replace(/[%_\\]/g, '\\$&');
   const { data: byName, error } = await supabase
     .from('players')
     .select('id, full_name, player_number')
-    .ilike('full_name', `%${searchTerm}%`)
+    .ilike('full_name', `%${escaped}%`)
     .limit(limit);
 
   if (error) {

@@ -5,6 +5,7 @@ import {
   recordQualificationScore,
 } from '@/lib/services/qualification';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 
 const recordScoreSchema = z.object({
   access_code: z.string().min(1),
@@ -44,6 +45,7 @@ export async function POST(
   { params }: { params: Promise<{ eventPlayerId: string }> }
 ) {
   try {
+    validateCsrfOrigin(req);
     const { eventPlayerId } = await params;
     const body = await req.json();
     const parsed = recordScoreSchema.safeParse(body);
