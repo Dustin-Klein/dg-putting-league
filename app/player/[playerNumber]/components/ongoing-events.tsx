@@ -19,7 +19,7 @@ function getStatusLabel(status: PlayerOngoingEvent['eventStatus']): string {
     case 'bracket':
       return 'In Progress';
     default:
-      return status;
+      return status.charAt(0).toUpperCase() + status.slice(1);
   }
 }
 
