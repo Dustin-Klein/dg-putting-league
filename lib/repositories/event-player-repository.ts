@@ -255,9 +255,9 @@ export async function getAllEventPlayerIdsForPlayer(
 ): Promise<string[]> {
   const { data, error } = await supabase
     .from('event_players')
-    .select('id, event:events!inner(status)')
+    .select('id, event:events!inner()')
     .eq('player_id', playerId)
-    .eq('event.status', 'completed');
+    .filter('event.status', 'eq', 'completed');
 
   if (error) {
     throw new InternalError(`Failed to fetch event players: ${error.message}`);
@@ -326,9 +326,9 @@ export async function getAllEventPlayerIdsForPlayersBulk(
 
   const { data, error } = await supabase
     .from('event_players')
-    .select('id, player_id, event:events!inner(status)')
+    .select('id, player_id, event:events!inner()')
     .in('player_id', playerIds)
-    .eq('event.status', 'completed');
+    .filter('event.status', 'eq', 'completed');
 
   if (error) {
     throw new InternalError(`Failed to fetch event players in bulk: ${error.message}`);
@@ -339,6 +339,13 @@ export async function getAllEventPlayerIdsForPlayersBulk(
     const existing = result.get(row.player_id) || [];
     existing.push(row.id);
     result.set(row.player_id, existing);
+  }
+
+  // Ensure all requested players are in the result, even with empty arrays
+  for (const id of playerIds) {
+    if (!result.has(id)) {
+      result.set(id, []);
+    }
   }
 
   return result;
