@@ -56,7 +56,7 @@ const columns: EventColumn<PlayerOngoingEvent>[] = [
           href={`/event/${event.eventId}/bracket`}
           className="hover:underline"
         >
-          {event.leagueName} - {format(new Date(event.eventDate), 'MMM d, yyyy')}
+          {event.leagueName}
         </Link>
         {event.eventLocation && (
           <span className="text-sm text-muted-foreground">
