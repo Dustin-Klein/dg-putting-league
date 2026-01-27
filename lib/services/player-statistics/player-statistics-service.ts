@@ -43,12 +43,13 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
   );
 
   const eventPlayerIds = eventParticipations.map((ep) => ep.eventPlayerId);
+  const completedEventPlayerIds = completedParticipations.map((ep) => ep.eventPlayerId);
   const completedEventIds = [...new Set(completedParticipations.map((ep) => ep.eventId))];
 
   // First batch: fetch team info, frame results, and placements in parallel
   const [teamInfoMap, frameResults, placements] = await Promise.all([
     playerStatsRepo.getTeamInfoForEventPlayers(supabase, eventPlayerIds),
-    playerStatsRepo.getPlayerFrameResultsWithDetails(supabase, eventPlayerIds),
+    playerStatsRepo.getPlayerFrameResultsWithDetails(supabase, completedEventPlayerIds),
     playerStatsRepo.getPlacementsForEvents(supabase, completedEventIds),
   ]);
 
