@@ -27,7 +27,9 @@ const columns: EventColumn<PlayerEventHistory>[] = [
         href={`/event/${event.eventId}/bracket`}
         className="hover:underline"
       >
-        {format(new Date(event.eventDate), 'MMM d, yyyy')}
+        <time dateTime={event.eventDate}>
+          {format(new Date(event.eventDate), 'MMM d, yyyy')}
+        </time>
       </Link>
     ),
   },
@@ -39,7 +41,10 @@ const columns: EventColumn<PlayerEventHistory>[] = [
           href={`/event/${event.eventId}/bracket`}
           className="hover:underline"
         >
-          {event.leagueName} - {format(new Date(event.eventDate), 'MMM d, yyyy')}
+          {event.leagueName} -{' '}
+          <time dateTime={event.eventDate}>
+            {format(new Date(event.eventDate), 'MMM d, yyyy')}
+          </time>
         </Link>
         {event.eventLocation && (
           <span className="text-sm text-muted-foreground">
