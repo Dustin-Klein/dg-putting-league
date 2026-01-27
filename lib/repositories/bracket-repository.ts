@@ -522,10 +522,7 @@ export async function getMatchForScoringById(
       .eq('id', bracketMatchId)
       .order('frame_number', { foreignTable: 'match_frames', ascending: true })
       .maybeSingle(),
-    supabase
-      .from('frame_results')
-      .select('id, match_frame_id, event_player_id, putts_made, points_earned')
-      .eq('bracket_match_id', bracketMatchId),
+    supabase.rpc('get_frame_results_for_match', { p_bracket_match_id: bracketMatchId }),
   ]);
 
   if (matchWithFrames.error) {

@@ -56,18 +56,16 @@ FOR SELECT
 TO anon, authenticated
 USING (
   EXISTS (
-    SELECT 1 FROM public.match_frames mf
-    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    SELECT 1 FROM public.bracket_match bm
     JOIN public.events e ON e.id = bm.event_id
-    WHERE mf.id = frame_results.match_frame_id
+    WHERE bm.id = frame_results.bracket_match_id
     AND e.status = 'bracket'
   )
   OR EXISTS (
-    SELECT 1 FROM public.match_frames mf
-    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    SELECT 1 FROM public.bracket_match bm
     JOIN public.events e ON e.id = bm.event_id
     JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE mf.id = frame_results.match_frame_id
+    WHERE bm.id = frame_results.bracket_match_id
     AND la.user_id = (select auth.uid())
   )
 );
@@ -78,13 +76,12 @@ FOR INSERT
 TO anon, authenticated
 WITH CHECK (
   EXISTS (
-    SELECT 1 FROM public.match_frames mf
-    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    SELECT 1 FROM public.bracket_match bm
     JOIN public.events e ON e.id = bm.event_id
-    WHERE mf.id = frame_results.match_frame_id
+    WHERE bm.id = frame_results.bracket_match_id
     AND e.status = 'bracket'
   )
-  OR public.is_league_admin_for_match_frame(frame_results.match_frame_id)
+  OR public.is_league_admin_for_bracket_match(frame_results.bracket_match_id)
 );
 
 CREATE POLICY "Enable update for admins or bracket scoring"
@@ -93,13 +90,12 @@ FOR UPDATE
 TO anon, authenticated
 USING (
   EXISTS (
-    SELECT 1 FROM public.match_frames mf
-    JOIN public.bracket_match bm ON bm.id = mf.bracket_match_id
+    SELECT 1 FROM public.bracket_match bm
     JOIN public.events e ON e.id = bm.event_id
-    WHERE mf.id = frame_results.match_frame_id
+    WHERE bm.id = frame_results.bracket_match_id
     AND e.status = 'bracket'
   )
-  OR public.is_league_admin_for_match_frame(frame_results.match_frame_id)
+  OR public.is_league_admin_for_bracket_match(frame_results.bracket_match_id)
 );
 
 CREATE POLICY "Enable delete for league admins"
