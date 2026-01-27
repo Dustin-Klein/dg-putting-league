@@ -5,6 +5,7 @@ import {
   setLaneIdle,
   autoAssignLanes,
 } from '@/lib/services/lane';
+import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const updateLaneSchema = z.object({
@@ -20,15 +21,16 @@ export async function PATCH(
   { params }: { params: Promise<{ eventId: string; laneId: string }> }
 ) {
   try {
+    const resolvedParams = await Promise.resolve(params);
+    const { eventId, laneId } = resolvedParams;
+    await requireEventAdmin(eventId);
+
     const body = await req.json();
     const parsed = updateLaneSchema.safeParse(body);
 
     if (!parsed.success) {
       throw new BadRequestError('Invalid request data. Status must be "idle" or "maintenance"');
     }
-
-    const resolvedParams = await Promise.resolve(params);
-    const { eventId, laneId } = resolvedParams;
 
     let lane;
     if (parsed.data.status === 'maintenance') {

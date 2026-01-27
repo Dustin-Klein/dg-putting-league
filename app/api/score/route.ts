@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getEventScoringContext } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 
 const validateCodeSchema = z.object({
-  access_code: z.string().min(1),
+  access_code: z.string().min(1).max(50),
 });
 
 /**
@@ -15,6 +16,7 @@ const validateCodeSchema = z.object({
  */
 export async function POST(req: Request) {
   try {
+    validateCsrfOrigin(req);
     const body = await req.json();
     const parsed = validateCodeSchema.safeParse(body);
 

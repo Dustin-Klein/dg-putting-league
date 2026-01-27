@@ -4,8 +4,8 @@ import { getBatchPlayerQualificationData } from '@/lib/services/qualification';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 const batchRequestSchema = z.object({
-  access_code: z.string().min(1),
-  event_player_ids: z.array(z.string()).min(1),
+  access_code: z.string().min(1).max(50),
+  event_player_ids: z.array(z.string().uuid()).min(1).max(100),
 });
 
 /**

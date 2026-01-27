@@ -3,6 +3,7 @@ import {
   getLanesWithMatches,
   autoAssignLanes,
 } from '@/lib/services/lane';
+import { requireEventAdmin } from '@/lib/services/event';
 import { handleError } from '@/lib/errors';
 
 /**
@@ -15,6 +16,7 @@ export async function GET(
 ) {
   try {
     const resolvedParams = await Promise.resolve(params);
+    await requireEventAdmin(resolvedParams.eventId);
     const lanes = await getLanesWithMatches(resolvedParams.eventId);
     return NextResponse.json(lanes);
   } catch (error) {
@@ -32,6 +34,7 @@ export async function POST(
 ) {
   try {
     const resolvedParams = await Promise.resolve(params);
+    await requireEventAdmin(resolvedParams.eventId);
     const assignedCount = await autoAssignLanes(resolvedParams.eventId);
     return NextResponse.json({
       success: true,

@@ -1,23 +1,30 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createLeague } from '@/lib/services/league';
 import { handleError, BadRequestError } from '@/lib/errors';
 
+const createLeagueSchema = z.object({
+  name: z.string().min(1).max(255),
+  city: z.string().max(100).optional(),
+});
+
 export async function POST(request: Request) {
   try {
-    let body: { name?: string; city?: string };
+    let body: unknown;
     try {
       body = await request.json();
     } catch {
       throw new BadRequestError('Invalid JSON body');
     }
 
-    if (!body?.name) {
-      throw new BadRequestError('Name is required');
+    const parsed = createLeagueSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestError('Invalid league data');
     }
 
     const league = await createLeague({
-      name: body.name,
-      city: body.city,
+      name: parsed.data.name,
+      city: parsed.data.city,
     });
 
     return NextResponse.json(league, { status: 201 });

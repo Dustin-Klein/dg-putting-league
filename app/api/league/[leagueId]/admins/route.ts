@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
+import { requireLeagueAdmin } from '@/lib/services/auth';
 import { getLeagueAdminsForOwner, addLeagueAdmin } from '@/lib/services/league';
 
 type RouteParams = { params: Promise<{ leagueId: string }> | { leagueId: string } };
@@ -21,6 +22,7 @@ export async function GET(
   try {
     const params = await Promise.resolve(paramsPromise);
     const { leagueId } = paramsSchema.parse(params);
+    await requireLeagueAdmin(leagueId);
     const admins = await getLeagueAdminsForOwner(leagueId);
     return NextResponse.json({ admins });
   } catch (error) {
