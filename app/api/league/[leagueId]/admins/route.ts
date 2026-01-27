@@ -4,6 +4,7 @@ import { handleError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
 import { requireLeagueAdmin } from '@/lib/services/auth';
 import { getLeagueAdminsForOwner, addLeagueAdmin } from '@/lib/services/league';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 type RouteParams = { params: Promise<{ leagueId: string }> | { leagueId: string } };
 
@@ -34,6 +35,9 @@ export async function POST(
   request: Request,
   { params: paramsPromise }: RouteParams
 ) {
+  const rateLimitResponse = withStrictRateLimit(request, 'league:admins:add');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(request);
     const params = await Promise.resolve(paramsPromise);

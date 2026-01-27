@@ -5,6 +5,7 @@ import {
   transitionEventToBracket,
 } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 const teamMemberSchema = z.object({
   eventPlayerId: z.string(),
@@ -37,6 +38,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
+  const rateLimitResponse = withStrictRateLimit(req, 'event:start-bracket');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await req.json();
     const parsed = startBracketSchema.safeParse(body);

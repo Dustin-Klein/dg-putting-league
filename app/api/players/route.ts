@@ -3,8 +3,12 @@ import { z } from 'zod';
 import { createPlayer } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
+import { withRateLimit } from '@/lib/middleware/rate-limit';
 
 export async function POST(request: Request) {
+  const rateLimitResponse = withRateLimit(request, 'players:create');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const schema = z.object({
       name: z.string().trim().min(1),
