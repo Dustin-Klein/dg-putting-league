@@ -4,6 +4,7 @@ import { handleError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
 import { requireLeagueAdmin } from '@/lib/services/auth';
 import { removeLeagueAdmin } from '@/lib/services/league';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 type RouteParams = { params: Promise<{ leagueId: string; userId: string }> };
 
@@ -16,6 +17,9 @@ export async function DELETE(
   request: Request,
   { params }: RouteParams
 ) {
+  const rateLimitResponse = withStrictRateLimit(request, 'league:admins:remove');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(request);
     const { leagueId, userId } = paramsSchema.parse(await params);

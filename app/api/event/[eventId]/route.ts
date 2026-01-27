@@ -11,6 +11,7 @@ import {
   handleError,
   BadRequestError,
 } from '@/lib/errors';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 const updateEventSchema = z.object({
   status: z.enum([
@@ -34,9 +35,12 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: Request,
+  request: Request,
   { params }: { params: { eventId: string } | Promise<{ eventId: string }> }
 ) {
+  const rateLimitResponse = withStrictRateLimit(request, 'event:delete');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const resolvedParams = await Promise.resolve(params);
     await deleteEvent(resolvedParams.eventId);

@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { searchPlayers, searchPlayersPublic } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withRateLimit } from '@/lib/middleware/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const rateLimitResponse = withRateLimit(request, 'players:search');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const { searchParams } = new URL(request.url);
 
