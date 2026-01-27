@@ -43,8 +43,8 @@ describe('Player Statistics Service', () => {
 
       // Mock participations: 2 events
       (playerStatsRepo.getPlayerEventParticipations as jest.Mock).mockResolvedValue([
-        { eventPlayerId: 'ep1', eventId: 'e1', eventDate: '2024-01-01', leagueId: 'l1', leagueName: 'L1' },
-        { eventPlayerId: 'ep2', eventId: 'e2', eventDate: '2024-01-08', leagueId: 'l1', leagueName: 'L1' },
+        { eventPlayerId: 'ep1', eventId: 'e1', eventDate: '2024-01-01', leagueId: 'l1', leagueName: 'L1', eventStatus: 'completed' },
+        { eventPlayerId: 'ep2', eventId: 'e2', eventDate: '2024-01-08', leagueId: 'l1', leagueName: 'L1', eventStatus: 'completed' },
       ]);
 
       // Mock team info: Same team ID for both events
