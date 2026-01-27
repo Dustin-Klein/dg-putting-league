@@ -32,6 +32,8 @@ export interface EventParticipation {
   pool: 'A' | 'B' | null;
   leagueId: string;
   leagueName: string;
+  location: string | null;
+  eventStatus: 'created' | 'pre-bracket' | 'bracket' | 'completed';
 }
 
 /**
@@ -51,6 +53,8 @@ export async function getPlayerEventParticipations(
         id,
         event_date,
         league_id,
+        location,
+        status,
         league:leagues(
           id,
           name
@@ -70,6 +74,8 @@ export async function getPlayerEventParticipations(
     id: string;
     event_date: string;
     league_id: string;
+    location: string | null;
+    status: 'created' | 'pre-bracket' | 'bracket' | 'completed';
     league: { id: string; name: string } | null;
   }
 
@@ -84,6 +90,8 @@ export async function getPlayerEventParticipations(
         pool: row.pool as 'A' | 'B' | null,
         leagueId: event.league_id,
         leagueName: event.league?.name || 'Unknown League',
+        location: event.location,
+        eventStatus: event.status,
       };
     });
 }

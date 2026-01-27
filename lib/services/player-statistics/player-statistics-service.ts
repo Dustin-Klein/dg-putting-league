@@ -5,6 +5,7 @@ import type {
   PlayerProfile,
   PlayerStatistics,
   PlayerEventHistory,
+  PlayerOngoingEvent,
 } from '@/lib/types/player-statistics';
 import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
 
@@ -29,17 +30,26 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
       player,
       statistics: createEmptyStatistics(),
       eventHistory: [],
+      ongoingEvents: [],
     };
   }
 
+  // Separate completed events from ongoing events
+  const completedParticipations = eventParticipations.filter(
+    (ep) => ep.eventStatus === 'completed'
+  );
+  const ongoingParticipations = eventParticipations.filter(
+    (ep) => ep.eventStatus !== 'completed'
+  );
+
   const eventPlayerIds = eventParticipations.map((ep) => ep.eventPlayerId);
-  const eventIds = [...new Set(eventParticipations.map((ep) => ep.eventId))];
+  const completedEventIds = [...new Set(completedParticipations.map((ep) => ep.eventId))];
 
   // First batch: fetch team info, frame results, and placements in parallel
   const [teamInfoMap, frameResults, placements] = await Promise.all([
     playerStatsRepo.getTeamInfoForEventPlayers(supabase, eventPlayerIds),
     playerStatsRepo.getPlayerFrameResultsWithDetails(supabase, eventPlayerIds),
-    playerStatsRepo.getPlacementsForEvents(supabase, eventIds),
+    playerStatsRepo.getPlacementsForEvents(supabase, completedEventIds),
   ]);
 
   // Second: fetch match records (depends on team info)
@@ -47,18 +57,20 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
   const matchRecordsByTeam = await playerStatsRepo.getMatchRecordsForTeams(
     supabase,
     teamIds,
-    eventIds
+    completedEventIds
   );
 
   const eventHistory = buildEventHistory(
-    eventParticipations,
+    completedParticipations,
     teamInfoMap,
     matchRecordsByTeam,
     placements
   );
 
+  const ongoingEvents = buildOngoingEvents(ongoingParticipations, teamInfoMap);
+
   const statistics = calculateStatistics(
-    eventParticipations,
+    completedParticipations,
     matchRecordsByTeam,
     frameResults,
     placements,
@@ -69,6 +81,7 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
     player,
     statistics,
     eventHistory,
+    ongoingEvents,
   };
 }
 
@@ -108,10 +121,33 @@ function buildEventHistory(
       eventDate: ep.eventDate,
       leagueId: ep.leagueId,
       leagueName: ep.leagueName,
+      eventLocation: ep.location,
       pool: ep.pool,
       placement: placement ?? null,
       wins: record?.wins ?? 0,
       losses: record?.losses ?? 0,
+      teammateId: teamInfo?.teammatePlayerId ?? null,
+      teammateName: teamInfo?.teammateName ?? null,
+      seed: teamInfo?.seed ?? null,
+    };
+  });
+}
+
+function buildOngoingEvents(
+  participations: playerStatsRepo.EventParticipation[],
+  teamInfoMap: Map<string, playerStatsRepo.TeamInfo>
+): PlayerOngoingEvent[] {
+  return participations.map((ep) => {
+    const teamInfo = teamInfoMap.get(ep.eventPlayerId);
+
+    return {
+      eventId: ep.eventId,
+      eventDate: ep.eventDate,
+      leagueId: ep.leagueId,
+      leagueName: ep.leagueName,
+      eventLocation: ep.location,
+      eventStatus: ep.eventStatus,
+      pool: ep.pool,
       teammateId: teamInfo?.teammatePlayerId ?? null,
       teammateName: teamInfo?.teammateName ?? null,
       seed: teamInfo?.seed ?? null,
