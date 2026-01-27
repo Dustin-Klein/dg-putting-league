@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PlayerHeader } from './components/player-header';
 import { StatsOverview } from './components/stats-overview';
+import { OngoingEvents } from './components/ongoing-events';
 import { EventHistory } from './components/event-history';
 import type { PlayerProfile } from '@/lib/types/player-statistics';
 
@@ -89,6 +90,7 @@ export default function PlayerProfilePage() {
 
       <PlayerHeader player={profile.player} />
       <StatsOverview statistics={profile.statistics} />
+      <OngoingEvents ongoingEvents={profile.ongoingEvents} />
       <EventHistory eventHistory={profile.eventHistory} />
     </div>
   );
