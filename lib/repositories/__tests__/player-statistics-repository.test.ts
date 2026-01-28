@@ -155,6 +155,7 @@ describe('Player Statistics Repository', () => {
       expect(result).toHaveLength(1);
       expect(result[0].eventPlayerId).toBe('ep-2');
       expect(result[0].leagueName).toBe('Unknown League');
+      expect(result[0].location).toBeNull();
     });
 
     it('should return empty array when no data', async () => {

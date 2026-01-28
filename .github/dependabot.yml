@@ -10,6 +10,10 @@ updates:
       all-npm-dependencies:
         patterns:
           - "*"
+        exclude-patterns:
+          - "next"
+          - "react"
+          - "react-dom"
 
   - package-ecosystem: "github-actions"
     directory: "/"

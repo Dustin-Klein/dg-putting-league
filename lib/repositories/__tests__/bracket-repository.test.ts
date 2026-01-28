@@ -591,15 +591,10 @@ describe('Bracket Repository', () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
       mockQuery.eq.mockReturnThis();
-      // Chain .not() twice - first returns this, second resolves
-      let notCallCount = 0;
-      mockQuery.not.mockImplementation(() => {
-        notCallCount++;
-        if (notCallCount === 2) {
-          return Promise.resolve({ data: mockMatches, error: null });
-        }
-        return mockQuery;
-      });
+      mockQuery.not.mockReturnThis();
+      // Make the query builder thenable to resolve at chain end
+      (mockQuery as any).then = (resolve: (value: unknown) => void) =>
+        resolve({ data: mockMatches, error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
       const result = await getMatchesByStageId(mockSupabase as any, 1);
