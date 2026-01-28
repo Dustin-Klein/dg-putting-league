@@ -16,16 +16,19 @@ import {
  */
 export function handleError(error: unknown) {
   if (error instanceof ZodError) {
-    // Log detailed validation errors server-side only
-    console.error('Validation error:', error.issues);
+    // Log validation errors without user-supplied values to avoid PII in logs
+    const sanitizedIssues = error.issues.map((issue) => ({
+      path: issue.path,
+      code: issue.code,
+      message: issue.message,
+    }));
+    console.error('Validation error:', sanitizedIssues);
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   if (error instanceof UnauthorizedError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (error instanceof ForbiddenError) {
-    // Log specific error server-side, return generic message to client
-    console.error('Forbidden:', error.message);
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   if (error instanceof BadRequestError) {
