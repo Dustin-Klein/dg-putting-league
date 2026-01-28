@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createLeague } from '@/lib/services/league';
 import { handleError, BadRequestError } from '@/lib/errors';
@@ -9,7 +9,7 @@ const createLeagueSchema = z.object({
   city: z.string().max(100).optional(),
 });
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const rateLimitResponse = withStrictRateLimit(request, 'league:create');
   if (rateLimitResponse) return rateLimitResponse;
 

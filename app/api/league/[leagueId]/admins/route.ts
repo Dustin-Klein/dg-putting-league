@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
@@ -32,7 +32,7 @@ export async function GET(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params: paramsPromise }: RouteParams
 ) {
   const rateLimitResponse = withStrictRateLimit(request, 'league:admins:add');

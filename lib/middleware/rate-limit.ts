@@ -1,5 +1,5 @@
 import 'server-only';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface RateLimitEntry {
   count: number;
@@ -23,7 +23,12 @@ const strictConfig: RateLimitConfig = {
   maxRequests: 10, // 10 requests per minute for sensitive operations
 };
 
-function getClientIp(request: Request): string {
+function getClientIp(request: NextRequest): string {
+  // request.ip is available on Vercel/Edge runtime but not in all environments
+  const ip = (request as NextRequest & { ip?: string }).ip;
+  if (ip) {
+    return ip;
+  }
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
     return forwarded.split(',')[0].trim();
@@ -41,7 +46,7 @@ function cleanupExpiredEntries(): void {
 }
 
 export function checkRateLimit(
-  request: Request,
+  request: NextRequest,
   routeKey: string,
   config: RateLimitConfig = defaultConfig
 ): { allowed: boolean; remaining: number; resetTime: number } {
@@ -99,7 +104,7 @@ export function rateLimitResponse(resetTime: number): NextResponse {
 }
 
 export function withRateLimit(
-  request: Request,
+  request: NextRequest,
   routeKey: string,
   config: RateLimitConfig = defaultConfig
 ): NextResponse | null {
@@ -111,7 +116,7 @@ export function withRateLimit(
 }
 
 export function withStrictRateLimit(
-  request: Request,
+  request: NextRequest,
   routeKey: string
 ): NextResponse | null {
   return withRateLimit(request, routeKey, strictConfig);

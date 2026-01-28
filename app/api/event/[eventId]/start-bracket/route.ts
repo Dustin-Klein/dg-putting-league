@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   getEventWithPlayers,
@@ -35,7 +35,7 @@ const startBracketSchema = z.object({
 });
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
   const rateLimitResponse = withStrictRateLimit(req, 'event:start-bracket');

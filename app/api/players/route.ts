@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createPlayer } from '@/lib/services/player';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { withRateLimit } from '@/lib/middleware/rate-limit';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const rateLimitResponse = withRateLimit(request, 'players:create');
   if (rateLimitResponse) return rateLimitResponse;
 

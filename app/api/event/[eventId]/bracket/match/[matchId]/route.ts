@@ -6,6 +6,7 @@ import {
 } from '@/lib/services/bracket';
 import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
 
 const updateMatchSchema = z.object({
   opponent1Score: z.number().min(0).optional(),
@@ -19,6 +20,7 @@ export async function PATCH(
   { params }: { params: Promise<{ eventId: string; matchId: string }> }
 ) {
   try {
+    validateCsrfOrigin(req);
     const { eventId, matchId } = await params;
     await requireEventAdmin(eventId);
     const matchIdNum = parseInt(matchId, 10);

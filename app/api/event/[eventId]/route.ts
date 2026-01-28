@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   getEventWithPlayers,
@@ -35,7 +35,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { eventId: string } | Promise<{ eventId: string }> }
 ) {
   const rateLimitResponse = withStrictRateLimit(request, 'event:delete');
