@@ -9,6 +9,8 @@
  * - Player status queries
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   createMockSupabaseClient,
   createMockQueryBuilder,

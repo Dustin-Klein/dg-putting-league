@@ -9,6 +9,8 @@
  * - Membership verification
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   createMockSupabaseClient,
   createMockQueryBuilder,

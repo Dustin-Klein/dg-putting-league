@@ -6,11 +6,12 @@
  * - Standalone bracket match functions
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   createMockSupabaseClient,
   createMockQueryBuilder,
   MockSupabaseClient,
-  MockSupabaseQuery,
 } from '@/lib/services/__tests__/test-utils';
 import { InternalError, BadRequestError } from '@/lib/errors';
 import { Status } from 'brackets-model';
@@ -89,8 +90,8 @@ describe('Bracket Repository', () => {
         mockSupabase.from.mockReturnValue(mockQuery);
 
         const result = await storage.insert('match', [
-          { stage_id: 1, group_id: 1, round_id: 1, number: 1, status: Status.Pending },
-          { stage_id: 1, group_id: 1, round_id: 1, number: 2, status: Status.Pending },
+          { stage_id: 1, group_id: 1, round_id: 1, number: 1, status: Status.Waiting },
+          { stage_id: 1, group_id: 1, round_id: 1, number: 2, status: Status.Waiting },
         ] as any);
 
         expect(result).toBe(true);
@@ -103,7 +104,7 @@ describe('Bracket Repository', () => {
         mockSupabase.from.mockReturnValue(mockQuery);
 
         const result = await storage.insert('match', [
-          { stage_id: 1, group_id: 1, round_id: 1, number: 1, status: Status.Pending },
+          { stage_id: 1, group_id: 1, round_id: 1, number: 1, status: Status.Waiting },
         ] as any);
 
         expect(result).toBe(false);
