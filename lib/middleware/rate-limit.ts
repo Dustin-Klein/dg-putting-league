@@ -7,6 +7,15 @@ interface RateLimitEntry {
 }
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
+const MAX_STORE_SIZE = 10000;
+
+function evictOldestEntries(count: number): void {
+  const entries = Array.from(rateLimitStore.entries());
+  entries.sort((a, b) => a[1].resetTime - b[1].resetTime);
+  for (let i = 0; i < count && i < entries.length; i++) {
+    rateLimitStore.delete(entries[i][0]);
+  }
+}
 
 interface RateLimitConfig {
   windowMs: number;
@@ -62,6 +71,9 @@ export function checkRateLimit(
   const entry = rateLimitStore.get(key);
 
   if (!entry || entry.resetTime < now) {
+    if (rateLimitStore.size >= MAX_STORE_SIZE) {
+      evictOldestEntries(Math.ceil(MAX_STORE_SIZE * 0.1));
+    }
     const newEntry: RateLimitEntry = {
       count: 1,
       resetTime: now + config.windowMs,
