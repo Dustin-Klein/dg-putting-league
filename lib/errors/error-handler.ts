@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ForbiddenError,
 } from "./custom-errors";
+import { logger } from "../utils/logger";
 
 /**
  * Converts domain errors to appropriate HTTP responses.
@@ -16,13 +17,12 @@ import {
  */
 export function handleError(error: unknown) {
   if (error instanceof ZodError) {
-    // Log validation errors without user-supplied values to avoid PII in logs
     const sanitizedIssues = error.issues.map((issue) => ({
       path: issue.path,
       code: issue.code,
       message: issue.message,
     }));
-    console.error('Validation error:', sanitizedIssues);
+    logger.error('Validation error', { issues: sanitizedIssues });
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   if (error instanceof UnauthorizedError) {
@@ -37,6 +37,8 @@ export function handleError(error: unknown) {
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
-  console.error(error);
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  const errorName = error instanceof Error ? error.name : undefined;
+  logger.error('Unhandled error', { name: errorName, message: errorMessage });
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
 }
