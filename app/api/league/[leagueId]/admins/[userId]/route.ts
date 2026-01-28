@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
@@ -14,7 +14,7 @@ const paramsSchema = z.object({
 });
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: RouteParams
 ) {
   const rateLimitResponse = withStrictRateLimit(request, 'league:admins:remove');
