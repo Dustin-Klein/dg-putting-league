@@ -370,7 +370,7 @@ describe('Qualification Repository', () => {
   });
 
   describe('getEventPlayersQualificationStatus', () => {
-    it('should return qualification status for all paid players', async () => {
+    it('should return qualification status for only paid players', async () => {
       const mockRound = { frame_count: 5 };
       const mockPlayers = [
         {
@@ -429,6 +429,8 @@ describe('Qualification Repository', () => {
       const result = await getEventPlayersQualificationStatus(mockSupabase as any, 'event-123');
 
       expect(result).toHaveLength(2);
+      expect(playersQuery.eq).toHaveBeenCalledWith('event_id', 'event-123');
+      expect(playersQuery.eq).toHaveBeenCalledWith('has_paid', true);
       expect(result[0]).toEqual({
         event_player_id: 'ep-1',
         player_id: 'p1',

@@ -7,10 +7,6 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: [
           {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self'; style-src 'self';",
-          },
-          {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
