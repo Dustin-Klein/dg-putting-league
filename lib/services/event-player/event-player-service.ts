@@ -331,5 +331,10 @@ export async function computePoolAssignments(
     defaultPool: player.defaultPool,
   }));
 
-  return assignments;
+  return assignments.sort((a, b) => {
+    if (a.pool !== b.pool) {
+      return a.pool === 'A' ? -1 : 1;
+    }
+    return b.pfaScore - a.pfaScore;
+  });
 }
