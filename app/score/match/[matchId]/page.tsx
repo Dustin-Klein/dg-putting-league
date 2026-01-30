@@ -9,6 +9,8 @@ import { ReviewSubmit } from './components/review-submit';
 import type { WizardStage, MatchInfo, ScoreState } from './components/wizard-types';
 import { getFrameNumbers, getScoreKey, areScoresTiedWithLocalScores } from './components/wizard-types';
 
+const SKIP_REFETCH_WINDOW_MS = 2000;
+
 export default function MatchScoringPage({
   params,
 }: {
@@ -118,7 +120,7 @@ export default function MatchScoringPage({
         },
         () => {
           // Skip refetch if we recently saved (realtime events from our own upsert)
-          if (Date.now() - lastSaveTimestampRef.current > 2000) {
+          if (Date.now() - lastSaveTimestampRef.current > SKIP_REFETCH_WINDOW_MS) {
             fetchMatch(accessCode, matchId, false);
           }
         }
@@ -153,6 +155,7 @@ export default function MatchScoringPage({
     if (frameScores.length === 0) return true;
 
     try {
+      lastSaveTimestampRef.current = Date.now();
       const response = await fetch(`/api/score/match/${matchId}/batch`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -169,7 +172,6 @@ export default function MatchScoringPage({
       }
 
       const updatedMatch = await response.json();
-      lastSaveTimestampRef.current = Date.now();
       setMatch(updatedMatch);
 
       // Clear local scores for this frame now that server confirmed
