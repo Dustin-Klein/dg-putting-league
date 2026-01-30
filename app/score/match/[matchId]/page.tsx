@@ -31,8 +31,8 @@ export default function MatchScoringPage({
   // Optimistic local scores for immediate UI feedback
   const [localScores, setLocalScores] = useState<ScoreState>(new Map());
 
-  // Track if we're currently saving to avoid refetch during our own updates
-  const isSavingRef = useRef(false);
+  // Track last save time to avoid refetch during our own updates
+  const lastSaveTimestampRef = useRef(0);
 
   // Resolve params
   useEffect(() => {
@@ -117,8 +117,8 @@ export default function MatchScoringPage({
           filter: `bracket_match_id=eq.${bracketMatchId}`,
         },
         () => {
-          // Only refetch if we're not the one saving
-          if (!isSavingRef.current) {
+          // Skip refetch if we recently saved (realtime events from our own upsert)
+          if (Date.now() - lastSaveTimestampRef.current > 2000) {
             fetchMatch(accessCode, matchId, false);
           }
         }
@@ -152,8 +152,6 @@ export default function MatchScoringPage({
     // Only call API if there are local scores to save
     if (frameScores.length === 0) return true;
 
-    isSavingRef.current = true;
-
     try {
       const response = await fetch(`/api/score/match/${matchId}/batch`, {
         method: 'PUT',
@@ -171,6 +169,7 @@ export default function MatchScoringPage({
       }
 
       const updatedMatch = await response.json();
+      lastSaveTimestampRef.current = Date.now();
       setMatch(updatedMatch);
 
       // Clear local scores for this frame now that server confirmed
@@ -188,8 +187,6 @@ export default function MatchScoringPage({
       console.error('Failed to save frame scores:', err);
       setError(err instanceof Error ? err.message : 'Failed to save scores');
       return false;
-    } finally {
-      isSavingRef.current = false;
     }
   }, [accessCode, matchId, match, localScores]);
 
