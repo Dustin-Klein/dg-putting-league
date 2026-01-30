@@ -23,7 +23,7 @@ BEGIN
 
   -- Clear lane from match
   UPDATE public.bracket_match
-  SET lane_id = NULL
+  SET lane_id = NULL, lane_assigned_at = NULL
   WHERE id = p_match_id AND event_id = p_event_id;
 
   -- Set lane to idle (lock the lane row first)

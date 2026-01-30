@@ -43,7 +43,7 @@ BEGIN
 
   -- Assign lane to match (keep current status)
   UPDATE public.bracket_match
-  SET lane_id = p_lane_id
+  SET lane_id = p_lane_id, lane_assigned_at = NOW()
   WHERE id = p_match_id AND event_id = p_event_id;
 
   IF NOT FOUND THEN

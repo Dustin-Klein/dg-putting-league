@@ -20,6 +20,7 @@ interface MatchWithTeamInfo extends Match {
   team1?: Team;
   team2?: Team;
   lane_id?: string | null;
+  lane_assigned_at?: string | null;
 }
 
 interface RoundWithMatches extends Round {
@@ -276,13 +277,14 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
             const opp1 = match.opponent1 as { id: number | null } | null;
             const opp2 = match.opponent2 as { id: number | null } | null;
             // Cast to access lane_id which is on the db record but not in brackets-model Match type
-            const matchWithLane = match as Match & { lane_id?: string | null };
+            const matchWithLane = match as Match & { lane_id?: string | null; lane_assigned_at?: string | null };
 
             return {
               ...match,
               team1: getTeamForParticipant(opp1?.id ?? null, participantTeamMap),
               team2: getTeamForParticipant(opp2?.id ?? null, participantTeamMap),
               lane_id: matchWithLane.lane_id,
+              lane_assigned_at: matchWithLane.lane_assigned_at,
             } as MatchWithTeamInfo;
           })
           .sort((a, b) => a.number - b.number);
@@ -406,6 +408,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                           team2={match.team2}
                           matchNumber={matchNumberMap.get(match.id) || 0}
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
+                          laneAssignedAt={match.lane_assigned_at ?? undefined}
                           onClick={() => onMatchClick?.(match)}
                           isClickable={
                             !!onMatchClick && (

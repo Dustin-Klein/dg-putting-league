@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,12 +15,39 @@ interface OpponentData {
   position?: number;
 }
 
+const IDLE_THRESHOLD_MS = 120_000;
+
+function useIsIdle(laneAssignedAt: string | undefined, status: number, bothTeamsPresent: boolean): boolean {
+  const [isIdle, setIsIdle] = useState(false);
+
+  useEffect(() => {
+    if (!laneAssignedAt || status !== Status.Ready || !bothTeamsPresent) {
+      setIsIdle(false);
+      return;
+    }
+
+    const assignedTime = new Date(laneAssignedAt).getTime();
+
+    const check = () => {
+      const elapsed = Date.now() - assignedTime;
+      setIsIdle(elapsed >= IDLE_THRESHOLD_MS);
+    };
+
+    check();
+    const interval = setInterval(check, 10_000);
+    return () => clearInterval(interval);
+  }, [laneAssignedAt, status, bothTeamsPresent]);
+
+  return isIdle;
+}
+
 interface MatchCardProps {
   match: Match;
   team1?: Team;
   team2?: Team;
   matchNumber: number;
   laneLabel?: string;
+  laneAssignedAt?: string;
   onClick?: () => void;
   isClickable?: boolean;
   isCorrectionMode?: boolean;
@@ -91,12 +119,15 @@ export function MatchCard({
   team2,
   matchNumber,
   laneLabel,
+  laneAssignedAt,
   onClick,
   isClickable = false,
   isCorrectionMode = false,
 }: MatchCardProps) {
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
+  const bothTeamsPresent = opponent1?.id != null && opponent2?.id != null;
+  const isIdle = useIsIdle(laneAssignedAt, match.status, bothTeamsPresent);
 
   const showScore =
     match.status === Status.Running ||
@@ -117,10 +148,14 @@ export function MatchCard({
       className={cn(
         'w-64 overflow-hidden transition-all relative',
         isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/50',
-        match.status === Status.Running && 'ring-2 ring-blue-400'
+        match.status === Status.Running && 'border-2 border-blue-400',
+        isIdle && 'shadow-[0_0_12px_rgba(245,158,11,0.5)]'
       )}
       onClick={isClickable ? onClick : undefined}
     >
+      {isIdle && (
+        <div className="absolute inset-0 border-2 border-amber-500 rounded-[inherit] animate-pulse-ring pointer-events-none z-10" />
+      )}
       {isCorrectionMode && (
         <div className="absolute top-0 left-0">
           <Pencil className="h-3 w-3 text-amber-600 dark:text-amber-400 m-1" />

@@ -37,7 +37,7 @@ BEGIN
   ),
   updated_matches AS (
     UPDATE public.bracket_match m
-    SET lane_id = ul.id
+    SET lane_id = ul.id, lane_assigned_at = NOW()
     FROM updated_lanes ul
     WHERE m.id = ul.match_id
       AND m.event_id = p_event_id
