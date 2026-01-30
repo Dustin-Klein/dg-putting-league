@@ -422,6 +422,170 @@ describe('Event Player Service', () => {
       expect(result[1].scoringMethod).toBe('default');
     });
 
+    it('should place default players directly into their defaultPool when mixed with PFA players', async () => {
+      // 6 PFA players + 4 default players (2 default-A, 2 default-B) = 10 total
+      const players = createMockEventPlayers(10, eventId);
+
+      // Set default pools: first 4 are default players
+      players[0].player.default_pool = 'A';
+      players[1].player.default_pool = 'A';
+      players[2].player.default_pool = 'B';
+      players[3].player.default_pool = 'B';
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      // Players 0-3: no PFA (default), Players 4-9: have PFA scores
+      const pfaScores = new Map<string, { totalPoints: number; frameCount: number }>();
+      pfaScores.set(players[4].player_id, { totalPoints: 50, frameCount: 10 }); // 5.0
+      pfaScores.set(players[5].player_id, { totalPoints: 45, frameCount: 10 }); // 4.5
+      pfaScores.set(players[6].player_id, { totalPoints: 40, frameCount: 10 }); // 4.0
+      pfaScores.set(players[7].player_id, { totalPoints: 35, frameCount: 10 }); // 3.5
+      pfaScores.set(players[8].player_id, { totalPoints: 30, frameCount: 10 }); // 3.0
+      pfaScores.set(players[9].player_id, { totalPoints: 25, frameCount: 10 }); // 2.5
+      // Players 0-3 have no PFA data (will be 'default' scoring method)
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
+
+      const result = await computePoolAssignments(eventId, event);
+
+      // Default-A players should be in Pool A
+      const defaultAPlayers = result.filter(
+        r => r.scoringMethod === 'default' && r.defaultPool === 'A'
+      );
+      expect(defaultAPlayers.every(p => p.pool === 'A')).toBe(true);
+      expect(defaultAPlayers).toHaveLength(2);
+
+      // Default-B players should be in Pool B
+      const defaultBPlayers = result.filter(
+        r => r.scoringMethod === 'default' && r.defaultPool === 'B'
+      );
+      expect(defaultBPlayers.every(p => p.pool === 'B')).toBe(true);
+      expect(defaultBPlayers).toHaveLength(2);
+
+      // Pool A should have 5 total (ceil(10/2)), Pool B should have 5
+      expect(result.filter(r => r.pool === 'A')).toHaveLength(5);
+      expect(result.filter(r => r.pool === 'B')).toHaveLength(5);
+
+      // Top 3 scored players should be in A, bottom 3 in B
+      const scoredInA = result.filter(r => r.scoringMethod === 'pfa' && r.pool === 'A');
+      const scoredInB = result.filter(r => r.scoringMethod === 'pfa' && r.pool === 'B');
+      expect(scoredInA).toHaveLength(3);
+      expect(scoredInB).toHaveLength(3);
+      // All scored-A players should have higher scores than scored-B players
+      const minScoreInA = Math.min(...scoredInA.map(p => p.pfaScore));
+      const maxScoreInB = Math.max(...scoredInB.map(p => p.pfaScore));
+      expect(minScoreInA).toBeGreaterThan(maxScoreInB);
+    });
+
+    it('should handle all new players with direct pool placement', async () => {
+      // 6 default players (3 default-A, 3 default-B), no PFA players
+      const players = createMockEventPlayers(6, eventId);
+      players[0].player.default_pool = 'A';
+      players[1].player.default_pool = 'A';
+      players[2].player.default_pool = 'A';
+      players[3].player.default_pool = 'B';
+      players[4].player.default_pool = 'B';
+      players[5].player.default_pool = 'B';
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      // No PFA data for any player
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await computePoolAssignments(eventId, event);
+
+      expect(result.filter(r => r.pool === 'A')).toHaveLength(3);
+      expect(result.filter(r => r.pool === 'B')).toHaveLength(3);
+      // Each player should be in their defaultPool
+      result.forEach(r => {
+        expect(r.pool).toBe(r.defaultPool);
+      });
+    });
+
+    it('should handle imbalanced default pool preferences', async () => {
+      // 4 PFA players + 4 default players (3 default-A, 1 default-B) = 8 total
+      const players = createMockEventPlayers(8, eventId);
+
+      // First 4 are default players
+      players[0].player.default_pool = 'A';
+      players[1].player.default_pool = 'A';
+      players[2].player.default_pool = 'A';
+      players[3].player.default_pool = 'B';
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      const pfaScores = new Map<string, { totalPoints: number; frameCount: number }>();
+      pfaScores.set(players[4].player_id, { totalPoints: 40, frameCount: 10 }); // 4.0
+      pfaScores.set(players[5].player_id, { totalPoints: 30, frameCount: 10 }); // 3.0
+      pfaScores.set(players[6].player_id, { totalPoints: 20, frameCount: 10 }); // 2.0
+      pfaScores.set(players[7].player_id, { totalPoints: 10, frameCount: 10 }); // 1.0
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
+
+      const result = await computePoolAssignments(eventId, event);
+
+      // poolASize = ceil(8/2) = 4, defaultACount = 3, scoredForA = max(0, 4-3) = 1
+      const defaultA = result.filter(r => r.scoringMethod === 'default' && r.defaultPool === 'A');
+      const defaultB = result.filter(r => r.scoringMethod === 'default' && r.defaultPool === 'B');
+      expect(defaultA.every(p => p.pool === 'A')).toBe(true);
+      expect(defaultB.every(p => p.pool === 'B')).toBe(true);
+
+      // 1 PFA player in A, 3 PFA players in B
+      const pfaInA = result.filter(r => r.scoringMethod === 'pfa' && r.pool === 'A');
+      const pfaInB = result.filter(r => r.scoringMethod === 'pfa' && r.pool === 'B');
+      expect(pfaInA).toHaveLength(1);
+      expect(pfaInB).toHaveLength(3);
+
+      // The one PFA player in A should be the highest scored
+      expect(pfaInA[0].pfaScore).toBe(4.0);
+    });
+
+    it('should behave as before when all players have PFA scores', async () => {
+      // 6 PFA players, no default players — regression test
+      const players = createMockEventPlayers(6, eventId);
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      const pfaScores = new Map<string, { totalPoints: number; frameCount: number }>();
+      pfaScores.set(players[0].player_id, { totalPoints: 60, frameCount: 10 }); // 6.0
+      pfaScores.set(players[1].player_id, { totalPoints: 50, frameCount: 10 }); // 5.0
+      pfaScores.set(players[2].player_id, { totalPoints: 40, frameCount: 10 }); // 4.0
+      pfaScores.set(players[3].player_id, { totalPoints: 30, frameCount: 10 }); // 3.0
+      pfaScores.set(players[4].player_id, { totalPoints: 20, frameCount: 10 }); // 2.0
+      pfaScores.set(players[5].player_id, { totalPoints: 10, frameCount: 10 }); // 1.0
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
+
+      const result = await computePoolAssignments(eventId, event);
+
+      // Top 3 in Pool A, bottom 3 in Pool B
+      const poolA = result.filter(r => r.pool === 'A');
+      const poolB = result.filter(r => r.pool === 'B');
+      expect(poolA).toHaveLength(3);
+      expect(poolB).toHaveLength(3);
+
+      // Pool A should have the highest scores
+      const poolAScores = poolA.map(p => p.pfaScore).sort((a, b) => b - a);
+      const poolBScores = poolB.map(p => p.pfaScore).sort((a, b) => b - a);
+      expect(poolAScores).toEqual([6.0, 5.0, 4.0]);
+      expect(poolBScores).toEqual([3.0, 2.0, 1.0]);
+    });
+
     it('should handle odd number of players', async () => {
       const players = createMockEventPlayers(5, eventId);
       const event = createMockEventWithDetails(

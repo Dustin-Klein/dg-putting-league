@@ -155,29 +155,49 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
     })
   );
 
-  // Sort players by score (descending), then by default_pool, then maintain database order
-  playersWithScores.sort((a, b) => {
+  // Separate scored players from default (no history) players
+  const scoredPlayers = playersWithScores.filter(p => p.scoringMethod !== 'default');
+  const defaultPlayers = playersWithScores.filter(p => p.scoringMethod === 'default');
+
+  // Sort scored players by score descending, with tie-breaking
+  scoredPlayers.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score;
     }
-    // Tie-breaking: use default_pool (A > B)
     if (a.default_pool !== b.default_pool) {
       return a.default_pool === 'A' ? -1 : 1;
     }
-    // Maintain original order as final tie-breaker
     return 0;
   });
 
-  // Split into pools: top 50% -> Pool A, bottom 50% -> Pool B
-  const totalPlayers = playersWithScores.length;
-  const poolASize = Math.ceil(totalPlayers / 2); // Top half gets extra player if odd
+  // Place default players directly into their defaultPool
+  const defaultACount = defaultPlayers.filter(p => p.default_pool === 'A').length;
+
+  // Calculate how many scored players should go to Pool A
+  const totalPlayers = scoredPlayers.length + defaultPlayers.length;
+  const poolASize = Math.ceil(totalPlayers / 2);
+  const scoredForA = Math.min(
+    Math.max(0, poolASize - defaultACount),
+    scoredPlayers.length
+  );
+
   const poolAssignments: { id: string; pool: 'A' | 'B'; pfa_score: number; scoring_method: 'qualification' | 'pfa' | 'default' }[] = [];
 
-  playersWithScores.forEach((player, index) => {
-    const pool = index < poolASize ? 'A' : 'B';
+  // Assign scored players
+  scoredPlayers.forEach((player, index) => {
     poolAssignments.push({
       id: player.id,
-      pool,
+      pool: index < scoredForA ? 'A' : 'B',
+      pfa_score: player.score,
+      scoring_method: player.scoringMethod
+    });
+  });
+
+  // Assign default players to their defaultPool
+  defaultPlayers.forEach((player) => {
+    poolAssignments.push({
+      id: player.id,
+      pool: player.default_pool,
       pfa_score: player.score,
       scoring_method: player.scoringMethod
     });
@@ -283,30 +303,59 @@ export async function computePoolAssignments(
     });
   }
 
-  // Sort players by score (descending), then by default_pool, then maintain database order
-  playersWithScores.sort((a, b) => {
+  // Separate scored players from default (no history) players
+  const scoredPlayers = playersWithScores.filter(p => p.scoringMethod !== 'default');
+  const defaultPlayers = playersWithScores.filter(p => p.scoringMethod === 'default');
+
+  // Sort scored players by score descending, with tie-breaking
+  scoredPlayers.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score;
     }
-    // Tie-breaking: use default_pool (A > B)
     if (a.defaultPool !== b.defaultPool) {
       return a.defaultPool === 'A' ? -1 : 1;
     }
-    // Maintain original order as final tie-breaker
     return 0;
   });
 
-  // Split into pools: top 50% -> Pool A, bottom 50% -> Pool B
-  const totalPlayers = playersWithScores.length;
-  const poolASize = Math.ceil(totalPlayers / 2); // Top half gets extra player if odd
+  // Place default players directly into their defaultPool
+  const defaultACount = defaultPlayers.filter(p => p.defaultPool === 'A').length;
 
-  return playersWithScores.map((player, index): PoolAssignment => ({
-    eventPlayerId: player.eventPlayerId,
-    playerId: player.playerId,
-    playerName: player.playerName,
-    pool: index < poolASize ? 'A' : 'B',
-    pfaScore: player.score,
-    scoringMethod: player.scoringMethod,
-    defaultPool: player.defaultPool,
-  }));
+  // Calculate how many scored players should go to Pool A
+  const totalPlayers = scoredPlayers.length + defaultPlayers.length;
+  const poolASize = Math.ceil(totalPlayers / 2);
+  const scoredForA = Math.min(
+    Math.max(0, poolASize - defaultACount),
+    scoredPlayers.length
+  );
+
+  const assignments: PoolAssignment[] = [];
+
+  // Assign scored players
+  scoredPlayers.forEach((player, index) => {
+    assignments.push({
+      eventPlayerId: player.eventPlayerId,
+      playerId: player.playerId,
+      playerName: player.playerName,
+      pool: index < scoredForA ? 'A' : 'B',
+      pfaScore: player.score,
+      scoringMethod: player.scoringMethod,
+      defaultPool: player.defaultPool,
+    });
+  });
+
+  // Assign default players to their defaultPool
+  defaultPlayers.forEach((player) => {
+    assignments.push({
+      eventPlayerId: player.eventPlayerId,
+      playerId: player.playerId,
+      playerName: player.playerName,
+      pool: player.defaultPool,
+      pfaScore: player.score,
+      scoringMethod: player.scoringMethod,
+      defaultPool: player.defaultPool,
+    });
+  });
+
+  return assignments;
 }

@@ -494,6 +494,64 @@ describe('Team Service', () => {
       expect(result[0].poolCombo).toContain('&');
     });
 
+    it('should pair teams correctly with mixed PFA and default players', () => {
+      const poolAssignments: PoolAssignment[] = [
+        {
+          eventPlayerId: 'ep-1',
+          playerId: 'p-1',
+          playerName: 'PFA Player 1',
+          pool: 'A',
+          pfaScore: 5.0,
+          scoringMethod: 'pfa',
+          defaultPool: 'A',
+        },
+        {
+          eventPlayerId: 'ep-2',
+          playerId: 'p-2',
+          playerName: 'Default Player A',
+          pool: 'A',
+          pfaScore: 0,
+          scoringMethod: 'default',
+          defaultPool: 'A',
+        },
+        {
+          eventPlayerId: 'ep-3',
+          playerId: 'p-3',
+          playerName: 'PFA Player 2',
+          pool: 'B',
+          pfaScore: 3.0,
+          scoringMethod: 'pfa',
+          defaultPool: 'B',
+        },
+        {
+          eventPlayerId: 'ep-4',
+          playerId: 'p-4',
+          playerName: 'Default Player B',
+          pool: 'B',
+          pfaScore: 0,
+          scoringMethod: 'default',
+          defaultPool: 'B',
+        },
+      ];
+
+      const result = computeTeamPairings(poolAssignments);
+
+      expect(result).toHaveLength(2);
+      // Each team should have one A_pool and one B_pool member
+      result.forEach((team) => {
+        expect(team.members).toHaveLength(2);
+        expect(team.members.some((m) => m.role === 'A_pool')).toBe(true);
+        expect(team.members.some((m) => m.role === 'B_pool')).toBe(true);
+      });
+      // Combined scores should be correct
+      const totalScore = result.reduce((sum, t) => sum + t.combinedScore, 0);
+      expect(totalScore).toBe(5.0 + 0 + 3.0 + 0);
+      // Seeds should be ordered
+      expect(result[0].seed).toBe(1);
+      expect(result[1].seed).toBe(2);
+      expect(result[0].combinedScore).toBeGreaterThanOrEqual(result[1].combinedScore);
+    });
+
     it('should assign sequential seeds based on score ranking', () => {
       const poolAssignments: PoolAssignment[] = [
         {
