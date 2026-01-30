@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, Fragment } from 'react';
+import React, { useMemo, useState, useEffect, Fragment } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
@@ -46,6 +46,67 @@ interface RoundLayout {
 const MATCH_HEIGHT = 66;
 const MATCH_GAP = 16;
 const BYE_GAP = 20;
+const IDLE_THRESHOLD_MS = 120_000;
+
+function isMatchIdleCandidate(match: MatchWithTeamInfo): boolean {
+  return !!(
+    match.lane_assigned_at &&
+    match.status === Status.Ready &&
+    match.opponent1 !== null &&
+    match.opponent2 !== null &&
+    (match.opponent1 as { id: number | null })?.id != null &&
+    (match.opponent2 as { id: number | null })?.id != null
+  );
+}
+
+function useIdleMatchIds(groups: GroupWithRounds[]): Set<number | string> {
+  const [idleIds, setIdleIds] = useState<Set<number | string>>(new Set());
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const evaluate = () => {
+      const now = Date.now();
+      const newIdleIds = new Set<number | string>();
+      let soonestDelay = Infinity;
+
+      for (const group of groups) {
+        for (const round of group.rounds) {
+          for (const match of round.matches) {
+            if (!isMatchIdleCandidate(match)) continue;
+
+            const assignedTime = new Date(match.lane_assigned_at!).getTime();
+            if (Number.isNaN(assignedTime)) continue;
+
+            const remaining = IDLE_THRESHOLD_MS - (now - assignedTime);
+            if (remaining <= 0) {
+              newIdleIds.add(match.id);
+            } else {
+              soonestDelay = Math.min(soonestDelay, remaining);
+            }
+          }
+        }
+      }
+
+      setIdleIds(prev => {
+        if (prev.size !== newIdleIds.size) return newIdleIds;
+        for (const id of newIdleIds) {
+          if (!prev.has(id)) return newIdleIds;
+        }
+        return prev;
+      });
+
+      if (soonestDelay < Infinity) {
+        timer = setTimeout(evaluate, soonestDelay);
+      }
+    };
+
+    evaluate();
+    return () => clearTimeout(timer);
+  }, [groups]);
+
+  return idleIds;
+}
 
 function getTeamForParticipant(
   participantId: number | null,
@@ -359,6 +420,8 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
     return `Round ${displayRoundNumber}`;
   };
 
+  const idleMatchIds = useIdleMatchIds(groupsWithRounds);
+
   // Separate groups into main brackets (winners/losers) and grand final
   const winnersBracket = groupsWithRounds.find((g) => g.number === 1);
   const losersBracket = groupsWithRounds.find((g) => g.number === 2);
@@ -408,7 +471,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                           team2={match.team2}
                           matchNumber={matchNumberMap.get(match.id) || 0}
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
-                          laneAssignedAt={match.lane_assigned_at ?? undefined}
+                          isIdle={idleMatchIds.has(match.id)}
                           onClick={() => onMatchClick?.(match)}
                           isClickable={
                             !!onMatchClick && (

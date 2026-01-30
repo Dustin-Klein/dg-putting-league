@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,39 +14,13 @@ interface OpponentData {
   position?: number;
 }
 
-const IDLE_THRESHOLD_MS = 120_000;
-
-function useIsIdle(laneAssignedAt: string | undefined, status: number, bothTeamsPresent: boolean): boolean {
-  const [isIdle, setIsIdle] = useState(false);
-
-  useEffect(() => {
-    if (!laneAssignedAt || status !== Status.Ready || !bothTeamsPresent) {
-      setIsIdle(false);
-      return;
-    }
-
-    const assignedTime = new Date(laneAssignedAt).getTime();
-
-    const check = () => {
-      const elapsed = Date.now() - assignedTime;
-      setIsIdle(elapsed >= IDLE_THRESHOLD_MS);
-    };
-
-    check();
-    const interval = setInterval(check, 10_000);
-    return () => clearInterval(interval);
-  }, [laneAssignedAt, status, bothTeamsPresent]);
-
-  return isIdle;
-}
-
 interface MatchCardProps {
   match: Match;
   team1?: Team;
   team2?: Team;
   matchNumber: number;
   laneLabel?: string;
-  laneAssignedAt?: string;
+  isIdle?: boolean;
   onClick?: () => void;
   isClickable?: boolean;
   isCorrectionMode?: boolean;
@@ -119,15 +92,13 @@ export function MatchCard({
   team2,
   matchNumber,
   laneLabel,
-  laneAssignedAt,
+  isIdle = false,
   onClick,
   isClickable = false,
   isCorrectionMode = false,
 }: MatchCardProps) {
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
-  const bothTeamsPresent = opponent1?.id != null && opponent2?.id != null;
-  const isIdle = useIsIdle(laneAssignedAt, match.status, bothTeamsPresent);
 
   const showScore =
     match.status === Status.Running ||
