@@ -14,6 +14,7 @@ CREATE TABLE public.bracket_match (
   opponent1 JSONB,
   opponent2 JSONB,
   lane_id UUID REFERENCES public.lanes(id),
+  lane_assigned_at TIMESTAMPTZ,
   event_id UUID REFERENCES public.events(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
