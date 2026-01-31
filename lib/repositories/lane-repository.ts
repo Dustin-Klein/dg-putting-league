@@ -131,8 +131,7 @@ export async function getUnassignedReadyMatches(
     .in('status', [Status.Ready, Status.Waiting])
     .is('lane_id', null)
     .order('status', { ascending: false }) // Ready (2) before Waiting (1)
-    .order('round_id', { ascending: true })
-    .order('group_id', { ascending: true })
+    .order('updated_at', { ascending: true }) // Longest-waiting matches first
     .order('number', { ascending: true });
 
   if (error) {
