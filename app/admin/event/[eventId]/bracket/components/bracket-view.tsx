@@ -480,7 +480,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                               (eventStatus === 'bracket' &&
                                 (match.status === Status.Completed || match.status === Status.Archived)) ||
                               (eventStatus === 'bracket' &&
-                                match.status === Status.Waiting &&
+                                (match.status === Status.Waiting || match.status === Status.Locked) &&
                                 (!(match.opponent1 as { id?: number | null } | null)?.id ||
                                  !(match.opponent2 as { id?: number | null } | null)?.id))
                             )
