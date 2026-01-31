@@ -478,7 +478,11 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                               match.status === Status.Ready ||
                               match.status === Status.Running ||
                               (eventStatus === 'bracket' &&
-                                (match.status === Status.Completed || match.status === Status.Archived))
+                                (match.status === Status.Completed || match.status === Status.Archived)) ||
+                              (eventStatus === 'bracket' &&
+                                match.status === Status.Waiting &&
+                                (!(match.opponent1 as { id?: number | null } | null)?.id ||
+                                 !(match.opponent2 as { id?: number | null } | null)?.id))
                             )
                           }
                           isCorrectionMode={

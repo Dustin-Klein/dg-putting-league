@@ -6,7 +6,7 @@ import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog, PresentationOverlay } from './components';
+import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
@@ -29,6 +29,8 @@ export default function BracketPage({
   const [error, setError] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [advanceMatch, setAdvanceMatch] = useState<Match | null>(null);
+  const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
@@ -161,9 +163,22 @@ export default function BracketPage({
   const handleMatchClick = (match: Match) => {
     if (!bracketData) return;
 
-    // Find team info for this match
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
+
+    const opp1Empty = !opp1 || opp1.id == null;
+    const opp2Empty = !opp2 || opp2.id == null;
+
+    // If match has an empty slot and is Waiting/Ready, open advance dialog
+    if (
+      (opp1Empty || opp2Empty) &&
+      (match.status === Status.Waiting || match.status === Status.Ready) &&
+      bracketData.eventStatus === 'bracket'
+    ) {
+      setAdvanceMatch(match);
+      setIsAdvanceDialogOpen(true);
+      return;
+    }
 
     const team1 = bracketData.participantTeamMap[opp1?.id ?? -1];
     const team2 = bracketData.participantTeamMap[opp2?.id ?? -1];
@@ -263,20 +278,31 @@ export default function BracketPage({
           </div>
         </div>
         {eventId && (
-          <MatchScoringDialog
-            match={selectedMatch}
-            team1={selectedMatch?.team1}
-            team2={selectedMatch?.team2}
-            eventId={eventId}
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            onScoreSubmit={handleScoreSubmit}
-            isCorrectionMode={
-              bracketData?.eventStatus === 'bracket' &&
-              selectedMatch !== null &&
-              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
-            }
-          />
+          <>
+            <MatchScoringDialog
+              match={selectedMatch}
+              team1={selectedMatch?.team1}
+              team2={selectedMatch?.team2}
+              eventId={eventId}
+              open={isDialogOpen}
+              onOpenChange={setIsDialogOpen}
+              onScoreSubmit={handleScoreSubmit}
+              isCorrectionMode={
+                bracketData?.eventStatus === 'bracket' &&
+                selectedMatch !== null &&
+                (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+              }
+            />
+            <AdvanceTeamDialog
+              match={advanceMatch}
+              eventId={eventId}
+              open={isAdvanceDialogOpen}
+              onOpenChange={setIsAdvanceDialogOpen}
+              onAdvanceComplete={fetchBracket}
+              participants={bracketData?.bracket.participants ?? []}
+              participantTeamMap={bracketData?.participantTeamMap ?? {}}
+            />
+          </>
         )}
       </div>
     );
@@ -377,20 +403,31 @@ export default function BracketPage({
       </div>
 
       {eventId && (
-        <MatchScoringDialog
-          match={selectedMatch}
-          team1={selectedMatch?.team1}
-          team2={selectedMatch?.team2}
-          eventId={eventId}
-          open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
-          onScoreSubmit={handleScoreSubmit}
-          isCorrectionMode={
-            bracketData?.eventStatus === 'bracket' &&
-            selectedMatch !== null &&
-            (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
-          }
-        />
+        <>
+          <MatchScoringDialog
+            match={selectedMatch}
+            team1={selectedMatch?.team1}
+            team2={selectedMatch?.team2}
+            eventId={eventId}
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            onScoreSubmit={handleScoreSubmit}
+            isCorrectionMode={
+              bracketData?.eventStatus === 'bracket' &&
+              selectedMatch !== null &&
+              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+            }
+          />
+          <AdvanceTeamDialog
+            match={advanceMatch}
+            eventId={eventId}
+            open={isAdvanceDialogOpen}
+            onOpenChange={setIsAdvanceDialogOpen}
+            onAdvanceComplete={fetchBracket}
+            participants={bracketData?.bracket.participants ?? []}
+            participantTeamMap={bracketData?.participantTeamMap ?? {}}
+          />
+        </>
       )}
     </div>
   );

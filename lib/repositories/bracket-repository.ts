@@ -1065,6 +1065,58 @@ export async function getReadyMatchesByStageId(
  * Assign a lane to a match using atomic RPC
  * Returns true if assignment was successful, false if lane is not available
  */
+export interface MatchForAdvancement {
+  id: number;
+  status: number;
+  event_id: string;
+  opponent1: { id?: number | null; position?: number } | null;
+  opponent2: { id?: number | null; position?: number } | null;
+}
+
+/**
+ * Get a bracket match for manual advancement with row-level lock context
+ */
+export async function getMatchForAdvancement(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number,
+  eventId: string
+): Promise<MatchForAdvancement | null> {
+  const { data: match, error } = await supabase
+    .from('bracket_match')
+    .select('id, status, event_id, opponent1, opponent2')
+    .eq('id', matchId)
+    .eq('event_id', eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch match for advancement: ${error.message}`);
+  }
+
+  return match as MatchForAdvancement | null;
+}
+
+/**
+ * Update match opponents and status atomically via the merge RPC
+ */
+export async function updateMatchWithOpponents(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchId: number,
+  opponent1: { id?: number | null; position?: number } | null,
+  opponent2: { id?: number | null; position?: number } | null,
+  status: number
+): Promise<void> {
+  const { error } = await supabase.rpc('update_bracket_match_score', {
+    p_match_id: matchId,
+    p_status: status,
+    p_opponent1: opponent1,
+    p_opponent2: opponent2,
+  });
+
+  if (error) {
+    throw new InternalError(`Failed to update match opponents: ${error.message}`);
+  }
+}
+
 export async function assignLaneToMatchRpc(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,

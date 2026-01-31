@@ -25,6 +25,8 @@ import {
   getReadyMatchesByStageId,
   assignLaneToMatchRpc,
   getMatchForScoringById,
+  getMatchForAdvancement,
+  updateMatchWithOpponents,
 } from '@/lib/repositories/bracket-repository';
 import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent } from '@/lib/repositories/lane-repository';
@@ -385,6 +387,57 @@ export async function assignLaneToMatch(
 export async function bracketExists(eventId: string): Promise<boolean> {
   const supabase = await createClient();
   return bracketStageExists(supabase, eventId);
+}
+
+/**
+ * Manually advance a team into a match slot
+ */
+export async function manuallyAdvanceTeam(
+  eventId: string,
+  targetMatchId: number,
+  participantId: number,
+  slot: 'opponent1' | 'opponent2'
+): Promise<void> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const match = await getMatchForAdvancement(supabase, targetMatchId, eventId);
+
+  if (!match) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (match.status === Status.Completed || match.status === Status.Running) {
+    throw new BadRequestError('Cannot advance into a match that is completed or running');
+  }
+
+  // Verify participant exists for this event
+  const participants = await getBracketParticipants(supabase, eventId);
+  const participant = participants.find((p) => p.id === participantId);
+
+  if (!participant) {
+    throw new BadRequestError('Participant not found in this event');
+  }
+
+  const opponent1 = slot === 'opponent1'
+    ? { id: participantId }
+    : match.opponent1;
+  const opponent2 = slot === 'opponent2'
+    ? { id: participantId }
+    : match.opponent2;
+
+  const opp1Id = slot === 'opponent1' ? participantId : (match.opponent1 as { id?: number | null } | null)?.id;
+  const opp2Id = slot === 'opponent2' ? participantId : (match.opponent2 as { id?: number | null } | null)?.id;
+
+  // Determine status: Ready if both opponents have ids, otherwise keep current
+  const newStatus = (opp1Id != null && opp2Id != null) ? Status.Ready : match.status;
+
+  await updateMatchWithOpponents(
+    supabase,
+    targetMatchId,
+    opponent1 as { id?: number | null; position?: number } | null,
+    opponent2 as { id?: number | null; position?: number } | null,
+    newStatus
+  );
 }
 
 export { Status } from 'brackets-model';
