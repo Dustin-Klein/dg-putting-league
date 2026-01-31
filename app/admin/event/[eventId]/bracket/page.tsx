@@ -172,7 +172,7 @@ export default function BracketPage({
     // If match has an empty slot and is Waiting/Ready, open advance dialog
     if (
       (opp1Empty || opp2Empty) &&
-      (match.status === Status.Waiting || match.status === Status.Ready) &&
+      (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked) &&
       bracketData.eventStatus === 'bracket'
     ) {
       setAdvanceMatch(match);
