@@ -37,22 +37,18 @@ BEGIN
     RAISE EXCEPTION 'Event is not in bracket play';
   END IF;
 
-  -- Merge opponent1: use incoming if it has a non-null id, else preserve existing
+  -- Merge opponent1
   v_final_opp1 := CASE
-    WHEN p_opponent1 IS NOT NULL AND (p_opponent1->>'id') IS NOT NULL
-      THEN p_opponent1
-    WHEN v_existing_opp1 IS NOT NULL AND (v_existing_opp1->>'id') IS NOT NULL
-      THEN v_existing_opp1
-    ELSE p_opponent1
+    WHEN p_opponent1 IS NOT NULL AND v_existing_opp1 IS NOT NULL THEN v_existing_opp1 || p_opponent1
+    WHEN p_opponent1 IS NOT NULL THEN p_opponent1
+    ELSE v_existing_opp1
   END;
 
-  -- Merge opponent2: same logic
+  -- Merge opponent2
   v_final_opp2 := CASE
-    WHEN p_opponent2 IS NOT NULL AND (p_opponent2->>'id') IS NOT NULL
-      THEN p_opponent2
-    WHEN v_existing_opp2 IS NOT NULL AND (v_existing_opp2->>'id') IS NOT NULL
-      THEN v_existing_opp2
-    ELSE p_opponent2
+    WHEN p_opponent2 IS NOT NULL AND v_existing_opp2 IS NOT NULL THEN v_existing_opp2 || p_opponent2
+    WHEN p_opponent2 IS NOT NULL THEN p_opponent2
+    ELSE v_existing_opp2
   END;
 
   -- Auto-promote status to Ready if both opponents now have ids
