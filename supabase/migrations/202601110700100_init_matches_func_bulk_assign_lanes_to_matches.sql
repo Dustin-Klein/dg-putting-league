@@ -41,7 +41,17 @@ BEGIN
     FROM updated_lanes ul
     WHERE m.id = ul.match_id
       AND m.event_id = p_event_id
-    RETURNING m.id
+      AND m.lane_id IS NULL
+    RETURNING m.id, m.lane_id AS assigned_lane_id
+  ),
+  -- Revert lanes that were marked occupied but whose match was already assigned
+  reverted_lanes AS (
+    UPDATE public.lanes l
+    SET status = 'idle'
+    FROM updated_lanes ul
+    WHERE l.id = ul.id
+      AND ul.match_id NOT IN (SELECT id FROM updated_matches)
+    RETURNING l.id
   )
   SELECT count(*) INTO v_count FROM updated_matches;
 

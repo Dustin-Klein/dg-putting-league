@@ -41,13 +41,17 @@ BEGIN
   SET status = 'occupied'
   WHERE id = p_lane_id;
 
-  -- Assign lane to match (keep current status)
+  -- Assign lane to match only if it hasn't been assigned a lane yet
   UPDATE public.bracket_match
   SET lane_id = p_lane_id, lane_assigned_at = NOW()
-  WHERE id = p_match_id AND event_id = p_event_id;
+  WHERE id = p_match_id AND event_id = p_event_id AND lane_id IS NULL;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Match not found: %', p_match_id;
+    -- Match was already assigned or not found; revert lane to idle
+    UPDATE public.lanes
+    SET status = 'idle'
+    WHERE id = p_lane_id;
+    RETURN false;
   END IF;
 
   RETURN true;
