@@ -117,22 +117,31 @@ function assignPools(players: PoolInput[]): { pool: 'A' | 'B' }[] {
     return 0;
   });
 
-  const defaultACount = defaultPlayers.filter(p => p.defaultPool === 'A').length;
+  const defaultAPlayers = defaultPlayers.filter(p => p.defaultPool === 'A');
+  const defaultBPlayers = defaultPlayers.filter(p => p.defaultPool === 'B');
   const totalPlayers = scoredPlayers.length + defaultPlayers.length;
   const poolASize = Math.ceil(totalPlayers / 2);
-  const scoredForA = Math.min(
-    Math.max(0, poolASize - defaultACount),
-    scoredPlayers.length
-  );
+  const poolBSize = totalPlayers - poolASize;
+
+  const actualDefaultA = Math.min(defaultAPlayers.length, poolASize);
+  const actualDefaultB = Math.min(defaultBPlayers.length, poolBSize);
 
   const result: { pool: 'A' | 'B' }[] = new Array(players.length);
 
-  scoredPlayers.forEach((player, index) => {
-    result[player.originalIndex] = { pool: index < scoredForA ? 'A' : 'B' };
+  // Place default players, capping at pool capacity and overflowing to opposite pool
+  defaultAPlayers.forEach((player, index) => {
+    result[player.originalIndex] = { pool: index < actualDefaultA ? 'A' : 'B' };
+  });
+  defaultBPlayers.forEach((player, index) => {
+    result[player.originalIndex] = { pool: index < actualDefaultB ? 'B' : 'A' };
   });
 
-  defaultPlayers.forEach((player) => {
-    result[player.originalIndex] = { pool: player.defaultPool };
+  // Fill remaining spots with scored players (highest scores to A)
+  const remainingA = poolASize - actualDefaultA - Math.max(0, defaultBPlayers.length - actualDefaultB);
+  const scoredForA = Math.min(Math.max(0, remainingA), scoredPlayers.length);
+
+  scoredPlayers.forEach((player, index) => {
+    result[player.originalIndex] = { pool: index < scoredForA ? 'A' : 'B' };
   });
 
   return result;

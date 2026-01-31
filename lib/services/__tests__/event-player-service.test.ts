@@ -603,5 +603,62 @@ describe('Event Player Service', () => {
       expect(result.filter((pa) => pa.pool === 'A')).toHaveLength(3);
       expect(result.filter((pa) => pa.pool === 'B')).toHaveLength(2);
     });
+
+    it('should balance pools when all default players prefer pool B', async () => {
+      // 6 default players all preferring pool B, no PFA scores
+      const players = createMockEventPlayers(6, eventId);
+      players.forEach(p => { p.player.default_pool = 'B'; });
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await computePoolAssignments(eventId, event);
+
+      // Both pools must have players — this is the bug fix
+      expect(result.filter(r => r.pool === 'A')).toHaveLength(3);
+      expect(result.filter(r => r.pool === 'B')).toHaveLength(3);
+    });
+
+    it('should balance pools when all default players prefer pool A', async () => {
+      const players = createMockEventPlayers(6, eventId);
+      players.forEach(p => { p.player.default_pool = 'A'; });
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await computePoolAssignments(eventId, event);
+
+      expect(result.filter(r => r.pool === 'A')).toHaveLength(3);
+      expect(result.filter(r => r.pool === 'B')).toHaveLength(3);
+    });
+
+    it('should balance pools when all players have null default_pool', async () => {
+      // Simulates the common case: null default_pool falls back to 'B'
+      const players = createMockEventPlayers(8, eventId);
+      players.forEach(p => { p.player.default_pool = 'B'; });
+
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
+
+      const result = await computePoolAssignments(eventId, event);
+
+      expect(result.filter(r => r.pool === 'A')).toHaveLength(4);
+      expect(result.filter(r => r.pool === 'B')).toHaveLength(4);
+    });
   });
 });
