@@ -37,16 +37,24 @@ BEGIN
     RAISE EXCEPTION 'Event is not in bracket play';
   END IF;
 
-  -- Merge opponent1: combine existing with incoming, preserve existing id if incoming nulls it
-  v_final_opp1 := COALESCE(v_existing_opp1, '{}'::jsonb) || COALESCE(p_opponent1, '{}'::jsonb);
-  IF (v_existing_opp1->>'id') IS NOT NULL AND (v_final_opp1->>'id') IS NULL THEN
-    v_final_opp1 := jsonb_set(v_final_opp1, '{id}', v_existing_opp1->'id');
+  -- Merge opponent1
+  IF p_opponent1 IS NOT NULL THEN
+    v_final_opp1 := COALESCE(v_existing_opp1, '{}'::jsonb) || p_opponent1;
+    IF (v_existing_opp1->>'id') IS NOT NULL AND (v_final_opp1->>'id') IS NULL THEN
+      v_final_opp1 := jsonb_set(v_final_opp1, '{id}', v_existing_opp1->'id');
+    END IF;
+  ELSE
+    v_final_opp1 := v_existing_opp1;
   END IF;
 
-  -- Merge opponent2: same logic
-  v_final_opp2 := COALESCE(v_existing_opp2, '{}'::jsonb) || COALESCE(p_opponent2, '{}'::jsonb);
-  IF (v_existing_opp2->>'id') IS NOT NULL AND (v_final_opp2->>'id') IS NULL THEN
-    v_final_opp2 := jsonb_set(v_final_opp2, '{id}', v_existing_opp2->'id');
+  -- Merge opponent2
+  IF p_opponent2 IS NOT NULL THEN
+    v_final_opp2 := COALESCE(v_existing_opp2, '{}'::jsonb) || p_opponent2;
+    IF (v_existing_opp2->>'id') IS NOT NULL AND (v_final_opp2->>'id') IS NULL THEN
+      v_final_opp2 := jsonb_set(v_final_opp2, '{id}', v_existing_opp2->'id');
+    END IF;
+  ELSE
+    v_final_opp2 := v_existing_opp2;
   END IF;
 
   -- Auto-promote status to Ready if both opponents now have ids
