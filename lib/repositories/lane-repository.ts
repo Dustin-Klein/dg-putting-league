@@ -124,22 +124,48 @@ export async function getUnassignedReadyMatches(
   supabase: Awaited<ReturnType<typeof createClient>>,
   stageId: number
 ): Promise<{ id: number; round_id: number; group_id: number; number: number; status: number }[]> {
-  const { data: unassignedMatches, error } = await supabase
-    .from('bracket_match')
-    .select('id, round_id, group_id, number, status')
-    .eq('stage_id', stageId)
-    .in('status', [Status.Ready, Status.Waiting])
-    .is('lane_id', null)
-    .order('status', { ascending: false }) // Ready (2) before Waiting (1)
-    .order('updated_at', { ascending: true }) // Longest-waiting matches first
-    .order('number', { ascending: true })
-    .order('id', { ascending: true });
+  const [matchResult, roundResult] = await Promise.all([
+    supabase
+      .from('bracket_match')
+      .select('id, round_id, group_id, number, status')
+      .eq('stage_id', stageId)
+      .in('status', [Status.Ready, Status.Waiting])
+      .is('lane_id', null),
+    supabase
+      .from('bracket_round')
+      .select('id, number')
+      .eq('stage_id', stageId),
+  ]);
 
-  if (error) {
-    throw new InternalError(`Failed to fetch unassigned matches: ${error.message}`);
+  if (matchResult.error) {
+    throw new InternalError(`Failed to fetch unassigned matches: ${matchResult.error.message}`);
+  }
+  if (roundResult.error) {
+    throw new InternalError(`Failed to fetch rounds: ${roundResult.error.message}`);
   }
 
-  return (unassignedMatches || []);
+  const roundNumber = new Map(
+    (roundResult.data || []).map((r) => [r.id, r.number] as const)
+  );
+
+  const matches = (matchResult.data || []) as {
+    id: number; round_id: number; group_id: number; number: number; status: number;
+  }[];
+
+  matches.sort((a, b) => {
+    const aRound = roundNumber.get(a.round_id) ?? 0;
+    const bRound = roundNumber.get(b.round_id) ?? 0;
+    // Lower rounds first
+    if (aRound !== bRound) return aRound - bRound;
+    // Ready (2) before Waiting (1) within same round
+    if (b.status !== a.status) return b.status - a.status;
+    // Match number within round
+    if (a.number !== b.number) return a.number - b.number;
+    // Tiebreaker
+    return a.id - b.id;
+  });
+
+  return matches;
 }
 
 /**
