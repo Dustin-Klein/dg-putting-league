@@ -49,6 +49,7 @@ interface EventFormProps {
   showCancelButton?: boolean;
   defaultValues?: Partial<EventFormValues>;
   error?: string | null;
+  extraContent?: React.ReactNode;
 }
 
 export function EventForm({
@@ -59,6 +60,7 @@ export function EventForm({
   showCancelButton = true,
   defaultValues,
   error,
+  extraContent,
 }: EventFormProps) {
   // Generate initial code
   const initialCode = (() => {
@@ -316,6 +318,8 @@ export function EventForm({
             </FormItem>
           )}
         />
+
+        {extraContent}
 
         {error && (
           <div className="text-sm font-medium text-destructive text-right mb-2">

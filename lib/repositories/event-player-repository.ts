@@ -352,6 +352,53 @@ export async function getAllEventPlayerIdsForPlayersBulk(
 }
 
 /**
+ * Get player IDs for all event_players of a given event
+ */
+export async function getPlayerIdsByEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('event_players')
+    .select('player_id')
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch player IDs for event: ${error.message}`);
+  }
+
+  return (data ?? []).map(row => row.player_id);
+}
+
+/**
+ * Bulk insert multiple event_players at once
+ */
+export async function insertEventPlayersBulk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  playerIds: string[]
+): Promise<void> {
+  if (playerIds.length === 0) {
+    return;
+  }
+
+  const rows = playerIds.map(playerId => ({
+    event_id: eventId,
+    player_id: playerId,
+    has_paid: false,
+    created_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from('event_players')
+    .insert(rows);
+
+  if (error) {
+    throw new InternalError(`Failed to bulk insert event players: ${error.message}`);
+  }
+}
+
+/**
  * Get PFA scores for multiple players in one query (bulk operation)
  * Returns a Map where key is player_id and value is { totalPoints, frameCount }
  */

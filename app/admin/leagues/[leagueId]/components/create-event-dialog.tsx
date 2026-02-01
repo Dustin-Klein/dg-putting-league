@@ -1,19 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { formatForDatabase } from '@/lib/utils/date-utils';
+import { formatForDatabase, formatDisplayDate } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { EventForm, type EventFormValues } from './event-form';
+import { EventData } from '@/lib/repositories/event-repository';
 
 interface CreateEventDialogProps {
   leagueId: string;
+  completedEvents?: EventData[];
 }
 
-export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
+export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEventDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copyFromEventId, setCopyFromEventId] = useState<string>('');
   const router = useRouter();
 
   const handleSubmit = async (values: EventFormValues) => {
@@ -33,6 +36,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
           qualification_round_enabled: values.qualification_round_enabled,
           bracket_frame_count: values.bracket_frame_count,
           qualification_frame_count: values.qualification_frame_count,
+          ...(copyFromEventId ? { copy_players_from_event_id: copyFromEventId } : {}),
         }),
       });
 
@@ -63,6 +67,7 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
       <Button onClick={() => {
         setOpen(true);
         setError(null);
+        setCopyFromEventId('');
       }}>Create Event</Button>
       {open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -78,6 +83,27 @@ export function CreateEventDialog({ leagueId }: CreateEventDialogProps) {
               isLoading={isLoading}
               submitButtonText="Create Event"
               error={error}
+              extraContent={completedEvents.length > 0 ? (
+                <div>
+                  <label htmlFor="copy-players" className="block text-sm font-medium mb-1">
+                    Copy players from
+                  </label>
+                  <select
+                    id="copy-players"
+                    value={copyFromEventId}
+                    onChange={(e) => setCopyFromEventId(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">None</option>
+                    {completedEvents.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {formatDisplayDate(event.event_date)}
+                        {event.location ? ` — ${event.location}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : undefined}
             />
           </div>
         </div>
