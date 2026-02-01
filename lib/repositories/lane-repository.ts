@@ -132,7 +132,8 @@ export async function getUnassignedReadyMatches(
     .is('lane_id', null)
     .order('status', { ascending: false }) // Ready (2) before Waiting (1)
     .order('updated_at', { ascending: true }) // Longest-waiting matches first
-    .order('number', { ascending: true });
+    .order('number', { ascending: true })
+    .order('id', { ascending: true });
 
   if (error) {
     throw new InternalError(`Failed to fetch unassigned matches: ${error.message}`);
