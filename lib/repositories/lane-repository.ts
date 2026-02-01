@@ -127,7 +127,7 @@ export async function getUnassignedReadyMatches(
   const [matchResult, roundResult] = await Promise.all([
     supabase
       .from('bracket_match')
-      .select('id, round_id, group_id, number, status')
+      .select('id, round_id, group_id, number, status, updated_at')
       .eq('stage_id', stageId)
       .in('status', [Status.Ready, Status.Waiting])
       .is('lane_id', null),
@@ -149,7 +149,7 @@ export async function getUnassignedReadyMatches(
   );
 
   const matches = (matchResult.data || []) as {
-    id: number; round_id: number; group_id: number; number: number; status: number;
+    id: number; round_id: number; group_id: number; number: number; status: number; updated_at: string;
   }[];
 
   matches.sort((a, b) => {
@@ -159,6 +159,10 @@ export async function getUnassignedReadyMatches(
     if (aRound !== bRound) return aRound - bRound;
     // Ready (2) before Waiting (1) within same round
     if (b.status !== a.status) return b.status - a.status;
+    // Longest-waiting first within same status
+    const aUpdated = new Date(a.updated_at).getTime();
+    const bUpdated = new Date(b.updated_at).getTime();
+    if (aUpdated !== bUpdated) return aUpdated - bUpdated;
     // Match number within round
     if (a.number !== b.number) return a.number - b.number;
     // Tiebreaker
