@@ -101,12 +101,17 @@ export async function createEvent(data: {
 
   // 5. Copy players from source event if specified
   if (copy_players_from_event_id) {
-    const sourceLeagueId = await eventRepo.getEventLeagueId(supabase, copy_players_from_event_id);
-    if (sourceLeagueId !== data.league_id) {
-      throw new BadRequestError('Source event must belong to the same league');
+    try {
+      const sourceLeagueId = await eventRepo.getEventLeagueId(supabase, copy_players_from_event_id);
+      if (sourceLeagueId !== data.league_id) {
+        throw new BadRequestError('Source event must belong to the same league');
+      }
+      const playerIds = await eventPlayerRepo.getPlayerIdsByEvent(supabase, copy_players_from_event_id);
+      await eventPlayerRepo.insertEventPlayersBulk(supabase, newEvent.id, playerIds);
+    } catch (err) {
+      await eventRepo.deleteEvent(supabase, newEvent.id);
+      throw err;
     }
-    const playerIds = await eventPlayerRepo.getPlayerIdsByEvent(supabase, copy_players_from_event_id);
-    await eventPlayerRepo.insertEventPlayersBulk(supabase, newEvent.id, playerIds);
   }
 
   return newEvent;
