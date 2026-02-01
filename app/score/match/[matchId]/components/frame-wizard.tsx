@@ -441,11 +441,11 @@ function PlayerScoreRow({
           className={cn(
             'w-12 h-12 flex items-center justify-center text-xl font-mono font-bold rounded-lg border-2',
             currentScore === null && 'text-muted-foreground border-dashed',
-            currentScore === 3 && 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300',
-            currentScore !== null && currentScore < 3 && 'border-primary'
+            currentScore === MAX_PUTTS && 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300',
+            currentScore !== null && currentScore < MAX_PUTTS && 'border-primary'
           )}
         >
-          {currentScore ?? '-'}
+          {points ?? '-'}
         </div>
 
         <Button
