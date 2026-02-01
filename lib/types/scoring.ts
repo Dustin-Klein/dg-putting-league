@@ -73,6 +73,7 @@ export interface BracketMatchWithDetails {
   team_two?: TeamWithPlayers;
   frames?: MatchFrame[];
   bracket_frame_count: number;
+  bonus_point_enabled: boolean;
 }
 
 export interface OpponentData {

@@ -136,16 +136,17 @@ export async function getBracketMatchWithDetails(
 ): Promise<BracketMatchWithDetails> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const [bracketMatch, bracketFrameCount] = await Promise.all([
+  const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
     getMatchForScoringById(supabase, bracketMatchId),
     getEventBracketFrameCount(supabase, eventId),
+    getEventScoringConfig(supabase, eventId),
   ]);
 
   if (!bracketMatch || bracketMatch.event_id !== eventId) {
     throw new NotFoundError('Bracket match not found');
   }
 
-  if (bracketFrameCount === null) {
+  if (bracketFrameCount === null || !eventConfig) {
     throw new InternalError('Event scoring configuration not found');
   }
 
@@ -166,6 +167,7 @@ export async function getBracketMatchWithDetails(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
     bracket_frame_count: bracketFrameCount,
+    bonus_point_enabled: eventConfig.bonus_point_enabled,
   } as BracketMatchWithDetails;
 }
 
