@@ -64,7 +64,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
         <p className="text-muted-foreground mt-2 mb-4">
           This league doesn&apos;t have any events yet. {isAdmin && 'Create one to get started.'}
         </p>
-        {isAdmin && <CreateEventDialog leagueId={leagueId} />}
+        {isAdmin && <CreateEventDialog leagueId={leagueId} completedEvents={[]} />}
       </div>
     );
   }
@@ -73,7 +73,10 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
     <div className="space-y-4">
       {isAdmin && (
         <div className="flex justify-end">
-          <CreateEventDialog leagueId={leagueId} />
+          <CreateEventDialog
+            leagueId={leagueId}
+            completedEvents={(events ?? []).filter(e => e.status === 'completed')}
+          />
         </div>
       )}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

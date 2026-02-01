@@ -19,6 +19,7 @@ const eventSchema = z.object({
   qualification_round_enabled: z.boolean().optional().default(false),
   bracket_frame_count: z.number().int().min(1).max(10).default(5),
   qualification_frame_count: z.number().int().min(1).max(10).default(5),
+  copy_players_from_event_id: z.string().uuid().optional(),
 });
 
 export async function POST(

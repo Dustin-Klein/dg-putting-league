@@ -13,6 +13,7 @@ import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
 import { autoAssignLanes } from '@/lib/services/lane';
 import * as eventRepo from '@/lib/repositories/event-repository';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
 import * as eventPlacementRepo from '@/lib/repositories/event-placement-repository';
 
@@ -70,6 +71,7 @@ export async function createEvent(data: {
   qualification_round_enabled: boolean;
   bracket_frame_count: number;
   qualification_frame_count: number;
+  copy_players_from_event_id?: string;
 }) {
   const supabase = await createClient();
 
@@ -87,13 +89,23 @@ export async function createEvent(data: {
   const eventDate = new Date(data.event_date);
   const formattedDate = eventDate.toISOString().split('T')[0];
 
+  const { copy_players_from_event_id, ...eventData } = data;
+
   // 4. Create event via repo
-  return eventRepo.createEvent(supabase, {
-    ...data,
+  const newEvent = await eventRepo.createEvent(supabase, {
+    ...eventData,
     access_code: accessCode,
     event_date: formattedDate,
     status: 'created',
   });
+
+  // 5. Copy players from source event if specified
+  if (copy_players_from_event_id) {
+    const playerIds = await eventPlayerRepo.getPlayerIdsByEvent(supabase, copy_players_from_event_id);
+    await eventPlayerRepo.insertEventPlayersBulk(supabase, newEvent.id, playerIds);
+  }
+
+  return newEvent;
 }
 
 /**
