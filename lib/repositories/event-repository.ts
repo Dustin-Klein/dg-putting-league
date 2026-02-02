@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError, NotFoundError } from '@/lib/errors';
-import type { EventStatus } from '@/lib/types/event';
+import type { EventStatus, PayoutPlace } from '@/lib/types/event';
 import type { EventPlayer } from '@/lib/types/player';
 import type { Team } from '@/lib/types/team';
 
@@ -15,6 +15,8 @@ export interface EventData {
   qualification_round_enabled: boolean;
   bracket_frame_count: number;
   qualification_frame_count: number;
+  entry_fee_per_player: number | null;
+  payout_structure: PayoutPlace[] | null;
   access_code: string | null;
   created_at: string;
 }
@@ -444,6 +446,7 @@ export async function createEvent(
     qualification_round_enabled: boolean;
     bracket_frame_count: number;
     qualification_frame_count: number;
+    entry_fee_per_player?: number | null;
     status: EventStatus;
   }
 ): Promise<EventData> {
@@ -478,4 +481,22 @@ export async function getEventBracketFrameCount(
   }
 
   return event?.bracket_frame_count ?? null;
+}
+
+/**
+ * Update event payout structure
+ */
+export async function updateEventPayouts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  payoutStructure: PayoutPlace[] | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('events')
+    .update({ payout_structure: payoutStructure })
+    .eq('id', eventId);
+
+  if (error) {
+    throw new InternalError(`Failed to update event payouts: ${error.message}`);
+  }
 }

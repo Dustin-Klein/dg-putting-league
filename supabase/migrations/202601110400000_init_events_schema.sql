@@ -15,6 +15,8 @@ CREATE TABLE public.events (
   qualification_round_enabled BOOLEAN NOT NULL DEFAULT false,
   bracket_frame_count INTEGER NOT NULL DEFAULT 5 CHECK (bracket_frame_count > 0 AND bracket_frame_count <= 10),
   qualification_frame_count INTEGER NOT NULL DEFAULT 5 CHECK (qualification_frame_count > 0 AND qualification_frame_count <= 10),
+  entry_fee_per_player NUMERIC(8,2) DEFAULT NULL,
+  payout_structure JSONB DEFAULT NULL,
   status event_status NOT NULL DEFAULT 'created',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

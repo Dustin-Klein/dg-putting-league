@@ -1,7 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { EventWithDetails } from '@/lib/types/event';
+import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
 import {
   ForbiddenError,
   BadRequestError,
@@ -12,6 +12,7 @@ import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-pla
 import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
 import { autoAssignLanes } from '@/lib/services/lane';
+import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
 import * as eventRepo from '@/lib/repositories/event-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
@@ -71,6 +72,7 @@ export async function createEvent(data: {
   qualification_round_enabled: boolean;
   bracket_frame_count: number;
   qualification_frame_count: number;
+  entry_fee_per_player?: number | null;
   copy_players_from_event_id?: string;
 }) {
   const supabase = await createClient();
@@ -89,13 +91,14 @@ export async function createEvent(data: {
   const eventDate = new Date(data.event_date);
   const formattedDate = eventDate.toISOString().split('T')[0];
 
-  const { copy_players_from_event_id, ...eventData } = data;
+  const { copy_players_from_event_id, entry_fee_per_player, ...eventData } = data;
 
   // 4. Create event via repo
   const newEvent = await eventRepo.createEvent(supabase, {
     ...eventData,
     access_code: accessCode,
     event_date: formattedDate,
+    entry_fee_per_player: entry_fee_per_player ?? null,
     status: 'created',
   });
 
@@ -305,4 +308,82 @@ export async function finalizeEventPlacements(eventId: string): Promise<void> {
   if (placements.length > 0) {
     await eventPlacementRepo.storeEventPlacements(supabase, placements);
   }
+}
+
+export interface EventPayoutInfo {
+  entry_fee_per_player: number;
+  player_count: number;
+  team_count: number;
+  total_pot: number;
+  structure: PayoutPlace[];
+  payouts: PayoutBreakdown[];
+  is_custom: boolean;
+}
+
+/**
+ * Get computed payout breakdown for an event
+ */
+export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo | null> {
+  const supabase = await createClient();
+  const event = await eventRepo.getEventWithPlayers(supabase, eventId);
+
+  if (!event.entry_fee_per_player) {
+    return null;
+  }
+
+  const entryFee = Number(event.entry_fee_per_player);
+  const playerCount = event.players?.length ?? 0;
+  const teamCount = event.teams?.length ?? 0;
+  const totalPot = entryFee * playerCount;
+
+  const isCustom = event.payout_structure !== null;
+  const structure: PayoutPlace[] = isCustom
+    ? (event.payout_structure as PayoutPlace[])
+    : getDefaultPayoutStructure(teamCount);
+
+  const payouts = calculatePayouts(entryFee, playerCount, structure);
+
+  return {
+    entry_fee_per_player: entryFee,
+    player_count: playerCount,
+    team_count: teamCount,
+    total_pot: totalPot,
+    structure,
+    payouts,
+    is_custom: isCustom,
+  };
+}
+
+/**
+ * Update payout structure for an event (admin only, bracket status)
+ */
+export async function updateEventPayouts(
+  eventId: string,
+  payoutStructure: PayoutPlace[] | null
+): Promise<void> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const event = await eventRepo.getEventById(supabase, eventId);
+  if (!event) {
+    throw new BadRequestError('Event not found');
+  }
+
+  if (event.status !== 'bracket') {
+    throw new BadRequestError('Payout structure can only be edited during bracket play');
+  }
+
+  if (payoutStructure !== null) {
+    const sum = payoutStructure.reduce((acc, p) => acc + p.percentage, 0);
+    if (Math.abs(sum - 100) > 0.01) {
+      throw new BadRequestError('Payout percentages must sum to 100');
+    }
+
+    for (let i = 0; i < payoutStructure.length; i++) {
+      if (payoutStructure[i].place !== i + 1) {
+        throw new BadRequestError('Places must be sequential starting from 1');
+      }
+    }
+  }
+
+  await eventRepo.updateEventPayouts(supabase, eventId, payoutStructure);
 }

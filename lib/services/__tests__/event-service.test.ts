@@ -130,6 +130,7 @@ describe('Event Service', () => {
       expect(eventRepo.isAccessCodeUnique).toHaveBeenCalledWith(mockSupabase, eventData.access_code);
       expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, {
         ...eventData,
+        entry_fee_per_player: null,
         status: 'created',
       });
     });

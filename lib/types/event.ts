@@ -1,5 +1,10 @@
 export type EventStatus = 'created' | 'pre-bracket' | 'bracket' | 'completed';
 
+export interface PayoutPlace {
+  place: number;
+  percentage: number;
+}
+
 /**
  * Basic event type matching database schema
  */
@@ -14,6 +19,8 @@ export interface Event {
   qualification_round_enabled: boolean;
   bracket_frame_count: number;
   qualification_frame_count: number;
+  entry_fee_per_player: number | null;
+  payout_structure: PayoutPlace[] | null;
   created_at: string;
   participant_count?: number;
 }
@@ -33,6 +40,8 @@ export interface EventWithDetails {
   qualification_round_enabled: boolean;
   bracket_frame_count: number;
   qualification_frame_count: number;
+  entry_fee_per_player: number | null;
+  payout_structure: PayoutPlace[] | null;
   created_at: string;
   players: import('./player').EventPlayer[];
   teams?: import('./team').Team[];

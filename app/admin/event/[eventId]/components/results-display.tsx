@@ -164,28 +164,47 @@ function calculatePlacements(bracketData: BracketWithTeams | null): TeamPlacemen
   return placements;
 }
 
+interface PayoutByPlace {
+  [place: number]: number;
+}
+
 export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
+  const [payoutsByPlace, setPayoutsByPlace] = useState<PayoutByPlace>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBracket = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/event/${eventId}/bracket`);
 
-      if (!response.ok) {
-        if (response.status === 404) {
+      const [bracketResponse, payoutsResponse] = await Promise.all([
+        fetch(`/api/event/${eventId}/bracket`),
+        fetch(`/api/event/${eventId}/payouts`),
+      ]);
+
+      if (!bracketResponse.ok) {
+        if (bracketResponse.status === 404) {
           setError('Bracket not found.');
         } else {
-          const data = await response.json();
+          const data = await bracketResponse.json();
           throw new Error(data.error || 'Failed to load results');
         }
         return;
       }
 
-      const data = await response.json();
-      setBracketData(data);
+      const bracketJson = await bracketResponse.json();
+      setBracketData(bracketJson);
+
+      if (payoutsResponse.ok) {
+        const payoutsJson = await payoutsResponse.json();
+        const map: PayoutByPlace = {};
+        for (const p of payoutsJson.payouts ?? []) {
+          map[p.place] = p.amount;
+        }
+        setPayoutsByPlace(map);
+      }
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load results');
@@ -195,8 +214,8 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
   }, [eventId]);
 
   useEffect(() => {
-    fetchBracket();
-  }, [fetchBracket]);
+    fetchData();
+  }, [fetchData]);
 
   const placements = useMemo(() => calculatePlacements(bracketData), [bracketData]);
 
@@ -247,10 +266,13 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-20">Place</TableHead>
+              <TableHead className="w-20 pl-6">Place</TableHead>
               <TableHead>Team</TableHead>
               <TableHead>Players</TableHead>
               <TableHead>Eliminated In</TableHead>
+              {Object.keys(payoutsByPlace).length > 0 && (
+                <TableHead className="text-right pr-6">Payout</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -264,7 +286,7 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
 
               return (
                 <TableRow key={placement.team.id}>
-                  <TableCell>
+                  <TableCell className="pl-6">
                     <div className="flex items-center gap-2">
                       {getPlaceIcon(placement.place)}
                       <Badge variant={getPlaceBadgeVariant(placement.place)}>
@@ -320,6 +342,15 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
                       {placement.eliminatedIn}
                     </span>
                   </TableCell>
+                  {Object.keys(payoutsByPlace).length > 0 && (
+                    <TableCell className="text-right pr-6">
+                      {payoutsByPlace[placement.place] != null && (
+                        <span className="font-semibold text-green-600">
+                          ${payoutsByPlace[placement.place].toFixed(2)}
+                        </span>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}
