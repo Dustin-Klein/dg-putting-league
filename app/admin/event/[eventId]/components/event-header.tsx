@@ -58,6 +58,13 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
             <p className="text-lg font-medium">{event.lane_count}</p>
           </div>
 
+          {event.entry_fee_per_player != null && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground">Entry Fee</h3>
+              <p className="text-lg font-medium">${Number(event.entry_fee_per_player).toFixed(2)}</p>
+            </div>
+          )}
+
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
             <p className="text-lg font-medium">

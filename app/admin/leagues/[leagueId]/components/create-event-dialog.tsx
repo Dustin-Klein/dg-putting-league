@@ -36,6 +36,7 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
           qualification_round_enabled: values.qualification_round_enabled,
           bracket_frame_count: values.bracket_frame_count,
           qualification_frame_count: values.qualification_frame_count,
+          entry_fee_per_player: values.entry_fee_per_player || null,
           ...(copyFromEventId ? { copy_players_from_event_id: copyFromEventId } : {}),
         }),
       });

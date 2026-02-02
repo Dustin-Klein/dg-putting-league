@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { EventHeader, PlayerManagement, BracketSection, TeamDisplay, ResultsDisplay } from './components';
+import { EventHeader, PlayerManagement, BracketSection, TeamDisplay, ResultsDisplay, PayoutsDisplay } from './components';
 import { EventWithDetails } from '@/lib/types/event';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -18,8 +18,17 @@ function EventContent({
   isAdmin: boolean;
   onPlayersUpdate: (players: EventWithDetails['players']) => void;
 }) {
+  const hasEntryFee = event.entry_fee_per_player != null;
+
   if (event.status === 'completed') {
-    return <ResultsDisplay eventId={event.id} />;
+    return (
+      <div className="space-y-8">
+        <ResultsDisplay eventId={event.id} />
+        {hasEntryFee && (
+          <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
+        )}
+      </div>
+    );
   }
 
   if (event.status === 'bracket') {
@@ -29,6 +38,7 @@ function EventContent({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
+            {hasEntryFee && <TabsTrigger value="payouts">Payouts</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -39,6 +49,12 @@ function EventContent({
         <TabsContent value="teams">
           <TeamDisplay event={event} isAdmin={isAdmin} />
         </TabsContent>
+
+        {hasEntryFee && (
+          <TabsContent value="payouts">
+            <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
+          </TabsContent>
+        )}
       </Tabs>
     );
   }
