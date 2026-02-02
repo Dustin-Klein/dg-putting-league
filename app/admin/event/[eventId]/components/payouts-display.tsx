@@ -58,7 +58,9 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
 
   const handlePercentageChange = (index: number, value: string) => {
     const updated = [...editStructure];
-    updated[index] = { ...updated[index], percentage: Number(value) || 0 };
+    const numericValue = Number(value);
+    const clampedValue = isNaN(numericValue) ? 0 : Math.max(0, Math.min(100, numericValue));
+    updated[index] = { ...updated[index], percentage: clampedValue };
     setEditStructure(updated);
   };
 
