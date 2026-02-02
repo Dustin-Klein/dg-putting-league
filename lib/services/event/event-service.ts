@@ -327,7 +327,7 @@ export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo 
   const supabase = await createClient();
   const event = await eventRepo.getEventWithPlayers(supabase, eventId);
 
-  if (!event.entry_fee_per_player) {
+  if (event.entry_fee_per_player == null) {
     return null;
   }
 

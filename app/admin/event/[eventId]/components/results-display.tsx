@@ -203,6 +203,9 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
           map[p.place] = p.amount;
         }
         setPayoutsByPlace(map);
+      } else if (payoutsResponse.status !== 404) {
+        const data = await payoutsResponse.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load payout data');
       }
 
       setError(null);
