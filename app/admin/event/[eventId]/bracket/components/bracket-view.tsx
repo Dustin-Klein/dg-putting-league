@@ -203,9 +203,22 @@ function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
       const match = round.matches[j];
       const visible = !isByeMatch(match);
 
-      // Find child matches (2 per parent in standard bracket)
-      const child1 = prevLayout.matches[j * 2];
-      const child2 = prevLayout.matches[j * 2 + 1];
+      // Detect round type: minor (1:1) vs major (2:1) based on match counts
+      const isMinorRound = round.matches.length === prevLayout.matches.length;
+
+      // Find child matches based on round type
+      let child1: MatchLayout | undefined;
+      let child2: MatchLayout | undefined;
+
+      if (isMinorRound) {
+        // Minor round: 1:1 relationship (LB match + WB dropout)
+        child1 = prevLayout.matches[j];
+        child2 = undefined;
+      } else {
+        // Major round: 2:1 relationship (two matches consolidate)
+        child1 = prevLayout.matches[j * 2];
+        child2 = prevLayout.matches[j * 2 + 1];
+      }
 
       // Calculate midpoint of visible children
       const yPosition = calculateMidpoint(child1, child2);
@@ -272,10 +285,26 @@ function RoundConnector({
   }
 
   const connectorPaths: React.JSX.Element[] = [];
+
+  // Detect round type: minor (1:1) vs major (2:1) based on match counts
+  const isMinorRound = leftLayouts.length === rightLayouts.length;
+
   for (let j = 0; j < rightLayouts.length; j++) {
     const right = rightLayouts[j];
-    const child1 = leftLayouts[j * 2];
-    const child2 = leftLayouts[j * 2 + 1];
+
+    // Find child matches based on round type
+    let child1: MatchLayout | undefined;
+    let child2: MatchLayout | undefined;
+
+    if (isMinorRound) {
+      // Minor round: 1:1 relationship
+      child1 = leftLayouts[j];
+      child2 = undefined;
+    } else {
+      // Major round: 2:1 relationship
+      child1 = leftLayouts[j * 2];
+      child2 = leftLayouts[j * 2 + 1];
+    }
 
     if (!right?.visible) continue;
 
