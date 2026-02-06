@@ -202,7 +202,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Payout Pool</p>
-              <p className="text-lg font-semibold">{formatCurrency(payoutInfo.total_pot - payoutInfo.admin_fees)}</p>
+              <p className="text-lg font-semibold">{formatCurrency(Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees))}</p>
             </div>
           </div>
         )}
