@@ -245,13 +245,21 @@ export default function MatchScoringPage({
   const handleBeginScoring = () => {
     if (bracketFrameCount === null) return;
 
-    // Fire-and-forget: transition match to Running so admin idle timer clears
+    // Transition match to Running so admin idle timer clears
     if (accessCode && matchId) {
       fetch(`/api/score/match/${matchId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ access_code: accessCode, action: 'start' }),
-      }).catch(() => {});
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to start match ${matchId}: ${res.status}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`Failed to start match ${matchId}:`, err);
+        });
     }
 
     // If match already has scores, start from where they left off
