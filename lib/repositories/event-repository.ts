@@ -16,6 +16,7 @@ export interface EventData {
   bracket_frame_count: number;
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
+  admin_fees: number | null;
   payout_structure: PayoutPlace[] | null;
   access_code: string | null;
   created_at: string;
@@ -447,6 +448,7 @@ export async function createEvent(
     bracket_frame_count: number;
     qualification_frame_count: number;
     entry_fee_per_player?: number | null;
+    admin_fees?: number | null;
     status: EventStatus;
   }
 ): Promise<EventData> {

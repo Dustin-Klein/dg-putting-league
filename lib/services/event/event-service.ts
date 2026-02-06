@@ -73,6 +73,7 @@ export async function createEvent(data: {
   bracket_frame_count: number;
   qualification_frame_count: number;
   entry_fee_per_player?: number | null;
+  admin_fees?: number | null;
   copy_players_from_event_id?: string;
 }) {
   const supabase = await createClient();
@@ -91,7 +92,7 @@ export async function createEvent(data: {
   const eventDate = new Date(data.event_date);
   const formattedDate = eventDate.toISOString().split('T')[0];
 
-  const { copy_players_from_event_id, entry_fee_per_player, ...eventData } = data;
+  const { copy_players_from_event_id, entry_fee_per_player, admin_fees, ...eventData } = data;
 
   // 4. Create event via repo
   const newEvent = await eventRepo.createEvent(supabase, {
@@ -99,6 +100,7 @@ export async function createEvent(data: {
     access_code: accessCode,
     event_date: formattedDate,
     entry_fee_per_player: entry_fee_per_player ?? null,
+    admin_fees: admin_fees ?? null,
     status: 'created',
   });
 
@@ -312,6 +314,7 @@ export async function finalizeEventPlacements(eventId: string): Promise<void> {
 
 export interface EventPayoutInfo {
   entry_fee_per_player: number;
+  admin_fees: number;
   player_count: number;
   team_count: number;
   total_pot: number;
@@ -332,6 +335,7 @@ export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo 
   }
 
   const entryFee = Number(event.entry_fee_per_player);
+  const adminFees = Number(event.admin_fees ?? 0);
   const playerCount = event.players?.length ?? 0;
   const teamCount = event.teams?.length ?? 0;
   const totalPot = entryFee * playerCount;
@@ -341,10 +345,11 @@ export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo 
     ? (event.payout_structure as PayoutPlace[])
     : getDefaultPayoutStructure(teamCount);
 
-  const payouts = calculatePayouts(entryFee, playerCount, structure);
+  const payouts = calculatePayouts(entryFee, playerCount, structure, adminFees);
 
   return {
     entry_fee_per_player: entryFee,
+    admin_fees: adminFees,
     player_count: playerCount,
     team_count: teamCount,
     total_pot: totalPot,

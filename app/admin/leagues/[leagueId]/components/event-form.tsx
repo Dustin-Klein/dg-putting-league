@@ -38,6 +38,7 @@ export const eventFormSchema = z.object({
   bracket_frame_count: z.coerce.number().int().min(1).max(10).default(5),
   qualification_frame_count: z.coerce.number().int().min(1).max(10).default(5),
   entry_fee_per_player: z.coerce.number().min(0).nullable().default(null),
+  admin_fees: z.coerce.number().min(0).nullable().default(null),
 });
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
@@ -238,40 +239,71 @@ export function EventForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="entry_fee_per_player"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Entry Fee Per Player (Optional)</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    $
-                  </span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    {...field}
-                    value={field.value ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      field.onChange(val === '' ? null : Number(val));
-                    }}
-                    disabled={isLoading}
-                    className="pl-7"
-                  />
-                </div>
-              </FormControl>
-              <FormDescription>
-                Set an entry fee to enable payout calculations
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="entry_fee_per_player"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Entry Fee (Optional)</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      {...field}
+                      value={field.value ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        field.onChange(val === '' ? null : Number(val));
+                      }}
+                      disabled={isLoading}
+                      className="pl-7"
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="admin_fees"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Admin Fees (Optional)</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      {...field}
+                      value={field.value ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        field.onChange(val === '' ? null : Number(val));
+                      }}
+                      disabled={isLoading}
+                      className="pl-7"
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormField
           control={form.control}

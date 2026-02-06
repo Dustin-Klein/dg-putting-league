@@ -109,6 +109,54 @@ describe('calculatePayouts', () => {
     expect(total).toBe(pot);
   });
 
+  it('subtracts admin fees from pot', () => {
+    // $5 fee, 10 players = $50 gross, $10 admin fees = $40 net pot
+    // 70/30 split: 2nd raw = $12 → rounds to $10, 1st = $40 - $10 = $30
+    const result = calculatePayouts(5, 10, [
+      { place: 1, percentage: 70 },
+      { place: 2, percentage: 30 },
+    ], 10);
+    expect(result[0].amount + result[1].amount).toBe(40);
+    expect(result[1].amount).toBe(10);
+    expect(result[0].amount).toBe(30);
+  });
+
+  it('rounds correctly with reduced pot from admin fees', () => {
+    // $5 fee, 8 players = $40 gross, $5 admin fees = $35 net pot
+    // 50/30/20 split
+    // 3rd raw: $7.00 → rounds to $5
+    // 2nd raw: $10.50 → rounds to $10
+    // 1st: $35 - $5 - $10 = $20
+    const result = calculatePayouts(5, 8, [
+      { place: 1, percentage: 50 },
+      { place: 2, percentage: 30 },
+      { place: 3, percentage: 20 },
+    ], 5);
+    const total = result.reduce((sum, p) => sum + p.amount, 0);
+    expect(total).toBe(35);
+    expect(result[2].amount).toBe(5);
+    expect(result[1].amount).toBe(10);
+    expect(result[0].amount).toBe(20);
+  });
+
+  it('returns empty when admin fees >= total pot', () => {
+    const result = calculatePayouts(5, 10, [
+      { place: 1, percentage: 100 },
+    ], 50);
+    expect(result).toEqual([]);
+
+    const result2 = calculatePayouts(5, 10, [
+      { place: 1, percentage: 100 },
+    ], 60);
+    expect(result2).toEqual([]);
+  });
+
+  it('defaults admin fees to 0 (existing tests unaffected)', () => {
+    // Same as the "gives 100% to 1st for single-place structure" test
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }]);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 50 }]);
+  });
+
   it('handles large entry fee with small pot', () => {
     // $10 fee, 3 players = $30 pot, 70/30 split
     // 2nd raw: $9 → rounds to $10

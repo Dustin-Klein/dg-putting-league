@@ -42,11 +42,12 @@ export function getDefaultPayoutStructure(teamCount: number): PayoutPlace[] {
 export function calculatePayouts(
   entryFee: number,
   playerCount: number,
-  structure: PayoutPlace[]
+  structure: PayoutPlace[],
+  adminFees: number = 0
 ): PayoutBreakdown[] {
-  const totalPot = entryFee * playerCount;
+  const totalPot = entryFee * playerCount - adminFees;
 
-  if (structure.length === 0 || totalPot === 0) {
+  if (structure.length === 0 || totalPot <= 0) {
     return [];
   }
 
