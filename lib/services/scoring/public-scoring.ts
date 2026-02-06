@@ -526,6 +526,28 @@ export async function batchRecordScoresAndGetMatch(
 }
 
 /**
+ * Start a match (transition Ready → Running) when public scorer begins scoring.
+ * Idempotent: no-op if match is already Running.
+ */
+export async function startMatchPublic(
+  accessCode: string,
+  bracketMatchId: number
+): Promise<void> {
+  const supabase = await createClient();
+  const event = await validateAccessCode(accessCode, supabase);
+
+  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
+
+  if (!bracketMatch) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (bracketMatch.status === MatchStatus.Ready) {
+    await updateMatchStatus(supabase, bracketMatchId, MatchStatus.Running);
+  }
+}
+
+/**
  * Complete a match (public, access-code authenticated)
  */
 export async function completeMatchPublic(

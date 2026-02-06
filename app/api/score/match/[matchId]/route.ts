@@ -4,6 +4,7 @@ import {
   getMatchForScoring,
   recordScoreAndGetMatch,
   completeMatchPublic,
+  startMatchPublic,
 } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
@@ -20,8 +21,9 @@ const recordScoreSchema = z.object({
   // bonus_point_enabled is now determined server-side from the event record
 });
 
-const completeMatchSchema = z.object({
+const patchMatchSchema = z.object({
   access_code: z.string().min(1),
+  action: z.enum(['start', 'complete']).optional().default('complete'),
 });
 
 /**
@@ -93,7 +95,7 @@ export async function PUT(
 }
 
 /**
- * PATCH: Complete match
+ * PATCH: Start or complete match
  */
 export async function PATCH(
   req: Request,
@@ -109,10 +111,15 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const parsed = completeMatchSchema.safeParse(body);
+    const parsed = patchMatchSchema.safeParse(body);
 
     if (!parsed.success) {
       throw new BadRequestError('Access code is required');
+    }
+
+    if (parsed.data.action === 'start') {
+      await startMatchPublic(parsed.data.access_code, bracketMatchId);
+      return NextResponse.json({ ok: true });
     }
 
     const match = await completeMatchPublic(parsed.data.access_code, bracketMatchId);
