@@ -17,6 +17,7 @@ import * as eventRepo from '@/lib/repositories/event-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
 import * as eventPlacementRepo from '@/lib/repositories/event-placement-repository';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * Ensure the current user is an admin of the event's league
@@ -79,7 +80,7 @@ export async function createEvent(data: {
   const supabase = await createClient();
 
   // 1. Auth check
-  await requireLeagueAdmin(data.league_id);
+  const { user } = await requireLeagueAdmin(data.league_id);
 
   // 2. Normalize and check access code uniqueness
   const accessCode = data.access_code.trim();
@@ -114,10 +115,30 @@ export async function createEvent(data: {
       const playerIds = await eventPlayerRepo.getPlayerIdsByEvent(supabase, copy_players_from_event_id);
       await eventPlayerRepo.insertEventPlayersBulk(supabase, newEvent.id, playerIds);
     } catch (err) {
+      logger.error('Event creation failed during player copy', {
+        userId: user.id,
+        action: 'create_event',
+        eventId: newEvent.id,
+        leagueId: data.league_id,
+        adminFees: admin_fees ?? null,
+        entryFee: entry_fee_per_player ?? null,
+        outcome: 'failure',
+        error: err instanceof Error ? err.message : String(err),
+      });
       await eventRepo.deleteEvent(supabase, newEvent.id);
       throw err;
     }
   }
+
+  logger.info('Event created successfully', {
+    userId: user.id,
+    action: 'create_event',
+    eventId: newEvent.id,
+    leagueId: data.league_id,
+    adminFees: admin_fees ?? null,
+    entryFee: entry_fee_per_player ?? null,
+    outcome: 'success',
+  });
 
   return newEvent;
 }
