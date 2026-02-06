@@ -131,6 +131,7 @@ describe('Event Service', () => {
       expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, {
         ...eventData,
         entry_fee_per_player: null,
+        admin_fees: null,
         status: 'created',
       });
     });
