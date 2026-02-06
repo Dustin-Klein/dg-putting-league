@@ -120,6 +120,7 @@ export function MatchCard({
         'w-64 overflow-hidden transition-all relative',
         isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/50',
         match.status === Status.Running && 'border-2 border-blue-400',
+        laneLabel && !isIdle && match.status !== Status.Running && !isComplete && 'ring-1 ring-amber-300/60',
         isIdle && 'shadow-[0_0_12px_rgba(245,158,11,0.5)]'
       )}
       onClick={isClickable ? onClick : undefined}
