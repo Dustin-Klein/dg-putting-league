@@ -543,6 +543,9 @@ export async function startMatchPublic(
   }
 
   if (bracketMatch.status === MatchStatus.Ready) {
+    if (bracketMatch.lane_id === null) {
+      throw new BadRequestError('Match has no lane assigned');
+    }
     await updateMatchStatus(supabase, bracketMatchId, MatchStatus.Running);
   }
 }

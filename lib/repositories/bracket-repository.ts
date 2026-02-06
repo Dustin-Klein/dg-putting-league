@@ -898,6 +898,7 @@ export interface MatchByIdAndEvent {
   id: number;
   status: number;
   event_id: string;
+  lane_id: number | null;
   opponent1: { id: number | null } | null;
   opponent2: { id: number | null } | null;
 }
@@ -912,7 +913,7 @@ export async function getMatchByIdAndEvent(
 ): Promise<MatchByIdAndEvent | null> {
   const { data: match, error } = await supabase
     .from('bracket_match')
-    .select('id, status, event_id, opponent1, opponent2')
+    .select('id, status, event_id, lane_id, opponent1, opponent2')
     .eq('id', matchId)
     .eq('event_id', eventId)
     .single();

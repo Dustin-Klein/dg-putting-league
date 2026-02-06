@@ -774,6 +774,7 @@ describe('Bracket Repository', () => {
         id: 1,
         status: 2,
         event_id: 'event-123',
+        lane_id: 5,
         opponent1: { id: 1 },
         opponent2: { id: 2 },
       };
