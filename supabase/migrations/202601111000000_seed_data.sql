@@ -63,8 +63,8 @@ BEGIN
   WHERE email = 'fake@gmail.com';
 
   -- 3. Insert Event
-  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player)
-  VALUES (v_league_id, CURRENT_DATE, 4, 20.0, 'TEST1234', 'pre-bracket', 10.00)
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player, admin_fees)
+  VALUES (v_league_id, CURRENT_DATE, 4, 20.0, 'TEST1234', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
   -- 4. Insert Players and Register them to the event
@@ -83,8 +83,8 @@ BEGIN
   -- 5. Insert Additional Events and register existing players
   
   -- Event 2: 30 players
-  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player)
-  VALUES (v_league_id, CURRENT_DATE + 1, 4, 20.0, 'TESTEV02', 'pre-bracket', 10.00)
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player, admin_fees)
+  VALUES (v_league_id, CURRENT_DATE + 1, 4, 20.0, 'TESTEV02', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
   INSERT INTO public.event_players (event_id, player_id, has_paid)
@@ -94,8 +94,8 @@ BEGIN
   LIMIT 30;
 
   -- Event 3: 12 players
-  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player)
-  VALUES (v_league_id, CURRENT_DATE + 2, 4, 20.0, 'TESTEV03', 'pre-bracket', 10.00)
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player, admin_fees)
+  VALUES (v_league_id, CURRENT_DATE + 2, 4, 20.0, 'TESTEV03', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
   INSERT INTO public.event_players (event_id, player_id, has_paid)
@@ -105,8 +105,8 @@ BEGIN
   LIMIT 12;
 
   -- Event 4: 38 players
-  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player)
-  VALUES (v_league_id, CURRENT_DATE + 3, 4, 20.0, 'TESTEV04', 'pre-bracket', 10.00)
+  INSERT INTO public.events (league_id, event_date, lane_count, putt_distance_ft, access_code, status, entry_fee_per_player, admin_fees)
+  VALUES (v_league_id, CURRENT_DATE + 3, 4, 20.0, 'TESTEV04', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
   INSERT INTO public.event_players (event_id, player_id, has_paid)

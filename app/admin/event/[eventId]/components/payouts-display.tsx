@@ -194,6 +194,19 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
           </div>
         </div>
 
+        {payoutInfo.admin_fees > 0 && (
+          <div className="grid grid-cols-2 gap-4 text-center border-t pt-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Admin Fees</p>
+              <p className="text-lg font-semibold text-destructive">-{formatCurrency(payoutInfo.admin_fees)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Payout Pool</p>
+              <p className="text-lg font-semibold">{formatCurrency(payoutInfo.total_pot - payoutInfo.admin_fees)}</p>
+            </div>
+          </div>
+        )}
+
         {editing ? (
           <div className="space-y-3">
             <div className="rounded-md border">

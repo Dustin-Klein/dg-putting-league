@@ -199,6 +199,7 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     bracket_frame_count: 5,
     qualification_frame_count: 5,
     entry_fee_per_player: null,
+    admin_fees: null,
     payout_structure: null,
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
@@ -219,6 +220,7 @@ export interface MockEvent {
   bracket_frame_count: number;
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
+  admin_fees: number | null;
   payout_structure: { place: number; percentage: number }[] | null;
   created_at: string;
   putt_distance_ft: number;
