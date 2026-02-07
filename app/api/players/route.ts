@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     const schema = z.object({
       name: z.string().trim().min(1),
-      email: z.string().email().optional().or(z.literal('')).transform(val => val || undefined),
+      email: z.string().email(),
       nickname: z.string().trim().optional(),
       default_pool: z.enum(['A','B']).optional(),
     });

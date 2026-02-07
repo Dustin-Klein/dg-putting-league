@@ -74,29 +74,30 @@ describe('Player Service', () => {
     });
 
     it('should create a player without optional fields', async () => {
-      const minimalInput = { name: 'Jane Doe' };
+      const minimalInput = { name: 'Jane Doe', email: 'jane@example.com' };
       const expectedPlayer = { id: 'player-456' };
+      (playerRepo.getPlayerByEmail as jest.Mock).mockResolvedValue(null);
       (playerRepo.insertPlayer as jest.Mock).mockResolvedValue(expectedPlayer);
 
       const result = await createPlayer(minimalInput);
 
       expect(result).toEqual(expectedPlayer);
-      expect(playerRepo.getPlayerByEmail).not.toHaveBeenCalled();
+      expect(playerRepo.getPlayerByEmail).toHaveBeenCalledWith(mockSupabase, 'jane@example.com');
       expect(playerRepo.insertPlayer).toHaveBeenCalledWith(mockSupabase, {
         full_name: 'Jane Doe',
-        email: undefined,
+        email: 'jane@example.com',
         nickname: undefined,
         default_pool: undefined,
       });
     });
 
     it('should throw BadRequestError when name is empty', async () => {
-      await expect(createPlayer({ name: '' })).rejects.toThrow(BadRequestError);
-      await expect(createPlayer({ name: '' })).rejects.toThrow('Name is required');
+      await expect(createPlayer({ name: '', email: 'test@example.com' })).rejects.toThrow(BadRequestError);
+      await expect(createPlayer({ name: '', email: 'test@example.com' })).rejects.toThrow('Name is required');
     });
 
     it('should throw BadRequestError when name is missing', async () => {
-      await expect(createPlayer({} as { name: string })).rejects.toThrow(BadRequestError);
+      await expect(createPlayer({} as { name: string; email: string })).rejects.toThrow(BadRequestError);
     });
 
     it('should throw BadRequestError when email already exists', async () => {
@@ -112,13 +113,11 @@ describe('Player Service', () => {
       );
     });
 
-    it('should skip email check when no email provided', async () => {
-      const inputWithoutEmail = { name: 'No Email Player' };
-      (playerRepo.insertPlayer as jest.Mock).mockResolvedValue({ id: 'player-789' });
+    it('should throw BadRequestError when email is missing', async () => {
+      const inputWithoutEmail = { name: 'No Email Player' } as { name: string; email: string };
 
-      await createPlayer(inputWithoutEmail);
-
-      expect(playerRepo.getPlayerByEmail).not.toHaveBeenCalled();
+      await expect(createPlayer(inputWithoutEmail)).rejects.toThrow(BadRequestError);
+      await expect(createPlayer(inputWithoutEmail)).rejects.toThrow('Email is required');
     });
 
     it('should require authentication', async () => {

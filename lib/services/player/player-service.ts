@@ -9,7 +9,7 @@ export type { PlayerSearchResult } from '@/lib/types/player';
 
 type CreatePlayerInput = {
   name: string;
-  email?: string;
+  email: string;
   nickname?: string;
   defaultPool?: 'A' | 'B';
 };
@@ -27,8 +27,12 @@ export async function createPlayer(input: CreatePlayerInput) {
     throw new BadRequestError('Name is required');
   }
 
+  if (!email) {
+    throw new BadRequestError('Email is required');
+  }
+
   // Check for existing player by email
-  if (email) {
+  {
     const existingPlayer = await playerRepo.getPlayerByEmail(supabase, email);
 
     if (existingPlayer) {
