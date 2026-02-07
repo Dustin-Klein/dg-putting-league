@@ -44,20 +44,17 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ eventId: string; playerId: string }> }
 ) {
-  const { eventId, playerId } = await params;
-
-  const schema = z.object({ paymentType: z.enum(['cash', 'electronic']).nullable() });
-  let parsed: { paymentType: 'cash' | 'electronic' | null };
   try {
-    const body = await req.json();
-    parsed = schema.parse(body);
-  } catch {
-    throw new BadRequestError('Invalid request data');
-  }
+    const { eventId, playerId } = await params;
 
-  try {
-    if (playerId === undefined) {
-      throw new BadRequestError('Player ID and payment status are required')
+    const schema = z.object({ paymentType: z.enum(['cash', 'electronic']).nullable() });
+    const body = await req.json().catch(() => {
+      throw new BadRequestError('Invalid request data');
+    });
+    const parsed = schema.parse(body);
+
+    if (!playerId) {
+      throw new BadRequestError('Player ID is required')
     }
 
     const updated = await updatePlayerPayment(eventId, playerId, parsed.paymentType);
