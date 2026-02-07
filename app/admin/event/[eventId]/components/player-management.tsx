@@ -166,14 +166,15 @@ export function PlayerManagement({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      const data = await response.json();
+      const responsePayload = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to add player');
+        throw new Error(responsePayload.error || 'Failed to add player');
       }
       // Update state with returned event player
-      if (data?.data) {
-        setPlayers((prev) => [data.data, ...prev]);
+      const addedEventPlayer = responsePayload.data;
+      if (addedEventPlayer) {
+        setPlayers((prev) => [addedEventPlayer, ...prev]);
       }
     } catch (error) {
       console.error('Error adding player:', error);
