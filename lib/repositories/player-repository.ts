@@ -3,26 +3,6 @@ import { InternalError } from '@/lib/errors';
 import type { PlayerSearchResult } from '@/lib/types/player';
 
 /**
- * Check if a player exists with given email
- */
-export async function getPlayerByEmail(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  email: string
-): Promise<{ id: string } | null> {
-  const { data: existingPlayer, error } = await supabase
-    .from('players')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError('Failed to check existing player');
-  }
-
-  return existingPlayer;
-}
-
-/**
  * Insert a new player
  */
 export async function insertPlayer(
