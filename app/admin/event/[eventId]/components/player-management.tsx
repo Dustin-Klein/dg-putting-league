@@ -173,7 +173,7 @@ export function PlayerManagement({
       }
       // Update state with returned event player
       if (data?.data) {
-        setPlayers((prev) => [...prev, data.data]);
+        setPlayers((prev) => [data.data, ...prev]);
       }
     } catch (error) {
       console.error('Error adding player:', error);
