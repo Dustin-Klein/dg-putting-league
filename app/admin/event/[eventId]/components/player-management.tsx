@@ -222,12 +222,6 @@ export function PlayerManagement({
       const responseData = await response.json();
 
       if (!response.ok) {
-        // If player already exists, use their ID
-        if (response.status === 400 && responseData.playerId) {
-          await handleAddPlayer(responseData.playerId);
-          setIsDialogOpen(false);
-          return;
-        }
         throw new Error(responseData.error || 'Failed to create player');
       }
 

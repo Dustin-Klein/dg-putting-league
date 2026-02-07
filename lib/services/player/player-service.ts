@@ -31,20 +31,6 @@ export async function createPlayer(input: CreatePlayerInput) {
     throw new BadRequestError('Email is required');
   }
 
-  // Check for existing player by email
-  {
-    const existingPlayer = await playerRepo.getPlayerByEmail(supabase, email);
-
-    if (existingPlayer) {
-      const err = new BadRequestError(
-        'A player with this email already exists'
-      );
-      // attach metadata if needed by the route
-      (err as unknown as { playerId: string }).playerId = existingPlayer.id;
-      throw err;
-    }
-  }
-
   return playerRepo.insertPlayer(supabase, {
     full_name: name,
     email,
