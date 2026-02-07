@@ -1,3 +1,5 @@
+export type PaymentType = 'cash' | 'electronic';
+
 /**
  * Player from the players table
  */
@@ -20,7 +22,7 @@ export interface EventPlayer {
   id: string;
   event_id: string;
   player_id: string;
-  has_paid: boolean;
+  payment_type: PaymentType | null;
   pool?: 'A' | 'B' | null;
   pfa_score?: number | null;
   scoring_method?: 'qualification' | 'pfa' | 'default' | null;

@@ -6,6 +6,7 @@
  */
 
 import type { User } from '@supabase/supabase-js';
+import type { PaymentType } from '@/lib/types/player';
 
 // ============================================================================
 // Mock Supabase Client
@@ -160,7 +161,7 @@ export function createMockEventPlayer(
     id: 'event-player-123',
     event_id: 'event-123',
     player_id: player.id,
-    has_paid: false,
+    payment_type: null,
     pool: null,
     pfa_score: null,
     scoring_method: null,
@@ -174,7 +175,7 @@ export interface MockEventPlayer {
   id: string;
   event_id: string;
   player_id: string;
-  has_paid: boolean;
+  payment_type: PaymentType | null;
   pool: 'A' | 'B' | null;
   pfa_score: number | null;
   scoring_method: 'qualification' | 'pfa' | 'default' | null;
@@ -509,7 +510,7 @@ export function createMockEventPlayers(
       event_id: eventId,
       player_id: player.id,
       player,
-      has_paid: true,
+      payment_type: 'cash',
     })
   );
 }

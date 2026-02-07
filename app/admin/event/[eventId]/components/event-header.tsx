@@ -68,7 +68,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
             <p className="text-lg font-medium">
-              {event.players?.filter(p => p.has_paid).length || 0}/{event.players?.length || 0} paid
+              {event.players?.filter(p => p.payment_type !== null).length || 0}/{event.players?.length || 0} paid
             </p>
           </div>
 

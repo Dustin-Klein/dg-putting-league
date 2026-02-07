@@ -1,0 +1,1 @@
+select * from event_players where payment_type = 'electronic';

@@ -211,7 +211,7 @@ describe('Qualification Service', () => {
       const mockEventPlayer = createMockEventPlayer({
         id: eventPlayerId,
         event_id: 'event-123',
-        has_paid: true,
+        payment_type: 'cash',
       });
       const mockRound = createMockQualificationRound({ frame_count: 10 });
       const mockFrames = [
@@ -251,7 +251,7 @@ describe('Qualification Service', () => {
       const mockEventPlayer = createMockEventPlayer({
         id: eventPlayerId,
         event_id: 'different-event',
-        has_paid: true,
+        payment_type: 'cash',
       });
 
       (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
@@ -272,7 +272,7 @@ describe('Qualification Service', () => {
       const mockEventPlayer = createMockEventPlayer({
         id: eventPlayerId,
         event_id: 'event-123',
-        has_paid: false,
+        payment_type: null,
       });
 
       (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
@@ -303,7 +303,7 @@ describe('Qualification Service', () => {
       const mockEventPlayer = createMockEventPlayer({
         id: eventPlayerId,
         event_id: 'event-123',
-        has_paid: true,
+        payment_type: 'cash',
       });
       const mockRound = createMockQualificationRound({
         id: 'round-123',
@@ -532,12 +532,12 @@ describe('Qualification Service', () => {
         createMockEventPlayer({
           id: 'ep-1',
           event_id: 'event-123',
-          has_paid: true,
+          payment_type: 'cash',
         }),
         createMockEventPlayer({
           id: 'ep-2',
           event_id: 'event-123',
-          has_paid: true,
+          payment_type: 'cash',
         }),
       ];
 
@@ -585,17 +585,17 @@ describe('Qualification Service', () => {
         createMockEventPlayer({
           id: 'ep-1',
           event_id: 'event-123',
-          has_paid: true,
+          payment_type: 'cash',
         }),
         createMockEventPlayer({
           id: 'ep-2',
           event_id: 'different-event', // Wrong event
-          has_paid: true,
+          payment_type: 'cash',
         }),
         createMockEventPlayer({
           id: 'ep-3',
           event_id: 'event-123',
-          has_paid: false, // Not paid
+          payment_type: null, // Not paid
         }),
       ];
 

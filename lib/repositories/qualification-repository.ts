@@ -296,14 +296,14 @@ export async function getEventPlayersQualificationStatus(
     .select(`
       id,
       player_id,
-      has_paid,
+      payment_type,
       player:players(
         id,
         full_name
       )
     `)
     .eq('event_id', eventId)
-    .eq('has_paid', true);
+    .not('payment_type', 'is', null);
 
   if (playersError) {
     throw new InternalError(`Failed to fetch event players: ${playersError.message}`);
@@ -374,7 +374,7 @@ export async function getPaidEventPlayers(
       )
     `)
     .eq('event_id', eventId)
-    .eq('has_paid', true);
+    .not('payment_type', 'is', null);
 
   if (error) {
     throw new InternalError(`Failed to fetch paid event players: ${error.message}`);

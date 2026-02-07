@@ -175,6 +175,17 @@ export async function validateEventStatusTransition(
 
   // Validation for pre-bracket to bracket transition
   if (currentStatus === 'pre-bracket' && newStatus === 'bracket') {
+    // Always check payment
+    const unpaidPlayers = currentEvent.players.filter(
+      (player) => player.payment_type === null
+    );
+    if (unpaidPlayers.length > 0) {
+      throw new BadRequestError(
+        'All players must be marked as paid before starting bracket play'
+      );
+    }
+
+    // Additionally check qualification if enabled
     if (currentEvent.qualification_round_enabled) {
       const supabase = await createClient();
 
@@ -186,7 +197,6 @@ export async function validateEventStatusTransition(
 
       const frameCounts = await eventRepo.getQualificationFrameCounts(supabase, eventId);
 
-      // Check if all players have completed the required number of frames
       const incompletePlayers = currentEvent.players.filter(
         (player) => (frameCounts[player.id] || 0) < qualificationRound.frame_count
       );
@@ -194,16 +204,6 @@ export async function validateEventStatusTransition(
       if (incompletePlayers.length > 0) {
         throw new BadRequestError(
           `All players must complete ${qualificationRound.frame_count} qualifying frames before starting bracket play`
-        );
-      }
-    } else {
-      // Check if all players have paid
-      const unpaidPlayers = currentEvent.players.filter(
-        (player) => !player.has_paid
-      );
-      if (unpaidPlayers.length > 0) {
-        throw new BadRequestError(
-          'All players must be marked as paid before starting bracket play'
         );
       }
     }
@@ -248,6 +248,8 @@ export async function transitionEventToBracket(
   providedTeamPairings?: TeamPairing[]
 ) {
   const { supabase } = await requireEventAdmin(eventId);
+
+  await validateEventStatusTransition(eventId, 'bracket', event);
 
   // Use provided pairings if available, otherwise compute new ones
   const poolAssignments = providedPoolAssignments ?? await computePoolAssignments(eventId, event);
