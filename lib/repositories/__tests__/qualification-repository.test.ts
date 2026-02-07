@@ -376,13 +376,13 @@ describe('Qualification Repository', () => {
         {
           id: 'ep-1',
           player_id: 'p1',
-          has_paid: true,
+          payment_type: 'cash',
           player: { full_name: 'Player One' },
         },
         {
           id: 'ep-2',
           player_id: 'p2',
-          has_paid: true,
+          payment_type: 'electronic',
           player: { full_name: 'Player Two' },
         },
       ];
@@ -402,17 +402,11 @@ describe('Qualification Repository', () => {
       roundQuery.eq.mockReturnThis();
       roundQuery.maybeSingle.mockResolvedValue({ data: mockRound, error: null });
 
-      // Players query (needs .eq().eq() chain)
+      // Players query (needs .eq().not() chain)
       const playersQuery = createMockQueryBuilder();
       playersQuery.select.mockReturnThis();
-      let playersEqCount = 0;
-      playersQuery.eq.mockImplementation(() => {
-        playersEqCount++;
-        if (playersEqCount === 2) {
-          return Promise.resolve({ data: mockPlayers, error: null });
-        }
-        return playersQuery;
-      });
+      playersQuery.eq.mockReturnThis();
+      playersQuery.not.mockResolvedValue({ data: mockPlayers, error: null });
 
       // Frames query
       const framesQuery = createMockQueryBuilder();
@@ -430,7 +424,7 @@ describe('Qualification Repository', () => {
 
       expect(result).toHaveLength(2);
       expect(playersQuery.eq).toHaveBeenCalledWith('event_id', 'event-123');
-      expect(playersQuery.eq).toHaveBeenCalledWith('has_paid', true);
+      expect(playersQuery.not).toHaveBeenCalledWith('payment_type', 'is', null);
       expect(result[0]).toEqual({
         event_player_id: 'ep-1',
         player_id: 'p1',
@@ -475,35 +469,21 @@ describe('Qualification Repository', () => {
       ];
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
-      // Chain .eq().eq()
-      let eqCount = 0;
-      mockQuery.eq.mockImplementation(() => {
-        eqCount++;
-        if (eqCount === 2) {
-          return Promise.resolve({ data: mockPlayers, error: null });
-        }
-        return mockQuery;
-      });
+      mockQuery.eq.mockReturnThis();
+      mockQuery.not.mockResolvedValue({ data: mockPlayers, error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
       const result = await getPaidEventPlayers(mockSupabase as any, 'event-123');
 
       expect(result).toEqual(mockPlayers);
-      expect(mockQuery.eq).toHaveBeenCalledWith('has_paid', true);
+      expect(mockQuery.not).toHaveBeenCalledWith('payment_type', 'is', null);
     });
 
     it('should return empty array when no paid players', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
-      // Chain .eq().eq()
-      let eqCount = 0;
-      mockQuery.eq.mockImplementation(() => {
-        eqCount++;
-        if (eqCount === 2) {
-          return Promise.resolve({ data: [], error: null });
-        }
-        return mockQuery;
-      });
+      mockQuery.eq.mockReturnThis();
+      mockQuery.not.mockResolvedValue({ data: [], error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
       const result = await getPaidEventPlayers(mockSupabase as any, 'event-123');

@@ -121,7 +121,7 @@ export async function getPlayerQualificationData(
     throw new ForbiddenError('Player does not belong to this event');
   }
 
-  if (!eventPlayer.has_paid) {
+  if (eventPlayer.payment_type === null) {
     throw new BadRequestError('Player must be marked as paid to participate in qualification');
   }
 
@@ -178,7 +178,7 @@ export async function recordQualificationScore(
     throw new ForbiddenError('Player does not belong to this event');
   }
 
-  if (!eventPlayer.has_paid) {
+  if (eventPlayer.payment_type === null) {
     throw new BadRequestError('Player must be marked as paid to participate in qualification');
   }
 
@@ -283,7 +283,7 @@ export async function getBatchPlayerQualificationData(
 
   // Filter to only valid players (belong to event and have paid)
   const validEventPlayers = eventPlayers.filter(
-    (ep) => ep.event_id === event.id && ep.has_paid
+    (ep) => ep.event_id === event.id && ep.payment_type !== null
   );
 
   if (validEventPlayers.length === 0) {

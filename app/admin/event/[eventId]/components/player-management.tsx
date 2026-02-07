@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { Search, Plus, X, Loader2, UserPlus, CheckCircle2, CircleDollarSign, Trophy } from 'lucide-react';
+import { Search, Plus, X, Loader2, UserPlus, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
+import type { PaymentType } from '@/lib/types/player';
 import { format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -274,13 +275,13 @@ export function PlayerManagement({
     }
   };
 
-  // Handle toggling payment status
-  const handleTogglePayment = async (eventPlayerId: string, playerId: string, currentStatus: boolean) => {
+  // Handle changing payment type
+  const handlePaymentChange = async (eventPlayerId: string, playerId: string, paymentType: PaymentType | null) => {
     try {
       const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hasPaid: !currentStatus })
+        body: JSON.stringify({ paymentType })
       });
 
       const data = await response.json();
@@ -292,7 +293,7 @@ export function PlayerManagement({
       // Update the UI without refreshing
       const updatedPlayers = players.map(player =>
         player.id === eventPlayerId
-          ? { ...player, has_paid: !currentStatus }
+          ? { ...player, payment_type: paymentType }
           : player
       );
       setPlayers(updatedPlayers);
@@ -530,26 +531,27 @@ export function PlayerManagement({
                     {format(new Date(eventPlayer.created_at), 'MMM d, yyyy')}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleTogglePayment(eventPlayer.id, eventPlayer.player.id, eventPlayer.has_paid)}
+                    <Select
+                      value={eventPlayer.payment_type ?? 'unpaid'}
+                      onValueChange={(value) => {
+                        const paymentType = value === 'unpaid' ? null : value as PaymentType;
+                        handlePaymentChange(eventPlayer.id, eventPlayer.player.id, paymentType);
+                      }}
                       disabled={!isAdmin || event.status !== 'pre-bracket'}
-                      className="p-0 h-auto"
                     >
-                      {eventPlayer.has_paid ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
-                      )}
-                      <span className="sr-only">
-                        {eventPlayer.has_paid ? 'Mark as unpaid' : 'Mark as paid'}
-                      </span>
-                    </Button>
+                      <SelectTrigger className="w-[130px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unpaid">Not paid</SelectItem>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="electronic">Electronic</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   {showQualificationColumn && (
                     <TableCell>
-                      {eventPlayer.has_paid ? (
+                      {eventPlayer.payment_type !== null ? (
                         (() => {
                           const status = qualificationStatus[eventPlayer.id];
                           if (!status) {

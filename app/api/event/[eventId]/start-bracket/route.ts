@@ -52,12 +52,6 @@ export async function POST(
     const { eventId } = await params;
     const event = await getEventWithPlayers(eventId);
 
-    if (event.status !== 'pre-bracket') {
-      throw new BadRequestError(
-        'Event must be in pre-bracket status to start bracket'
-      );
-    }
-
     await transitionEventToBracket(
       eventId,
       event,

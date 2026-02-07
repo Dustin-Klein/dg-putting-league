@@ -176,52 +176,52 @@ describe('Event Player Service', () => {
       const updatedPlayer = createMockEventPlayer({
         event_id: eventId,
         player_id: playerId,
-        has_paid: true,
+        payment_type: 'cash',
       });
       (eventPlayerRepo.updateEventPlayerPayment as jest.Mock).mockResolvedValue(
         updatedPlayer
       );
 
-      const result = await updatePlayerPayment(eventId, playerId, true);
+      const result = await updatePlayerPayment(eventId, playerId, 'cash');
 
       expect(result).toEqual(updatedPlayer);
       expect(eventPlayerRepo.updateEventPlayerPayment).toHaveBeenCalledWith(
         mockSupabase,
         eventId,
         playerId,
-        true
+        'cash'
       );
     });
 
     it('should throw NotFoundError when player not found in event', async () => {
       (eventPlayerRepo.updateEventPlayerPayment as jest.Mock).mockResolvedValue(null);
 
-      await expect(updatePlayerPayment(eventId, playerId, true)).rejects.toThrow(
+      await expect(updatePlayerPayment(eventId, playerId, 'cash')).rejects.toThrow(
         NotFoundError
       );
-      await expect(updatePlayerPayment(eventId, playerId, true)).rejects.toThrow(
+      await expect(updatePlayerPayment(eventId, playerId, 'cash')).rejects.toThrow(
         'Player not found in this event'
       );
     });
 
-    it('should handle setting payment to false', async () => {
+    it('should handle setting payment to null', async () => {
       const updatedPlayer = createMockEventPlayer({
         event_id: eventId,
         player_id: playerId,
-        has_paid: false,
+        payment_type: null,
       });
       (eventPlayerRepo.updateEventPlayerPayment as jest.Mock).mockResolvedValue(
         updatedPlayer
       );
 
-      const result = await updatePlayerPayment(eventId, playerId, false);
+      const result = await updatePlayerPayment(eventId, playerId, null);
 
-      expect(result.has_paid).toBe(false);
+      expect(result.payment_type).toBeNull();
       expect(eventPlayerRepo.updateEventPlayerPayment).toHaveBeenCalledWith(
         mockSupabase,
         eventId,
         playerId,
-        false
+        null
       );
     });
   });

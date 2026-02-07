@@ -299,7 +299,7 @@ describe('Event Service', () => {
 
       it('should allow pre-bracket -> bracket transition when valid', async () => {
         const players = createMockEventPlayers(4);
-        players.forEach((p) => (p.has_paid = true));
+        players.forEach((p) => (p.payment_type = 'cash'));
         const event = createMockEventWithDetails(
           { status: 'pre-bracket', qualification_round_enabled: false },
           players
@@ -349,7 +349,7 @@ describe('Event Service', () => {
     describe('pre-bracket to bracket validation (without qualification)', () => {
       it('should throw BadRequestError when players have not paid', async () => {
         const players = createMockEventPlayers(4);
-        players[0].has_paid = false;
+        players[0].payment_type = null;
         const event = createMockEventWithDetails(
           { status: 'pre-bracket', qualification_round_enabled: false },
           players
@@ -365,7 +365,7 @@ describe('Event Service', () => {
 
       it('should pass when all players have paid', async () => {
         const players = createMockEventPlayers(4);
-        players.forEach((p) => (p.has_paid = true));
+        players.forEach((p) => (p.payment_type = 'cash'));
         const event = createMockEventWithDetails(
           { status: 'pre-bracket', qualification_round_enabled: false },
           players
@@ -422,6 +422,22 @@ describe('Event Service', () => {
         await expect(
           validateEventStatusTransition(eventId, 'bracket', event)
         ).rejects.toThrow('All players must complete 10 qualifying frames');
+      });
+
+      it('should throw BadRequestError when players have not paid even if qualification is complete', async () => {
+        const players = createMockEventPlayers(4);
+        players[1].payment_type = null;
+        const event = createMockEventWithDetails(
+          { status: 'pre-bracket', qualification_round_enabled: true },
+          players
+        );
+
+        await expect(
+          validateEventStatusTransition(eventId, 'bracket', event)
+        ).rejects.toThrow(BadRequestError);
+        await expect(
+          validateEventStatusTransition(eventId, 'bracket', event)
+        ).rejects.toThrow('All players must be marked as paid');
       });
 
       it('should pass when all players have completed qualification', async () => {

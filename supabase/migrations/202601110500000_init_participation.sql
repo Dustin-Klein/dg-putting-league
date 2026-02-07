@@ -7,7 +7,7 @@ CREATE TABLE public.event_players (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   player_id UUID NOT NULL REFERENCES public.players(id),
-  has_paid BOOLEAN NOT NULL DEFAULT false,
+  payment_type TEXT CHECK (payment_type IN ('cash', 'electronic')),
   pool pool_type,
   qualification_seed INTEGER,
   pfa_score NUMERIC(5,2),

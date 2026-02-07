@@ -377,7 +377,7 @@ export async function getFullTeamsForEvent(
           event_id,
           player_id,
           created_at,
-          has_paid,
+          payment_type,
           pool,
           pfa_score,
           scoring_method,

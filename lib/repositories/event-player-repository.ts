@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
-import type { EventPlayer } from '@/lib/types/player';
+import type { EventPlayer, PaymentType } from '@/lib/types/player';
 
 // Partial type for queries without player join
 export interface EventPlayerData {
@@ -8,7 +8,7 @@ export interface EventPlayerData {
   event_id: string;
   player_id: string;
   created_at: string;
-  has_paid: boolean;
+  payment_type: PaymentType | null;
   pool: 'A' | 'B' | null;
   pfa_score: number | null;
   scoring_method: 'qualification' | 'pfa' | 'default' | null;
@@ -50,7 +50,6 @@ export async function insertEventPlayer(
       {
         event_id: eventId,
         player_id: playerId,
-        has_paid: false,
         created_at: new Date().toISOString(),
       },
     ])
@@ -76,7 +75,7 @@ export async function getEventPlayer(
       id,
       event_id,
       player_id,
-      has_paid,
+      payment_type,
       created_at,
       pool,
       pfa_score,
@@ -118,7 +117,7 @@ export async function getEventPlayersBulk(
       id,
       event_id,
       player_id,
-      has_paid,
+      payment_type,
       created_at,
       pool,
       pfa_score,
@@ -168,14 +167,14 @@ export async function updateEventPlayerPayment(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
   playerId: string,
-  hasPaid: boolean
-): Promise<{ id: string; has_paid: boolean } | null> {
+  paymentType: PaymentType | null
+): Promise<{ id: string; payment_type: PaymentType | null } | null> {
   const { data, error } = await supabase
     .from('event_players')
-    .update({ has_paid: hasPaid })
+    .update({ payment_type: paymentType })
     .eq('event_id', eventId)
     .eq('player_id', playerId)
-    .select('id, has_paid');
+    .select('id, payment_type');
 
   if (error) {
     throw new InternalError('Failed to update payment status');
@@ -201,7 +200,7 @@ export async function getEventPlayersWithPools(
       id,
       event_id,
       player_id,
-      has_paid,
+      payment_type,
       pool,
       created_at,
       pfa_score,
@@ -385,7 +384,6 @@ export async function insertEventPlayersBulk(
   const rows = playerIds.map(playerId => ({
     event_id: eventId,
     player_id: playerId,
-    has_paid: false,
     created_at: new Date().toISOString(),
   }));
 

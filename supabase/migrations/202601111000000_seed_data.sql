@@ -76,8 +76,8 @@ BEGIN
     FROM generate_series(1, 44) AS i
     RETURNING id
   )
-  INSERT INTO public.event_players (event_id, player_id, has_paid)
-  SELECT v_event_id, id, true
+  INSERT INTO public.event_players (event_id, player_id, payment_type)
+  SELECT v_event_id, id, 'cash'
   FROM new_players;
 
   -- 5. Insert Additional Events and register existing players
@@ -87,8 +87,8 @@ BEGIN
   VALUES (v_league_id, CURRENT_DATE + 1, 4, 20.0, 'TESTEV02', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
-  INSERT INTO public.event_players (event_id, player_id, has_paid)
-  SELECT v_event_id, id, true
+  INSERT INTO public.event_players (event_id, player_id, payment_type)
+  SELECT v_event_id, id, 'cash'
   FROM public.players
   ORDER BY player_number ASC
   LIMIT 30;
@@ -98,8 +98,8 @@ BEGIN
   VALUES (v_league_id, CURRENT_DATE + 2, 4, 20.0, 'TESTEV03', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
-  INSERT INTO public.event_players (event_id, player_id, has_paid)
-  SELECT v_event_id, id, true
+  INSERT INTO public.event_players (event_id, player_id, payment_type)
+  SELECT v_event_id, id, 'cash'
   FROM public.players
   ORDER BY player_number ASC
   LIMIT 12;
@@ -109,8 +109,8 @@ BEGIN
   VALUES (v_league_id, CURRENT_DATE + 3, 4, 20.0, 'TESTEV04', 'pre-bracket', 10.00, 50.00)
   RETURNING id INTO v_event_id;
 
-  INSERT INTO public.event_players (event_id, player_id, has_paid)
-  SELECT v_event_id, id, true
+  INSERT INTO public.event_players (event_id, player_id, payment_type)
+  SELECT v_event_id, id, 'cash'
   FROM public.players
   ORDER BY player_number ASC
   LIMIT 38;

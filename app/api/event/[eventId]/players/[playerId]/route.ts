@@ -46,8 +46,8 @@ export async function PATCH(
 ) {
   const { eventId, playerId } = await params;
 
-  const schema = z.object({ hasPaid: z.boolean() });
-  let parsed: { hasPaid: boolean };
+  const schema = z.object({ paymentType: z.enum(['cash', 'electronic']).nullable() });
+  let parsed: { paymentType: 'cash' | 'electronic' | null };
   try {
     const body = await req.json();
     parsed = schema.parse(body);
@@ -60,7 +60,7 @@ export async function PATCH(
       throw new BadRequestError('Player ID and payment status are required')
     }
 
-    const updated = await updatePlayerPayment(eventId, playerId, parsed.hasPaid);
+    const updated = await updatePlayerPayment(eventId, playerId, parsed.paymentType);
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {

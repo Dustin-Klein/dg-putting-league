@@ -5,7 +5,7 @@ import {
   BadRequestError,
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import { EventPlayer } from '@/lib/types/player';
+import { EventPlayer, PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 
@@ -79,10 +79,10 @@ export async function removePlayerFromEvent(
 /**
  * Update player payment status
  */
-export async function updatePlayerPayment(eventId: string, playerId: string, hasPaid: boolean) {
+export async function updatePlayerPayment(eventId: string, playerId: string, paymentType: PaymentType | null) {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const result = await eventPlayerRepo.updateEventPlayerPayment(supabase, eventId, playerId, hasPaid);
+  const result = await eventPlayerRepo.updateEventPlayerPayment(supabase, eventId, playerId, paymentType);
 
   if (!result) {
     throw new NotFoundError('Player not found in this event');
