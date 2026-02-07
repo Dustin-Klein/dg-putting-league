@@ -416,8 +416,15 @@ export function PlayerManagement({
                       return;
                     }
 
-                    // Simple email validation (only if provided)
-                    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    if (!email) {
+                      toast({
+                        title: 'Error',
+                        description: 'Email is required',
+                      });
+                      return;
+                    }
+
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                       toast({
                         title: 'Error',
                         description: 'Please enter a valid email address',
@@ -445,13 +452,14 @@ export function PlayerManagement({
                       </div>
                       <div>
                         <label htmlFor="email" className="text-sm font-medium mb-1 block">
-                          Email
+                          Email <span className="text-destructive">*</span>
                         </label>
                         <Input
                           id="email"
                           name="email"
                           type="email"
                           placeholder="player@example.com"
+                          required
                         />
                       </div>
                       <div>
