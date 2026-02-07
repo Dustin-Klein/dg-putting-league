@@ -316,69 +316,73 @@ export function PlayerManagement({
               <DialogHeader>
                 <DialogTitle>Add Player to Event</DialogTitle>
               </DialogHeader>
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search players..."
-                  className="pl-10"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    const query = e.target.value;
-                    setSearchQuery(query);
-                    handleSearch(query);
-                  }}
-                />
-                {isSearching && (
-                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                )}
-              </div>
-
-              {searchQuery && !isSearching && searchResults.length === 0 && (
-                <div className="mt-4 p-4 bg-muted/50 rounded-md">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    No players found. Would you like to add a new player?
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowAddForm(true)}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add New Player
-                  </Button>
-                </div>
-              )}
-
-              {searchQuery && !isSearching && searchResults.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="max-h-60 overflow-y-auto space-y-2">
-                    {searchResults.map((player) => (
-                      <div
-                        key={player.id}
-                        className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
-                        onClick={() => {
-                          handleAddPlayer(player.id);
-                          handleDialogOpenChange(false);
-                        }}
-                      >
-                        <div>
-                          <div className="font-medium">{player.name}</div>
-                          <div className="text-xs text-muted-foreground">{player.identifier}</div>
-                        </div>
-                        <Plus className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    ))}
+              {!showAddForm && (
+                <>
+                  <div className="relative mt-4">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      placeholder="Search players..."
+                      className="pl-10"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        const query = e.target.value;
+                        setSearchQuery(query);
+                        handleSearch(query);
+                      }}
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                    )}
                   </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowAddForm(true)}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add New Player
-                  </Button>
-                </div>
+
+                  {searchQuery && !isSearching && searchResults.length === 0 && (
+                    <div className="mt-4 p-4 bg-muted/50 rounded-md">
+                      <p className="text-sm text-muted-foreground mb-4">
+                        No players found. Would you like to add a new player?
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowAddForm(true)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add New Player
+                      </Button>
+                    </div>
+                  )}
+
+                  {searchQuery && !isSearching && searchResults.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <div className="max-h-60 overflow-y-auto space-y-2">
+                        {searchResults.map((player) => (
+                          <div
+                            key={player.id}
+                            className="flex items-center justify-between p-3 rounded-md border hover:bg-accent cursor-pointer"
+                            onClick={() => {
+                              handleAddPlayer(player.id);
+                              handleDialogOpenChange(false);
+                            }}
+                          >
+                            <div>
+                              <div className="font-medium">{player.name}</div>
+                              <div className="text-xs text-muted-foreground">{player.identifier}</div>
+                            </div>
+                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowAddForm(true)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add New Player
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
               {showAddForm && (
                 <div className="mt-4 bg-card border rounded-lg p-4">
