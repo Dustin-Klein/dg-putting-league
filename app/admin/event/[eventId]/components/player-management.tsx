@@ -177,10 +177,10 @@ export function PlayerManagement({
         setPlayers((prev) => [addedEventPlayer, ...prev]);
       }
     } catch (error) {
-      console.error('Error adding player:', error);
+      console.error('Failed to add player to event');
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to add player to event'
+        description: 'Failed to add player to event. Please try again.'
       });
       throw error;
     } finally {
@@ -231,10 +231,10 @@ export function PlayerManagement({
 
       setIsDialogOpen(false);
     } catch (error) {
-      console.error('Error creating player:', error);
+      console.error('Failed to create player');
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create new player',
+        description: 'Failed to create new player. Please try again.',
       });
       throw error; // Re-throw to be caught by the form's onSubmit
     } finally {
@@ -293,10 +293,10 @@ export function PlayerManagement({
       );
       setPlayers(updatedPlayers);
     } catch (error) {
-      console.error('Error updating payment status:', error);
+      console.error('Failed to update payment status');
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update payment status'
+        description: 'Failed to update payment status. Please try again.'
       });
     }
   };
