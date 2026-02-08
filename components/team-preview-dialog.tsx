@@ -143,7 +143,7 @@ export function TeamPreviewDialog({
 
   const formatScore = (score: number, scoringMethod: string): string => {
     if (scoringMethod === 'default') return 'X';
-    return score.toFixed(1);
+    return score.toFixed(2);
   };
 
   const isProcessing = isLoading || isRegenerating || isConfirming;
@@ -227,7 +227,7 @@ export function TeamPreviewDialog({
                               </span>
                             ) : (
                               <span className="font-medium">
-                                {poolADisplay} + {poolBDisplay} = {team.combinedScore.toFixed(1)}
+                                {poolADisplay} + {poolBDisplay} = {team.combinedScore.toFixed(2)}
                               </span>
                             )}
                           </div>

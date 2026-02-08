@@ -177,7 +177,7 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
       } else {
         // Calculate PFA from last 6 months
         const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 100);
 
         // Get all event_player records for this player (across all events)
         const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(

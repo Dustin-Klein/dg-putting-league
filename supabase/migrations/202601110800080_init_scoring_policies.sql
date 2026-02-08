@@ -2,25 +2,11 @@ CREATE TRIGGER trigger_frame_results_sync_scores
 AFTER INSERT OR UPDATE OR DELETE ON public.frame_results
 FOR EACH ROW EXECUTE FUNCTION public.trigger_sync_bracket_match_scores();
 
-CREATE POLICY "Enable read for admins or bracket events"
+CREATE POLICY "Enable read for all users"
 ON public.match_frames
 FOR SELECT
 TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_match bm
-    JOIN public.events e ON e.id = bm.event_id
-    WHERE bm.id = match_frames.bracket_match_id
-    AND e.status = 'bracket'
-  )
-  OR EXISTS (
-    SELECT 1 FROM public.bracket_match bm
-    JOIN public.events e ON e.id = bm.event_id
-    JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE bm.id = match_frames.bracket_match_id
-    AND la.user_id = (select auth.uid())
-  )
-);
+USING (true);
 
 CREATE POLICY "Enable insert for admins or bracket scoring"
 ON public.match_frames
@@ -50,25 +36,11 @@ USING (
   public.is_league_admin_for_bracket_match(match_frames.bracket_match_id)
 );
 
-CREATE POLICY "Enable read for admins or bracket events"
+CREATE POLICY "Enable read for all users"
 ON public.frame_results
 FOR SELECT
 TO anon, authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.bracket_match bm
-    JOIN public.events e ON e.id = bm.event_id
-    WHERE bm.id = frame_results.bracket_match_id
-    AND e.status = 'bracket'
-  )
-  OR EXISTS (
-    SELECT 1 FROM public.bracket_match bm
-    JOIN public.events e ON e.id = bm.event_id
-    JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE bm.id = frame_results.bracket_match_id
-    AND la.user_id = (select auth.uid())
-  )
-);
+USING (true);
 
 CREATE POLICY "Enable insert for admins or bracket scoring"
 ON public.frame_results

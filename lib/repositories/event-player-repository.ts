@@ -415,15 +415,15 @@ export async function getPfaScoresBulk(
     return new Map();
   }
 
-  // Single query to get all frame results
+  // Use RPC to aggregate server-side (avoids PostgREST row limits)
   const { data: results, error } = await supabase
-    .from('frame_results')
-    .select('event_player_id, points_earned')
-    .in('event_player_id', allEventPlayerIds)
-    .gte('recorded_at', sinceDate.toISOString());
+    .rpc('get_pfa_scores_bulk', {
+      p_event_player_ids: allEventPlayerIds,
+      p_since_date: sinceDate.toISOString(),
+    });
 
   if (error) {
-    throw new InternalError(`Failed to fetch frame results in bulk: ${error.message}`);
+    throw new InternalError(`Failed to fetch PFA scores in bulk: ${error.message}`);
   }
 
   // Build reverse lookup: event_player_id -> player_id
@@ -434,14 +434,14 @@ export async function getPfaScoresBulk(
     }
   }
 
-  // Aggregate results by player_id
+  // Map RPC results (already aggregated per event_player) to player_id
   const playerScores = new Map<string, { totalPoints: number; frameCount: number }>();
   for (const row of results ?? []) {
     const playerId = eventPlayerToPlayer.get(row.event_player_id);
     if (playerId) {
       const existing = playerScores.get(playerId) || { totalPoints: 0, frameCount: 0 };
-      existing.totalPoints += row.points_earned;
-      existing.frameCount += 1;
+      existing.totalPoints += Number(row.total_points);
+      existing.frameCount += Number(row.frame_count);
       playerScores.set(playerId, existing);
     }
   }

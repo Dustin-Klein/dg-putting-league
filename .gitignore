@@ -61,3 +61,4 @@ supabase/.temp/storage-version
 # Claude Code temp files
 nul
 tmpclaude*
+scripts/import-historical-averages.sql
