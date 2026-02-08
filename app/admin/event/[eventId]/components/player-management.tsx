@@ -293,7 +293,7 @@ export function PlayerManagement({
       );
       setPlayers(updatedPlayers);
     } catch (error) {
-      console.error('Failed to update payment status');
+      console.error('Failed to update payment status', error);
       toast({
         title: 'Error',
         description: 'Failed to update payment status. Please try again.'
