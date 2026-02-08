@@ -206,9 +206,9 @@ export function PlayerManagement({
 
       // Convert FormData to JSON
       const playerData = {
-        name: formData.get('name')?.toString(),
-        identifier: formData.get('identifier')?.toString(),
-        email: formData.get('email')?.toString(),
+        name: formData.get('name')?.toString().trim(),
+        identifier: formData.get('identifier')?.toString().trim(),
+        email: formData.get('email')?.toString().trim(),
         default_pool: selectedPool,
       };
 
