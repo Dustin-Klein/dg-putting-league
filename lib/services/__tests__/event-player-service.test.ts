@@ -60,6 +60,8 @@ import {
   updatePlayerPayment,
   splitPlayersIntoPools,
   computePoolAssignments,
+  PFA_LOOKBACK_MONTHS,
+  getPfaSinceDate,
 } from '../event-player/event-player-service';
 
 describe('Event Player Service', () => {
@@ -226,6 +228,21 @@ describe('Event Player Service', () => {
     });
   });
 
+  describe('PFA lookback', () => {
+    it('should use 18 months as the lookback window', () => {
+      expect(PFA_LOOKBACK_MONTHS).toBe(18);
+    });
+
+    it('getPfaSinceDate should return a date ~18 months ago', () => {
+      const now = new Date();
+      const since = getPfaSinceDate();
+      const diffMs = now.getTime() - since.getTime();
+      const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30);
+      expect(diffMonths).toBeGreaterThan(17);
+      expect(diffMonths).toBeLessThan(19);
+    });
+  });
+
   describe('splitPlayersIntoPools', () => {
     const eventId = 'event-123';
 
@@ -350,6 +367,26 @@ describe('Event Player Service', () => {
       expect(result.filter((pa) => pa.pool === 'B')).toHaveLength(2);
       // Should not persist
       expect(eventPlayerRepo.updateEventPlayerPool).not.toHaveBeenCalled();
+    });
+
+    it('should use 18-month PFA lookback window', async () => {
+      const players = createMockEventPlayers(2, eventId);
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: false },
+        players
+      );
+
+      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
+
+      await computePoolAssignments(eventId, event);
+
+      const sinceArg = (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mock.calls[0][2] as Date;
+      const now = new Date();
+      const diffMs = now.getTime() - sinceArg.getTime();
+      const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30);
+      expect(diffMonths).toBeGreaterThan(17);
+      expect(diffMonths).toBeLessThan(19);
     });
 
     it('should throw BadRequestError when no players', async () => {

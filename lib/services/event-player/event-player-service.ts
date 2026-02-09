@@ -9,6 +9,16 @@ import { EventPlayer, PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 
+/** Number of months of historical frame data used for PFA scoring */
+export const PFA_LOOKBACK_MONTHS = 18;
+
+/** Returns the cutoff date for PFA lookback from the current time */
+export function getPfaSinceDate(): Date {
+  const since = new Date();
+  since.setMonth(since.getMonth() - PFA_LOOKBACK_MONTHS);
+  return since;
+}
+
 /**
  * Pool assignment data structure for atomic transition
  */
@@ -175,9 +185,7 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
         scoringMethod = 'qualification';
       } else {
-        // Calculate PFA from last 18 months
-        const eighteenMonthsAgo = new Date();
-        eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
+        const eighteenMonthsAgo = getPfaSinceDate();
 
         // Get all event_player records for this player (across all events)
         const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(
@@ -284,8 +292,7 @@ export async function computePoolAssignments(
       })
     );
   } else {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const pfaSince = getPfaSinceDate();
 
     const playerIds = event.players.map(ep => ep.player_id);
 
@@ -297,7 +304,7 @@ export async function computePoolAssignments(
     const pfaScores = await eventPlayerRepo.getPfaScoresBulk(
       supabase,
       playerEventPlayerMap,
-      sixMonthsAgo
+      pfaSince
     );
 
     playersWithScores = event.players.map((eventPlayer) => {
