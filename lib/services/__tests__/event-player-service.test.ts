@@ -302,7 +302,7 @@ describe('Event Player Service', () => {
       expect(eventPlayerRepo.getQualificationScore).toHaveBeenCalledTimes(4);
     });
 
-    it('should use PFA from last 6 months when qualification not enabled', async () => {
+    it('should use PFA from last 18 months when qualification not enabled', async () => {
       const players = createMockEventPlayers(2, eventId);
       const event = createMockEventWithDetails(
         { id: eventId, qualification_round_enabled: false },
