@@ -5,11 +5,13 @@ A web application for managing disc golf putting leagues, tracking scores, and r
 ## Features
 
 ### For Players
+
 - **Score Tracking** - Keep score during league events with an easy-to-use interface
 - **Event Access** - Join events using access codes provided by league administrators
 - **Live Brackets** - View real-time bracket updates during tournament play
 
 ### For League Administrators
+
 - **League Management** - Create and manage multiple putting leagues
 - **Event Creation** - Schedule events with customizable settings:
   - Putt distance
@@ -19,7 +21,7 @@ A web application for managing disc golf putting leagues, tracking scores, and r
 - **Player Management** - Add players to events, track payment status
 - **Pool Assignment** - Automatic player pool assignment (A/B) based on:
   - Qualification round scores, or
-  - PFA (Per Frame Average) from the last 6 months
+  - PFA (Per Frame Average) from the last 18 months
 - **Team Generation** - Automatic team pairing of Pool A and Pool B players
 - **Double-Elimination Brackets** - Full bracket management with:
   - Winner's bracket
@@ -46,28 +48,33 @@ A web application for managing disc golf putting leagues, tracking scores, and r
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd dg-putting-league
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Set up environment variables by creating a `.env.local` file:
+
    ```env
    NEXT_PUBLIC_SUPABASE_URL=[YOUR_SUPABASE_PROJECT_URL]
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[YOUR_SUPABASE_ANON_KEY]
    ```
 
 4. Run database migrations:
+
    ```bash
    npx supabase db reset
    ```
 
 5. Start the development server:
+
    ```bash
    npm run dev
    ```

@@ -293,7 +293,7 @@ export async function getMatchRecordsForTeams(
 
 export interface FrameResultData {
   eventPlayerId: string;
-  bracketMatchId: number;
+  bracketMatchId: number | null;
   frameId: string;
   frameNumber: number;
   puttsMade: number;
@@ -336,12 +336,12 @@ export async function getPlayerFrameResultsWithDetails(
   }
 
   return data
-    .filter((row) => row.bracket_match_id !== null && row.match_frame !== null)
+    .filter((row) => row.match_frame !== null)
     .map((row) => {
       const matchFrame = row.match_frame as unknown as MatchFrameData;
       return {
         eventPlayerId: row.event_player_id,
-        bracketMatchId: row.bracket_match_id as number,
+        bracketMatchId: row.bracket_match_id,
         frameId: matchFrame.id,
         frameNumber: matchFrame.frame_number,
         puttsMade: row.putts_made,

@@ -463,7 +463,7 @@ describe('Player Statistics Repository', () => {
       });
     });
 
-    it('should filter out entries with null bracket_match_id or match_frame', async () => {
+    it('should filter out entries with null match_frame but keep null bracket_match_id', async () => {
       const mockData = [
         {
           id: 'fr-1',
@@ -497,8 +497,16 @@ describe('Player Statistics Repository', () => {
 
       const result = await getPlayerFrameResultsWithDetails(mockSupabase as any, ['ep-1']);
 
-      expect(result).toHaveLength(1);
-      expect(result[0].bracketMatchId).toBe(102);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        eventPlayerId: 'ep-1',
+        bracketMatchId: null,
+        frameId: 'mf-1',
+        frameNumber: 1,
+        puttsMade: 3,
+        pointsEarned: 3,
+      });
+      expect(result[1].bracketMatchId).toBe(102);
     });
   });
 

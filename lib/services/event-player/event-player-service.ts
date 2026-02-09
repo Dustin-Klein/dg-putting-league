@@ -175,9 +175,9 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
         scoringMethod = 'qualification';
       } else {
-        // Calculate PFA from last 6 months
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 100);
+        // Calculate PFA from last 18 months
+        const eighteenMonthsAgo = new Date();
+        eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
 
         // Get all event_player records for this player (across all events)
         const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(
@@ -188,7 +188,7 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         const frameResults = await eventPlayerRepo.getFrameResultsForEventPlayers(
           supabase,
           eventPlayerIds,
-          sixMonthsAgo
+          eighteenMonthsAgo
         );
 
         if (frameResults.length > 0) {

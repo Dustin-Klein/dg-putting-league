@@ -113,7 +113,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
             <li>• Scores based on qualification round performance</li>
           ) : (
             <>
-              <li>• Scores based on PFA (Per Frame Average) from the last 6 months</li>
+              <li>• Scores based on PFA (Per Frame Average) from the last 18 months</li>
               <li>• Players with no frame history show &quot;X&quot; and are assigned pools by default pool setting</li>
             </>
           )}

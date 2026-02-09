@@ -227,6 +227,7 @@ function calculatePerfectMatches(frameResults: playerStatsRepo.FrameResultData[]
   const framesByMatch = new Map<number, playerStatsRepo.FrameResultData[]>();
 
   for (const fr of frameResults) {
+    if (fr.bracketMatchId === null) continue;
     if (!framesByMatch.has(fr.bracketMatchId)) {
       framesByMatch.set(fr.bracketMatchId, []);
     }

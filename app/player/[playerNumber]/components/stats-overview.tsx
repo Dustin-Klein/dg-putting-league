@@ -14,7 +14,7 @@ export function StatsOverview({ statistics }: StatsOverviewProps) {
 
   const formatPFA = (value: number | null): string => {
     if (value === null) return '-';
-    return value.toFixed(2);
+    return value.toFixed(3);
   };
 
   return (
