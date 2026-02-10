@@ -277,6 +277,24 @@ export async function setLaneIdleRPC(
 }
 
 /**
+ * Reset all occupied lanes for an event back to idle
+ */
+export async function resetAllLanesToIdle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('lanes')
+    .update({ status: 'idle' })
+    .eq('event_id', eventId)
+    .eq('status', 'occupied');
+
+  if (error) {
+    throw new InternalError(`Failed to reset lanes to idle: ${error.message}`);
+  }
+}
+
+/**
  * Get a single lane by ID
  */
 export async function getLaneById(

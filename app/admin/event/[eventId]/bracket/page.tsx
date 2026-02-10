@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation, Eraser } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
 interface MatchWithTeamInfo extends Match {
@@ -35,6 +35,7 @@ export default function BracketPage({
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -189,6 +190,29 @@ export default function BracketPage({
 
   const handleScoreSubmit = () => {
     fetchBracket();
+  };
+
+  const handleClearPlacements = async () => {
+    if (!eventId) return;
+    if (!confirm('Clear all bracket placements? This will empty every match slot. You can then manually place teams using the Advance Team dialog.')) return;
+
+    try {
+      setIsClearing(true);
+      const response = await fetch(`/api/event/${eventId}/bracket/clear-placements`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to clear placements');
+      }
+
+      await fetchBracket();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to clear placements');
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   if (loading && !bracketData) {
@@ -367,6 +391,15 @@ export default function BracketPage({
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearPlacements}
+            disabled={isClearing}
+          >
+            <Eraser className={`mr-2 h-4 w-4`} />
+            {isClearing ? 'Clearing...' : 'Clear Placements'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
