@@ -64,7 +64,7 @@ export function AdvanceTeamDialog({
 
   const getTeamLabel = (participantId: number): string => {
     const team = participantTeamMap[participantId];
-    return team ? team.pool_combo : `Participant ${participantId}`;
+    return team ? `#${team.seed} ${team.pool_combo}` : `Participant ${participantId}`;
   };
 
   const handleSubmit = async () => {

@@ -1118,6 +1118,29 @@ export async function updateMatchWithOpponents(
   }
 }
 
+/**
+ * Clear all match opponents, lane assignments, and reset status to Waiting for a stage
+ */
+export async function clearAllMatchOpponents(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  stageId: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('bracket_match')
+    .update({
+      opponent1: { id: null },
+      opponent2: { id: null },
+      status: Status.Waiting,
+      lane_id: null,
+      lane_assigned_at: null,
+    })
+    .eq('stage_id', stageId);
+
+  if (error) {
+    throw new InternalError(`Failed to clear match opponents: ${error.message}`);
+  }
+}
+
 export async function assignLaneToMatchRpc(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,

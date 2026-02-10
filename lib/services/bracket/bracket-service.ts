@@ -27,9 +27,10 @@ import {
   getMatchForScoringById,
   getMatchForAdvancement,
   updateMatchWithOpponents,
+  clearAllMatchOpponents,
 } from '@/lib/repositories/bracket-repository';
 import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
 import type { BracketWithTeams } from '@/lib/types/bracket';
@@ -434,6 +435,25 @@ export async function manuallyAdvanceTeam(
     slot === 'opponent2' ? newOpponent : null,
     match.status
   );
+}
+
+/**
+ * Clear all bracket placements (reset match opponents to null)
+ * Preserves the bracket structure and participants
+ */
+export async function clearBracketPlacements(eventId: string): Promise<BracketData> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const stage = await getBracketStage(supabase, eventId);
+
+  if (!stage) {
+    throw new NotFoundError('Bracket not found for this event');
+  }
+
+  await clearAllMatchOpponents(supabase, stage.id);
+  await resetAllLanesToIdle(supabase, eventId);
+
+  return getBracket(eventId);
 }
 
 export { Status } from 'brackets-model';
