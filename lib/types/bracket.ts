@@ -17,6 +17,7 @@ export interface Lane {
  */
 export interface LaneWithMatch extends Lane {
   current_match_id: number | null;
+  current_match_number: number | null;
 }
 
 /**
