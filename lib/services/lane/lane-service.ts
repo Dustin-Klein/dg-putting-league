@@ -4,6 +4,7 @@ import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
 import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import { BadRequestError } from '@/lib/errors';
+import { logger } from '@/lib/utils/logger';
 import { Status } from 'brackets-model';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
@@ -246,13 +247,23 @@ export async function addLanes(
   eventId: string,
   count: number
 ): Promise<Lane[]> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, user } = await requireEventAdmin(eventId);
 
   if (count < 1 || count > 20) {
     throw new BadRequestError('Lane count must be between 1 and 20');
   }
 
-  return laneRepo.addLanesToEvent(supabase, eventId, count);
+  const lanes = await laneRepo.addLanesToEvent(supabase, eventId, count);
+
+  logger.info('Lanes added to event', {
+    userId: user.id,
+    action: 'add_lanes',
+    eventId,
+    count,
+    outcome: 'success',
+  });
+
+  return lanes;
 }
 
 /**
@@ -262,8 +273,18 @@ export async function deleteLane(
   eventId: string,
   laneId: string
 ): Promise<boolean> {
-  const { supabase } = await requireEventAdmin(eventId);
-  return laneRepo.deleteIdleLane(supabase, eventId, laneId);
+  const { supabase, user } = await requireEventAdmin(eventId);
+  const result = await laneRepo.deleteIdleLane(supabase, eventId, laneId);
+
+  logger.info('Lane deleted from event', {
+    userId: user.id,
+    action: 'delete_lane',
+    eventId,
+    laneId,
+    outcome: 'success',
+  });
+
+  return result;
 }
 
 /**
@@ -273,8 +294,18 @@ export async function releaseLane(
   eventId: string,
   matchId: number
 ): Promise<boolean> {
-  const { supabase } = await requireEventAdmin(eventId);
-  return laneRepo.releaseMatchLane(supabase, eventId, matchId);
+  const { supabase, user } = await requireEventAdmin(eventId);
+  const result = await laneRepo.releaseMatchLane(supabase, eventId, matchId);
+
+  logger.info('Lane released from match', {
+    userId: user.id,
+    action: 'release_lane',
+    eventId,
+    matchId,
+    outcome: 'success',
+  });
+
+  return result;
 }
 
 /**

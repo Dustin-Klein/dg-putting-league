@@ -31,9 +31,9 @@ export async function requireEventAdmin(eventId: string) {
     throw new ForbiddenError('Event not found');
   }
 
-  await requireLeagueAdmin(leagueId);
+  const { user } = await requireLeagueAdmin(leagueId);
 
-  return { supabase };
+  return { supabase, user };
 }
 
 /**
