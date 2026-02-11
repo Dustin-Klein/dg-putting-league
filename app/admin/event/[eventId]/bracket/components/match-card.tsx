@@ -134,7 +134,7 @@ export function MatchCard({
         </div>
       )}
       <div className="flex">
-        <div className="flex flex-col items-center justify-center px-2 py-1 bg-muted/50 border-r min-w-[44px]">
+        <div className="flex flex-col items-center justify-center px-1.5 py-1 bg-muted/50 border-r min-w-[40px]">
           <span className="text-sm font-medium text-muted-foreground">
             M{matchNumber}
           </span>
@@ -145,7 +145,7 @@ export function MatchCard({
             </div>
           )}
         </div>
-        <CardContent className="p-0 divide-y flex-1">
+        <CardContent className="p-0 divide-y flex-1 min-w-0">
           <OpponentRow
             opponent={opponent1}
             team={team1}
