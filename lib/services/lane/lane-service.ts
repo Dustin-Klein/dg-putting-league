@@ -292,15 +292,17 @@ export async function deleteLane(
  */
 export async function releaseLane(
   eventId: string,
+  laneId: string,
   matchId: number
 ): Promise<boolean> {
   const { supabase, user } = await requireEventAdmin(eventId);
-  const result = await laneRepo.releaseMatchLane(supabase, eventId, matchId);
+  const result = await laneRepo.releaseMatchLane(supabase, eventId, matchId, laneId);
 
   logger.info('Lane released from match', {
     userId: user.id,
     action: 'release_lane',
     eventId,
+    laneId,
     matchId,
     outcome: 'success',
   });

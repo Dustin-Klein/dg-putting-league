@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     const resolvedParams = await Promise.resolve(params);
-    const { eventId } = resolvedParams;
+    const { eventId, laneId } = resolvedParams;
     await requireEventAdmin(eventId);
 
     const body = await req.json();
@@ -23,7 +23,7 @@ export async function POST(
       throw new BadRequestError('matchId must be a number');
     }
 
-    const released = await releaseLane(eventId, matchId);
+    const released = await releaseLane(eventId, laneId, matchId);
 
     if (!released) {
       throw new BadRequestError('Lane could not be released from this match');

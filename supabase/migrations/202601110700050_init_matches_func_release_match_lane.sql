@@ -1,6 +1,7 @@
 CREATE OR REPLACE FUNCTION public.release_match_lane(
   p_event_id UUID,
-  p_match_id INTEGER
+  p_lane_id UUID DEFAULT NULL,
+  p_match_id INTEGER DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -19,6 +20,11 @@ BEGIN
   IF v_lane_id IS NULL THEN
     -- No lane to release
     RETURN true;
+  END IF;
+
+  -- Validate that the match is on the expected lane (when provided)
+  IF p_lane_id IS NOT NULL AND v_lane_id != p_lane_id THEN
+    RETURN false;
   END IF;
 
   -- Clear lane from match

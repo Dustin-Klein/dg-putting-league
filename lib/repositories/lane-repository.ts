@@ -231,11 +231,13 @@ export async function assignLaneToMatch(
 export async function releaseMatchLane(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
-  matchId: number
+  matchId: number,
+  laneId?: string
 ): Promise<boolean> {
   const { data: released, error } = await supabase
     .rpc('release_match_lane', {
       p_event_id: eventId,
+      p_lane_id: laneId ?? null,
       p_match_id: matchId,
     });
 
