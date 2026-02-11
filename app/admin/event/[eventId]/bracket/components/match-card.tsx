@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, useCallback } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
@@ -37,14 +37,26 @@ function ScrollingName({ name, className }: { name: string; className?: string }
   const textRef = useRef<HTMLSpanElement>(null);
   const [overflowPx, setOverflowPx] = useState(0);
 
-  useEffect(() => {
+  const measure = useCallback(() => {
     const container = containerRef.current;
     const text = textRef.current;
     if (container && text) {
       const overflow = text.scrollWidth - container.clientWidth;
       setOverflowPx(overflow > 0 ? overflow : 0);
     }
-  }, [name]);
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [name, measure]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [measure]);
 
   return (
     <div ref={containerRef} className="overflow-hidden min-w-0">
