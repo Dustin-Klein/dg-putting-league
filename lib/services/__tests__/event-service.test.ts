@@ -177,6 +177,7 @@ describe('Event Service', () => {
       const result = await requireEventAdmin(eventId);
 
       expect(result.supabase).toBeDefined();
+      expect(result.user).toEqual(createMockUser({ id: 'user-123' }));
       expect(eventRepo.getEventLeagueId).toHaveBeenCalledWith(mockSupabase, eventId);
       expect(requireLeagueAdmin).toHaveBeenCalledWith(leagueId);
     });

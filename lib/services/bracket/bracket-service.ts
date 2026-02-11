@@ -11,6 +11,7 @@ import {
   InternalError,
   NotFoundError,
 } from '@/lib/errors';
+import { logger } from '@/lib/utils/logger';
 import {
   bracketStageExists,
   getBracketParticipants,
@@ -445,7 +446,7 @@ export async function removeTeamFromMatch(
   targetMatchId: number,
   slot: 'opponent1' | 'opponent2'
 ): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, user } = await requireEventAdmin(eventId);
 
   const match = await getMatchForAdvancement(supabase, targetMatchId, eventId);
 
@@ -471,6 +472,15 @@ export async function removeTeamFromMatch(
     slot === 'opponent2' ? emptyOpponent : null,
     match.status
   );
+
+  logger.info('Team removed from match', {
+    userId: user.id,
+    action: 'remove_team_from_match',
+    eventId,
+    matchId: targetMatchId,
+    slot,
+    outcome: 'success',
+  });
 }
 
 /**
@@ -478,7 +488,7 @@ export async function removeTeamFromMatch(
  * Preserves the bracket structure and participants
  */
 export async function clearBracketPlacements(eventId: string): Promise<BracketData> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, user } = await requireEventAdmin(eventId);
 
   const stage = await getBracketStage(supabase, eventId);
 
@@ -488,6 +498,14 @@ export async function clearBracketPlacements(eventId: string): Promise<BracketDa
 
   await clearAllMatchOpponents(supabase, stage.id);
   await resetAllLanesToIdle(supabase, eventId);
+
+  logger.info('Bracket placements cleared', {
+    userId: user.id,
+    action: 'clear_bracket_placements',
+    eventId,
+    stageId: stage.id,
+    outcome: 'success',
+  });
 
   return getBracket(eventId);
 }

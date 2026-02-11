@@ -20,6 +20,7 @@ import {
   createMockSupabaseClient,
   createMockEventWithDetails,
   createMockTeam,
+  createMockUser,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -102,7 +103,7 @@ describe('Bracket Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, user: createMockUser({ id: 'user-123' }) });
   });
 
   describe('createBracket', () => {

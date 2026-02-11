@@ -16,6 +16,7 @@ import {
   createMockSupabaseClient,
   createMockLane,
   createMockBracketMatch,
+  createMockUser,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -72,7 +73,7 @@ describe('Lane Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, user: createMockUser({ id: 'user-123' }) });
   });
 
   describe('createEventLanes', () => {
