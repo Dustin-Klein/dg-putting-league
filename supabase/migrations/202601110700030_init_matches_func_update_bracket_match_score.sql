@@ -40,7 +40,9 @@ BEGIN
   -- Merge opponent1
   IF p_opponent1 IS NOT NULL THEN
     v_final_opp1 := COALESCE(v_existing_opp1, '{}'::jsonb) || p_opponent1;
-    IF (v_existing_opp1->>'id') IS NOT NULL AND (v_final_opp1->>'id') IS NULL THEN
+    -- Preserve existing id only if caller did not explicitly send an id key
+    IF (v_existing_opp1->>'id') IS NOT NULL AND (v_final_opp1->>'id') IS NULL
+       AND NOT (p_opponent1 ? 'id') THEN
       v_final_opp1 := jsonb_set(v_final_opp1, '{id}', v_existing_opp1->'id');
     END IF;
   ELSE
@@ -50,7 +52,9 @@ BEGIN
   -- Merge opponent2
   IF p_opponent2 IS NOT NULL THEN
     v_final_opp2 := COALESCE(v_existing_opp2, '{}'::jsonb) || p_opponent2;
-    IF (v_existing_opp2->>'id') IS NOT NULL AND (v_final_opp2->>'id') IS NULL THEN
+    -- Preserve existing id only if caller did not explicitly send an id key
+    IF (v_existing_opp2->>'id') IS NOT NULL AND (v_final_opp2->>'id') IS NULL
+       AND NOT (p_opponent2 ? 'id') THEN
       v_final_opp2 := jsonb_set(v_final_opp2, '{id}', v_existing_opp2->'id');
     END IF;
   ELSE

@@ -2,7 +2,9 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
-import { getBracketStage } from '@/lib/repositories/bracket-repository';
+import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
+import { BadRequestError } from '@/lib/errors';
+import { Status } from 'brackets-model';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
 export type { Lane, LaneWithMatch } from '@/lib/types/bracket';
@@ -36,6 +38,85 @@ export async function getEventLanes(eventId: string): Promise<Lane[]> {
   return laneRepo.getLanesForEvent(supabase, eventId);
 }
 
+interface BracketMatch {
+  id: number;
+  round_id: number;
+  number: number;
+  status: number;
+  opponent1: unknown;
+  opponent2: unknown;
+}
+
+/**
+ * Checks if a match is a bye (hidden in bracket view).
+ * Mirrors the client-side isByeMatch logic in bracket-view.tsx.
+ */
+function isByeMatch(match: BracketMatch): boolean {
+  if (match.opponent1 === null || match.opponent2 === null) {
+    return true;
+  }
+  if (match.status === Status.Archived) {
+    const opp1 = match.opponent1 as { score?: number } | null;
+    const opp2 = match.opponent2 as { score?: number } | null;
+    if (opp1?.score === undefined && opp2?.score === undefined) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Build a bidirectional map between match database IDs and display numbers.
+ * Mirrors the sequential numbering in bracket-view.tsx.
+ */
+async function buildMatchDisplayMap(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<{ idToDisplay: Map<number, number>; displayToId: Map<number, number> }> {
+  const idToDisplay = new Map<number, number>();
+  const displayToId = new Map<number, number>();
+
+  const bracket = await fetchBracketStructure(supabase, eventId);
+  if (!bracket) return { idToDisplay, displayToId };
+
+  const { groups, rounds, matches } = bracket;
+
+  let displayNumber = 1;
+  for (const group of groups) {
+    const groupRounds = rounds
+      .filter((r: { group_id: number }) => r.group_id === group.id)
+      .sort((a: { number: number }, b: { number: number }) => a.number - b.number);
+
+    for (const round of groupRounds) {
+      const roundMatches = (matches as BracketMatch[])
+        .filter((m) => m.round_id === round.id)
+        .sort((a, b) => a.number - b.number);
+
+      for (const match of roundMatches) {
+        if (!isByeMatch(match)) {
+          idToDisplay.set(match.id, displayNumber);
+          displayToId.set(displayNumber, match.id);
+          displayNumber++;
+        }
+      }
+    }
+  }
+
+  return { idToDisplay, displayToId };
+}
+
+/**
+ * Resolve a bracket display number (e.g. 18 for "M18") to a database match ID
+ */
+export async function resolveMatchDisplayNumber(
+  eventId: string,
+  displayNumber: number
+): Promise<number | null> {
+  const supabase = await createClient();
+  const { displayToId } = await buildMatchDisplayMap(supabase, eventId);
+  return displayToId.get(displayNumber) ?? null;
+}
+
 /**
  * Get lanes with their current match assignments
  */
@@ -44,16 +125,20 @@ export async function getLanesWithMatches(
 ): Promise<LaneWithMatch[]> {
   const supabase = await createClient();
 
-  // Get lanes
-  const lanes = await laneRepo.getLanesForEvent(supabase, eventId);
+  const [lanes, laneMatchMap, { idToDisplay }] = await Promise.all([
+    laneRepo.getLanesForEvent(supabase, eventId),
+    laneRepo.getMatchLaneAssignments(supabase, eventId),
+    buildMatchDisplayMap(supabase, eventId),
+  ]);
 
-  // Get match assignments
-  const laneMatchMap = await laneRepo.getMatchLaneAssignments(supabase, eventId);
-
-  return lanes.map((lane) => ({
-    ...lane,
-    current_match_id: laneMatchMap[lane.id] || null,
-  }));
+  return lanes.map((lane) => {
+    const match = laneMatchMap[lane.id] || null;
+    return {
+      ...lane,
+      current_match_id: match?.id ?? null,
+      current_match_number: match ? (idToDisplay.get(match.id) ?? null) : null,
+    };
+  });
 }
 
 /**
@@ -152,6 +237,44 @@ export async function releaseAndReassignLanePublic(
 
   // Auto-assign lanes to next ready matches
   return autoAssignLanesInternal(supabase, eventId);
+}
+
+/**
+ * Add lanes to an event
+ */
+export async function addLanes(
+  eventId: string,
+  count: number
+): Promise<Lane[]> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  if (count < 1 || count > 20) {
+    throw new BadRequestError('Lane count must be between 1 and 20');
+  }
+
+  return laneRepo.addLanesToEvent(supabase, eventId, count);
+}
+
+/**
+ * Delete an idle lane from an event
+ */
+export async function deleteLane(
+  eventId: string,
+  laneId: string
+): Promise<boolean> {
+  const { supabase } = await requireEventAdmin(eventId);
+  return laneRepo.deleteIdleLane(supabase, eventId, laneId);
+}
+
+/**
+ * Release a lane from a match without triggering auto-reassign
+ */
+export async function releaseLane(
+  eventId: string,
+  matchId: number
+): Promise<boolean> {
+  const { supabase } = await requireEventAdmin(eventId);
+  return laneRepo.releaseMatchLane(supabase, eventId, matchId);
 }
 
 /**

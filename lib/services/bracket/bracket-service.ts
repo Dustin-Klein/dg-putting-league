@@ -438,6 +438,42 @@ export async function manuallyAdvanceTeam(
 }
 
 /**
+ * Remove a team from a match slot
+ */
+export async function removeTeamFromMatch(
+  eventId: string,
+  targetMatchId: number,
+  slot: 'opponent1' | 'opponent2'
+): Promise<void> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const match = await getMatchForAdvancement(supabase, targetMatchId, eventId);
+
+  if (!match) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (match.status === Status.Completed || match.status === Status.Running) {
+    throw new BadRequestError('Cannot remove a team from a match that is completed or running');
+  }
+
+  const opponent = slot === 'opponent1' ? match.opponent1 : match.opponent2;
+  if (!opponent || (opponent as { id?: number | null }).id == null) {
+    throw new BadRequestError('Slot is already empty');
+  }
+
+  const emptyOpponent = { id: null };
+
+  await updateMatchWithOpponents(
+    supabase,
+    targetMatchId,
+    slot === 'opponent1' ? emptyOpponent : null,
+    slot === 'opponent2' ? emptyOpponent : null,
+    match.status
+  );
+}
+
+/**
  * Clear all bracket placements (reset match opponents to null)
  * Preserves the bracket structure and participants
  */

@@ -75,10 +75,10 @@ export async function insertLanes(
 export async function getMatchLaneAssignments(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<Record<string, number>> {
+): Promise<Record<string, { id: number; number: number }>> {
   const { data: matches, error } = await supabase
     .from('bracket_match')
-    .select('id, lane_id')
+    .select('id, number, lane_id')
     .eq('event_id', eventId)
     .not('lane_id', 'is', null);
 
@@ -86,10 +86,10 @@ export async function getMatchLaneAssignments(
     throw new InternalError(`Failed to fetch match assignments: ${error.message}`);
   }
 
-  const laneMatchMap: Record<string, number> = {};
+  const laneMatchMap: Record<string, { id: number; number: number }> = {};
   matches?.forEach((match) => {
     if (match.lane_id) {
-      laneMatchMap[match.lane_id] = match.id;
+      laneMatchMap[match.lane_id] = { id: match.id, number: match.number };
     }
   });
 
@@ -127,7 +127,7 @@ export async function getUnassignedReadyMatches(
   const [matchResult, roundResult] = await Promise.all([
     supabase
       .from('bracket_match')
-      .select('id, round_id, group_id, number, status, updated_at')
+      .select('id, round_id, group_id, number, status, updated_at, opponent1, opponent2')
       .eq('stage_id', stageId)
       .in('status', [Status.Ready, Status.Waiting])
       .is('lane_id', null),
@@ -148,9 +148,18 @@ export async function getUnassignedReadyMatches(
     (roundResult.data || []).map((r) => [r.id, r.number] as const)
   );
 
-  const matches = (matchResult.data || []) as {
+  const rawMatches = (matchResult.data || []) as {
     id: number; round_id: number; group_id: number; number: number; status: number; updated_at: string;
+    opponent1: { id?: number | null } | null;
+    opponent2: { id?: number | null } | null;
   }[];
+
+  // Filter out matches where neither opponent has a team assigned
+  const matches = rawMatches.filter((m) => {
+    const hasOpp1 = m.opponent1?.id != null;
+    const hasOpp2 = m.opponent2?.id != null;
+    return hasOpp1 || hasOpp2;
+  });
 
   matches.sort((a, b) => {
     const aRound = roundNumber.get(a.round_id) ?? 0;
@@ -314,6 +323,65 @@ export async function getLaneById(
   }
 
   return lane as Lane;
+}
+
+/**
+ * Add lanes to an event, continuing from the highest existing "Lane N" number
+ */
+export async function addLanesToEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  count: number
+): Promise<Lane[]> {
+  const existingLanes = await getLanesForEvent(supabase, eventId);
+
+  let maxNumber = 0;
+  for (const lane of existingLanes) {
+    const match = lane.label.match(/^Lane (\d+)$/);
+    if (match) {
+      maxNumber = Math.max(maxNumber, parseInt(match[1], 10));
+    }
+  }
+
+  const lanesToInsert = Array.from({ length: count }, (_, i) => ({
+    event_id: eventId,
+    label: `Lane ${maxNumber + i + 1}`,
+    status: 'idle' as const,
+  }));
+
+  const { data: lanes, error } = await supabase
+    .from('lanes')
+    .insert(lanesToInsert)
+    .select();
+
+  if (error) {
+    throw new InternalError(`Failed to add lanes: ${error.message}`);
+  }
+
+  return (lanes || []) as Lane[];
+}
+
+/**
+ * Delete a lane only if it is idle
+ */
+export async function deleteIdleLane(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  laneId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('lanes')
+    .delete()
+    .eq('id', laneId)
+    .eq('event_id', eventId)
+    .eq('status', 'idle')
+    .select('id');
+
+  if (error) {
+    throw new InternalError(`Failed to delete lane: ${error.message}`);
+  }
+
+  return (data?.length ?? 0) > 0;
 }
 
 /**

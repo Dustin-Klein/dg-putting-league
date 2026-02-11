@@ -6,9 +6,10 @@ import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog } from './components';
+import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog, LaneManagement } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation, Eraser } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
@@ -36,6 +37,7 @@ export default function BracketPage({
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [activeTab, setActiveTab] = useState('bracket');
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -167,12 +169,8 @@ export default function BracketPage({
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
-    const opp1Empty = !opp1 || opp1.id == null;
-    const opp2Empty = !opp2 || opp2.id == null;
-
-    // If match has an empty slot and is Waiting/Ready, open advance dialog
+    // If match is Waiting/Ready/Locked in bracket mode, open manage dialog (advance/remove)
     if (
-      (opp1Empty || opp2Empty) &&
       (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked) &&
       bracketData.eventStatus === 'bracket'
     ) {
@@ -347,93 +345,108 @@ export default function BracketPage({
             {bracketData.bracket.stage.name}
           </h1>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Zoom controls */}
-          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
+        {activeTab === 'bracket' && (
+          <div className="flex items-center gap-4">
+            {/* Zoom controls */}
+            <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label="Zoom out"
+                onClick={() => setScale(Math.max(25, scale - 10))}
+                disabled={scale <= 25}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <input
+                type="range"
+                value={scale}
+                onChange={(e) => setScale(Number(e.target.value))}
+                min={25}
+                max={150}
+                step={5}
+                className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setScale(Math.min(150, scale + 10))}
+                disabled={scale >= 150}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground w-12 text-center">
+                {scale}%
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setScale(100)}
+                disabled={scale === 100}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              aria-label="Zoom out"
-              onClick={() => setScale(Math.max(25, scale - 10))}
-              disabled={scale <= 25}
+              variant="outline"
+              size="sm"
+              onClick={handleClearPlacements}
+              disabled={isClearing}
             >
-              <ZoomOut className="h-4 w-4" />
+              <Eraser className={`mr-2 h-4 w-4`} />
+              {isClearing ? 'Clearing...' : 'Clear Placements'}
             </Button>
-            <input
-              type="range"
-              value={scale}
-              onChange={(e) => setScale(Number(e.target.value))}
-              min={25}
-              max={150}
-              step={5}
-              className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-            />
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setScale(Math.min(150, scale + 10))}
-              disabled={scale >= 150}
+              variant="outline"
+              size="sm"
+              onClick={fetchBracket}
+              disabled={loading}
             >
-              <ZoomIn className="h-4 w-4" />
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
-            <span className="text-sm text-muted-foreground w-12 text-center">
-              {scale}%
-            </span>
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setScale(100)}
-              disabled={scale === 100}
+              variant="default"
+              size="sm"
+              onClick={enterPresentationMode}
             >
-              <RotateCcw className="h-4 w-4" />
+              <Presentation className="mr-2 h-4 w-4" />
+              Present
             </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClearPlacements}
-            disabled={isClearing}
-          >
-            <Eraser className={`mr-2 h-4 w-4`} />
-            {isClearing ? 'Clearing...' : 'Clear Placements'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchBracket}
-            disabled={loading}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={enterPresentationMode}
-          >
-            <Presentation className="mr-2 h-4 w-4" />
-            Present
-          </Button>
-        </div>
+        )}
       </div>
 
-      <div className="overflow-auto">
-        <div
-          style={{
-            transform: `scale(${scale / 100})`,
-            transformOrigin: 'top left',
-          }}
-        >
-          <BracketView
-            data={bracketData}
-            eventStatus={bracketData.eventStatus}
-            onMatchClick={handleMatchClick}
-          />
-        </div>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="bracket">Bracket</TabsTrigger>
+          <TabsTrigger value="lanes">Lanes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="bracket">
+          <div className="overflow-auto">
+            <div
+              style={{
+                transform: `scale(${scale / 100})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              <BracketView
+                data={bracketData}
+                eventStatus={bracketData.eventStatus}
+                onMatchClick={handleMatchClick}
+              />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="lanes">
+          {eventId && <LaneManagement eventId={eventId} />}
+        </TabsContent>
+      </Tabs>
 
       {eventId && (
         <>

@@ -4,6 +4,7 @@ import {
   setLaneMaintenance,
   setLaneIdle,
   autoAssignLanes,
+  deleteLane,
 } from '@/lib/services/lane';
 import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
@@ -47,6 +48,31 @@ export async function PATCH(
     }
 
     return NextResponse.json(lane);
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/**
+ * DELETE /api/event/[eventId]/lanes/[laneId]
+ * Delete a lane (only if idle)
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ eventId: string; laneId: string }> }
+) {
+  try {
+    const resolvedParams = await Promise.resolve(params);
+    const { eventId, laneId } = resolvedParams;
+    await requireEventAdmin(eventId);
+
+    const deleted = await deleteLane(eventId, laneId);
+
+    if (!deleted) {
+      throw new BadRequestError('Lane could not be deleted. Only idle lanes can be removed.');
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     return handleError(error);
   }

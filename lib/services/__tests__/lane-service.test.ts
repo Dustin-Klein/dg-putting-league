@@ -46,13 +46,14 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
   getBracketStage: jest.fn(),
+  fetchBracketStructure: jest.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
-import { getBracketStage } from '@/lib/repositories/bracket-repository';
+import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import {
   createEventLanes,
   getEventLanes,
@@ -146,6 +147,17 @@ describe('Lane Service', () => {
   describe('getLanesWithMatches', () => {
     const eventId = 'event-123';
 
+    const mockBracketStructure = {
+      stage: { id: 1 },
+      groups: [{ id: 10, number: 1 }],
+      rounds: [{ id: 100, group_id: 10, number: 1 }],
+      matches: [
+        { id: 1, round_id: 100, number: 1, status: 2, opponent1: { id: 1 }, opponent2: { id: 2 } },
+        { id: 2, round_id: 100, number: 2, status: 2, opponent1: { id: 3 }, opponent2: { id: 4 } },
+      ],
+      participants: [],
+    };
+
     it('should return lanes with current match assignments', async () => {
       const mockLanes = [
         createMockLane({ id: 'lane-1', label: 'Lane 1' }),
@@ -153,18 +165,21 @@ describe('Lane Service', () => {
       ];
 
       const mockLaneMatchMap = {
-        'lane-1': 1,
+        'lane-1': { id: 2, number: 2 },
         // lane-2 has no match
       };
 
       (laneRepo.getLanesForEvent as jest.Mock).mockResolvedValue(mockLanes);
       (laneRepo.getMatchLaneAssignments as jest.Mock).mockResolvedValue(mockLaneMatchMap);
+      (fetchBracketStructure as jest.Mock).mockResolvedValue(mockBracketStructure);
 
       const result = await getLanesWithMatches(eventId);
 
       expect(result).toHaveLength(2);
-      expect(result[0].current_match_id).toBe(1);
+      expect(result[0].current_match_id).toBe(2);
+      expect(result[0].current_match_number).toBe(2);
       expect(result[1].current_match_id).toBeNull();
+      expect(result[1].current_match_number).toBeNull();
     });
 
     it('should handle all lanes without matches', async () => {
@@ -172,10 +187,12 @@ describe('Lane Service', () => {
 
       (laneRepo.getLanesForEvent as jest.Mock).mockResolvedValue(mockLanes);
       (laneRepo.getMatchLaneAssignments as jest.Mock).mockResolvedValue({});
+      (fetchBracketStructure as jest.Mock).mockResolvedValue(mockBracketStructure);
 
       const result = await getLanesWithMatches(eventId);
 
       expect(result[0].current_match_id).toBeNull();
+      expect(result[0].current_match_number).toBeNull();
     });
   });
 
