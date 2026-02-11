@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,6 +30,36 @@ interface MatchCardProps {
 function getTeamName(team?: Team): string {
   if (!team) return 'TBD';
   return team.pool_combo || `Team ${team.seed}`;
+}
+
+function ScrollingName({ name, className }: { name: string; className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflowPx, setOverflowPx] = useState(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const text = textRef.current;
+    if (container && text) {
+      const overflow = text.scrollWidth - container.clientWidth;
+      setOverflowPx(overflow > 0 ? overflow : 0);
+    }
+  }, [name]);
+
+  return (
+    <div ref={containerRef} className="overflow-hidden min-w-0">
+      <span
+        ref={textRef}
+        className={cn('inline-block whitespace-nowrap', className)}
+        style={overflowPx > 0 ? {
+          animation: 'scroll-name 8s ease-in-out infinite',
+          '--scroll-distance': `-${overflowPx}px`,
+        } as React.CSSProperties : undefined}
+      >
+        {name}
+      </span>
+    </div>
+  );
 }
 
 function OpponentRow({
@@ -63,14 +94,10 @@ function OpponentRow({
             #{team.seed}
           </span>
         )}
-        <span
-          className={cn(
-            'truncate',
-            isWinner && 'font-semibold'
-          )}
-        >
-          {getTeamName(team)}
-        </span>
+        <ScrollingName
+          name={getTeamName(team)}
+          className={cn(isWinner && 'font-semibold')}
+        />
       </div>
       {showScore && opponent.score !== undefined && (
         <span
