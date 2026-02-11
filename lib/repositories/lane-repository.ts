@@ -158,7 +158,7 @@ export async function getUnassignedReadyMatches(
   const matches = rawMatches.filter((m) => {
     const hasOpp1 = m.opponent1?.id != null;
     const hasOpp2 = m.opponent2?.id != null;
-    return hasOpp1 || hasOpp2;
+    return hasOpp1 && hasOpp2;
   });
 
   matches.sort((a, b) => {
