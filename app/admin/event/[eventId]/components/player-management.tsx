@@ -583,7 +583,7 @@ export function PlayerManagement({
             <TableRow>
               {[
                 { column: 'name', label: 'Name' },
-                { column: 'identifier', label: 'Identifier' },
+                { column: 'identifier', label: 'Player Number' },
                 { column: 'registered', label: 'Registered' },
                 { column: 'paid', label: 'Paid' },
               ].map(({ column, label }) => (
