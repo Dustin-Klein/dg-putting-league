@@ -131,13 +131,13 @@ export function PlayerManagement({
   };
 
   const filteredAndSortedPlayers = useMemo(() => {
-    let result = players;
+    let filteredPlayers = players;
 
     if (filterQuery.trim()) {
-      const query = filterQuery.toLowerCase();
-      result = result.filter(ep =>
-        ep.player.full_name.toLowerCase().includes(query) ||
-        (ep.player.player_number != null && String(ep.player.player_number).includes(query))
+      const query = filterQuery.toLowerCase().replace(/^#/, '');
+      filteredPlayers = filteredPlayers.filter(eventPlayer =>
+        eventPlayer.player.full_name.toLowerCase().includes(query) ||
+        (eventPlayer.player.player_number != null && String(eventPlayer.player.player_number).includes(query))
       );
     }
 
@@ -145,7 +145,7 @@ export function PlayerManagement({
       const { column, direction } = sortConfig;
       const dir = direction === 'asc' ? 1 : -1;
 
-      result = [...result].sort((a, b) => {
+      filteredPlayers = [...filteredPlayers].sort((a, b) => {
         switch (column) {
           case 'name':
             return dir * a.player.full_name.localeCompare(b.player.full_name);
@@ -181,7 +181,7 @@ export function PlayerManagement({
       });
     }
 
-    return result;
+    return filteredPlayers;
   }, [players, filterQuery, sortConfig, qualificationStatus]);
 
   // Handle search input change (debounced to reduce API calls)
@@ -634,7 +634,7 @@ export function PlayerManagement({
                   </div>
                 </TableHead>
               )}
-              {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
+              {isAdmin && event.status === 'pre-bracket' && <TableHead className="w-[100px]">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
