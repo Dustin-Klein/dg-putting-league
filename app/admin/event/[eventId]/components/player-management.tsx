@@ -653,7 +653,7 @@ export function PlayerManagement({
                       }}
                       disabled={!isAdmin || event.status !== 'pre-bracket'}
                     >
-                      <SelectTrigger className="w-[130px] h-8">
+                      <SelectTrigger className={`w-[130px] h-8 ${eventPlayer.payment_type ? 'ring-2 ring-green-600/60' : ''}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
