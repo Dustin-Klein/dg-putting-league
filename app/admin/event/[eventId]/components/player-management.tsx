@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Plus, X, Loader2, UserPlus, Trophy } from 'lucide-react';
+import { Search, Plus, X, Loader2, UserPlus, Trophy, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -108,6 +108,9 @@ export function PlayerManagement({
     }
     onPlayersUpdate?.(players);
   }, [players, onPlayersUpdate]);
+  const [filterQuery, setFilterQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ column: string; direction: 'asc' | 'desc' } | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; identifier: string }[]>([]);
@@ -118,6 +121,68 @@ export function PlayerManagement({
   const formRef = useRef<HTMLFormElement>(null);
 
   const showQualificationColumn = event.qualification_round_enabled && event.status === 'pre-bracket';
+
+  const handleSort = (column: string) => {
+    setSortConfig(prev => {
+      if (prev?.column !== column) return { column, direction: 'asc' };
+      if (prev.direction === 'asc') return { column, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const filteredAndSortedPlayers = useMemo(() => {
+    let result = players;
+
+    if (filterQuery.trim()) {
+      const query = filterQuery.toLowerCase();
+      result = result.filter(ep =>
+        ep.player.full_name.toLowerCase().includes(query) ||
+        (ep.player.player_number != null && String(ep.player.player_number).includes(query))
+      );
+    }
+
+    if (sortConfig) {
+      const { column, direction } = sortConfig;
+      const dir = direction === 'asc' ? 1 : -1;
+
+      result = [...result].sort((a, b) => {
+        switch (column) {
+          case 'name':
+            return dir * a.player.full_name.localeCompare(b.player.full_name);
+          case 'identifier': {
+            const aNum = a.player.player_number;
+            const bNum = b.player.player_number;
+            if (aNum == null && bNum == null) return 0;
+            if (aNum == null) return 1;
+            if (bNum == null) return -1;
+            return dir * (aNum - bNum);
+          }
+          case 'registered':
+            return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          case 'paid': {
+            const order: Record<string, number> = { unpaid: 0, cash: 1, electronic: 2 };
+            const aVal = order[a.payment_type ?? 'unpaid'] ?? 0;
+            const bVal = order[b.payment_type ?? 'unpaid'] ?? 0;
+            return dir * (aVal - bVal);
+          }
+          case 'qualification': {
+            const aStatus = qualificationStatus[a.id];
+            const bStatus = qualificationStatus[b.id];
+            if (!aStatus && !bStatus) return 0;
+            if (!aStatus) return 1;
+            if (!bStatus) return -1;
+            const pointsDiff = aStatus.total_points - bStatus.total_points;
+            if (pointsDiff !== 0) return dir * pointsDiff;
+            return dir * (aStatus.frames_completed - bStatus.frames_completed);
+          }
+          default:
+            return 0;
+        }
+      });
+    }
+
+    return result;
+  }, [players, filterQuery, sortConfig, qualificationStatus]);
 
   // Handle search input change (debounced to reduce API calls)
   const handleSearch = useDebouncedCallback(async (query: string) => {
@@ -501,21 +566,63 @@ export function PlayerManagement({
         )}
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Filter players..."
+          className="pl-10"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+        />
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Identifier</TableHead>
-              <TableHead>Registered</TableHead>
-              <TableHead>Paid</TableHead>
-              {showQualificationColumn && <TableHead>Qualification</TableHead>}
+              {[
+                { column: 'name', label: 'Name' },
+                { column: 'identifier', label: 'Identifier' },
+                { column: 'registered', label: 'Registered' },
+                { column: 'paid', label: 'Paid' },
+              ].map(({ column, label }) => (
+                <TableHead
+                  key={column}
+                  className="cursor-pointer select-none"
+                  onClick={() => handleSort(column)}
+                >
+                  <div className="flex items-center gap-1">
+                    {label}
+                    {sortConfig?.column === column && (
+                      sortConfig.direction === 'asc'
+                        ? <ChevronUp className="h-4 w-4" />
+                        : <ChevronDown className="h-4 w-4" />
+                    )}
+                  </div>
+                </TableHead>
+              ))}
+              {showQualificationColumn && (
+                <TableHead
+                  className="cursor-pointer select-none"
+                  onClick={() => handleSort('qualification')}
+                >
+                  <div className="flex items-center gap-1">
+                    Qualification
+                    {sortConfig?.column === 'qualification' && (
+                      sortConfig.direction === 'asc'
+                        ? <ChevronUp className="h-4 w-4" />
+                        : <ChevronDown className="h-4 w-4" />
+                    )}
+                  </div>
+                </TableHead>
+              )}
               {isAdmin && <TableHead className="w-[100px]">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {players && players.length > 0 ? (
-              players.map((eventPlayer) => (
+            {filteredAndSortedPlayers.length > 0 ? (
+              filteredAndSortedPlayers.map((eventPlayer) => (
                 <TableRow key={eventPlayer.id}>
                   <TableCell className="font-medium">
                     {eventPlayer.player.player_number ? (
@@ -604,8 +711,8 @@ export function PlayerManagement({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={3 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
-                  No players registered yet.
+                <TableCell colSpan={4 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
+                  {filterQuery.trim() ? 'No matching players.' : 'No players registered yet.'}
                 </TableCell>
               </TableRow>
             )}
