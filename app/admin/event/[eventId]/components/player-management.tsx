@@ -335,8 +335,21 @@ export function PlayerManagement({
     }
   };
 
+  const [updatingPayment, setUpdatingPayment] = useState<Set<string>>(new Set());
+
   // Handle changing payment type
   const handlePaymentChange = async (eventPlayerId: string, playerId: string, paymentType: PaymentType | null) => {
+    const previousPlayer = players.find(p => p.id === eventPlayerId);
+    const previousPaymentType = previousPlayer?.payment_type ?? null;
+
+    // Optimistic update
+    setPlayers(prev => prev.map(player =>
+      player.id === eventPlayerId
+        ? { ...player, payment_type: paymentType }
+        : player
+    ));
+    setUpdatingPayment(prev => new Set(prev).add(eventPlayerId));
+
     try {
       const response = await fetch(`/api/event/${event.id}/players/${playerId}`, {
         method: 'PATCH',
@@ -349,19 +362,23 @@ export function PlayerManagement({
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update payment status');
       }
-
-      // Update the UI without refreshing
-      const updatedPlayers = players.map(player =>
-        player.id === eventPlayerId
-          ? { ...player, payment_type: paymentType }
-          : player
-      );
-      setPlayers(updatedPlayers);
     } catch (error) {
       console.error('Failed to update payment status', error);
+      // Revert on failure
+      setPlayers(prev => prev.map(player =>
+        player.id === eventPlayerId
+          ? { ...player, payment_type: previousPaymentType }
+          : player
+      ));
       toast({
         title: 'Error',
         description: 'Failed to update payment status. Please try again.'
+      });
+    } finally {
+      setUpdatingPayment(prev => {
+        const next = new Set(prev);
+        next.delete(eventPlayerId);
+        return next;
       });
     }
   };
@@ -645,23 +662,28 @@ export function PlayerManagement({
                     {format(new Date(eventPlayer.created_at), 'MMM d, yyyy')}
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={eventPlayer.payment_type ?? 'unpaid'}
-                      onValueChange={(value) => {
-                        const paymentType = value === 'unpaid' ? null : value as PaymentType;
-                        handlePaymentChange(eventPlayer.id, eventPlayer.player.id, paymentType);
-                      }}
-                      disabled={!isAdmin || event.status !== 'pre-bracket'}
-                    >
-                      <SelectTrigger className={`w-[130px] h-8 ${eventPlayer.payment_type ? 'ring-2 ring-green-600/60' : ''}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unpaid">Not paid</SelectItem>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="electronic">Electronic</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="relative w-[130px]">
+                      <Select
+                        value={eventPlayer.payment_type ?? 'unpaid'}
+                        onValueChange={(value) => {
+                          const paymentType = value === 'unpaid' ? null : value as PaymentType;
+                          handlePaymentChange(eventPlayer.id, eventPlayer.player.id, paymentType);
+                        }}
+                        disabled={!isAdmin || event.status !== 'pre-bracket' || updatingPayment.has(eventPlayer.id)}
+                      >
+                        <SelectTrigger className={`w-[130px] h-8 ${eventPlayer.payment_type ? 'ring-2 ring-green-600/60' : ''} ${updatingPayment.has(eventPlayer.id) ? 'opacity-50' : ''}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unpaid">Not paid</SelectItem>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="electronic">Electronic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {updatingPayment.has(eventPlayer.id) && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground absolute right-7 top-1/2 -translate-y-1/2" />
+                      )}
+                    </div>
                   </TableCell>
                   {showQualificationColumn && (
                     <TableCell>
