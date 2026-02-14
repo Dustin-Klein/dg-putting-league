@@ -18,6 +18,14 @@ export const formatDisplayDate = (date: Date | string): string => {
 };
 
 /**
+ * Formats a date in short format (e.g., "Feb 19, 2025")
+ */
+export const formatShortDate = (date: Date | string): string => {
+  const dateObj = typeof date === 'string' ? parseLocalDate(date) : date;
+  return format(dateObj, 'MMM d, yyyy');
+};
+
+/**
  * Formats a date for database storage (YYYY-MM-DD)
  */
 export const formatForDatabase = (date: Date): string => {

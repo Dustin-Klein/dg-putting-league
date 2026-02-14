@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, RefreshCw, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
+import { formatDisplayDate } from '@/lib/utils/date-utils';
 
 interface TeamInfo {
   id: string;
@@ -152,7 +153,7 @@ export default function MatchesPage() {
             <CardTitle>Available Matches</CardTitle>
             <CardDescription>
               {event?.location && `${event.location} - `}
-              {event?.event_date && new Date(event.event_date).toLocaleDateString()}
+              {event?.event_date && formatDisplayDate(event.event_date)}
             </CardDescription>
           </CardHeader>
         </Card>

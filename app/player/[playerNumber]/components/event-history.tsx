@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { formatPlacement } from '@/lib/utils/format-utils';
+import { formatShortDate, parseLocalDate } from '@/lib/utils/date-utils';
 import { EventsTable, type EventColumn } from './events-table';
 import type { PlayerEventHistory } from '@/lib/types/player-statistics';
 
@@ -28,7 +28,7 @@ const columns: EventColumn<PlayerEventHistory>[] = [
         className="hover:underline"
       >
         <time dateTime={event.eventDate}>
-          {format(new Date(event.eventDate), 'MMM d, yyyy')}
+          {formatShortDate(event.eventDate)}
         </time>
       </Link>
     ),
@@ -43,7 +43,7 @@ const columns: EventColumn<PlayerEventHistory>[] = [
         >
           {event.leagueName} -{' '}
           <time dateTime={event.eventDate}>
-            {format(new Date(event.eventDate), 'MMM d, yyyy')}
+            {formatShortDate(event.eventDate)}
           </time>
         </Link>
         {event.eventLocation && (
@@ -89,7 +89,7 @@ const columns: EventColumn<PlayerEventHistory>[] = [
 
 export function EventHistory({ eventHistory }: EventHistoryProps) {
   const sorted = [...eventHistory].sort(
-    (a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
+    (a, b) => parseLocalDate(b.eventDate).getTime() - parseLocalDate(a.eventDate).getTime()
   );
 
   return (

@@ -9,6 +9,7 @@ import { ArrowLeft, Check } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { ScoreInput } from '@/components/ui/score-input';
+import { formatDisplayDate } from '@/lib/utils/date-utils';
 
 interface FrameInfo {
   id: string;
@@ -241,7 +242,7 @@ export default function QualificationScoringPage() {
             <div className="text-center">
               <div className="text-sm text-muted-foreground mb-1">
                 {event?.location && `${event.location} - `}
-                {event?.event_date && new Date(event.event_date).toLocaleDateString()}
+                {event?.event_date && formatDisplayDate(event.event_date)}
               </div>
               <div className="text-lg font-semibold">
                 Scoring {players.length} Player{players.length !== 1 ? 's' : ''}
