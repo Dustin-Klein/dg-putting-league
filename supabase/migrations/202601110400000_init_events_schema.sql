@@ -18,6 +18,7 @@ CREATE TABLE public.events (
   entry_fee_per_player NUMERIC(8,2) DEFAULT NULL,
   admin_fees NUMERIC(8,2) DEFAULT NULL,
   admin_fee_per_player NUMERIC(8,2) DEFAULT NULL,
+  payout_pool_override NUMERIC(8,2) DEFAULT NULL,
   payout_structure JSONB DEFAULT NULL,
   status event_status NOT NULL DEFAULT 'created',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()

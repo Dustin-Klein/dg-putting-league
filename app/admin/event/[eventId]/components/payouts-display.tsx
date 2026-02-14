@@ -21,6 +21,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editStructure, setEditStructure] = useState<{ place: number; percentage: number }[]>([]);
+  const [editPoolOverride, setEditPoolOverride] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -49,9 +50,14 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
     fetchPayouts();
   }, [fetchPayouts]);
 
+  const calculatedPool = payoutInfo
+    ? payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count)
+    : 0;
+
   const startEditing = () => {
     if (!payoutInfo) return;
     setEditStructure(payoutInfo.structure.map((s) => ({ ...s })));
+    setEditPoolOverride(payoutInfo.payout_pool_override);
     setEditing(true);
     setSaveError(null);
   };
@@ -91,7 +97,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
       const response = await fetch(`/api/event/${eventId}/payouts`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_structure: editStructure }),
+        body: JSON.stringify({ payout_structure: editStructure, payout_pool_override: editPoolOverride }),
       });
 
       if (!response.ok) {
@@ -116,7 +122,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
       const response = await fetch(`/api/event/${eventId}/payouts`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_structure: null }),
+        body: JSON.stringify({ payout_structure: null, payout_pool_override: null }),
       });
 
       if (!response.ok) {
@@ -213,9 +219,11 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
               </div>
             )}
             <div className="flex justify-between text-sm border-t pt-2">
-              <span className="text-muted-foreground">Payout Pool</span>
+              <span className="text-muted-foreground">
+                {payoutInfo.payout_pool_override != null ? 'Payout Pool (adjusted)' : 'Payout Pool'}
+              </span>
               <span className="text-lg font-semibold">
-                {formatCurrency(Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count)))}
+                {formatCurrency(payoutInfo.payout_pool_override != null ? payoutInfo.payout_pool_override : Math.max(0, calculatedPool))}
               </span>
             </div>
           </div>
@@ -223,6 +231,33 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
 
         {editing ? (
           <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">Payout Pool Override</label>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={calculatedPool.toFixed(2)}
+                  value={editPoolOverride ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditPoolOverride(val === '' ? null : Number(val));
+                  }}
+                  className="w-32"
+                />
+                {editPoolOverride != null && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditPoolOverride(null)}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use calculated pool ({formatCurrency(calculatedPool)})
+              </p>
+            </div>
+
             <div className="rounded-md border">
               <Table>
                 <TableHeader>

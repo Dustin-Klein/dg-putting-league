@@ -202,6 +202,7 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     entry_fee_per_player: null,
     admin_fees: null,
     admin_fee_per_player: null,
+    payout_pool_override: null,
     payout_structure: null,
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
@@ -224,6 +225,7 @@ export interface MockEvent {
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;
+  payout_pool_override: number | null;
   payout_structure: { place: number; percentage: number }[] | null;
   created_at: string;
   putt_distance_ft: number;

@@ -34,6 +34,7 @@ const payoutStructureSchema = z.object({
       })
     )
     .nullable(),
+  payout_pool_override: z.number().positive().nullable().optional(),
 });
 
 export async function PATCH(
@@ -51,7 +52,7 @@ export async function PATCH(
       throw new BadRequestError('Invalid payout structure');
     }
 
-    await updateEventPayouts(eventId, parsed.data.payout_structure);
+    await updateEventPayouts(eventId, parsed.data.payout_structure, parsed.data.payout_pool_override);
 
     const updatedPayouts = await getEventPayouts(eventId);
     return NextResponse.json(updatedPayouts);
