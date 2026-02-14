@@ -165,6 +165,23 @@ describe('Event Service', () => {
         event_date: '2026-01-20',
       }));
     });
+
+    it.each([
+      ['2026-01-01', 'New Year / year boundary'],
+      ['2025-12-31', 'Dec 31 / year boundary'],
+      ['2026-02-28', 'end of February'],
+      ['2026-03-01', 'start of March'],
+    ])('should preserve boundary date %s (%s) through to repository', async (date) => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+      (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(true);
+      (eventRepo.createEvent as jest.Mock).mockResolvedValue(createMockEvent({ ...eventData, event_date: date }));
+
+      await createEvent({ ...eventData, event_date: date });
+
+      expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, expect.objectContaining({
+        event_date: date,
+      }));
+    });
   });
 
   describe('requireEventAdmin', () => {
