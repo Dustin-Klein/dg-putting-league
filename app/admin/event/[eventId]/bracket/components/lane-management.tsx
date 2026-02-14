@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { RefreshCw, Plus, Trash2, Wrench, Play, Unlock, Link } from 'lucide-react';
@@ -285,30 +284,30 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
         </div>
       </div>
 
-      {/* Lane cards grid */}
+      {/* Lane list */}
       {lanes.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No lanes yet. Add lanes to get started.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="space-y-2">
           {lanes.map((lane) => (
-            <Card key={lane.id}>
-              <CardHeader className="pb-3 pt-4 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">{lane.label}</CardTitle>
-                  {statusBadge(lane.status)}
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-4 pt-0">
-                {lane.status === 'occupied' && lane.current_match_id && (
-                  <p className="text-sm text-muted-foreground mb-3">
-                    M{lane.current_match_number ?? lane.current_match_id}
-                  </p>
-                )}
+            <div
+              key={lane.id}
+              className="flex items-center gap-3 rounded-lg border px-4 py-3"
+            >
+              <span className="font-medium text-sm w-16 shrink-0">{lane.label}</span>
+              {statusBadge(lane.status)}
 
+              {lane.status === 'occupied' && lane.current_match_id && (
+                <span className="text-sm text-muted-foreground">
+                  M{lane.current_match_number ?? lane.current_match_id}
+                </span>
+              )}
+
+              <div className="flex items-center gap-2 ml-auto shrink-0">
                 {lane.status === 'idle' && (
-                  <div className="flex items-center gap-1 mb-3">
+                  <>
                     <Input
                       type="number"
                       placeholder="Match #"
@@ -328,59 +327,57 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       <Link className="mr-1 h-3 w-3" />
                       Assign
                     </Button>
-                  </div>
+                  </>
                 )}
 
-                <div className="flex gap-2">
-                  {lane.status === 'occupied' && lane.current_match_id && (
+                {lane.status === 'occupied' && lane.current_match_id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleReleaseLane(lane.id, lane.current_match_id!)}
+                    disabled={actionLoading === lane.id}
+                  >
+                    <Unlock className="mr-1 h-3 w-3" />
+                    Release
+                  </Button>
+                )}
+
+                {lane.status === 'idle' && (
+                  <>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleReleaseLane(lane.id, lane.current_match_id!)}
+                      onClick={() => handleSetMaintenance(lane.id)}
                       disabled={actionLoading === lane.id}
                     >
-                      <Unlock className="mr-1 h-3 w-3" />
-                      Release
+                      <Wrench className="mr-1 h-3 w-3" />
+                      Maintenance
                     </Button>
-                  )}
-
-                  {lane.status === 'idle' && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSetMaintenance(lane.id)}
-                        disabled={actionLoading === lane.id}
-                      >
-                        <Wrench className="mr-1 h-3 w-3" />
-                        Maintenance
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteLane(lane.id)}
-                        disabled={actionLoading === lane.id}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </>
-                  )}
-
-                  {lane.status === 'maintenance' && (
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => handleSetIdle(lane.id)}
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleDeleteLane(lane.id)}
                       disabled={actionLoading === lane.id}
                     >
-                      <Play className="mr-1 h-3 w-3" />
-                      Activate
+                      <Trash2 className="h-3 w-3" />
                     </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  </>
+                )}
+
+                {lane.status === 'maintenance' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSetIdle(lane.id)}
+                    disabled={actionLoading === lane.id}
+                  >
+                    <Play className="mr-1 h-3 w-3" />
+                    Activate
+                  </Button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
