@@ -40,13 +40,18 @@ export default function BracketPage({
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [isEditBracketMode, setIsEditBracketMode] = useState(searchParams.get('edit') === 'true');
+  const [isEditBracketMode, setIsEditBracketMode] = useState(false);
   const [isLaneDialogOpen, setIsLaneDialogOpen] = useState(false);
   const [isPayoutsDialogOpen, setIsPayoutsDialogOpen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { autoScale, recalculate } = useAutoScale(containerRef, contentRef);
+
+  // Sync edit mode with URL search param
+  useEffect(() => {
+    setIsEditBracketMode(searchParams.get('edit') === 'true');
+  }, [searchParams]);
 
   // Resolve params
   useEffect(() => {
@@ -420,7 +425,11 @@ export default function BracketPage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setIsEditBracketMode(true)}>
+              <DropdownMenuItem onClick={() => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set('edit', 'true');
+                router.replace(`?${params.toString()}`, { scroll: false });
+              }}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit Bracket
               </DropdownMenuItem>
@@ -455,7 +464,11 @@ export default function BracketPage({
             variant="ghost"
             size="sm"
             className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
-            onClick={() => setIsEditBracketMode(false)}
+            onClick={() => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('edit');
+              router.replace(`?${params.toString()}`, { scroll: false });
+            }}
           >
             <X className="mr-1 h-4 w-4" />
             Exit Edit Mode
