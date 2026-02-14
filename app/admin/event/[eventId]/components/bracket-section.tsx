@@ -214,7 +214,7 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
       />
 
       <Dialog open={isLaneDialogOpen} onOpenChange={setIsLaneDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Lane Management</DialogTitle>
           </DialogHeader>
