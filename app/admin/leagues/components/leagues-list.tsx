@@ -1,7 +1,7 @@
 "use client";
 
-import { format } from 'date-fns';
 import Link from 'next/link';
+import { formatShortDate } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { LeagueWithRole } from '@/lib/types/league';
@@ -62,8 +62,8 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
                 <div className="col-span-2">
                   <p className="text-muted-foreground">Last Event</p>
                   <p className="font-medium">
-                    {league.lastEventDate && !Number.isNaN(new Date(league.lastEventDate).getTime())
-                      ? format(new Date(league.lastEventDate), 'MMM d, yyyy')
+                    {league.lastEventDate
+                      ? formatShortDate(league.lastEventDate)
                       : 'No events yet'}
                   </p>
                 </div>

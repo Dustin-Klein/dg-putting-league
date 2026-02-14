@@ -90,9 +90,8 @@ export async function createEvent(data: {
     throw new BadRequestError('An event with this access code already exists');
   }
 
-  // 3. Format date
-  const eventDate = new Date(data.event_date);
-  const formattedDate = eventDate.toISOString().split('T')[0];
+  // 3. Format date — data.event_date is already YYYY-MM-DD from the form
+  const formattedDate = data.event_date;
 
   const { copy_players_from_event_id, entry_fee_per_player, admin_fees, admin_fee_per_player, ...eventData } = data;
 

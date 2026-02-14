@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, RefreshCw, CheckCircle2, Users } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
+import { formatDisplayDate } from '@/lib/utils/date-utils';
 
 interface PlayerInfo {
   event_player_id: string;
@@ -185,7 +186,7 @@ export default function QualificationPage() {
             <CardTitle>Qualification Round</CardTitle>
             <CardDescription>
               {event?.location && `${event.location} - `}
-              {event?.event_date && new Date(event.event_date).toLocaleDateString()}
+              {event?.event_date && formatDisplayDate(event.event_date)}
             </CardDescription>
           </CardHeader>
           <CardContent>

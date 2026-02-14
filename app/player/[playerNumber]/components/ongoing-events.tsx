@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { EventsTable, type EventColumn } from './events-table';
+import { formatShortDate } from '@/lib/utils/date-utils';
 import type { PlayerOngoingEvent } from '@/lib/types/player-statistics';
 
 interface OngoingEventsProps {
@@ -44,7 +44,7 @@ const columns: EventColumn<PlayerOngoingEvent>[] = [
         href={`/event/${event.eventId}/bracket`}
         className="hover:underline"
       >
-        {format(new Date(event.eventDate), 'MMM d, yyyy')}
+        {formatShortDate(event.eventDate)}
       </Link>
     ),
   },

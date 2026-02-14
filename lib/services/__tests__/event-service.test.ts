@@ -151,14 +151,14 @@ describe('Event Service', () => {
       await expect(createEvent(eventData)).rejects.toThrow(ForbiddenError);
     });
 
-    it('should format date correctly', async () => {
+    it('should pass through YYYY-MM-DD date string as-is', async () => {
       (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
       (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(true);
       (eventRepo.createEvent as jest.Mock).mockResolvedValue(createMockEvent(eventData));
 
       await createEvent({
         ...eventData,
-        event_date: '2026-01-20T12:00:00.000Z',
+        event_date: '2026-01-20',
       });
 
       expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, expect.objectContaining({
