@@ -65,6 +65,17 @@ BEGIN
     v_final_opp2 := v_existing_opp2;
   END IF;
 
+  -- Preserve position from existing opponent data (structural field set at bracket creation)
+  IF v_existing_opp1 IS NOT NULL AND (v_existing_opp1 ? 'position')
+     AND (v_final_opp1 IS NULL OR NOT (v_final_opp1 ? 'position')) THEN
+    v_final_opp1 := COALESCE(v_final_opp1, '{}'::jsonb) || jsonb_build_object('position', v_existing_opp1->'position');
+  END IF;
+
+  IF v_existing_opp2 IS NOT NULL AND (v_existing_opp2 ? 'position')
+     AND (v_final_opp2 IS NULL OR NOT (v_final_opp2 ? 'position')) THEN
+    v_final_opp2 := COALESCE(v_final_opp2, '{}'::jsonb) || jsonb_build_object('position', v_existing_opp2->'position');
+  END IF;
+
   -- Auto-promote status to Ready if both opponents now have ids
   v_final_status := p_status;
   IF v_final_status IS NOT NULL
