@@ -17,6 +17,8 @@ export interface EventData {
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
+  admin_fee_per_player: number | null;
+  payout_pool_override: number | null;
   payout_structure: PayoutPlace[] | null;
   access_code: string | null;
   created_at: string;
@@ -449,6 +451,7 @@ export async function createEvent(
     qualification_frame_count: number;
     entry_fee_per_player?: number | null;
     admin_fees?: number | null;
+    admin_fee_per_player?: number | null;
     status: EventStatus;
   }
 ): Promise<EventData> {
@@ -491,11 +494,16 @@ export async function getEventBracketFrameCount(
 export async function updateEventPayouts(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,
-  payoutStructure: PayoutPlace[] | null
+  payoutStructure: PayoutPlace[] | null,
+  payoutPoolOverride?: number | null
 ): Promise<void> {
+  const updateData: Record<string, unknown> = { payout_structure: payoutStructure };
+  if (payoutPoolOverride !== undefined) {
+    updateData.payout_pool_override = payoutPoolOverride;
+  }
   const { error } = await supabase
     .from('events')
-    .update({ payout_structure: payoutStructure })
+    .update(updateData)
     .eq('id', eventId);
 
   if (error) {

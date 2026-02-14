@@ -43,9 +43,13 @@ export function calculatePayouts(
   entryFee: number,
   playerCount: number,
   structure: PayoutPlace[],
-  adminFees: number = 0
+  adminFees: number = 0,
+  adminFeePerPlayer: number = 0,
+  payoutPoolOverride?: number | null
 ): PayoutBreakdown[] {
-  const totalPot = entryFee * playerCount - adminFees;
+  const totalPot = payoutPoolOverride != null
+    ? payoutPoolOverride
+    : entryFee * playerCount - adminFees - (adminFeePerPlayer * playerCount);
 
   if (structure.length === 0 || totalPot <= 0) {
     return [];

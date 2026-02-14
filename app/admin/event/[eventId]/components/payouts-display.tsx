@@ -21,6 +21,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editStructure, setEditStructure] = useState<{ place: number; percentage: number }[]>([]);
+  const [editPoolOverride, setEditPoolOverride] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -49,9 +50,14 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
     fetchPayouts();
   }, [fetchPayouts]);
 
+  const calculatedPool = payoutInfo
+    ? Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count))
+    : 0;
+
   const startEditing = () => {
     if (!payoutInfo) return;
     setEditStructure(payoutInfo.structure.map((s) => ({ ...s })));
+    setEditPoolOverride(payoutInfo.payout_pool_override);
     setEditing(true);
     setSaveError(null);
   };
@@ -91,7 +97,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
       const response = await fetch(`/api/event/${eventId}/payouts`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_structure: editStructure }),
+        body: JSON.stringify({ payout_structure: editStructure, payout_pool_override: editPoolOverride }),
       });
 
       if (!response.ok) {
@@ -116,7 +122,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
       const response = await fetch(`/api/event/${eventId}/payouts`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_structure: null }),
+        body: JSON.stringify({ payout_structure: null, payout_pool_override: null }),
       });
 
       if (!response.ok) {
@@ -194,21 +200,71 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
           </div>
         </div>
 
-        {payoutInfo.admin_fees > 0 && (
-          <div className="grid grid-cols-2 gap-4 text-center border-t pt-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Admin Fees</p>
-              <p className="text-lg font-semibold text-destructive">-{formatCurrency(payoutInfo.admin_fees)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Payout Pool</p>
-              <p className="text-lg font-semibold">{formatCurrency(Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees))}</p>
+        {(payoutInfo.admin_fees > 0 || payoutInfo.admin_fee_per_player > 0) && (
+          <div className="border-t pt-4 space-y-2">
+            {payoutInfo.admin_fees > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Flat Admin Fees</span>
+                <span className="font-semibold text-destructive">-{formatCurrency(payoutInfo.admin_fees)}</span>
+              </div>
+            )}
+            {payoutInfo.admin_fee_per_player > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Per-Player Fee ({formatCurrency(payoutInfo.admin_fee_per_player)} &times; {payoutInfo.player_count} players)
+                </span>
+                <span className="font-semibold text-destructive">
+                  -{formatCurrency(payoutInfo.admin_fee_per_player * payoutInfo.player_count)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm border-t pt-2">
+              <span className="text-muted-foreground">
+                {payoutInfo.payout_pool_override != null ? 'Payout Pool (adjusted)' : 'Payout Pool'}
+              </span>
+              <span className="text-lg font-semibold">
+                {formatCurrency(payoutInfo.payout_pool_override != null ? payoutInfo.payout_pool_override : calculatedPool)}
+              </span>
             </div>
           </div>
         )}
 
         {editing ? (
           <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">Payout Pool Override</label>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={calculatedPool.toFixed(2)}
+                  value={editPoolOverride ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      setEditPoolOverride(null);
+                    } else {
+                      const num = Number(val);
+                      if (Number.isFinite(num) && num >= 0) {
+                        setEditPoolOverride(num);
+                      }
+                    }
+                  }}
+                  className="w-32"
+                />
+                {editPoolOverride != null && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditPoolOverride(null)}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use calculated pool ({formatCurrency(calculatedPool)})
+              </p>
+            </div>
+
             <div className="rounded-md border">
               <Table>
                 <TableHeader>

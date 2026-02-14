@@ -63,5 +63,5 @@ nul
 tmpclaude*
 
 
-scripts/import-historical-averages.sql
+scripts/*
 supabase/snippets/

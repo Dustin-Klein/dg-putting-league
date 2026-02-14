@@ -132,6 +132,7 @@ describe('Event Service', () => {
         ...eventData,
         entry_fee_per_player: null,
         admin_fees: null,
+        admin_fee_per_player: null,
         status: 'created',
       });
     });

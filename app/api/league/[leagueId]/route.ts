@@ -21,6 +21,7 @@ const eventSchema = z.object({
   qualification_frame_count: z.number().int().min(1).max(10).default(5),
   entry_fee_per_player: z.number().min(0).nullable().optional().default(null),
   admin_fees: z.number().min(0).nullable().optional().default(null),
+  admin_fee_per_player: z.number().min(0).nullable().optional().default(null),
   copy_players_from_event_id: z.string().uuid().optional(),
 });
 

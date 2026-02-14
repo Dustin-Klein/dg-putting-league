@@ -157,6 +157,68 @@ describe('calculatePayouts', () => {
     expect(result).toEqual([{ place: 1, percentage: 100, amount: 50 }]);
   });
 
+  it('subtracts per-player fee correctly', () => {
+    // $5 fee, 10 players = $50 gross, $2/player = $20 per-player fees, $30 net pot
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 2);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 30 }]);
+  });
+
+  it('subtracts both flat and per-player fees combined', () => {
+    // $5 fee, 10 players = $50 gross, $10 flat + $1/player = $30 net pot
+    const result = calculatePayouts(5, 10, [
+      { place: 1, percentage: 70 },
+      { place: 2, percentage: 30 },
+    ], 10, 1);
+    expect(result[0].amount + result[1].amount).toBe(30);
+  });
+
+  it('returns empty when combined fees >= pot', () => {
+    // $5 fee, 10 players = $50 gross, $30 flat + $2/player = $50 total fees
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 30, 2);
+    expect(result).toEqual([]);
+
+    // fees exceed pot
+    const result2 = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 30, 3);
+    expect(result2).toEqual([]);
+  });
+
+  it('uses override as total pot when provided', () => {
+    // $5 fee, 10 players normally = $50, but override to $100
+    const result = calculatePayouts(5, 10, [
+      { place: 1, percentage: 70 },
+      { place: 2, percentage: 30 },
+    ], 0, 0, 100);
+    expect(result[0].amount + result[1].amount).toBe(100);
+    expect(result[1].amount).toBe(30); // 30% of $100 rounded to nearest $5
+    expect(result[0].amount).toBe(70);
+  });
+
+  it('falls back to calculation when override is null', () => {
+    // $5 fee, 10 players = $50 pot
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 0, null);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 50 }]);
+  });
+
+  it('falls back to calculation when override is undefined', () => {
+    // $5 fee, 10 players = $50 pot
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 0, undefined);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 50 }]);
+  });
+
+  it('returns empty payouts when override is 0 or negative', () => {
+    const result0 = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 0, 0);
+    expect(result0).toEqual([]);
+
+    const resultNeg = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 0, -10);
+    expect(resultNeg).toEqual([]);
+  });
+
+  it('override ignores admin fees entirely', () => {
+    // $5 fee, 10 players, $10 admin fees, $1/player fee, but override to $80
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 10, 1, 80);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 80 }]);
+  });
+
   it('handles large entry fee with small pot', () => {
     // $10 fee, 3 players = $30 pot, 70/30 split
     // 2nd raw: $9 → rounds to $10
