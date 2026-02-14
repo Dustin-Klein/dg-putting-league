@@ -194,15 +194,29 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
           </div>
         </div>
 
-        {payoutInfo.admin_fees > 0 && (
-          <div className="grid grid-cols-2 gap-4 text-center border-t pt-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Admin Fees</p>
-              <p className="text-lg font-semibold text-destructive">-{formatCurrency(payoutInfo.admin_fees)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Payout Pool</p>
-              <p className="text-lg font-semibold">{formatCurrency(Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees))}</p>
+        {(payoutInfo.admin_fees > 0 || payoutInfo.admin_fee_per_player > 0) && (
+          <div className="border-t pt-4 space-y-2">
+            {payoutInfo.admin_fees > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Flat Admin Fees</span>
+                <span className="font-semibold text-destructive">-{formatCurrency(payoutInfo.admin_fees)}</span>
+              </div>
+            )}
+            {payoutInfo.admin_fee_per_player > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Per-Player Fee ({formatCurrency(payoutInfo.admin_fee_per_player)} &times; {payoutInfo.player_count} players)
+                </span>
+                <span className="font-semibold text-destructive">
+                  -{formatCurrency(payoutInfo.admin_fee_per_player * payoutInfo.player_count)}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm border-t pt-2">
+              <span className="text-muted-foreground">Payout Pool</span>
+              <span className="text-lg font-semibold">
+                {formatCurrency(Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count)))}
+              </span>
             </div>
           </div>
         )}

@@ -75,6 +75,7 @@ export async function createEvent(data: {
   qualification_frame_count: number;
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
+  admin_fee_per_player?: number | null;
   copy_players_from_event_id?: string;
 }) {
   const supabase = await createClient();
@@ -93,7 +94,7 @@ export async function createEvent(data: {
   const eventDate = new Date(data.event_date);
   const formattedDate = eventDate.toISOString().split('T')[0];
 
-  const { copy_players_from_event_id, entry_fee_per_player, admin_fees, ...eventData } = data;
+  const { copy_players_from_event_id, entry_fee_per_player, admin_fees, admin_fee_per_player, ...eventData } = data;
 
   // 4. Create event via repo
   const newEvent = await eventRepo.createEvent(supabase, {
@@ -102,6 +103,7 @@ export async function createEvent(data: {
     event_date: formattedDate,
     entry_fee_per_player: entry_fee_per_player ?? null,
     admin_fees: admin_fees ?? null,
+    admin_fee_per_player: admin_fee_per_player ?? null,
     status: 'created',
   });
 
@@ -338,6 +340,7 @@ export async function finalizeEventPlacements(eventId: string): Promise<void> {
 export interface EventPayoutInfo {
   entry_fee_per_player: number;
   admin_fees: number;
+  admin_fee_per_player: number;
   player_count: number;
   team_count: number;
   total_pot: number;
@@ -359,6 +362,7 @@ export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo 
 
   const entryFee = Number(event.entry_fee_per_player);
   const adminFees = Number(event.admin_fees ?? 0);
+  const adminFeePerPlayer = Number(event.admin_fee_per_player ?? 0);
   const playerCount = event.players?.length ?? 0;
   const teamCount = event.teams?.length ?? 0;
   const totalPot = entryFee * playerCount;
@@ -368,11 +372,12 @@ export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo 
     ? (event.payout_structure as PayoutPlace[])
     : getDefaultPayoutStructure(teamCount);
 
-  const payouts = calculatePayouts(entryFee, playerCount, structure, adminFees);
+  const payouts = calculatePayouts(entryFee, playerCount, structure, adminFees, adminFeePerPlayer);
 
   return {
     entry_fee_per_player: entryFee,
     admin_fees: adminFees,
+    admin_fee_per_player: adminFeePerPlayer,
     player_count: playerCount,
     team_count: teamCount,
     total_pot: totalPot,

@@ -17,6 +17,7 @@ export interface EventData {
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
+  admin_fee_per_player: number | null;
   payout_structure: PayoutPlace[] | null;
   access_code: string | null;
   created_at: string;
@@ -449,6 +450,7 @@ export async function createEvent(
     qualification_frame_count: number;
     entry_fee_per_player?: number | null;
     admin_fees?: number | null;
+    admin_fee_per_player?: number | null;
     status: EventStatus;
   }
 ): Promise<EventData> {

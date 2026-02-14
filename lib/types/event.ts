@@ -21,6 +21,7 @@ export interface Event {
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
+  admin_fee_per_player: number | null;
   payout_structure: PayoutPlace[] | null;
   created_at: string;
   participant_count?: number;
@@ -43,6 +44,7 @@ export interface EventWithDetails {
   qualification_frame_count: number;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
+  admin_fee_per_player: number | null;
   payout_structure: PayoutPlace[] | null;
   created_at: string;
   players: import('./player').EventPlayer[];

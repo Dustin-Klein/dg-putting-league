@@ -38,6 +38,7 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
           qualification_frame_count: values.qualification_frame_count,
           entry_fee_per_player: values.entry_fee_per_player ?? null,
           admin_fees: values.admin_fees ?? null,
+          admin_fee_per_player: values.admin_fee_per_player ?? null,
           ...(copyFromEventId ? { copy_players_from_event_id: copyFromEventId } : {}),
         }),
       });

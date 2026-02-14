@@ -157,6 +157,31 @@ describe('calculatePayouts', () => {
     expect(result).toEqual([{ place: 1, percentage: 100, amount: 50 }]);
   });
 
+  it('subtracts per-player fee correctly', () => {
+    // $5 fee, 10 players = $50 gross, $2/player = $20 per-player fees, $30 net pot
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 0, 2);
+    expect(result).toEqual([{ place: 1, percentage: 100, amount: 30 }]);
+  });
+
+  it('subtracts both flat and per-player fees combined', () => {
+    // $5 fee, 10 players = $50 gross, $10 flat + $1/player = $30 net pot
+    const result = calculatePayouts(5, 10, [
+      { place: 1, percentage: 70 },
+      { place: 2, percentage: 30 },
+    ], 10, 1);
+    expect(result[0].amount + result[1].amount).toBe(30);
+  });
+
+  it('returns empty when combined fees >= pot', () => {
+    // $5 fee, 10 players = $50 gross, $30 flat + $2/player = $50 total fees
+    const result = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 30, 2);
+    expect(result).toEqual([]);
+
+    // fees exceed pot
+    const result2 = calculatePayouts(5, 10, [{ place: 1, percentage: 100 }], 30, 3);
+    expect(result2).toEqual([]);
+  });
+
   it('handles large entry fee with small pot', () => {
     // $10 fee, 3 players = $30 pot, 70/30 split
     // 2nd raw: $9 → rounds to $10
