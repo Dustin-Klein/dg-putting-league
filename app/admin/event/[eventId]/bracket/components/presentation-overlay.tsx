@@ -12,6 +12,7 @@ interface PresentationOverlayProps {
   onRefresh: () => void;
   onExit: () => void;
   isRefreshing?: boolean;
+  accessCode?: string;
 }
 
 export function PresentationOverlay({
@@ -22,6 +23,7 @@ export function PresentationOverlay({
   onRefresh,
   onExit,
   isRefreshing = false,
+  accessCode,
 }: PresentationOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -92,6 +94,18 @@ export function PresentationOverlay({
           </div>
         </div>
       </div>
+
+      {/* Score entry info in top right */}
+      {accessCode && (
+        <div className="fixed top-4 right-4 z-40 text-right">
+          <div className="bg-background/80 backdrop-blur-sm rounded-lg px-4 py-3 border">
+            <p className="text-sm text-muted-foreground">Submit scores at</p>
+            <p className="font-mono font-semibold text-base">dg-putting-league.vercel.app/score</p>
+            <p className="text-sm text-muted-foreground mt-1">Access Code</p>
+            <p className="font-mono font-bold text-lg tracking-wider">{accessCode}</p>
+          </div>
+        </div>
+      )}
 
       {/* Always visible exit hint in corner */}
       <div className="fixed bottom-4 right-4 z-50">

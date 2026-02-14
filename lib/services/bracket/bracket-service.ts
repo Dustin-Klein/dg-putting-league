@@ -263,6 +263,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   teams: Team[];
   participantTeamMap: Record<number, Team>;
   eventStatus?: EventStatus;
+  accessCode?: string;
 }> {
   const { supabase } = await requireEventAdmin(eventId);
 
@@ -282,7 +283,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     }
   }
 
-  return { bracket, teams, participantTeamMap, eventStatus: event?.status };
+  return { bracket, teams, participantTeamMap, eventStatus: event?.status, accessCode: event?.access_code ?? undefined };
 }
 
 /**

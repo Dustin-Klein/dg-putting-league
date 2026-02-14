@@ -284,6 +284,7 @@ export default function BracketPage({
           onRefresh={fetchBracket}
           onExit={exitPresentationMode}
           isRefreshing={loading}
+          accessCode={bracketData.accessCode}
         />
         <div
           ref={containerRef}
