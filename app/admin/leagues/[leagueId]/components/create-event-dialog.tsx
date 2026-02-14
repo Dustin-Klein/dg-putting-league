@@ -34,6 +34,7 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
           putt_distance_ft: values.putt_distance_ft,
           access_code: values.access_code,
           qualification_round_enabled: values.qualification_round_enabled,
+          double_grand_final: values.double_grand_final,
           bracket_frame_count: values.bracket_frame_count,
           qualification_frame_count: values.qualification_frame_count,
           entry_fee_per_player: values.entry_fee_per_player ?? null,
