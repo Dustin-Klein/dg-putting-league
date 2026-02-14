@@ -34,7 +34,7 @@ const payoutStructureSchema = z.object({
       })
     )
     .nullable(),
-  payout_pool_override: z.number().positive().nullable().optional(),
+  payout_pool_override: z.number().nonnegative().finite().nullable().optional(),
 });
 
 export async function PATCH(

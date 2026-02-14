@@ -51,7 +51,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
   }, [fetchPayouts]);
 
   const calculatedPool = payoutInfo
-    ? payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count)
+    ? Math.max(0, payoutInfo.total_pot - payoutInfo.admin_fees - (payoutInfo.admin_fee_per_player * payoutInfo.player_count))
     : 0;
 
   const startEditing = () => {
@@ -223,7 +223,7 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
                 {payoutInfo.payout_pool_override != null ? 'Payout Pool (adjusted)' : 'Payout Pool'}
               </span>
               <span className="text-lg font-semibold">
-                {formatCurrency(payoutInfo.payout_pool_override != null ? payoutInfo.payout_pool_override : Math.max(0, calculatedPool))}
+                {formatCurrency(payoutInfo.payout_pool_override != null ? payoutInfo.payout_pool_override : calculatedPool)}
               </span>
             </div>
           </div>
@@ -243,7 +243,14 @@ export function PayoutsDisplay({ eventId, eventStatus, isAdmin }: PayoutsDisplay
                   value={editPoolOverride ?? ''}
                   onChange={(e) => {
                     const val = e.target.value;
-                    setEditPoolOverride(val === '' ? null : Number(val));
+                    if (val === '') {
+                      setEditPoolOverride(null);
+                    } else {
+                      const num = Number(val);
+                      if (Number.isFinite(num) && num >= 0) {
+                        setEditPoolOverride(num);
+                      }
+                    }
                   }}
                   className="w-32"
                 />
