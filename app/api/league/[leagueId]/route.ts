@@ -17,6 +17,7 @@ const eventSchema = z.object({
   putt_distance_ft: z.number().positive(),
   access_code: z.string().min(4),
   qualification_round_enabled: z.boolean().optional().default(false),
+  double_grand_final: z.boolean().optional().default(true),
   bracket_frame_count: z.number().int().min(1).max(10).default(5),
   qualification_frame_count: z.number().int().min(1).max(10).default(5),
   entry_fee_per_player: z.number().min(0).nullable().optional().default(null),

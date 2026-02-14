@@ -15,6 +15,7 @@ CREATE TABLE public.events (
   qualification_round_enabled BOOLEAN NOT NULL DEFAULT false,
   bracket_frame_count INTEGER NOT NULL DEFAULT 5 CHECK (bracket_frame_count > 0 AND bracket_frame_count <= 10),
   qualification_frame_count INTEGER NOT NULL DEFAULT 5 CHECK (qualification_frame_count > 0 AND qualification_frame_count <= 10),
+  double_grand_final BOOLEAN NOT NULL DEFAULT true,
   entry_fee_per_player NUMERIC(8,2) DEFAULT NULL,
   admin_fees NUMERIC(8,2) DEFAULT NULL,
   admin_fee_per_player NUMERIC(8,2) DEFAULT NULL,

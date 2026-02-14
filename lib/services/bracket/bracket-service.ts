@@ -109,7 +109,7 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
     type: 'double_elimination',
     seeding,
     settings: {
-      grandFinal: 'double', // WB winner must lose twice
+      grandFinal: event.double_grand_final ? 'double' : 'simple',
       seedOrdering: ['inner_outer'],
       balanceByes: true,
     },
