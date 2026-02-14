@@ -5,10 +5,13 @@ import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog } from '../bracket/components';
+import { BracketView, MatchScoringDialog, LaneManagement } from '../bracket/components';
+import { PayoutsDisplay } from './payouts-display';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Maximize2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { RefreshCw, Maximize2, Settings, Pencil, MapPin, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 
 interface MatchWithTeamInfo extends Match {
@@ -18,14 +21,17 @@ interface MatchWithTeamInfo extends Match {
 
 interface BracketSectionProps {
   eventId: string;
+  isAdmin?: boolean;
 }
 
-export function BracketSection({ eventId }: BracketSectionProps) {
+export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps) {
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLaneDialogOpen, setIsLaneDialogOpen] = useState(false);
+  const [isPayoutsDialogOpen, setIsPayoutsDialogOpen] = useState(false);
 
   const fetchBracket = useCallback(async () => {
     try {
@@ -158,6 +164,31 @@ export function BracketSection({ eventId }: BracketSectionProps) {
               Full View
             </Link>
           </Button>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href={`/admin/event/${eventId}/bracket?edit=true`}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit Bracket
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsLaneDialogOpen(true)}>
+                  <MapPin className="mr-2 h-4 w-4" />
+                  Edit Lanes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsPayoutsDialogOpen(true)}>
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  Edit Payouts
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -181,6 +212,28 @@ export function BracketSection({ eventId }: BracketSectionProps) {
           (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
         }
       />
+
+      <Dialog open={isLaneDialogOpen} onOpenChange={setIsLaneDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lane Management</DialogTitle>
+          </DialogHeader>
+          <LaneManagement eventId={eventId} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPayoutsDialogOpen} onOpenChange={setIsPayoutsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payouts</DialogTitle>
+          </DialogHeader>
+          <PayoutsDisplay
+            eventId={eventId}
+            eventStatus={bracketData?.eventStatus ?? 'bracket'}
+            isAdmin={true}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

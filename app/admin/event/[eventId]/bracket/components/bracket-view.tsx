@@ -14,6 +14,7 @@ interface BracketViewProps {
   eventStatus?: EventStatus;
   onMatchClick?: (match: Match) => void;
   compact?: boolean;
+  isEditMode?: boolean;
 }
 
 interface MatchWithTeamInfo extends Match {
@@ -326,7 +327,7 @@ function RoundConnector({
   );
 }
 
-export function BracketView({ data, eventStatus, onMatchClick, compact = false }: BracketViewProps) {
+export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
 
   // Organize matches by group and round
@@ -486,7 +487,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false }
                               match.status === Status.Running ||
                               (eventStatus === 'bracket' &&
                                 (match.status === Status.Completed || match.status === Status.Archived)) ||
-                              (eventStatus === 'bracket' &&
+                              (isEditMode && eventStatus === 'bracket' &&
                                 (match.status === Status.Waiting || match.status === Status.Locked) &&
                                 (!(match.opponent1 as { id?: number | null } | null)?.id ||
                                  !(match.opponent2 as { id?: number | null } | null)?.id))
