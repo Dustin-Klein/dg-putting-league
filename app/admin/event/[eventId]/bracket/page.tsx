@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog, LaneManagement } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
+import { PayoutsDisplay } from '../components/payouts-display';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation, Eraser } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation, Settings, X, Pencil, MapPin, DollarSign, Eraser } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
 interface MatchWithTeamInfo extends Match {
@@ -24,6 +26,7 @@ export default function BracketPage({
   params: Promise<{ eventId: string }>;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [eventId, setEventId] = useState<string | null>(null);
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +40,9 @@ export default function BracketPage({
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [activeTab, setActiveTab] = useState('bracket');
+  const [isEditBracketMode, setIsEditBracketMode] = useState(searchParams.get('edit') === 'true');
+  const [isLaneDialogOpen, setIsLaneDialogOpen] = useState(false);
+  const [isPayoutsDialogOpen, setIsPayoutsDialogOpen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -169,8 +174,9 @@ export default function BracketPage({
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
-    // If match is Waiting/Ready/Locked in bracket mode, open manage dialog (advance/remove)
+    // In edit mode, Waiting/Ready/Locked matches open the advance/remove dialog
     if (
+      isEditBracketMode &&
       (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked) &&
       bracketData.eventStatus === 'bracket'
     ) {
@@ -345,108 +351,132 @@ export default function BracketPage({
             {bracketData.bracket.stage.name}
           </h1>
         </div>
-        {activeTab === 'bracket' && (
-          <div className="flex items-center gap-4">
-            {/* Zoom controls */}
-            <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                aria-label="Zoom out"
-                onClick={() => setScale(Math.max(25, scale - 10))}
-                disabled={scale <= 25}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <input
-                type="range"
-                value={scale}
-                onChange={(e) => setScale(Number(e.target.value))}
-                min={25}
-                max={150}
-                step={5}
-                className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setScale(Math.min(150, scale + 10))}
-                disabled={scale >= 150}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-muted-foreground w-12 text-center">
-                {scale}%
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setScale(100)}
-                disabled={scale === 100}
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            </div>
+        <div className="flex items-center gap-4">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearPlacements}
-              disabled={isClearing}
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Zoom out"
+              onClick={() => setScale(Math.max(25, scale - 10))}
+              disabled={scale <= 25}
             >
-              <Eraser className={`mr-2 h-4 w-4`} />
-              {isClearing ? 'Clearing...' : 'Clear Placements'}
+              <ZoomOut className="h-4 w-4" />
             </Button>
+            <input
+              type="range"
+              value={scale}
+              onChange={(e) => setScale(Number(e.target.value))}
+              min={25}
+              max={150}
+              step={5}
+              className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+            />
             <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchBracket}
-              disabled={loading}
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setScale(Math.min(150, scale + 10))}
+              disabled={scale >= 150}
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              <ZoomIn className="h-4 w-4" />
             </Button>
+            <span className="text-sm text-muted-foreground w-12 text-center">
+              {scale}%
+            </span>
             <Button
-              variant="default"
-              size="sm"
-              onClick={enterPresentationMode}
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setScale(100)}
+              disabled={scale === 100}
             >
-              <Presentation className="mr-2 h-4 w-4" />
-              Present
+              <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
-        )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchBracket}
+            disabled={loading}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={enterPresentationMode}
+          >
+            <Presentation className="mr-2 h-4 w-4" />
+            Present
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-9 w-9">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setIsEditBracketMode(true)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Bracket
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsLaneDialogOpen(true)}>
+                <MapPin className="mr-2 h-4 w-4" />
+                Edit Lanes
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsPayoutsDialogOpen(true)}>
+                <DollarSign className="mr-2 h-4 w-4" />
+                Edit Payouts
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleClearPlacements}
+                disabled={isClearing}
+                className="text-destructive focus:text-destructive"
+              >
+                <Eraser className="mr-2 h-4 w-4" />
+                {isClearing ? 'Clearing...' : 'Clear Placements'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="bracket">Bracket</TabsTrigger>
-          <TabsTrigger value="lanes">Lanes</TabsTrigger>
-        </TabsList>
+      {isEditBracketMode && (
+        <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-400 rounded-lg px-4 py-2 mb-4">
+          <span className="text-sm font-medium">
+            Edit Mode — Click matches to advance or remove teams
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
+            onClick={() => setIsEditBracketMode(false)}
+          >
+            <X className="mr-1 h-4 w-4" />
+            Exit Edit Mode
+          </Button>
+        </div>
+      )}
 
-        <TabsContent value="bracket">
-          <div className="overflow-auto">
-            <div
-              style={{
-                transform: `scale(${scale / 100})`,
-                transformOrigin: 'top left',
-              }}
-            >
-              <BracketView
-                data={bracketData}
-                eventStatus={bracketData.eventStatus}
-                onMatchClick={handleMatchClick}
-              />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="lanes">
-          {eventId && <LaneManagement eventId={eventId} />}
-        </TabsContent>
-      </Tabs>
+      <div className="overflow-auto">
+        <div
+          style={{
+            transform: `scale(${scale / 100})`,
+            transformOrigin: 'top left',
+          }}
+        >
+          <BracketView
+            data={bracketData}
+            eventStatus={bracketData.eventStatus}
+            onMatchClick={handleMatchClick}
+            isEditMode={isEditBracketMode}
+          />
+        </div>
+      </div>
 
       {eventId && (
         <>
@@ -473,6 +503,28 @@ export default function BracketPage({
             participants={bracketData?.bracket.participants ?? []}
             participantTeamMap={bracketData?.participantTeamMap ?? {}}
           />
+
+          <Dialog open={isLaneDialogOpen} onOpenChange={setIsLaneDialogOpen}>
+            <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Lane Management</DialogTitle>
+              </DialogHeader>
+              <LaneManagement eventId={eventId} />
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isPayoutsDialogOpen} onOpenChange={setIsPayoutsDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Payouts</DialogTitle>
+              </DialogHeader>
+              <PayoutsDisplay
+                eventId={eventId}
+                eventStatus={bracketData.eventStatus ?? 'bracket'}
+                isAdmin={true}
+              />
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

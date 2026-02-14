@@ -38,23 +38,16 @@ function EventContent({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
-            {hasEntryFee && <TabsTrigger value="payouts">Payouts</TabsTrigger>}
           </TabsList>
         </div>
 
         <TabsContent value="bracket" className="space-y-4">
-          <BracketSection eventId={event.id} />
+          <BracketSection eventId={event.id} isAdmin={isAdmin} />
         </TabsContent>
 
         <TabsContent value="teams">
           <TeamDisplay event={event} isAdmin={isAdmin} />
         </TabsContent>
-
-        {hasEntryFee && (
-          <TabsContent value="payouts">
-            <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
-          </TabsContent>
-        )}
       </Tabs>
     );
   }
