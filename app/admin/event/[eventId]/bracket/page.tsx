@@ -1,18 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog, PresentationOverlay, AdvanceTeamDialog, LaneManagement } from './components';
+import { BracketView, MatchScoringDialog, PresentationOverlay } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
-import { PayoutsDisplay } from '../components/payouts-display';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation, Settings, X, Pencil, MapPin, DollarSign, Eraser } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 
 interface MatchWithTeamInfo extends Match {
@@ -26,32 +23,20 @@ export default function BracketPage({
   params: Promise<{ eventId: string }>;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [eventId, setEventId] = useState<string | null>(null);
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [advanceMatch, setAdvanceMatch] = useState<Match | null>(null);
-  const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
-  const [isEditBracketMode, setIsEditBracketMode] = useState(false);
-  const [isLaneDialogOpen, setIsLaneDialogOpen] = useState(false);
-  const [isPayoutsDialogOpen, setIsPayoutsDialogOpen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { autoScale, recalculate } = useAutoScale(containerRef, contentRef);
-
-  // Sync edit mode with URL search param
-  useEffect(() => {
-    setIsEditBracketMode(searchParams.get('edit') === 'true');
-  }, [searchParams]);
 
   // Resolve params
   useEffect(() => {
@@ -179,17 +164,6 @@ export default function BracketPage({
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
 
-    // In edit mode, Waiting/Ready/Locked matches open the advance/remove dialog
-    if (
-      isEditBracketMode &&
-      (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked) &&
-      bracketData.eventStatus === 'bracket'
-    ) {
-      setAdvanceMatch(match);
-      setIsAdvanceDialogOpen(true);
-      return;
-    }
-
     const team1 = bracketData.participantTeamMap[opp1?.id ?? -1];
     const team2 = bracketData.participantTeamMap[opp2?.id ?? -1];
 
@@ -199,29 +173,6 @@ export default function BracketPage({
 
   const handleScoreSubmit = () => {
     fetchBracket();
-  };
-
-  const handleClearPlacements = async () => {
-    if (!eventId) return;
-    if (!confirm('Clear all bracket placements? This will empty every match slot. You can then manually place teams using the Advance Team dialog.')) return;
-
-    try {
-      setIsClearing(true);
-      const response = await fetch(`/api/event/${eventId}/bracket/clear-placements`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to clear placements');
-      }
-
-      await fetchBracket();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to clear placements');
-    } finally {
-      setIsClearing(false);
-    }
   };
 
   if (loading && !bracketData) {
@@ -312,31 +263,20 @@ export default function BracketPage({
           </div>
         </div>
         {eventId && (
-          <>
-            <MatchScoringDialog
-              match={selectedMatch}
-              team1={selectedMatch?.team1}
-              team2={selectedMatch?.team2}
-              eventId={eventId}
-              open={isDialogOpen}
-              onOpenChange={setIsDialogOpen}
-              onScoreSubmit={handleScoreSubmit}
-              isCorrectionMode={
-                bracketData?.eventStatus === 'bracket' &&
-                selectedMatch !== null &&
-                (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
-              }
-            />
-            <AdvanceTeamDialog
-              match={advanceMatch}
-              eventId={eventId}
-              open={isAdvanceDialogOpen}
-              onOpenChange={setIsAdvanceDialogOpen}
-              onAdvanceComplete={fetchBracket}
-              participants={bracketData?.bracket.participants ?? []}
-              participantTeamMap={bracketData?.participantTeamMap ?? {}}
-            />
-          </>
+          <MatchScoringDialog
+            match={selectedMatch}
+            team1={selectedMatch?.team1}
+            team2={selectedMatch?.team2}
+            eventId={eventId}
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            onScoreSubmit={handleScoreSubmit}
+            isCorrectionMode={
+              bracketData?.eventStatus === 'bracket' &&
+              selectedMatch !== null &&
+              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+            }
+          />
         )}
       </div>
     );
@@ -418,63 +358,8 @@ export default function BracketPage({
             <Presentation className="mr-2 h-4 w-4" />
             Present
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-9 w-9">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set('edit', 'true');
-                router.replace(`?${params.toString()}`, { scroll: false });
-              }}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit Bracket
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsLaneDialogOpen(true)}>
-                <MapPin className="mr-2 h-4 w-4" />
-                Edit Lanes
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsPayoutsDialogOpen(true)}>
-                <DollarSign className="mr-2 h-4 w-4" />
-                Edit Payouts
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleClearPlacements}
-                disabled={isClearing}
-                className="text-destructive focus:text-destructive"
-              >
-                <Eraser className="mr-2 h-4 w-4" />
-                {isClearing ? 'Clearing...' : 'Clear Placements'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
-
-      {isEditBracketMode && (
-        <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-400 rounded-lg px-4 py-2 mb-4">
-          <span className="text-sm font-medium">
-            Edit Mode — Click matches to advance or remove teams
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
-            onClick={() => {
-              const params = new URLSearchParams(searchParams.toString());
-              params.delete('edit');
-              router.replace(`?${params.toString()}`, { scroll: false });
-            }}
-          >
-            <X className="mr-1 h-4 w-4" />
-            Exit Edit Mode
-          </Button>
-        </div>
-      )}
 
       <div className="overflow-auto">
         <div
@@ -487,59 +372,25 @@ export default function BracketPage({
             data={bracketData}
             eventStatus={bracketData.eventStatus}
             onMatchClick={handleMatchClick}
-            isEditMode={isEditBracketMode}
           />
         </div>
       </div>
 
       {eventId && (
-        <>
-          <MatchScoringDialog
-            match={selectedMatch}
-            team1={selectedMatch?.team1}
-            team2={selectedMatch?.team2}
-            eventId={eventId}
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            onScoreSubmit={handleScoreSubmit}
-            isCorrectionMode={
-              bracketData?.eventStatus === 'bracket' &&
-              selectedMatch !== null &&
-              (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
-            }
-          />
-          <AdvanceTeamDialog
-            match={advanceMatch}
-            eventId={eventId}
-            open={isAdvanceDialogOpen}
-            onOpenChange={setIsAdvanceDialogOpen}
-            onAdvanceComplete={fetchBracket}
-            participants={bracketData?.bracket.participants ?? []}
-            participantTeamMap={bracketData?.participantTeamMap ?? {}}
-          />
-
-          <Dialog open={isLaneDialogOpen} onOpenChange={setIsLaneDialogOpen}>
-            <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Lane Management</DialogTitle>
-              </DialogHeader>
-              <LaneManagement eventId={eventId} />
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={isPayoutsDialogOpen} onOpenChange={setIsPayoutsDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Payouts</DialogTitle>
-              </DialogHeader>
-              <PayoutsDisplay
-                eventId={eventId}
-                eventStatus={bracketData.eventStatus ?? 'bracket'}
-                isAdmin={true}
-              />
-            </DialogContent>
-          </Dialog>
-        </>
+        <MatchScoringDialog
+          match={selectedMatch}
+          team1={selectedMatch?.team1}
+          team2={selectedMatch?.team2}
+          eventId={eventId}
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onScoreSubmit={handleScoreSubmit}
+          isCorrectionMode={
+            bracketData?.eventStatus === 'bracket' &&
+            selectedMatch !== null &&
+            (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
+          }
+        />
       )}
     </div>
   );
