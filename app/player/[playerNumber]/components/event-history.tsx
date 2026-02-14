@@ -88,10 +88,14 @@ const columns: EventColumn<PlayerEventHistory>[] = [
 ];
 
 export function EventHistory({ eventHistory }: EventHistoryProps) {
+  const sorted = [...eventHistory].sort(
+    (a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
+  );
+
   return (
     <EventsTable
       title="Event History"
-      events={eventHistory}
+      events={sorted}
       columns={columns}
       emptyMessage="No events played yet."
     />
