@@ -1141,6 +1141,141 @@ export async function clearAllMatchOpponents(
   }
 }
 
+export interface BracketMatchForReset {
+  id: number;
+  stage_id?: number;
+  number: number;
+  status: number;
+  round_id: number;
+  group_id: number;
+  opponent1: { id?: number | null; position?: number; score?: number; result?: string } | null;
+  opponent2: { id?: number | null; position?: number; score?: number; result?: string } | null;
+}
+
+export interface BracketResetContextStage {
+  id: number;
+  type: string;
+  settings: { skipFirstRound?: boolean } | null;
+}
+
+export interface BracketResetContextGroup {
+  id: number;
+  number: number;
+}
+
+export interface BracketResetContextRound {
+  id: number;
+  group_id: number;
+  number: number;
+}
+
+export interface BracketResetContextMatch extends BracketMatchForReset {
+  stage_id: number;
+}
+
+export interface BracketResetContext {
+  stage: BracketResetContextStage;
+  groups: BracketResetContextGroup[];
+  rounds: BracketResetContextRound[];
+  matches: BracketResetContextMatch[];
+}
+
+/**
+ * Fetch deterministic reset context for an event.
+ */
+export async function getBracketResetContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<BracketResetContext | null> {
+  const { data: stage, error: stageError } = await supabase
+    .from('bracket_stage')
+    .select('id, type, settings')
+    .eq('tournament_id', eventId)
+    .maybeSingle();
+
+  if (stageError) {
+    throw new InternalError(`Failed to fetch bracket reset stage: ${stageError.message}`);
+  }
+
+  if (!stage) {
+    return null;
+  }
+
+  const [groupsResult, roundsResult, matchesResult] = await Promise.all([
+    supabase
+      .from('bracket_group')
+      .select('id, number')
+      .eq('stage_id', stage.id)
+      .order('number'),
+    supabase
+      .from('bracket_round')
+      .select('id, group_id, number')
+      .eq('stage_id', stage.id)
+      .order('group_id')
+      .order('number'),
+    supabase
+      .from('bracket_match')
+      .select('id, stage_id, group_id, round_id, number, status, opponent1, opponent2')
+      .eq('event_id', eventId)
+      .eq('stage_id', stage.id)
+      .order('round_id')
+      .order('number'),
+  ]);
+
+  if (groupsResult.error) {
+    throw new InternalError(`Failed to fetch bracket reset groups: ${groupsResult.error.message}`);
+  }
+  if (roundsResult.error) {
+    throw new InternalError(`Failed to fetch bracket reset rounds: ${roundsResult.error.message}`);
+  }
+  if (matchesResult.error) {
+    throw new InternalError(`Failed to fetch bracket reset matches: ${matchesResult.error.message}`);
+  }
+
+  return {
+    stage: stage as BracketResetContextStage,
+    groups: (groupsResult.data || []) as BracketResetContextGroup[],
+    rounds: (roundsResult.data || []) as BracketResetContextRound[],
+    matches: (matchesResult.data || []) as BracketResetContextMatch[],
+  };
+}
+
+/**
+ * Get all bracket matches for an event (for reset cascade computation)
+ */
+export async function getAllMatchesForEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<BracketMatchForReset[]> {
+  const { data: matches, error } = await supabase
+    .from('bracket_match')
+    .select('id, stage_id, number, status, round_id, group_id, opponent1, opponent2')
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch matches for event: ${error.message}`);
+  }
+
+  return (matches || []) as BracketMatchForReset[];
+}
+
+/**
+ * Delete match frames for a bracket match (frame_results cascade-delete via FK)
+ */
+export async function deleteMatchFrames(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  bracketMatchId: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('match_frames')
+    .delete()
+    .eq('bracket_match_id', bracketMatchId);
+
+  if (error) {
+    throw new InternalError(`Failed to delete match frames: ${error.message}`);
+  }
+}
+
 export async function assignLaneToMatchRpc(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string,

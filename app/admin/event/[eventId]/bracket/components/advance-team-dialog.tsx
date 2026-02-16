@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Match, Participant } from 'brackets-model';
+import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import {
   Dialog,
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, RotateCcw } from 'lucide-react';
 
 interface AdvanceTeamDialogProps {
   match: Match | null;
@@ -46,9 +47,14 @@ export function AdvanceTeamDialog({
   const [selectedSlot, setSelectedSlot] = useState<Slot | ''>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [removingSlot, setRemovingSlot] = useState<Slot | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!match) return null;
+
+  const isCompletedOrArchived =
+    match.status === Status.Completed || match.status === Status.Archived;
 
   const opp1 = match.opponent1 as { id?: number | null } | null;
   const opp2 = match.opponent2 as { id?: number | null } | null;
@@ -137,15 +143,52 @@ export function AdvanceTeamDialog({
     }
   };
 
+  const handleReset = async () => {
+    setIsResetting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/event/${eventId}/bracket/match/${match.id}/reset`,
+        { method: 'POST' }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to reset match');
+      }
+
+      setShowResetConfirm(false);
+      onOpenChange(false);
+      onAdvanceComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset match');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setShowResetConfirm(false);
+      setError(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
   const slotLabel = (slot: Slot) => slot === 'opponent1' ? 'Top Slot' : 'Bottom Slot';
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Manage Match Teams</DialogTitle>
+          <DialogTitle>
+            {isCompletedOrArchived ? 'Reset Match Result' : 'Manage Match Teams'}
+          </DialogTitle>
           <DialogDescription>
-            Place a team into an empty slot or remove an existing team.
+            {isCompletedOrArchived
+              ? 'Reset this match so it can be re-scored with the correct result.'
+              : 'Place a team into an empty slot or remove an existing team.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -159,25 +202,74 @@ export function AdvanceTeamDialog({
                     <span className="text-muted-foreground">{slotLabel(slot)}:</span>{' '}
                     <span className="font-medium">{getTeamLabel(participantId)}</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemove(slot)}
-                    disabled={removingSlot !== null || isSubmitting}
-                  >
-                    {removingSlot === slot ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <X className="h-4 w-4" />
-                    )}
-                    <span className="ml-1">Remove</span>
-                  </Button>
+                  {!isCompletedOrArchived && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemove(slot)}
+                      disabled={removingSlot !== null || isSubmitting}
+                    >
+                      {removingSlot === slot ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
+                      <span className="ml-1">Remove</span>
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          {hasEmptySlots && (
+          {isCompletedOrArchived && (
+            <>
+              {!showResetConfirm ? (
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setShowResetConfirm(true)}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset Match Result
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3">
+                    <p className="text-sm font-medium text-destructive">Are you sure?</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      This will reset this match and any downstream matches that were
+                      affected by its result. All frame scores for reset matches will be
+                      deleted. The match will return to Ready status for re-scoring.
+                    </p>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowResetConfirm(false)}
+                      disabled={isResetting}
+                    >
+                      Go Back
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleReset}
+                      disabled={isResetting}
+                    >
+                      {isResetting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Confirm Reset
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!isCompletedOrArchived && hasEmptySlots && (
             <>
               {occupiedSlots.length > 0 && <hr />}
 
@@ -226,7 +318,7 @@ export function AdvanceTeamDialog({
               </div>
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                <Button variant="outline" onClick={() => handleOpenChange(false)}>
                   Cancel
                 </Button>
                 <Button
@@ -240,9 +332,9 @@ export function AdvanceTeamDialog({
             </>
           )}
 
-          {!hasEmptySlots && (
+          {!isCompletedOrArchived && !hasEmptySlots && (
             <div className="flex justify-end">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Close
               </Button>
             </div>

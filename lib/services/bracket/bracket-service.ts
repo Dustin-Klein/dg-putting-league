@@ -1,5 +1,5 @@
 import 'server-only';
-import { BracketsManager } from 'brackets-manager';
+import { BracketsManager, helpers } from 'brackets-manager';
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
@@ -29,7 +29,13 @@ import {
   getMatchForAdvancement,
   updateMatchWithOpponents,
   clearAllMatchOpponents,
+  getBracketResetContext,
+  deleteMatchFrames,
+  getMatchWithGroupInfo,
+  getSecondGrandFinalMatch,
+  updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
+import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
@@ -509,6 +515,424 @@ export async function clearBracketPlacements(eventId: string): Promise<BracketDa
   });
 
   return getBracket(eventId);
+}
+
+/**
+ * Find all matches that must be reset along with the target match.
+ * Uses parent-child links (opponent.position) to find downstream matches.
+ */
+export function findMatchesToReset(
+  targetMatch: BracketMatchForReset,
+  allMatches: BracketMatchForReset[]
+): BracketMatchForReset[] {
+  const resettableStatuses = new Set([Status.Completed, Status.Running, Status.Archived, Status.Locked]);
+  const matchById = new Map<number, BracketMatchForReset>(allMatches.map((m) => [m.id, m]));
+  const visited = new Set<number>([targetMatch.id]);
+  const depthByMatchId = new Map<number, number>([[targetMatch.id, 0]]);
+  const cascadeMatchIds = new Set<number>();
+  const queue: number[] = [targetMatch.id];
+
+  const getParticipantIds = (match: BracketMatchForReset): Set<number> => {
+    const ids = new Set<number>();
+    const opp1Id = match.opponent1?.id;
+    const opp2Id = match.opponent2?.id;
+    if (opp1Id != null) ids.add(opp1Id);
+    if (opp2Id != null) ids.add(opp2Id);
+    return ids;
+  };
+
+  const normalizePosition = (position: unknown): number | null => {
+    if (position == null) return null;
+    const parsed = Number(position);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const pointsToCurrentMatch = (position: unknown, currentMatch: BracketMatchForReset | undefined): boolean => {
+    if (!currentMatch) return false;
+    const normalized = normalizePosition(position);
+    if (normalized == null) return false;
+    return normalized === currentMatch.id || normalized === currentMatch.number;
+  };
+
+  while (queue.length > 0) {
+    const currentMatchId = queue.shift()!;
+    const currentDepth = depthByMatchId.get(currentMatchId) ?? 0;
+    const currentMatch = matchById.get(currentMatchId);
+    const currentParticipantIds = currentMatch ? getParticipantIds(currentMatch) : new Set<number>();
+
+    for (const match of allMatches) {
+      if (visited.has(match.id)) continue;
+
+      const isDirectChildByPosition =
+        pointsToCurrentMatch(match.opponent1?.position, currentMatch) ||
+        pointsToCurrentMatch(match.opponent2?.position, currentMatch);
+      const hasMissingPosition =
+        match.opponent1?.position == null || match.opponent2?.position == null;
+
+      // Fallback for historical/manual records where position metadata is missing.
+      // Limit this fallback to locked matches to avoid over-cascading unrelated paths.
+      const isPotentialChildByParticipant =
+        hasMissingPosition &&
+        match.status === Status.Locked &&
+        currentParticipantIds.size > 0 &&
+        ((match.opponent1?.id != null && currentParticipantIds.has(match.opponent1.id)) ||
+          (match.opponent2?.id != null && currentParticipantIds.has(match.opponent2.id)));
+
+      if (!isDirectChildByPosition && !isPotentialChildByParticipant) continue;
+
+      visited.add(match.id);
+      depthByMatchId.set(match.id, currentDepth + 1);
+      queue.push(match.id);
+
+      if (resettableStatuses.has(match.status)) {
+        cascadeMatchIds.add(match.id);
+      }
+    }
+  }
+
+  const cascadeMatches = allMatches.filter((m) => cascadeMatchIds.has(m.id));
+  // Reset deepest descendants first so parent resets won't be blocked by locked children.
+  cascadeMatches.sort((a, b) => {
+    const depthDiff = (depthByMatchId.get(b.id) ?? 0) - (depthByMatchId.get(a.id) ?? 0);
+    if (depthDiff !== 0) return depthDiff;
+    return b.round_id - a.round_id;
+  });
+
+  return cascadeMatches;
+}
+
+const GRAND_FINAL_GROUP_NUMBER = 3;
+type MatchSlot = 'opponent1' | 'opponent2';
+type NextMatchesResolver = (matchId: number) => Promise<number[]>;
+
+export interface TaintedSlotPlan {
+  affectedMatchIds: number[];
+  taintedSlotsByMatch: Map<number, Set<MatchSlot>>;
+  depthByMatchId: Map<number, number>;
+}
+
+/**
+ * Build a deterministic downstream taint plan from a target match.
+ */
+export async function buildTaintedSlotPlan(
+  targetMatchId: number,
+  context: BracketResetContext,
+  nextMatchesResolver: NextMatchesResolver
+): Promise<TaintedSlotPlan> {
+  const matchById = new Map(context.matches.map((match) => [match.id, match]));
+  const groupById = new Map(context.groups.map((group) => [group.id, group]));
+  const roundById = new Map(context.rounds.map((round) => [round.id, round]));
+  const roundCountByGroupId = new Map<number, number>();
+  for (const round of context.rounds) {
+    roundCountByGroupId.set(round.group_id, (roundCountByGroupId.get(round.group_id) ?? 0) + 1);
+  }
+
+  if (!matchById.has(targetMatchId)) {
+    throw new InternalError(`Target match ${targetMatchId} not found in reset context`);
+  }
+
+  const taintedSlotsByMatch = new Map<number, Set<MatchSlot>>();
+  const descendantIds = new Set<number>();
+  const depthByMatchId = new Map<number, number>([[targetMatchId, 0]]);
+  const visited = new Set<number>([targetMatchId]);
+  const queue: Array<{ matchId: number; depth: number }> = [{ matchId: targetMatchId, depth: 0 }];
+  const normalizePosition = (value: unknown): number | null => {
+    if (value == null) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const slotPointsToParent = (position: unknown, parentMatch: BracketResetContext['matches'][number]): boolean => {
+    const normalized = normalizePosition(position);
+    if (normalized == null) return false;
+    return normalized === parentMatch.id || normalized === parentMatch.number;
+  };
+  const resolveTaintedSlot = (
+    parentMatch: BracketResetContext['matches'][number],
+    childMatch: BracketResetContext['matches'][number],
+    fallback: MatchSlot
+  ): MatchSlot => {
+    const opp1PointsToParent = slotPointsToParent(childMatch.opponent1?.position, parentMatch);
+    const opp2PointsToParent = slotPointsToParent(childMatch.opponent2?.position, parentMatch);
+
+    if (opp1PointsToParent !== opp2PointsToParent) {
+      return opp1PointsToParent ? 'opponent1' : 'opponent2';
+    }
+
+    // Historical rows with byes/manual edits may lose one side's `position`.
+    // If only one side has a different explicit source, the parent feeds the unpinned side.
+    if (!opp1PointsToParent && !opp2PointsToParent) {
+      const opp1HasPosition = normalizePosition(childMatch.opponent1?.position) != null;
+      const opp2HasPosition = normalizePosition(childMatch.opponent2?.position) != null;
+      if (opp1HasPosition !== opp2HasPosition) {
+        return opp1HasPosition ? 'opponent2' : 'opponent1';
+      }
+    }
+
+    return fallback;
+  };
+
+  const taintSlot = (matchId: number, slot: MatchSlot): void => {
+    if (!taintedSlotsByMatch.has(matchId)) {
+      taintedSlotsByMatch.set(matchId, new Set<MatchSlot>());
+    }
+    taintedSlotsByMatch.get(matchId)!.add(slot);
+  };
+
+  for (let i = 0; i < queue.length; i += 1) {
+    const { matchId: currentMatchId, depth } = queue[i];
+    const currentMatch = matchById.get(currentMatchId);
+    if (!currentMatch) continue;
+
+    const currentGroup = groupById.get(currentMatch.group_id);
+    if (!currentGroup) {
+      throw new InternalError(`Group ${currentMatch.group_id} not found for match ${currentMatchId}`);
+    }
+
+    const currentRound = roundById.get(currentMatch.round_id);
+    if (!currentRound) {
+      throw new InternalError(`Round ${currentMatch.round_id} not found for match ${currentMatchId}`);
+    }
+
+    const roundCount = roundCountByGroupId.get(currentMatch.group_id);
+    if (!roundCount) {
+      throw new InternalError(`Round count not found for group ${currentMatch.group_id}`);
+    }
+
+    const matchLocation = helpers.getMatchLocation(context.stage.type as never, currentGroup.number);
+    const adjustedRoundNumber =
+      context.stage.settings?.skipFirstRound && matchLocation === 'winner_bracket'
+        ? currentRound.number + 1
+        : currentRound.number;
+
+    const rawNextIds = await nextMatchesResolver(currentMatchId);
+    const nextIds: number[] = [];
+    const dedup = new Set<number>();
+    for (const nextId of rawNextIds) {
+      if (dedup.has(nextId)) continue;
+      if (!matchById.has(nextId)) continue;
+      dedup.add(nextId);
+      nextIds.push(nextId);
+    }
+
+    if (matchLocation === 'final_group') {
+      const firstNextMatchId = nextIds[0];
+      if (firstNextMatchId != null) {
+        taintSlot(firstNextMatchId, 'opponent1');
+        taintSlot(firstNextMatchId, 'opponent2');
+      }
+    } else {
+      const nextSide = helpers.getNextSide(
+        currentMatch.number,
+        adjustedRoundNumber,
+        roundCount,
+        matchLocation
+      ) as MatchSlot;
+
+      if (nextIds[0] != null) {
+        const winnerNextMatch = matchById.get(nextIds[0]);
+        const resolvedSide = winnerNextMatch
+          ? resolveTaintedSlot(currentMatch, winnerNextMatch, nextSide)
+          : nextSide;
+        taintSlot(nextIds[0], resolvedSide);
+      }
+
+      if (nextIds[1] != null) {
+        const secondNextMatchId = nextIds[1];
+        if (matchLocation === 'single_bracket') {
+          const secondNextMatch = matchById.get(secondNextMatchId);
+          const resolvedSide = secondNextMatch
+            ? resolveTaintedSlot(currentMatch, secondNextMatch, nextSide)
+            : nextSide;
+          taintSlot(secondNextMatchId, resolvedSide);
+        } else if (matchLocation === 'winner_bracket') {
+          const secondNextMatch = matchById.get(secondNextMatchId);
+          if (secondNextMatch) {
+            const sideIntoLoserBracket = helpers.getNextSideLoserBracket(
+              currentMatch.number,
+              secondNextMatch as unknown as Match,
+              adjustedRoundNumber
+            ) as MatchSlot;
+            const resolvedSide = resolveTaintedSlot(
+              currentMatch,
+              secondNextMatch,
+              sideIntoLoserBracket
+            );
+            taintSlot(secondNextMatchId, resolvedSide);
+          }
+        } else if (matchLocation === 'loser_bracket') {
+          const sideIntoConsolation = helpers.getNextSideConsolationFinalDoubleElimination(
+            adjustedRoundNumber
+          ) as MatchSlot;
+          const secondNextMatch = matchById.get(secondNextMatchId);
+          const resolvedSide = secondNextMatch
+            ? resolveTaintedSlot(currentMatch, secondNextMatch, sideIntoConsolation)
+            : sideIntoConsolation;
+          taintSlot(secondNextMatchId, resolvedSide);
+        }
+      }
+    }
+
+    for (const nextId of nextIds) {
+      if (nextId === targetMatchId) continue;
+      descendantIds.add(nextId);
+
+      const nextDepth = depth + 1;
+      const existingDepth = depthByMatchId.get(nextId);
+      if (existingDepth == null || nextDepth < existingDepth) {
+        depthByMatchId.set(nextId, nextDepth);
+      }
+
+      if (!visited.has(nextId)) {
+        visited.add(nextId);
+        queue.push({ matchId: nextId, depth: nextDepth });
+      }
+    }
+  }
+
+  const affectedMatchIds = [...descendantIds].sort((a, b) => {
+    const depthDiff = (depthByMatchId.get(a) ?? Number.MAX_SAFE_INTEGER) - (depthByMatchId.get(b) ?? Number.MAX_SAFE_INTEGER);
+    if (depthDiff !== 0) return depthDiff;
+    return a - b;
+  });
+
+  return {
+    affectedMatchIds,
+    taintedSlotsByMatch,
+    depthByMatchId,
+  };
+}
+
+/**
+ * Reset the result of a bracket match and deterministically rewrite affected descendants.
+ */
+export async function resetMatchResult(
+  eventId: string,
+  matchId: number
+): Promise<{ resetMatchIds: number[] }> {
+  const { supabase, user } = await requireEventAdmin(eventId);
+
+  const context = await getBracketResetContext(supabase, eventId);
+  if (!context) {
+    throw new NotFoundError('Match not found');
+  }
+
+  const targetMatch = context.matches.find((m) => m.id === matchId);
+
+  if (!targetMatch) {
+    throw new NotFoundError('Match not found');
+  }
+
+  const targetResettableStatuses = new Set([Status.Completed, Status.Running, Status.Archived]);
+  if (!targetResettableStatuses.has(targetMatch.status)) {
+    throw new BadRequestError('Only completed, running, or archived matches can be reset');
+  }
+
+  const storage = new SupabaseBracketStorage(supabase, eventId);
+  const manager = new BracketsManager(storage);
+  const managerFind = (
+    manager as unknown as {
+      find?: {
+        nextMatches?: (matchId: number) => Promise<Array<{ id: number }>>;
+      };
+    }
+  ).find;
+  const toMatchId = (id: unknown): number | null => {
+    const parsed = Number(id);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  if (!managerFind?.nextMatches) {
+    throw new InternalError('Bracket reset graph traversal is unavailable');
+  }
+
+  const nextMatchesResolver = async (currentId: number): Promise<number[]> => {
+    const nextMatches = await managerFind.nextMatches!(currentId);
+    return nextMatches
+      .map((nextMatch) => toMatchId((nextMatch as { id: unknown }).id))
+      .filter((nextId): nextId is number => nextId != null);
+  };
+
+  const taintPlan = await buildTaintedSlotPlan(matchId, context, nextMatchesResolver);
+  const resetMatchIds = [matchId, ...taintPlan.affectedMatchIds.filter((id) => id !== matchId)];
+  const baselineById = new Map<number, BracketMatchForReset>(context.matches.map((match) => [match.id, match]));
+
+  for (const currentId of resetMatchIds) {
+    const baselineMatch = baselineById.get(currentId);
+    if (!baselineMatch) {
+      throw new InternalError(`Match ${currentId} not found in baseline reset snapshot`);
+    }
+
+    const taintedSlots = taintPlan.taintedSlotsByMatch.get(currentId) ?? new Set<MatchSlot>();
+    const isTargetMatch = currentId === matchId;
+    const desiredOpponent1Id =
+      !isTargetMatch && taintedSlots.has('opponent1') ? null : baselineMatch.opponent1?.id ?? null;
+    const desiredOpponent2Id =
+      !isTargetMatch && taintedSlots.has('opponent2') ? null : baselineMatch.opponent2?.id ?? null;
+    const opp1WasLiteralNull = baselineMatch.opponent1 === null;
+    const opp2WasLiteralNull = baselineMatch.opponent2 === null;
+
+    // Preserve BYE semantics: literal `null` must remain SQL NULL, not `{id:null}`.
+    const scrubOpponent1 = opp1WasLiteralNull ? null : { id: null };
+    const scrubOpponent2 = opp2WasLiteralNull ? null : { id: null };
+    const restoreOpponent1 = desiredOpponent1Id != null
+      ? { id: desiredOpponent1Id }
+      : (opp1WasLiteralNull ? null : { id: null });
+    const restoreOpponent2 = desiredOpponent2Id != null
+      ? { id: desiredOpponent2Id }
+      : (opp2WasLiteralNull ? null : { id: null });
+
+    // Step A: force-clear score/result artifacts from both slots.
+    await updateMatchWithOpponents(
+      supabase,
+      currentId,
+      scrubOpponent1,
+      scrubOpponent2,
+      Status.Waiting
+    );
+
+    // Step B: restore canonical replay participants for this match.
+    await updateMatchWithOpponents(
+      supabase,
+      currentId,
+      restoreOpponent1,
+      restoreOpponent2,
+      Status.Waiting
+    );
+
+    await deleteMatchFrames(supabase, currentId);
+  }
+
+  // Handle grand final: if the target is the first GF match,
+  // check if the reset match (second GF) needs to be un-archived
+  const matchWithGroup = await getMatchWithGroupInfo(supabase, matchId);
+  if (matchWithGroup) {
+    const groupNumber = matchWithGroup.round?.group?.number;
+    if (groupNumber === GRAND_FINAL_GROUP_NUMBER) {
+      const secondGFMatch = await getSecondGrandFinalMatch(supabase, matchWithGroup.group_id);
+      if (secondGFMatch && secondGFMatch.status === Status.Archived) {
+        await updateMatchStatus(supabase, secondGFMatch.id, Status.Waiting);
+      }
+    }
+  }
+
+  logger.info('Match result reset', {
+    userId: user.id,
+    action: 'reset_match_result',
+    eventId,
+    targetMatchId: matchId,
+    resetMatchIds,
+    resetMatchCount: resetMatchIds.length,
+    taintedSlotSummary: [...taintPlan.taintedSlotsByMatch.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([rewrittenMatchId, slots]) => ({
+        matchId: rewrittenMatchId,
+        slots: [...slots].sort(),
+      })),
+    rewrittenOrder: resetMatchIds,
+    outcome: 'success',
+  });
+
+  return { resetMatchIds };
 }
 
 export { Status } from 'brackets-model';

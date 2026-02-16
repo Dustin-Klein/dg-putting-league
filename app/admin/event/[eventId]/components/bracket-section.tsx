@@ -100,7 +100,8 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
 
     if (
       isEditBracketMode &&
-      (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked) &&
+      (match.status === Status.Waiting || match.status === Status.Ready || match.status === Status.Locked ||
+       match.status === Status.Completed || match.status === Status.Archived) &&
       bracketData.eventStatus === 'bracket'
     ) {
       setAdvanceMatch(match);
@@ -238,7 +239,7 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
       {isEditBracketMode && (
         <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-400 rounded-lg px-4 py-2">
           <span className="text-sm font-medium">
-            Edit Mode — Click matches to advance or remove teams
+            Edit Mode — Click matches to advance, remove, or reset teams
           </span>
           <Button
             variant="ghost"
