@@ -124,6 +124,23 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
     fetchBracket();
   };
 
+  const handleEditCompletedMatchScores = (match: Match) => {
+    if (!bracketData) return;
+
+    const opp1 = match.opponent1 as { id: number | null } | null;
+    const opp2 = match.opponent2 as { id: number | null } | null;
+
+    const team1 = opp1?.id
+      ? bracketData.participantTeamMap[opp1.id]
+      : undefined;
+    const team2 = opp2?.id
+      ? bracketData.participantTeamMap[opp2.id]
+      : undefined;
+
+    setSelectedMatch({ ...match, team1, team2 });
+    setIsDialogOpen(true);
+  };
+
   const handleClearPlacements = async () => {
     if (!confirm('Clear all bracket placements? This will empty every match slot. You can then manually place teams using the Advance Team dialog.')) return;
 
@@ -239,7 +256,7 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
       {isEditBracketMode && (
         <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-400 rounded-lg px-4 py-2">
           <span className="text-sm font-medium">
-            Edit Mode — Click matches to advance, remove, or reset teams
+            Edit Mode - Click matches to advance/remove teams, edit non-winner score corrections, or reset when winner/progression must change
           </span>
           <Button
             variant="ghost"
@@ -281,6 +298,7 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
         open={isAdvanceDialogOpen}
         onOpenChange={setIsAdvanceDialogOpen}
         onAdvanceComplete={fetchBracket}
+        onEditScores={handleEditCompletedMatchScores}
         participants={bracketData?.bracket.participants ?? []}
         participantTeamMap={bracketData?.participantTeamMap ?? {}}
       />
@@ -309,3 +327,4 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
     </div>
   );
 }
+

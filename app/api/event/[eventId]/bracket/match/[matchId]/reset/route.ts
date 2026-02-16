@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { resetMatchResult } from '@/lib/services/bracket';
 import { handleError, BadRequestError } from '@/lib/errors';
 
+const resetWorkflowSchema = z.object({
+  correction_reason: z.string().trim().min(3).max(500),
+  winner_change_verified: z.literal(true),
+  teams_notified: z.literal(true),
+});
+
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ eventId: string; matchId: string }> }
 ) {
   try {
@@ -14,7 +21,18 @@ export async function POST(
       throw new BadRequestError('Invalid match ID');
     }
 
-    const result = await resetMatchResult(eventId, matchIdNum);
+    const body = await req.json();
+    const parsed = resetWorkflowSchema.safeParse(body);
+
+    if (!parsed.success) {
+      throw new BadRequestError('Reset requires verification, notifications, and a correction reason');
+    }
+
+    const result = await resetMatchResult(eventId, matchIdNum, {
+      correctionReason: parsed.data.correction_reason,
+      winnerChangeVerified: parsed.data.winner_change_verified,
+      teamsNotified: parsed.data.teams_notified,
+    });
 
     return NextResponse.json(result);
   } catch (error) {

@@ -807,7 +807,12 @@ export async function buildTaintedSlotPlan(
  */
 export async function resetMatchResult(
   eventId: string,
-  matchId: number
+  matchId: number,
+  workflow?: {
+    correctionReason?: string;
+    winnerChangeVerified?: boolean;
+    teamsNotified?: boolean;
+  }
 ): Promise<{ resetMatchIds: number[] }> {
   const { supabase, user } = await requireEventAdmin(eventId);
 
@@ -929,6 +934,11 @@ export async function resetMatchResult(
         slots: [...slots].sort(),
       })),
     rewrittenOrder: resetMatchIds,
+    correctionWorkflow: {
+      correctionReason: workflow?.correctionReason ?? null,
+      winnerChangeVerified: workflow?.winnerChangeVerified ?? false,
+      teamsNotified: workflow?.teamsNotified ?? false,
+    },
     outcome: 'success',
   });
 
