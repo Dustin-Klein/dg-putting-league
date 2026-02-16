@@ -602,6 +602,7 @@ export function findMatchesToReset(
 }
 
 const GRAND_FINAL_GROUP_NUMBER = 3;
+const FIRST_GF_ROUND_NUMBER = 1;
 type MatchSlot = 'opponent1' | 'opponent2';
 type NextMatchesResolver = (matchId: number) => Promise<number[]>;
 
@@ -907,15 +908,16 @@ export async function resetMatchResult(
     await deleteMatchFrames(supabase, currentId);
   }
 
-  // Handle grand final: if the target is the first GF match,
-  // check if the reset match (second GF) needs to be un-archived
+  // Handle grand final: if the target is the first GF match, keep the reset
+  // match archived until the replayed first GF determines whether it is needed.
   const matchWithGroup = await getMatchWithGroupInfo(supabase, matchId);
   if (matchWithGroup) {
     const groupNumber = matchWithGroup.round?.group?.number;
-    if (groupNumber === GRAND_FINAL_GROUP_NUMBER) {
+    const roundNumber = matchWithGroup.round?.number;
+    if (groupNumber === GRAND_FINAL_GROUP_NUMBER && roundNumber === FIRST_GF_ROUND_NUMBER) {
       const secondGFMatch = await getSecondGrandFinalMatch(supabase, matchWithGroup.group_id);
-      if (secondGFMatch && secondGFMatch.status === Status.Archived) {
-        await updateMatchStatus(supabase, secondGFMatch.id, Status.Waiting);
+      if (secondGFMatch && secondGFMatch.status !== Status.Archived) {
+        await updateMatchStatus(supabase, secondGFMatch.id, Status.Archived);
       }
     }
   }
