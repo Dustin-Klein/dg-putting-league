@@ -694,7 +694,7 @@ describe('Bracket Service', () => {
       );
     });
 
-    it('should handle grand final reset match un-archiving', async () => {
+    it('should keep second grand final match archived when resetting first grand final', async () => {
       (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
       (getMatchWithGroupInfo as jest.Mock).mockResolvedValue({
         id: matchId,
@@ -707,11 +707,28 @@ describe('Bracket Service', () => {
       });
       (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({
         id: 99,
-        status: 5,
+        status: 1,
       });
 
       await resetMatchResult(eventId, matchId);
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 99, 1);
+      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 99, 5);
+    });
+
+    it('should not alter second grand final match when resetting round 2 grand final', async () => {
+      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
+      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue({
+        id: matchId,
+        group_id: 100,
+        round_id: 2,
+        status: 4,
+        opponent1: { id: 10 },
+        opponent2: { id: 20 },
+        round: { number: 2, group: { number: 3 } },
+      });
+
+      await resetMatchResult(eventId, matchId);
+      expect(getSecondGrandFinalMatch).not.toHaveBeenCalled();
+      expect(updateMatchStatus).not.toHaveBeenCalled();
     });
   });
 });
