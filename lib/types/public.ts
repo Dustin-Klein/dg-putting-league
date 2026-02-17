@@ -3,7 +3,6 @@ import type { EventStatus } from './event';
 export interface PublicLeague {
   id: string;
   name: string;
-  description: string | null;
   event_count: number;
 }
 

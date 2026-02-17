@@ -332,7 +332,7 @@ export async function getAllLeagues(
 ): Promise<PublicLeague[]> {
   const { data: leagues, error } = await supabase
     .from('leagues')
-    .select('id, name, description, events(count)')
+    .select('id, name, events(count)')
     .order('name');
 
   if (error) {
@@ -347,7 +347,6 @@ export async function getAllLeagues(
   return leagues.map((league) => ({
     id: league.id,
     name: league.name,
-    description: league.description,
     event_count: league.events[0]?.count ?? 0,
   }));
 }
@@ -361,7 +360,7 @@ export async function getLeagueWithEvents(
 ): Promise<PublicLeagueDetail | null> {
   const { data: league, error: leagueError } = await supabase
     .from('leagues')
-    .select('id, name, description')
+    .select('id, name')
     .eq('id', leagueId)
     .single();
 
@@ -405,7 +404,6 @@ export async function getLeagueWithEvents(
   return {
     id: league.id,
     name: league.name,
-    description: league.description,
     event_count: eventsWithCounts.length,
     events: eventsWithCounts,
   };
