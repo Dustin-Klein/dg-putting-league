@@ -28,13 +28,13 @@ export async function POST(
       throw new BadRequestError('Reset requires verification, notifications, and a correction reason');
     }
 
-    const result = await resetMatchResult(eventId, matchIdNum, {
+    const resetResult = await resetMatchResult(eventId, matchIdNum, {
       correctionReason: parsed.data.correction_reason,
       winnerChangeVerified: parsed.data.winner_change_verified,
       teamsNotified: parsed.data.teams_notified,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(resetResult);
   } catch (error) {
     return handleError(error);
   }
