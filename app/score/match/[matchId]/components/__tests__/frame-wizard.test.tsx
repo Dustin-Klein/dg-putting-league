@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FrameWizard } from '../frame-wizard';
+import { MatchStatus } from '@/lib/types/bracket';
 import type { MatchInfo, ScoreState, PlayerInfo, TeamInfo, FrameInfo } from '../wizard-types';
 import { MIN_PUTTS, MAX_PUTTS } from '../wizard-types';
 
@@ -32,7 +33,7 @@ function createMatch(overrides: Partial<MatchInfo> = {}): MatchInfo {
     id: 'match-1',
     bracket_match_id: 1,
     round_name: 'Round 1',
-    status: 'in_progress',
+    status: MatchStatus.Running,
     lane_label: 'Lane 1',
     team_one: createTeam({
       id: 'team-1',

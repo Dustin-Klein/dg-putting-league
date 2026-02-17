@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Play, Users } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
+import { MatchStatus, getStatusLabel } from '@/lib/types/bracket';
 import type { MatchInfo, PlayerInfo, TeamInfo } from './wizard-types';
 
 interface MatchSetupProps {
@@ -14,6 +15,10 @@ interface MatchSetupProps {
 }
 
 export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
+  const isCompleted = match.status === MatchStatus.Completed;
+  const isRunning = match.status === MatchStatus.Running;
+  const statusLabel = isRunning ? getStatusLabel(match.status) : match.round_name;
+
   return (
     <div className="min-h-full bg-background p-4 pb-8">
       <div className="max-w-lg mx-auto">
@@ -29,8 +34,8 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
                 {match.lane_label}
               </Badge>
             )}
-            <Badge variant={match.status === 'completed' ? 'secondary' : 'default'}>
-              {match.status === 'completed' ? 'Completed' : match.round_name}
+            <Badge variant={isCompleted ? 'secondary' : 'default'}>
+              {isCompleted ? getStatusLabel(match.status) : statusLabel}
             </Badge>
           </div>
         </div>
@@ -85,12 +90,12 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
             size="lg"
             className="w-full h-14 text-lg"
             onClick={onBeginScoring}
-            disabled={match.status === 'completed'}
+            disabled={isCompleted}
           >
             <Play className="mr-2 h-5 w-5" />
-            {match.status === 'completed' ? 'Match Completed' : 'Begin Scoring'}
+            {isCompleted ? 'Match Completed' : 'Begin Scoring'}
           </Button>
-          {match.status !== 'completed' && (
+          {!isCompleted && (
             <p className="text-sm text-muted-foreground text-center mt-3">
               You&apos;ll score one frame at a time
             </p>
