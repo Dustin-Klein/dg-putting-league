@@ -148,6 +148,11 @@ export function FrameWizard({
             Setup
           </Button>
           <div className="flex items-center gap-3">
+            {match.lane_label && (
+              <Badge variant="secondary" className="text-sm">
+                {match.lane_label}
+              </Badge>
+            )}
             <div className="flex items-center gap-2 text-2xl font-bold font-mono">
               <span>{teamOneTotal}</span>
               <span className="text-muted-foreground text-lg">–</span>
