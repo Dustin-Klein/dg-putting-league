@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, RefreshCw, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
+import { MatchStatus } from '@/lib/types/bracket';
 
 interface TeamInfo {
   id: string;
@@ -25,7 +26,7 @@ interface MatchInfo {
   id: string;
   bracket_match_id: number;
   round_name: string;
-  status: string;
+  status: number;
   lane_id: string | null;
   lane_label: string | null;
   team_one: TeamInfo;
@@ -187,9 +188,9 @@ export default function MatchesPage() {
                       )}
                     </div>
                     <Badge
-                      variant={match.status === 'in_progress' ? 'default' : 'secondary'}
+                      variant={match.status === MatchStatus.Running ? 'default' : 'secondary'}
                     >
-                      {match.status === 'in_progress' ? 'In Progress' : 'Ready'}
+                      {match.status === MatchStatus.Running ? 'In Progress' : 'Ready'}
                     </Badge>
                   </div>
 
