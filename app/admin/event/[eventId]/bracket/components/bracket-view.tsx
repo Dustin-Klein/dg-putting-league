@@ -336,7 +336,16 @@ function RoundConnector({
 
 export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
-  const [hideFinished, setHideFinished] = useState(false);
+  const [hideFinished, setHideFinished] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('bracket-hide-finished') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('bracket-hide-finished', String(hideFinished));
+  }, [hideFinished]);
 
   // Organize matches by group and round
   const groupsWithRounds = useMemo(() => {
