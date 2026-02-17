@@ -56,9 +56,6 @@ export default async function PublicLeaguePage({
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold">{league.name}</h1>
-        {league.description && (
-          <p className="text-muted-foreground mt-2">{league.description}</p>
-        )}
       </div>
 
       <h2 className="text-xl font-semibold mb-4">Events</h2>

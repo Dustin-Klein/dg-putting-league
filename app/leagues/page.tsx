@@ -27,11 +27,6 @@ export default async function PublicLeaguesPage() {
                   <CardTitle>{league.name}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {league.description && (
-                    <p className="text-muted-foreground mb-4 line-clamp-2">
-                      {league.description}
-                    </p>
-                  )}
                   <p className="text-sm text-muted-foreground">
                     {league.event_count} {league.event_count === 1 ? 'event' : 'events'}
                   </p>
