@@ -174,8 +174,25 @@ export function AdvanceTeamDialog({
       );
 
       if (!response.ok) {
-        const resetErrorResponse = await response.json();
-        throw new Error(resetErrorResponse.error || 'Failed to reset match');
+        const resetErrorBody = (await response.text()).trim();
+        let resetErrorMessage = 'Failed to reset match';
+
+        if (resetErrorBody) {
+          try {
+            const resetErrorResponse = JSON.parse(resetErrorBody) as {
+              error?: string;
+              message?: string;
+            };
+            resetErrorMessage =
+              resetErrorResponse.error?.trim() ||
+              resetErrorResponse.message?.trim() ||
+              resetErrorBody;
+          } catch {
+            resetErrorMessage = resetErrorBody;
+          }
+        }
+
+        throw new Error(resetErrorMessage);
       }
 
       setShowResetConfirm(false);
