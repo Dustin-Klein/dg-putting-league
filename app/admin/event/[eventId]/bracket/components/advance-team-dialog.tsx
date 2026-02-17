@@ -107,8 +107,8 @@ export function AdvanceTeamDialog({
       );
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to advance team');
+        const advanceErrorResponse = await response.json();
+        throw new Error(advanceErrorResponse.error || 'Failed to advance team');
       }
 
       setSelectedParticipant('');
@@ -137,8 +137,8 @@ export function AdvanceTeamDialog({
       );
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to remove team');
+        const removeErrorResponse = await response.json();
+        throw new Error(removeErrorResponse.error || 'Failed to remove team');
       }
 
       onOpenChange(false);
@@ -174,8 +174,8 @@ export function AdvanceTeamDialog({
       );
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to reset match');
+        const resetErrorResponse = await response.json();
+        throw new Error(resetErrorResponse.error || 'Failed to reset match');
       }
 
       setShowResetConfirm(false);
