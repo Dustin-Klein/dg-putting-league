@@ -409,11 +409,12 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
     return map;
   }, [groupsWithRounds]);
 
-  const getRoundName = (group: GroupWithRounds, round: Round, visibleIndex: number): string => {
-    // Get visible rounds for this group (rounds with at least one non-BYE match)
-    const visibleRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches, hideFinished));
-    const totalVisibleRounds = visibleRounds.length;
-    const displayRoundNumber = visibleIndex + 1;
+  const getRoundName = (group: GroupWithRounds, round: Round): string => {
+    // Use stable labels based on all non-BYE rounds (not affected by hideFinished)
+    const labelRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches, false));
+    const labelIndex = labelRounds.findIndex((r) => r.id === round.id);
+    const totalVisibleRounds = labelRounds.length;
+    const displayRoundNumber = labelIndex + 1;
 
     // For winner's bracket
     if (group.number === 1) {
@@ -470,7 +471,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
             {roundLayouts.map((layout, idx) => (
               <Fragment key={layout.round.id}>
                 <div className="w-64 text-sm font-medium text-muted-foreground text-center">
-                  {getRoundName(group, layout.round, idx)}
+                  {getRoundName(group, layout.round)}
                 </div>
                 {idx < roundLayouts.length - 1 && (
                   <div className="w-9" />
