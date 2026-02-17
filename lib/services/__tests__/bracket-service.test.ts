@@ -694,6 +694,58 @@ describe('Bracket Service', () => {
       );
     });
 
+    it('should rollback rewritten matches in reverse order when rewrite phase fails', async () => {
+      (getBracketResetContext as jest.Mock).mockResolvedValue({
+        stage: { id: 1, type: 'double_elimination', settings: {} },
+        groups: [{ id: 10, number: 1 }],
+        rounds: [
+          { id: 101, group_id: 10, number: 1 },
+          { id: 102, group_id: 10, number: 2 },
+          { id: 103, group_id: 10, number: 3 },
+        ],
+        matches: [
+          { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status: 4, opponent1: { id: 10, score: 5, result: 'win' }, opponent2: { id: 20, score: 3, result: 'loss' } },
+          { id: 2, stage_id: 1, group_id: 10, round_id: 102, number: 1, status: 1, opponent1: { id: 10 }, opponent2: { id: 30 } },
+          { id: 3, stage_id: 1, group_id: 10, round_id: 103, number: 1, status: 1, opponent1: { id: 10 }, opponent2: { id: 40 } },
+        ],
+      });
+      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
+      mockFindNextMatches.mockImplementation(async (id: number) => {
+        if (id === 1) return [{ id: 2 }];
+        if (id === 2) return [{ id: 3 }];
+        return [];
+      });
+      (updateMatchWithOpponents as jest.Mock).mockImplementation(async (_supabase, currentMatchId) => {
+        if (currentMatchId === 3) {
+          throw new InternalError('simulated rewrite failure');
+        }
+      });
+
+      await expect(resetMatchResult(eventId, 1)).rejects.toThrow(
+        'Failed while rewriting reset matches; no frame deletions were attempted. Retry is safe.'
+      );
+
+      // 1..5 are forward rewrite attempts, 6..7 are rollback calls.
+      expect(updateMatchWithOpponents).toHaveBeenCalledTimes(7);
+      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
+        6,
+        mockSupabase,
+        2,
+        { id: 10 },
+        { id: 30 },
+        1
+      );
+      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
+        7,
+        mockSupabase,
+        1,
+        { id: 10, score: 5, result: 'win' },
+        { id: 20, score: 3, result: 'loss' },
+        4
+      );
+      expect(deleteMatchFrames).not.toHaveBeenCalled();
+    });
+
     it('should keep second grand final match archived when resetting first grand final', async () => {
       (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
       (getMatchWithGroupInfo as jest.Mock).mockResolvedValue({
