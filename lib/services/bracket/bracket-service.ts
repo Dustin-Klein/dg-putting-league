@@ -861,8 +861,7 @@ export async function resetMatchResult(
   const taintPlan = await buildTaintedSlotPlan(matchId, context, nextMatchesResolver);
   const resetMatchIds = [matchId, ...taintPlan.affectedMatchIds.filter((id) => id !== matchId)];
   const baselineById = new Map<number, BracketMatchForReset>(context.matches.map((match) => [match.id, match]));
-
-  for (const currentId of resetMatchIds) {
+  const resetOperations = resetMatchIds.map((currentId) => {
     const baselineMatch = baselineById.get(currentId);
     if (!baselineMatch) {
       throw new InternalError(`Match ${currentId} not found in baseline reset snapshot`);
@@ -887,25 +886,98 @@ export async function resetMatchResult(
       ? { id: desiredOpponent2Id }
       : (opp2WasLiteralNull ? null : { id: null });
 
-    // Step A: force-clear score/result artifacts from both slots.
-    await updateMatchWithOpponents(
-      supabase,
-      currentId,
+    return {
+      matchId: currentId,
       scrubOpponent1,
       scrubOpponent2,
-      Status.Waiting
-    );
-
-    // Step B: restore canonical replay participants for this match.
-    await updateMatchWithOpponents(
-      supabase,
-      currentId,
       restoreOpponent1,
       restoreOpponent2,
-      Status.Waiting
-    );
+      rollbackOpponent1: baselineMatch.opponent1,
+      rollbackOpponent2: baselineMatch.opponent2,
+      rollbackStatus: baselineMatch.status,
+    };
+  });
+  const operationByMatchId = new Map(resetOperations.map((operation) => [operation.matchId, operation]));
+  const rewrittenMatchIds: number[] = [];
 
-    await deleteMatchFrames(supabase, currentId);
+  try {
+    for (const operation of resetOperations) {
+      // Step A: force-clear score/result artifacts from both slots.
+      await updateMatchWithOpponents(
+        supabase,
+        operation.matchId,
+        operation.scrubOpponent1,
+        operation.scrubOpponent2,
+        Status.Waiting
+      );
+
+      // Step B: restore canonical replay participants for this match.
+      await updateMatchWithOpponents(
+        supabase,
+        operation.matchId,
+        operation.restoreOpponent1,
+        operation.restoreOpponent2,
+        Status.Waiting
+      );
+
+      rewrittenMatchIds.push(operation.matchId);
+    }
+  } catch (error) {
+    const rollbackFailures: Array<{ matchId: number; error: string }> = [];
+    for (const rewrittenMatchId of [...rewrittenMatchIds].reverse()) {
+      const operation = operationByMatchId.get(rewrittenMatchId);
+      if (!operation) continue;
+      try {
+        await updateMatchWithOpponents(
+          supabase,
+          operation.matchId,
+          operation.rollbackOpponent1,
+          operation.rollbackOpponent2,
+          operation.rollbackStatus
+        );
+      } catch (rollbackError) {
+        rollbackFailures.push({
+          matchId: operation.matchId,
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        });
+      }
+    }
+
+    logger.error('Match result reset failed during rewrite phase', {
+      userId: user.id,
+      action: 'reset_match_result',
+      eventId,
+      targetMatchId: matchId,
+      resetMatchIds,
+      rewrittenMatchIds,
+      rollbackFailures,
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    throw new InternalError(
+      'Failed while rewriting reset matches; no frame deletions were attempted. Retry is safe.'
+    );
+  }
+
+  try {
+    for (const currentId of resetMatchIds) {
+      await deleteMatchFrames(supabase, currentId);
+    }
+  } catch (error) {
+    logger.error('Match result reset failed during frame deletion phase', {
+      userId: user.id,
+      action: 'reset_match_result',
+      eventId,
+      targetMatchId: matchId,
+      resetMatchIds,
+      rewrittenMatchIds,
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new InternalError(
+      'Reset rewrites were applied but frame deletion only partially completed. Retry the reset to finish cleanup.'
+    );
   }
 
   // Handle grand final: if the target is the first GF match, keep the reset

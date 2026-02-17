@@ -1114,7 +1114,7 @@ export async function updateMatchWithOpponents(
   });
 
   if (error) {
-    throw new InternalError(`Failed to update match opponents: ${error.message}`);
+    throw new InternalError(`Failed to update match opponents for match ${matchId}: ${error.message}`);
   }
 }
 
@@ -1272,7 +1272,7 @@ export async function deleteMatchFrames(
     .eq('bracket_match_id', bracketMatchId);
 
   if (error) {
-    throw new InternalError(`Failed to delete match frames: ${error.message}`);
+    throw new InternalError(`Failed to delete match frames for match ${bracketMatchId}: ${error.message}`);
   }
 }
 
