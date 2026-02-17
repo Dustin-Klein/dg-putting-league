@@ -6,6 +6,7 @@ import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import type { EventStatus } from '@/lib/types/event';
 import { Status } from 'brackets-model';
+import { Eye, EyeOff } from 'lucide-react';
 import { MatchCard } from './match-card';
 import { GROUP_NAMES } from '@/lib/types/bracket';
 
@@ -143,8 +144,14 @@ function isByeMatch(match: Match): boolean {
   return false;
 }
 
-function hasVisibleMatches(matches: Match[]): boolean {
-  return matches.some((match) => !isByeMatch(match));
+function isHiddenMatch(match: Match, hideFinished: boolean): boolean {
+  if (isByeMatch(match)) return true;
+  if (hideFinished && (match.status === Status.Completed || match.status === Status.Archived)) return true;
+  return false;
+}
+
+function hasVisibleMatches(matches: Match[], hideFinished = false): boolean {
+  return matches.some((match) => !isHiddenMatch(match, hideFinished));
 }
 
 function getMatchCenter(layout: MatchLayout): number {
@@ -180,8 +187,8 @@ function getChildLayouts(
   return [prevLayouts[index * 2], prevLayouts[index * 2 + 1]];
 }
 
-function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
-  const visibleRounds = group.rounds.filter(r => hasVisibleMatches(r.matches));
+function calculateGroupLayout(group: GroupWithRounds, hideFinished = false): RoundLayout[] {
+  const visibleRounds = group.rounds.filter(r => hasVisibleMatches(r.matches, hideFinished));
   if (visibleRounds.length === 0) return [];
 
   const layouts: RoundLayout[] = [];
@@ -190,7 +197,7 @@ function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
   const firstRound = visibleRounds[0];
   let currentY = 0;
   const firstRoundLayouts: MatchLayout[] = firstRound.matches.map(match => {
-    const visible = !isByeMatch(match);
+    const visible = !isHiddenMatch(match, hideFinished);
     const layout = { match, yPosition: currentY, visible };
     if (visible) {
       currentY += MATCH_HEIGHT + MATCH_GAP;
@@ -199,7 +206,7 @@ function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
     }
     return layout;
   });
-  const firstRoundHeight = currentY > 0 ? currentY - (isByeMatch(firstRound.matches[firstRound.matches.length - 1]) ? BYE_GAP : MATCH_GAP) : 0;
+  const firstRoundHeight = currentY > 0 ? currentY - (isHiddenMatch(firstRound.matches[firstRound.matches.length - 1], hideFinished) ? BYE_GAP : MATCH_GAP) : 0;
   layouts.push({
     round: firstRound,
     matches: firstRoundLayouts,
@@ -214,7 +221,7 @@ function calculateGroupLayout(group: GroupWithRounds): RoundLayout[] {
 
     for (let j = 0; j < round.matches.length; j++) {
       const match = round.matches[j];
-      const visible = !isByeMatch(match);
+      const visible = !isHiddenMatch(match, hideFinished);
       const [child1, child2] = getChildLayouts(j, round.matches.length, prevLayout.matches);
       const yPosition = calculateMidpoint(child1, child2);
       roundLayouts.push({ match, yPosition, visible });
@@ -329,6 +336,7 @@ function RoundConnector({
 
 export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
   const { bracket, participantTeamMap, laneMap = {} } = data;
+  const [hideFinished, setHideFinished] = useState(false);
 
   // Organize matches by group and round
   const groupsWithRounds = useMemo(() => {
@@ -394,7 +402,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
 
   const getRoundName = (group: GroupWithRounds, round: Round, visibleIndex: number): string => {
     // Get visible rounds for this group (rounds with at least one non-BYE match)
-    const visibleRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches));
+    const visibleRounds = group.rounds.filter((r) => hasVisibleMatches(r.matches, hideFinished));
     const totalVisibleRounds = visibleRounds.length;
     const displayRoundNumber = visibleIndex + 1;
 
@@ -436,7 +444,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
   const grandFinal = groupsWithRounds.find((g) => g.number === 3);
 
   const renderGroup = (group: GroupWithRounds) => {
-    const roundLayouts = calculateGroupLayout(group);
+    const roundLayouts = calculateGroupLayout(group, hideFinished);
     if (roundLayouts.length === 0) return null;
 
     const totalHeight = roundLayouts[0]?.height || 0;
@@ -518,6 +526,14 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-8'}>
+      <button
+        type="button"
+        onClick={() => setHideFinished(prev => !prev)}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {hideFinished ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        {hideFinished ? 'Show finished' : 'Hide finished'}
+      </button>
       {/* Winners bracket + Grand Final side by side, vertically centered */}
       <div className={`flex items-center ${compact ? 'gap-4' : 'gap-8'}`}>
         {winnersBracket && renderGroup(winnersBracket)}
