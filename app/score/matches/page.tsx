@@ -9,31 +9,7 @@ import { ArrowLeft, RefreshCw, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { MatchStatus } from '@/lib/types/bracket';
-
-interface TeamInfo {
-  id: string;
-  seed: number;
-  pool_combo: string;
-  players: {
-    event_player_id: string;
-    role: string;
-    full_name: string;
-    nickname: string | null;
-  }[];
-}
-
-interface MatchInfo {
-  id: string;
-  bracket_match_id: number;
-  round_name: string;
-  status: number;
-  lane_id: string | null;
-  lane_label: string | null;
-  team_one: TeamInfo;
-  team_two: TeamInfo;
-  team_one_score: number;
-  team_two_score: number;
-}
+import type { PublicMatchInfo } from '@/lib/types/scoring';
 
 interface EventInfo {
   id: string;
@@ -48,7 +24,7 @@ export default function MatchesPage() {
   const router = useRouter();
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [event, setEvent] = useState<EventInfo | null>(null);
-  const [matches, setMatches] = useState<MatchInfo[]>([]);
+  const [matches, setMatches] = useState<PublicMatchInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +63,7 @@ export default function MatchesPage() {
     fetchMatches(code);
   }, [router, fetchMatches]);
 
-  const handleSelectMatch = (matchId: string) => {
+  const handleSelectMatch = (matchId: number) => {
     router.push(`/score/match/${matchId}`);
   };
 
@@ -179,7 +155,7 @@ export default function MatchesPage() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">
-                        {match.round_name}
+                        Match {match.number}
                       </span>
                       {match.lane_label && (
                         <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
