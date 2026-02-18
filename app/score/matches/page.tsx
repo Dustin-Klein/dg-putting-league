@@ -154,9 +154,6 @@ export default function MatchesPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        Match {match.number}
-                      </span>
                       {match.lane_label && (
                         <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
                           {match.lane_label}
