@@ -155,13 +155,15 @@ export function FrameWizard({
             )}
             <div className="flex items-center gap-2 font-mono">
               <div className="flex items-center gap-1">
-                <span className="text-xs font-sans font-semibold text-blue-600 dark:text-blue-400">T1</span>
+                <span className="text-xs font-sans font-semibold text-blue-600 dark:text-blue-400" aria-hidden="true">T1</span>
+                <span className="sr-only">Team 1:</span>
                 <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{teamOneTotal}</span>
               </div>
               <span className="text-muted-foreground text-lg">–</span>
               <div className="flex items-center gap-1">
+                <span className="sr-only">Team 2:</span>
                 <span className="text-2xl font-bold text-orange-700 dark:text-orange-300">{teamTwoTotal}</span>
-                <span className="text-xs font-sans font-semibold text-orange-600 dark:text-orange-400">T2</span>
+                <span className="text-xs font-sans font-semibold text-orange-600 dark:text-orange-400" aria-hidden="true">T2</span>
               </div>
             </div>
             <Badge
