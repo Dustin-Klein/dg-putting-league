@@ -52,7 +52,11 @@ USING (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = event_players.event_id
-    AND (e.status = 'bracket' OR (e.status = 'pre-bracket' AND e.qualification_round_enabled = true))
+    AND (
+      e.status = 'bracket'
+      OR e.status = 'completed'
+      OR (e.status = 'pre-bracket' AND e.qualification_round_enabled = true)
+    )
   )
   OR public.is_league_admin_for_event(event_players.event_id)
 );
@@ -89,7 +93,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = teams.event_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR e.status = 'completed')
   )
   OR public.is_league_admin_for_event(teams.event_id)
 );
@@ -131,7 +135,7 @@ USING (
     SELECT 1 FROM public.teams t
     JOIN public.events e ON e.id = t.event_id
     WHERE t.id = team_members.team_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR e.status = 'completed')
   )
   OR EXISTS (
     SELECT 1 FROM public.teams t

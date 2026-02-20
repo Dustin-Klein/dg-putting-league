@@ -5,7 +5,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.events e
     WHERE e.id = bracket_stage.tournament_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR e.status = 'completed')
   )
   OR public.is_tournament_admin(tournament_id)
 );
@@ -30,7 +30,7 @@ USING (
     SELECT 1 FROM public.bracket_stage s
     JOIN public.events e ON e.id = s.tournament_id
     WHERE s.id = bracket_group.stage_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR e.status = 'completed')
   )
   OR EXISTS (
     SELECT 1 FROM public.bracket_stage s
@@ -77,7 +77,7 @@ USING (
     SELECT 1 FROM public.bracket_stage s
     JOIN public.events e ON e.id = s.tournament_id
     WHERE s.id = bracket_round.stage_id
-    AND e.status = 'bracket'
+    AND (e.status = 'bracket' OR e.status = 'completed')
   )
   OR EXISTS (
     SELECT 1 FROM public.bracket_stage s
