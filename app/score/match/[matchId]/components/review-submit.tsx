@@ -60,12 +60,12 @@ export function ReviewSubmit({
                 'px-4 py-2 rounded-lg',
                 team1Wins && 'bg-green-100 dark:bg-green-900/30'
               )}>
-                <div className="text-sm text-muted-foreground mb-1">
-                  #{match.team_one.seed} {match.team_one.pool_combo}
+                <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">
+                  Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed}</span>
                 </div>
                 <div className={cn(
                   "text-5xl font-mono font-bold",
-                  team1Wins && "text-green-600"
+                  team1Wins ? "text-green-600" : "text-blue-700 dark:text-blue-300"
                 )}>
                   {match.team_one_score}
                 </div>
@@ -83,12 +83,12 @@ export function ReviewSubmit({
                 'px-4 py-2 rounded-lg',
                 team2Wins && 'bg-green-100 dark:bg-green-900/30'
               )}>
-                <div className="text-sm text-muted-foreground mb-1">
-                  #{match.team_two.seed} {match.team_two.pool_combo}
+                <div className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-1">
+                  Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed}</span>
                 </div>
                 <div className={cn(
                   "text-5xl font-mono font-bold",
-                  team2Wins && "text-green-600"
+                  team2Wins ? "text-green-600" : "text-orange-700 dark:text-orange-300"
                 )}>
                   {match.team_two_score}
                 </div>
@@ -154,9 +154,9 @@ export function ReviewSubmit({
                   <tr className="bg-blue-50/50 dark:bg-blue-950/20">
                     <td
                       colSpan={frameNumbers.length + 2}
-                      className="p-1.5 text-xs font-semibold text-muted-foreground"
+                      className="p-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400"
                     >
-                      Team 1 - {match.team_one.pool_combo}
+                      Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed} {match.team_one.pool_combo}</span>
                     </td>
                   </tr>
                   {match.team_one.players.map((player) => (
@@ -173,9 +173,9 @@ export function ReviewSubmit({
                   <tr className="bg-orange-50/50 dark:bg-orange-950/20">
                     <td
                       colSpan={frameNumbers.length + 2}
-                      className="p-1.5 text-xs font-semibold text-muted-foreground"
+                      className="p-1.5 text-xs font-semibold text-orange-700 dark:text-orange-400"
                     >
-                      Team 2 - {match.team_two.pool_combo}
+                      Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed} {match.team_two.pool_combo}</span>
                     </td>
                   </tr>
                   {match.team_two.players.map((player) => (

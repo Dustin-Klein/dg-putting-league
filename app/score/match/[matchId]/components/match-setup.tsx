@@ -52,24 +52,24 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
             {/* Score Display */}
             <div className="flex items-center justify-around text-center mb-6 py-4 bg-muted/30 rounded-lg">
               <div>
-                <div className="text-sm text-muted-foreground mb-1">
-                  #{match.team_one.seed} {match.team_one.pool_combo}
+                <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">
+                  Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
-                  match.team_one_score > match.team_two_score && "text-green-600"
+                  match.team_one_score > match.team_two_score ? "text-green-600" : "text-blue-700 dark:text-blue-300"
                 )}>
                   {match.team_one_score}
                 </div>
               </div>
               <div className="text-2xl text-muted-foreground">vs</div>
               <div>
-                <div className="text-sm text-muted-foreground mb-1">
-                  #{match.team_two.seed} {match.team_two.pool_combo}
+                <div className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-1">
+                  Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
-                  match.team_two_score > match.team_one_score && "text-green-600"
+                  match.team_two_score > match.team_one_score ? "text-green-600" : "text-orange-700 dark:text-orange-300"
                 )}>
                   {match.team_two_score}
                 </div>
