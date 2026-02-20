@@ -53,7 +53,7 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
             <div className="flex items-center justify-around text-center mb-6 py-4 bg-muted/30 rounded-lg">
               <div>
                 <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">
-                  Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed}</span>
+                  Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed} {match.team_one.pool_combo}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
@@ -65,7 +65,7 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
               <div className="text-2xl text-muted-foreground">vs</div>
               <div>
                 <div className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-1">
-                  Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed}</span>
+                  Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed} {match.team_two.pool_combo}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
