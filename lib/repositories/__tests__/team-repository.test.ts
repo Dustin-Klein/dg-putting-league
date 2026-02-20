@@ -33,6 +33,7 @@ import {
   getTeamsWithMembersForEvent,
   updateTeamSeed,
   getFullTeamsForEvent,
+  getPublicTeamsForEvent,
   insertTeamsBulk,
   insertTeamMembersBulk,
 } from '../team-repository';
@@ -503,6 +504,51 @@ describe('Team Repository', () => {
       mockSupabase.from.mockReturnValue(mockQuery);
 
       await expect(getFullTeamsForEvent(mockSupabase as any, 'event-123')).rejects.toThrow(
+        'Failed to fetch generated teams'
+      );
+    });
+  });
+
+  describe('getPublicTeamsForEvent', () => {
+    it('should return team details with explicit public player columns', async () => {
+      const mockTeams = [
+        {
+          id: 'team-1',
+          seed: 1,
+          team_members: [
+            {
+              event_player: {
+                id: 'ep-1',
+                player: { id: 'p1', full_name: 'Player One', player_number: 101 },
+              },
+            },
+          ],
+        },
+      ];
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.select.mockReturnThis();
+      mockQuery.eq.mockReturnThis();
+      mockQuery.order.mockResolvedValue({ data: mockTeams, error: null });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      const result = await getPublicTeamsForEvent(mockSupabase as any, 'event-123');
+
+      expect(result).toEqual(mockTeams);
+      const selectClause = mockQuery.select.mock.calls[0][0] as string;
+      expect(selectClause).toContain('player:players(');
+      expect(selectClause).toContain('player_number');
+      expect(selectClause).not.toContain('player:players(*)');
+      expect(selectClause).not.toContain('email');
+    });
+
+    it('should throw error on failure', async () => {
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.select.mockReturnThis();
+      mockQuery.eq.mockReturnThis();
+      mockQuery.order.mockResolvedValue({ data: null, error: { message: 'Query failed' } });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      await expect(getPublicTeamsForEvent(mockSupabase as any, 'event-123')).rejects.toThrow(
         'Failed to fetch generated teams'
       );
     });

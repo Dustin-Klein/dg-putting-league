@@ -396,6 +396,50 @@ export async function getFullTeamsForEvent(
 }
 
 /**
+ * Get public team details for an event
+ * Uses explicit player columns compatible with anon SELECT grants.
+ */
+export async function getPublicTeamsForEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string
+): Promise<Team[]> {
+  const { data: publicTeams, error } = await supabase
+    .from('teams')
+    .select(`
+      *,
+      team_members(
+        *,
+        event_player:event_players(
+          id,
+          event_id,
+          player_id,
+          created_at,
+          payment_type,
+          pool,
+          pfa_score,
+          scoring_method,
+          player:players(
+            id,
+            player_number,
+            full_name,
+            nickname,
+            created_at,
+            default_pool
+          )
+        )
+      )
+    `)
+    .eq('event_id', eventId)
+    .order('seed');
+
+  if (error) {
+    throw new Error('Failed to fetch generated teams');
+  }
+
+  return (publicTeams || []) as unknown as Team[];
+}
+
+/**
  * Insert multiple teams at once (bulk operation)
  * Returns array of team IDs in the same order as input
  */
