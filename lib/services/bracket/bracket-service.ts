@@ -36,7 +36,7 @@ import {
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
-import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
+import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
