@@ -155,15 +155,15 @@ export function FrameWizard({
             )}
             <div className="flex items-center gap-2 font-mono">
               <div className="flex items-center gap-1">
-                <span className="text-xs font-sans font-semibold text-blue-600 dark:text-blue-400" aria-hidden="true">T1</span>
+                <span className="text-xs font-sans font-semibold text-blue-500 dark:text-blue-400" aria-hidden="true">T1</span>
                 <span className="sr-only">Team 1:</span>
-                <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{teamOneTotal}</span>
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-300">{teamOneTotal}</span>
               </div>
               <span className="text-muted-foreground text-lg">–</span>
               <div className="flex items-center gap-1">
                 <span className="sr-only">Team 2:</span>
-                <span className="text-2xl font-bold text-orange-700 dark:text-orange-300">{teamTwoTotal}</span>
-                <span className="text-xs font-sans font-semibold text-orange-600 dark:text-orange-400" aria-hidden="true">T2</span>
+                <span className="text-2xl font-bold text-red-600 dark:text-red-300">{teamTwoTotal}</span>
+                <span className="text-xs font-sans font-semibold text-red-500 dark:text-red-400" aria-hidden="true">T2</span>
               </div>
             </div>
             <Badge
@@ -330,8 +330,11 @@ function TeamScoringSection({
   onScoreChange,
 }: TeamScoringSectionProps) {
   const bgColor = teamNumber === 1
-    ? 'bg-blue-50/50 dark:bg-blue-950/20'
-    : 'bg-orange-50/50 dark:bg-orange-950/20';
+    ? 'bg-blue-50/50 dark:bg-blue-950/20 border-l-4 border-blue-400 dark:border-blue-500'
+    : 'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-red-400 dark:border-red-500';
+  const headerBorder = teamNumber === 1
+    ? 'border-b border-blue-200 dark:border-blue-800'
+    : 'border-b border-red-200 dark:border-red-800';
 
   // Calculate team's score for this frame using local scores when available
   const frame = match.frames.find(f => f.frame_number === frameNumber);
@@ -355,14 +358,14 @@ function TeamScoringSection({
 
   return (
     <div className={cn('rounded-lg p-2', bgColor)}>
-      <div className="flex items-center justify-between mb-2">
+      <div className={cn('flex items-center justify-between pb-2 mb-2', headerBorder)}>
         <span className={cn(
           'text-xs font-semibold',
           teamNumber === 1
-            ? 'text-blue-700 dark:text-blue-400'
-            : 'text-orange-700 dark:text-orange-400'
+            ? 'text-blue-500 dark:text-blue-400'
+            : 'text-red-500 dark:text-red-400'
         )}>
-          Team {teamNumber} <span className="font-normal text-muted-foreground">#{team.seed} {team.pool_combo}</span>
+          Team {teamNumber}<span className="mx-1.5 font-light opacity-40">|</span><span className="font-normal text-muted-foreground">#{team.seed} {team.pool_combo}</span>
         </span>
         <Badge variant="secondary" className="font-mono text-xs h-5">
           {frameScore} pts
