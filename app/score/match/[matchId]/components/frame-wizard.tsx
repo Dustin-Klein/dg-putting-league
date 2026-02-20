@@ -153,10 +153,16 @@ export function FrameWizard({
                 {match.lane_label}
               </Badge>
             )}
-            <div className="flex items-center gap-2 text-2xl font-bold font-mono">
-              <span>{teamOneTotal}</span>
+            <div className="flex items-center gap-2 font-mono">
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-sans font-semibold text-blue-600 dark:text-blue-400">T1</span>
+                <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{teamOneTotal}</span>
+              </div>
               <span className="text-muted-foreground text-lg">–</span>
-              <span>{teamTwoTotal}</span>
+              <div className="flex items-center gap-1">
+                <span className="text-2xl font-bold text-orange-700 dark:text-orange-300">{teamTwoTotal}</span>
+                <span className="text-xs font-sans font-semibold text-orange-600 dark:text-orange-400">T2</span>
+              </div>
             </div>
             <Badge
               variant={isOvertime ? 'destructive' : 'default'}
@@ -348,8 +354,13 @@ function TeamScoringSection({
   return (
     <div className={cn('rounded-lg p-2', bgColor)}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          #{team.seed} {team.pool_combo}
+        <span className={cn(
+          'text-xs font-semibold',
+          teamNumber === 1
+            ? 'text-blue-700 dark:text-blue-400'
+            : 'text-orange-700 dark:text-orange-400'
+        )}>
+          Team {teamNumber} <span className="font-normal text-muted-foreground">#{team.seed} {team.pool_combo}</span>
         </span>
         <Badge variant="secondary" className="font-mono text-xs h-5">
           {frameScore} pts
