@@ -177,6 +177,12 @@ export async function validateEventStatusTransition(
 
   // Validation for pre-bracket to bracket transition
   if (currentStatus === 'pre-bracket' && newStatus === 'bracket') {
+    if (currentEvent.players.length % 2 !== 0) {
+      throw new BadRequestError(
+        'An even number of players is required before starting bracket play'
+      );
+    }
+
     // Always check payment
     const unpaidPlayers = currentEvent.players.filter(
       (player) => player.payment_type === null
