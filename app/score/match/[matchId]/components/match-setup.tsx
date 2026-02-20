@@ -52,24 +52,24 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
             {/* Score Display */}
             <div className="flex items-center justify-around text-center mb-6 py-4 bg-muted/30 rounded-lg">
               <div>
-                <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">
+                <div className="text-sm font-semibold text-blue-500 dark:text-blue-400 mb-1">
                   Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed} {match.team_one.pool_combo}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
-                  match.team_one_score > match.team_two_score ? "text-green-600" : "text-blue-700 dark:text-blue-300"
+                  match.team_one_score > match.team_two_score ? "text-green-600" : "text-blue-600 dark:text-blue-300"
                 )}>
                   {match.team_one_score}
                 </div>
               </div>
               <div className="text-2xl text-muted-foreground">vs</div>
               <div>
-                <div className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-1">
+                <div className="text-sm font-semibold text-red-500 dark:text-red-400 mb-1">
                   Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed} {match.team_two.pool_combo}</span>
                 </div>
                 <div className={cn(
                   "text-4xl font-mono font-bold",
-                  match.team_two_score > match.team_one_score ? "text-green-600" : "text-orange-700 dark:text-orange-300"
+                  match.team_two_score > match.team_one_score ? "text-green-600" : "text-red-600 dark:text-red-300"
                 )}>
                   {match.team_two_score}
                 </div>
@@ -113,8 +113,8 @@ interface TeamCardProps {
 
 function TeamCard({ team, teamNumber }: TeamCardProps) {
   const bgColor = teamNumber === 1
-    ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
-    : 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800';
+    ? 'bg-blue-50/50 dark:bg-blue-950/20 border-l-4 border-blue-400 dark:border-blue-500'
+    : 'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-red-400 dark:border-red-500';
 
   return (
     <Card className={cn('mb-4', bgColor)}>
