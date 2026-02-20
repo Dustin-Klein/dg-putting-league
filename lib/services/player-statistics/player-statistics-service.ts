@@ -19,7 +19,8 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
   if (!player) {
     throw new NotFoundError('Player not found');
   }
-  const { email: _email, ...publicPlayer } = player;
+  const publicPlayer = { ...player };
+  delete publicPlayer.email;
 
   const eventParticipations = await playerStatsRepo.getPlayerEventParticipations(
     supabase,
