@@ -14,7 +14,7 @@ export async function getPlayerByNumber(
 ): Promise<Player | null> {
   const { data: player, error } = await supabase
     .from('players')
-    .select('*')
+    .select('id, player_number, full_name, nickname, created_at, default_pool')
     .eq('player_number', playerNumber)
     .maybeSingle();
 

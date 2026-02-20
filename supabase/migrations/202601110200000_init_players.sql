@@ -29,3 +29,9 @@ ON public.players
 FOR SELECT
 TO anon, authenticated
 USING (true);
+
+-- Prevent anonymous users from reading player emails directly.
+REVOKE SELECT ON TABLE public.players FROM anon;
+GRANT SELECT (id, player_number, full_name, nickname, created_at, default_pool)
+ON TABLE public.players
+TO anon;

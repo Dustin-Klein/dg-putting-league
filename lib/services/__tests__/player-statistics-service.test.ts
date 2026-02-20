@@ -89,5 +89,19 @@ describe('Player Statistics Service', () => {
       expect(profile.statistics.topThreeFinishes).toBe(0);
       expect(profile.eventHistory).toEqual([]);
     });
+
+    it('should not expose player email in public profile response', async () => {
+      (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
+        id: 'p1',
+        player_number: 1,
+        full_name: 'No Play',
+        email: 'private@example.com',
+      });
+      (playerStatsRepo.getPlayerEventParticipations as jest.Mock).mockResolvedValue([]);
+
+      const profile = await getPlayerProfile(1);
+
+      expect(profile.player.email).toBeUndefined();
+    });
   });
 });

@@ -63,6 +63,9 @@ describe('Player Statistics Repository', () => {
 
       expect(result).toEqual(mockPlayer);
       expect(mockSupabase.from).toHaveBeenCalledWith('players');
+      expect(mockQuery.select).toHaveBeenCalledWith(
+        'id, player_number, full_name, nickname, created_at, default_pool'
+      );
       expect(mockQuery.eq).toHaveBeenCalledWith('player_number', 42);
     });
 

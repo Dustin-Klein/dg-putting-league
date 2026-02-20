@@ -17,6 +17,7 @@ FOR SELECT
 TO anon, authenticated
 USING (
   status = 'bracket'
+  OR status = 'completed'
   OR (status = 'pre-bracket' AND qualification_round_enabled = true)
   OR EXISTS (
     SELECT 1 FROM public.league_admins
