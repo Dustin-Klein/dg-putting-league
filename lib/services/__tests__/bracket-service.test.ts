@@ -71,6 +71,16 @@ jest.mock('@/lib/repositories/event-repository', () => ({
   getEventById: jest.fn(),
 }));
 
+jest.mock('@/lib/repositories/team-repository', () => ({
+  getFullTeamsForEvent: jest.fn(),
+  getPublicTeamsForEvent: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/lane-repository', () => ({
+  getLanesForEvent: jest.fn(),
+  resetAllLanesToIdle: jest.fn(),
+}));
+
 const mockFindNextMatches = jest.fn();
 const mockFindPreviousMatches = jest.fn();
 
@@ -111,9 +121,11 @@ import {
   getSecondGrandFinalMatch,
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
+import { getEventById } from '@/lib/repositories/event-repository';
 import {
   createBracket,
   getBracket,
+  getPublicBracket,
   updateMatchResult,
   getReadyMatches,
   assignLaneToMatch,
@@ -122,6 +134,8 @@ import {
   buildTaintedSlotPlan,
   findMatchesToReset,
 } from '../bracket/bracket-service';
+import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
+import { getLanesForEvent } from '@/lib/repositories/lane-repository';
 
 describe('Bracket Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -204,6 +218,55 @@ describe('Bracket Service', () => {
       expect(result.rounds).toHaveLength(1);
       expect(result.matches).toHaveLength(1);
       expect(result.participants).toHaveLength(1);
+    });
+  });
+
+  describe('getPublicBracket', () => {
+    const eventId = 'event-123';
+
+    it('should throw NotFoundError when event does not exist', async () => {
+      (getEventById as jest.Mock).mockResolvedValue(null);
+
+      await expect(getPublicBracket(eventId)).rejects.toThrow(NotFoundError);
+      await expect(getPublicBracket(eventId)).rejects.toThrow('Event not found');
+    });
+
+    it('should throw NotFoundError when event is not in bracket/completed status', async () => {
+      (getEventById as jest.Mock).mockResolvedValue({ id: eventId, status: 'created' });
+
+      await expect(getPublicBracket(eventId)).rejects.toThrow(NotFoundError);
+      await expect(getPublicBracket(eventId)).rejects.toThrow('Bracket not available for this event');
+    });
+
+    it('should use public team query and return bracket with mappings', async () => {
+      (getEventById as jest.Mock).mockResolvedValue({ id: eventId, status: 'bracket' });
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1, tournament_id: eventId },
+        groups: [{ id: 1, stage_id: 1 }],
+        rounds: [{ id: 1, stage_id: 1 }],
+        matches: [{ id: 1, stage_id: 1 }],
+        participants: [{ id: 10, team_id: 'team-1' }],
+      });
+      (getPublicTeamsForEvent as jest.Mock).mockResolvedValue([
+        {
+          id: 'team-1',
+          event_id: eventId,
+          seed: 1,
+          pool_combo: 'A & B',
+          created_at: '2024-01-01T00:00:00Z',
+          team_members: [],
+        },
+      ]);
+      (getLanesForEvent as jest.Mock).mockResolvedValue([
+        { id: 'lane-1', event_id: eventId, label: 'Lane 1', status: 'idle' },
+      ]);
+
+      const result = await getPublicBracket(eventId);
+
+      expect(getPublicTeamsForEvent).toHaveBeenCalledWith(mockSupabase, eventId);
+      expect(result.participantTeamMap[10]?.id).toBe('team-1');
+      expect(result.laneMap['lane-1']).toBe('Lane 1');
+      expect(result.eventStatus).toBe('bracket');
     });
   });
 

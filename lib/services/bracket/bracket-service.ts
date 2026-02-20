@@ -36,7 +36,7 @@ import {
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
-import { getFullTeamsForEvent } from '@/lib/repositories/team-repository';
+import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
@@ -199,7 +199,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
   // Fetch all data in parallel
   const [bracketStructure, teams, lanes] = await Promise.all([
     fetchBracketStructure(supabase, eventId),
-    getFullTeamsForEvent(supabase, eventId),
+    getPublicTeamsForEvent(supabase, eventId),
     getLanesForEvent(supabase, eventId),
   ]);
 
