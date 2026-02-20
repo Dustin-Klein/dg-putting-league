@@ -366,6 +366,22 @@ describe('Event Service', () => {
     });
 
     describe('pre-bracket to bracket validation (without qualification)', () => {
+      it('should throw BadRequestError when player count is odd', async () => {
+        const players = createMockEventPlayers(5);
+        players.forEach((p) => (p.payment_type = 'cash'));
+        const event = createMockEventWithDetails(
+          { status: 'pre-bracket', qualification_round_enabled: false },
+          players
+        );
+
+        await expect(
+          validateEventStatusTransition(eventId, 'bracket', event)
+        ).rejects.toThrow(BadRequestError);
+        await expect(
+          validateEventStatusTransition(eventId, 'bracket', event)
+        ).rejects.toThrow('An even number of players is required');
+      });
+
       it('should throw BadRequestError when players have not paid', async () => {
         const players = createMockEventPlayers(4);
         players[0].payment_type = null;
@@ -567,6 +583,23 @@ describe('Event Service', () => {
       });
       expect(createBracket).toHaveBeenCalledWith(eventId, true);
       expect(autoAssignLanes).toHaveBeenCalledWith(eventId);
+    });
+
+    it('should reject odd player count before team generation starts', async () => {
+      const players = createMockEventPlayers(5);
+      players.forEach((p) => (p.payment_type = 'cash'));
+      const event = createMockEventWithDetails(
+        { id: eventId, status: 'pre-bracket', lane_count: 4 },
+        players
+      );
+
+      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
+        'An even number of players is required'
+      );
+
+      expect(computePoolAssignments).not.toHaveBeenCalled();
+      expect(computeTeamPairings).not.toHaveBeenCalled();
+      expect(mockSupabase.rpc).not.toHaveBeenCalledWith('transition_event_to_bracket', expect.anything());
     });
 
     it('should throw InternalError when RPC fails', async () => {
