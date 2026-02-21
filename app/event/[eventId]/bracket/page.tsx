@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Match } from 'brackets-model';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
+import { BracketView, MatchResultsDialog, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
@@ -19,6 +20,8 @@ export default function PublicBracketPage({
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
@@ -129,6 +132,11 @@ export default function PublicBracketPage({
     }
   }, [bracketData, isPresentationMode, isMeasuring, recalculate]);
 
+  const handleMatchClick = (match: Match) => {
+    setSelectedMatch(match);
+    setIsDialogOpen(true);
+  };
+
   const enterPresentationMode = () => {
     setIsMeasuring(true);
     setIsPresentationMode(true);
@@ -219,10 +227,19 @@ export default function PublicBracketPage({
             <BracketView
               data={bracketData}
               eventStatus={bracketData.eventStatus}
+              onMatchClick={handleMatchClick}
               compact
             />
           </div>
         </div>
+        {eventId && (
+          <MatchResultsDialog
+            match={selectedMatch}
+            eventId={eventId}
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+          />
+        )}
       </div>
     );
   }
@@ -315,9 +332,19 @@ export default function PublicBracketPage({
           <BracketView
             data={bracketData}
             eventStatus={bracketData.eventStatus}
+            onMatchClick={handleMatchClick}
           />
         </div>
       </div>
+
+      {eventId && (
+        <MatchResultsDialog
+          match={selectedMatch}
+          eventId={eventId}
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+        />
+      )}
     </div>
   );
 }

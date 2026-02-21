@@ -49,6 +49,7 @@ export function MatchScoringDialog({
   const [scoringMode, setScoringMode] = useState<ScoringMode>('frames');
   const [finalScore1, setFinalScore1] = useState<string>('0');
   const [finalScore2, setFinalScore2] = useState<string>('0');
+  const [isViewMode, setIsViewMode] = useState(true);
 
   // Track if we're currently saving to avoid refetch during our own updates
   const isSavingRef = useRef(false);
@@ -86,12 +87,14 @@ export function MatchScoringDialog({
   useEffect(() => {
     if (open && match) {
       fetchMatchDetails(true);
+      setIsViewMode(true);
     } else {
       setMatchDetails(null);
       setError(null);
       setScoringMode('frames');
       setFinalScore1('0');
       setFinalScore2('0');
+      setIsViewMode(true);
     }
   }, [open, match, fetchMatchDetails]);
 
@@ -334,9 +337,11 @@ export function MatchScoringDialog({
         <DialogHeader>
           <DialogTitle>Match {match.number} Scoring</DialogTitle>
           <DialogDescription>
-            {scoringMode === 'frames'
-              ? 'Enter frame-by-frame scores for each player'
-              : 'Enter final team scores'
+            {isViewMode
+              ? 'Frame-by-frame results'
+              : scoringMode === 'frames'
+                ? 'Enter frame-by-frame scores for each player'
+                : 'Enter final team scores'
             }
           </DialogDescription>
         </DialogHeader>
@@ -461,7 +466,7 @@ export function MatchScoringDialog({
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
                                 isSaving={isSaving}
-                                isCompleted={isEditingLocked}
+                                isCompleted={isViewMode || isEditingLocked}
                                 bonusPointEnabled={matchDetails.bonus_point_enabled}
                               />
                             ))}
@@ -489,7 +494,7 @@ export function MatchScoringDialog({
                                 getTotalPoints={getPlayerTotalPoints}
                                 onScoreChange={handleScoreChange}
                                 isSaving={isSaving}
-                                isCompleted={isEditingLocked}
+                                isCompleted={isViewMode || isEditingLocked}
                                 bonusPointEnabled={matchDetails.bonus_point_enabled}
                               />
                             ))}
@@ -507,9 +512,27 @@ export function MatchScoringDialog({
                 </div>
               )}
 
-              {/* Complete Button */}
-              {!isCompleted && (
+              {/* Action area */}
+              {isViewMode && !isEditingLocked ? (
                 <div className="text-center pt-2">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setIsViewMode(false)}
+                    className="min-w-[200px]"
+                  >
+                    Edit Scores
+                  </Button>
+                </div>
+              ) : !isCompleted && (
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setIsViewMode(true)}
+                    disabled={isCompleting}
+                  >
+                    Cancel
+                  </Button>
                   <Button
                     size="lg"
                     onClick={handleComplete}
@@ -528,12 +551,12 @@ export function MatchScoringDialog({
                       </>
                     )}
                   </Button>
-                  {team1Score === team2Score && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Scores are tied. Continue scoring until there is a winner.
-                    </p>
-                  )}
                 </div>
+              )}
+              {!isViewMode && !isCompleted && team1Score === team2Score && (
+                <p className="text-sm text-muted-foreground mt-2 text-center">
+                  Scores are tied. Continue scoring until there is a winner.
+                </p>
               )}
               </div>
             )}
@@ -557,7 +580,7 @@ export function MatchScoringDialog({
                   value={finalScore1}
                   onChange={(e) => setFinalScore1(e.target.value)}
                   className="text-2xl font-mono text-center h-14"
-                  disabled={isEditingLocked || isCompleting}
+                  disabled={isViewMode || isEditingLocked || isCompleting}
                 />
               </div>
 
@@ -580,7 +603,7 @@ export function MatchScoringDialog({
                   value={finalScore2}
                   onChange={(e) => setFinalScore2(e.target.value)}
                   className="text-2xl font-mono text-center h-14"
-                  disabled={isEditingLocked || isCompleting}
+                  disabled={isViewMode || isEditingLocked || isCompleting}
                 />
               </div>
 
@@ -590,12 +613,21 @@ export function MatchScoringDialog({
                 </div>
               )}
 
-              {/* Save Button */}
-              {!isEditingLocked && (
+              {/* Save/Edit Button */}
+              {isViewMode && !isEditingLocked ? (
+                <div className="flex justify-end pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsViewMode(false)}
+                  >
+                    Edit Scores
+                  </Button>
+                </div>
+              ) : !isEditingLocked && (
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     variant="outline"
-                    onClick={() => onOpenChange(false)}
+                    onClick={() => setIsViewMode(true)}
                     disabled={isCompleting}
                   >
                     Cancel
