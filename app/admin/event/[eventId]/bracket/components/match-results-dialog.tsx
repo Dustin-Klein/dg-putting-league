@@ -45,8 +45,8 @@ export function MatchResultsDialog({
     fetch(`/api/public/event/${eventId}/bracket/match/${match.id}`)
       .then(async (res) => {
         if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to load match results');
+          const message = await res.json().then((d) => d.error).catch(() => null);
+          throw new Error(message || 'Failed to load match results');
         }
         return res.json();
       })
