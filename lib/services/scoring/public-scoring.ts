@@ -13,8 +13,8 @@ import {
   upsertFrameResultAtomic,
   bulkUpsertFrameResults,
 } from '@/lib/repositories/frame-repository';
-import { getPublicTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
-import { getEventByAccessCodeForBracket, getEventStatusByAccessCode } from '@/lib/repositories/event-repository';
+import { getPublicTeamFromParticipant, getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
+import { getEventByAccessCodeForBracket, getEventStatusByAccessCode, getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
@@ -22,6 +22,8 @@ import {
   updateMatchStatus,
   getMatchByIdAndEvent,
 } from '@/lib/repositories/bracket-repository';
+import type { BracketMatchWithDetails, OpponentData } from '@/lib/types/scoring';
+import { InternalError } from '@/lib/errors';
 import {
   validateQualificationAccessCode,
   getPlayersForQualification,
@@ -523,6 +525,53 @@ export async function batchRecordScoresAndGetMatch(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: ((updatedMatch.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
   };
+}
+
+/**
+ * Get bracket match with full details for public (anon) access.
+ * Mirrors getBracketMatchWithDetails but uses the anon client (respects RLS).
+ * The get_frame_results_for_match RPC is gated to events in 'bracket' status,
+ * so frame data is only visible while bracket play is active.
+ */
+export async function getPublicMatchDetails(
+  eventId: string,
+  matchId: number
+): Promise<BracketMatchWithDetails> {
+  const supabase = await createClient();
+
+  const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
+    getMatchForScoringById(supabase, matchId),
+    getEventBracketFrameCount(supabase, eventId),
+    getEventScoringConfig(supabase, eventId),
+  ]);
+
+  if (!bracketMatch || bracketMatch.event_id !== eventId) {
+    throw new NotFoundError('Match not found');
+  }
+
+  if (bracketFrameCount === null || !eventConfig) {
+    throw new InternalError('Event scoring configuration not found');
+  }
+
+  const opponent1 = bracketMatch.opponent1 as OpponentData | null;
+  const opponent2 = bracketMatch.opponent2 as OpponentData | null;
+
+  const [team_one, team_two] = await Promise.all([
+    getTeamFromParticipant(supabase, opponent1?.id ?? null),
+    getTeamFromParticipant(supabase, opponent2?.id ?? null),
+  ]);
+
+  return {
+    ...bracketMatch,
+    opponent1,
+    opponent2,
+    team_one,
+    team_two,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
+    bracket_frame_count: bracketFrameCount,
+    bonus_point_enabled: eventConfig.bonus_point_enabled,
+  } as BracketMatchWithDetails;
 }
 
 /**
