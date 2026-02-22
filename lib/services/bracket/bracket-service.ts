@@ -41,7 +41,10 @@ import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
-import type { BracketWithTeams } from '@/lib/types/bracket';
+import type {
+  BracketWithTeams,
+  MatchProgressionSources,
+} from '@/lib/types/bracket';
 
 /**
  * Get the next power of 2 that is >= n
@@ -66,6 +69,155 @@ export interface BracketData {
 export interface MatchWithTeams extends Match {
   team1?: Team;
   team2?: Team;
+}
+
+type ProgressionMatchSlot = 'opponent1' | 'opponent2';
+
+type BracketManagerFind = {
+  nextMatches?: (matchId: number) => Promise<Array<{ id: unknown }>>;
+};
+
+interface ProgressionContext {
+  stage: Stage;
+  groups: Group[];
+  rounds: Round[];
+  matches: Match[];
+}
+
+function toNumericId(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Build a map describing which source match/outcome feeds each target slot.
+ * This powers UI labels such as "winner of M3" and "loser of M5".
+ */
+export async function buildProgressionSourceMap(
+  context: ProgressionContext,
+  managerFind: BracketManagerFind
+): Promise<Record<number, MatchProgressionSources>> {
+  const map: Record<number, MatchProgressionSources> = {};
+  const matchById = new Map<number, Match>();
+  const groupById = new Map<number, Group>();
+  const roundById = new Map<number, Round>();
+  const roundCountByGroupId = new Map<number, number>();
+  const { matches } = context;
+
+  for (const group of context.groups) {
+    const groupId = toNumericId(group.id);
+    if (groupId == null) continue;
+    groupById.set(groupId, group);
+  }
+  for (const round of context.rounds) {
+    const roundId = toNumericId(round.id);
+    const roundGroupId = toNumericId(round.group_id);
+    if (roundId == null || roundGroupId == null) continue;
+    roundById.set(roundId, round);
+    roundCountByGroupId.set(roundGroupId, (roundCountByGroupId.get(roundGroupId) ?? 0) + 1);
+  }
+
+  const nextMatchesFn = managerFind.nextMatches?.bind(managerFind);
+  if (!nextMatchesFn) return map;
+
+  for (const match of matches) {
+    const matchId = toNumericId(match.id);
+    if (matchId == null) continue;
+    matchById.set(matchId, match);
+  }
+
+  const resolveWinnerSlot = (sourceMatch: Match): ProgressionMatchSlot | null => {
+    const sourceGroup = groupById.get(Number(sourceMatch.group_id));
+    const sourceRound = roundById.get(Number(sourceMatch.round_id));
+    const sourceMatchNumber = toNumericId(sourceMatch.number);
+    if (!sourceGroup || !sourceRound || sourceMatchNumber == null) return null;
+    const roundCount = roundCountByGroupId.get(Number(sourceGroup.id));
+    if (!roundCount) return null;
+    const matchLocation = helpers.getMatchLocation(context.stage.type as never, sourceGroup.number);
+    const adjustedRoundNumber =
+      context.stage.settings?.skipFirstRound && matchLocation === 'winner_bracket'
+        ? sourceRound.number + 1
+        : sourceRound.number;
+    return helpers.getNextSide(
+      sourceMatchNumber,
+      adjustedRoundNumber,
+      roundCount,
+      matchLocation
+    ) as ProgressionMatchSlot;
+  };
+
+  const resolveLoserSlot = (sourceMatch: Match, targetMatch: Match): ProgressionMatchSlot | null => {
+    const sourceGroup = groupById.get(Number(sourceMatch.group_id));
+    const sourceRound = roundById.get(Number(sourceMatch.round_id));
+    const sourceMatchNumber = toNumericId(sourceMatch.number);
+    if (!sourceGroup || !sourceRound || sourceMatchNumber == null) return null;
+    const roundCount = roundCountByGroupId.get(Number(sourceGroup.id));
+    if (!roundCount) return null;
+    const matchLocation = helpers.getMatchLocation(context.stage.type as never, sourceGroup.number);
+    const adjustedRoundNumber =
+      context.stage.settings?.skipFirstRound && matchLocation === 'winner_bracket'
+        ? sourceRound.number + 1
+        : sourceRound.number;
+
+    if (matchLocation === 'winner_bracket') {
+      return helpers.getNextSideLoserBracket(
+        sourceMatchNumber,
+        targetMatch,
+        adjustedRoundNumber
+      ) as ProgressionMatchSlot;
+    }
+
+    if (matchLocation === 'loser_bracket') {
+      return helpers.getNextSideConsolationFinalDoubleElimination(
+        adjustedRoundNumber
+      ) as ProgressionMatchSlot;
+    }
+
+    if (matchLocation === 'single_bracket') {
+      return resolveWinnerSlot(sourceMatch);
+    }
+
+    return null;
+  };
+
+  for (const sourceMatch of matches) {
+    const sourceMatchId = toNumericId(sourceMatch.id);
+    if (sourceMatchId == null) continue;
+
+    let nextMatches: Array<{ id: unknown }> = [];
+    try {
+      nextMatches = await nextMatchesFn(sourceMatchId);
+    } catch {
+      continue;
+    }
+
+    const winnerTargetId = toNumericId(nextMatches[0]?.id);
+    if (winnerTargetId != null) {
+      const winnerSlot = resolveWinnerSlot(sourceMatch);
+      if (winnerSlot) {
+        if (!map[winnerTargetId]) map[winnerTargetId] = {};
+        map[winnerTargetId][winnerSlot] = {
+          sourceMatchId,
+          sourceOutcome: 'winner',
+        };
+      }
+    }
+
+    const loserTargetId = toNumericId(nextMatches[1]?.id);
+    if (loserTargetId != null) {
+      const loserTargetMatch = matchById.get(loserTargetId);
+      if (!loserTargetMatch) continue;
+      const loserSlot = resolveLoserSlot(sourceMatch, loserTargetMatch);
+      if (!loserSlot) continue;
+      if (!map[loserTargetId]) map[loserTargetId] = {};
+      map[loserTargetId][loserSlot] = {
+        sourceMatchId,
+        sourceOutcome: 'loser',
+      };
+    }
+  }
+
+  return map;
 }
 
 /**
@@ -208,6 +360,9 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     throw new NotFoundError('Bracket not found for this event');
   }
 
+  const storage = new SupabaseBracketStorage(supabase, eventId);
+  const manager = new BracketsManager(storage);
+  const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
   const { stage, groups, rounds, matches, participants } = bracketStructure;
 
   // Fetch frame counts for running matches
@@ -231,6 +386,16 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     laneMap[lane.id] = lane.label;
   }
 
+  const progressionSourceMap = await buildProgressionSourceMap(
+    {
+      stage: stage as unknown as Stage,
+      groups: groups as unknown as Group[],
+      rounds: rounds as unknown as Round[],
+      matches: matches as unknown as Match[],
+    },
+    managerFind ?? {}
+  );
+
   return {
     bracket: {
       stage: stage as unknown as Stage,
@@ -246,6 +411,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     eventStatus: event.status,
     bracketFrameCount: event.bracket_frame_count,
     frameCountMap,
+    progressionSourceMap,
   };
 }
 
@@ -281,6 +447,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   accessCode?: string;
   bracketFrameCount?: number;
   frameCountMap: Record<number, number>;
+  progressionSourceMap: Record<number, MatchProgressionSources>;
 }> {
   const { supabase } = await requireEventAdmin(eventId);
 
@@ -295,6 +462,18 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id as number);
   const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
+  const storage = new SupabaseBracketStorage(supabase, eventId);
+  const manager = new BracketsManager(storage);
+  const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
+  const progressionSourceMap = await buildProgressionSourceMap(
+    {
+      stage: bracket.stage,
+      groups: bracket.groups,
+      rounds: bracket.rounds,
+      matches: bracket.matches,
+    },
+    managerFind ?? {}
+  );
 
   const participantTeamMap: Record<number, Team> = {};
 
@@ -313,6 +492,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     accessCode: event?.access_code ?? undefined,
     bracketFrameCount: event?.bracket_frame_count,
     frameCountMap,
+    progressionSourceMap,
   };
 }
 

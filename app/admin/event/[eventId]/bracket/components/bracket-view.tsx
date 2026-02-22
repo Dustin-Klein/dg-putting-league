@@ -335,7 +335,14 @@ function RoundConnector({
 }
 
 export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
-  const { bracket, participantTeamMap, laneMap = {}, bracketFrameCount, frameCountMap = {} } = data;
+  const {
+    bracket,
+    participantTeamMap,
+    laneMap = {},
+    bracketFrameCount,
+    frameCountMap = {},
+    progressionSourceMap = {},
+  } = data;
   const [hideFinished, setHideFinished] = useState(() => {
     if (typeof window !== 'undefined') {
       return sessionStorage.getItem('bracket-hide-finished') === 'true';
@@ -408,6 +415,122 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
 
     return map;
   }, [groupsWithRounds]);
+
+  const normalizedMatchNumberMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const [rawId, displayNumber] of matchNumberMap.entries()) {
+      const normalizedId = Number(rawId);
+      if (!Number.isFinite(normalizedId)) continue;
+      map.set(normalizedId, displayNumber);
+    }
+    return map;
+  }, [matchNumberMap]);
+
+  const placeholderMap = useMemo(() => {
+    const map = new Map<number | string, { opponent1?: string; opponent2?: string }>();
+    const matchById = new Map<number, Match>();
+    for (const match of bracket.matches) {
+      const numericId = Number(match.id);
+      if (Number.isFinite(numericId)) {
+        matchById.set(numericId, match);
+      }
+    }
+
+    const pickUpstreamFromHiddenMatch = (
+      hiddenMatchId: number,
+      desiredOutcome: 'winner' | 'loser'
+    ): { sourceMatchId: number; sourceOutcome: 'winner' | 'loser' } | undefined => {
+      const hiddenSources = progressionSourceMap[hiddenMatchId];
+      if (!hiddenSources) return undefined;
+
+      const source1 = hiddenSources.opponent1;
+      const source2 = hiddenSources.opponent2;
+      if (!!source1 !== !!source2) {
+        return source1 ?? source2 ?? undefined;
+      }
+      if (!source1 || !source2) return undefined;
+
+      const hiddenMatch = matchById.get(hiddenMatchId);
+      if (!hiddenMatch) return undefined;
+      const opp1 = hiddenMatch.opponent1 as { id?: number | null; result?: 'win' | 'loss' | 'draw' } | null;
+      const opp2 = hiddenMatch.opponent2 as { id?: number | null; result?: 'win' | 'loss' | 'draw' } | null;
+
+      const wantedResult = desiredOutcome === 'winner' ? 'win' : 'loss';
+      if (opp1?.result === wantedResult && opp2?.result !== wantedResult) {
+        return source1;
+      }
+      if (opp2?.result === wantedResult && opp1?.result !== wantedResult) {
+        return source2;
+      }
+
+      // BYE-style hidden match: winner side is usually the only side with a participant id.
+      if (desiredOutcome === 'winner') {
+        const opp1HasParticipant = opp1?.id != null;
+        const opp2HasParticipant = opp2?.id != null;
+        if (opp1HasParticipant !== opp2HasParticipant) {
+          return opp1HasParticipant ? source1 : source2;
+        }
+      }
+
+      return undefined;
+    };
+
+    const resolveDisplayLabel = (
+      sourceMatchId: number,
+      sourceOutcome: 'winner' | 'loser'
+    ): string | undefined => {
+      const visited = new Set<number>();
+      let currentSourceId = sourceMatchId;
+      let currentOutcome: 'winner' | 'loser' = sourceOutcome;
+
+      while (!visited.has(currentSourceId)) {
+        visited.add(currentSourceId);
+
+        const directDisplayNumber = normalizedMatchNumberMap.get(currentSourceId);
+        if (directDisplayNumber) {
+          const capitalizedOutcome = currentOutcome.charAt(0).toUpperCase() + currentOutcome.slice(1);
+          return `${capitalizedOutcome} of M${directDisplayNumber}`;
+        }
+
+        if (currentOutcome !== 'winner') {
+          return undefined;
+        }
+
+        const upstreamSource = pickUpstreamFromHiddenMatch(currentSourceId, currentOutcome);
+        if (!upstreamSource) {
+          return undefined;
+        }
+
+        currentSourceId = Number(upstreamSource.sourceMatchId);
+        currentOutcome = upstreamSource.sourceOutcome;
+      }
+
+      return undefined;
+    };
+
+    for (const match of bracket.matches) {
+      const matchId = Number(match.id);
+      if (!Number.isFinite(matchId)) continue;
+
+      const progressionSources = progressionSourceMap[matchId];
+      if (!progressionSources) continue;
+
+      const placeholders: { opponent1?: string; opponent2?: string } = {};
+      for (const slot of ['opponent1', 'opponent2'] as const) {
+        const source = progressionSources[slot];
+        if (!source) continue;
+        const label = resolveDisplayLabel(Number(source.sourceMatchId), source.sourceOutcome);
+        if (!label) continue;
+        placeholders[slot] = label;
+      }
+
+      if (placeholders.opponent1 || placeholders.opponent2) {
+        map.set(match.id, placeholders);
+      }
+    }
+
+    return map;
+  }, [bracket.matches, progressionSourceMap, normalizedMatchNumberMap]);
 
   const getRoundName = (group: GroupWithRounds, round: Round): string => {
     // Use stable labels based on all non-BYE rounds (not affected by hideFinished)
@@ -496,6 +619,8 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
                           team1={match.team1}
                           team2={match.team2}
                           matchNumber={matchNumberMap.get(match.id) || 0}
+                          opponent1Placeholder={placeholderMap.get(match.id)?.opponent1}
+                          opponent2Placeholder={placeholderMap.get(match.id)?.opponent2}
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                           isIdle={idleMatchIds.has(match.id)}
                           onClick={() => onMatchClick?.(match)}
