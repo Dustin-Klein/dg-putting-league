@@ -20,11 +20,15 @@ interface MatchCardProps {
   team1?: Team;
   team2?: Team;
   matchNumber: number;
+  opponent1Placeholder?: string;
+  opponent2Placeholder?: string;
   laneLabel?: string;
   isIdle?: boolean;
   onClick?: () => void;
   isClickable?: boolean;
   isCorrectionMode?: boolean;
+  framesCompleted?: number;
+  totalFrames?: number;
 }
 
 function getTeamName(team?: Team): string {
@@ -79,16 +83,18 @@ function OpponentRow({
   team,
   isWinner,
   showScore,
+  placeholder,
 }: {
   opponent: OpponentData | null;
   team?: Team;
   isWinner: boolean;
   showScore: boolean;
+  placeholder?: string;
 }) {
-  if (!opponent || opponent.id === null) {
+  if (!opponent || opponent.id == null) {
     return (
       <div className="flex items-center justify-between px-2 py-1.5 text-sm text-muted-foreground">
-        <span className="italic">TBD</span>
+        <span className="italic">{placeholder || 'TBD'}</span>
       </div>
     );
   }
@@ -130,11 +136,15 @@ export function MatchCard({
   team1,
   team2,
   matchNumber,
+  opponent1Placeholder,
+  opponent2Placeholder,
   laneLabel,
   isIdle = false,
   onClick,
   isClickable = false,
   isCorrectionMode = false,
+  framesCompleted,
+  totalFrames,
 }: MatchCardProps) {
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
@@ -159,13 +169,16 @@ export function MatchCard({
         'w-64 overflow-hidden transition-all relative',
         isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/50',
         match.status === Status.Running && 'border-2 border-blue-400',
-        laneLabel && !isIdle && match.status !== Status.Running && !isComplete && 'ring-1 ring-amber-300/60',
-        isIdle && 'shadow-[0_0_12px_rgba(245,158,11,0.5)]'
+        laneLabel && !isIdle && match.status !== Status.Running && !isComplete && 'shadow-[0_0_12px_rgba(245,158,11,0.5)]',
+        isIdle && 'shadow-[0_0_12px_rgba(239,68,68,0.5)]'
       )}
       onClick={isClickable ? onClick : undefined}
     >
-      {isIdle && (
+      {laneLabel && !isIdle && match.status !== Status.Running && !isComplete && (
         <div className="absolute inset-0 border-2 border-amber-500 rounded-[inherit] animate-pulse-ring pointer-events-none z-10" />
+      )}
+      {isIdle && (
+        <div className="absolute inset-0 border-2 border-red-500 rounded-[inherit] animate-pulse-ring-fast pointer-events-none z-10" />
       )}
       {isCorrectionMode && (
         <div className="absolute top-0 left-0">
@@ -183,6 +196,11 @@ export function MatchCard({
               <span className="text-sm font-medium">{laneNumber}</span>
             </div>
           )}
+          {match.status === Status.Running && framesCompleted !== undefined && totalFrames !== undefined && (
+            <span className="text-[10px] font-medium text-muted-foreground leading-none tabular-nums">
+              {framesCompleted}/{totalFrames}
+            </span>
+          )}
         </div>
         <CardContent className="p-0 divide-y flex-1 min-w-0">
           <OpponentRow
@@ -190,12 +208,14 @@ export function MatchCard({
             team={team1}
             isWinner={team1IsWinner}
             showScore={showScore}
+            placeholder={opponent1Placeholder}
           />
           <OpponentRow
             opponent={opponent2}
             team={team2}
             isWinner={team2IsWinner}
             showScore={showScore}
+            placeholder={opponent2Placeholder}
           />
         </CardContent>
       </div>

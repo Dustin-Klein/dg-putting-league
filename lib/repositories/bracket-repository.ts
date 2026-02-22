@@ -1260,6 +1260,32 @@ export async function getAllMatchesForEvent(
 }
 
 /**
+ * Get frame counts for a list of match IDs
+ */
+export async function getFrameCountsForMatchIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  matchIds: number[]
+): Promise<Record<number, number>> {
+  if (matchIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from('match_frames')
+    .select('bracket_match_id')
+    .in('bracket_match_id', matchIds);
+
+  if (error) {
+    throw new InternalError(`Failed to fetch frame counts: ${error.message}`);
+  }
+
+  const counts: Record<number, number> = {};
+  for (const row of data ?? []) {
+    const id = row.bracket_match_id as number;
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
  * Delete match frames for a bracket match (frame_results cascade-delete via FK)
  */
 export async function deleteMatchFrames(

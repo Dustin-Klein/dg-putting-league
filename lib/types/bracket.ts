@@ -31,6 +31,18 @@ export interface BracketData {
   participants: Participant[];
 }
 
+export type ProgressionSourceOutcome = 'winner' | 'loser';
+
+export interface ProgressionSource {
+  sourceMatchId: number;
+  sourceOutcome: ProgressionSourceOutcome;
+}
+
+export interface MatchProgressionSources {
+  opponent1?: ProgressionSource;
+  opponent2?: ProgressionSource;
+}
+
 /**
  * Bracket with resolved team data
  */
@@ -42,6 +54,9 @@ export interface BracketWithTeams {
   laneMap: Record<string, string>;
   eventStatus?: EventStatus;
   accessCode?: string;
+  bracketFrameCount?: number;
+  frameCountMap?: Record<number, number>;
+  progressionSourceMap?: Record<number, MatchProgressionSources>;
 }
 
 /**
