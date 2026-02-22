@@ -418,12 +418,14 @@ function PlayerScoreRow({
   }
 
   const handleIncrement = useCallback(() => {
-    const newScore = currentScore === null ? 0 : Math.min(currentScore + 1, MAX_PUTTS);
+    const newScore = currentScore === null ? 1 : Math.min(currentScore + 1, MAX_PUTTS);
     onScoreChange(player.event_player_id, frameNumber, newScore);
   }, [currentScore, player.event_player_id, frameNumber, onScoreChange]);
 
   const handleDecrement = useCallback(() => {
-    if (currentScore !== null && currentScore > MIN_PUTTS) {
+    if (currentScore === null) {
+      onScoreChange(player.event_player_id, frameNumber, 0);
+    } else if (currentScore > MIN_PUTTS) {
       onScoreChange(player.event_player_id, frameNumber, currentScore - 1);
     }
   }, [currentScore, player.event_player_id, frameNumber, onScoreChange]);
@@ -452,7 +454,7 @@ function PlayerScoreRow({
           size="icon"
           className="h-12 w-12 rounded-full"
           onClick={handleDecrement}
-          disabled={currentScore === null || currentScore <= MIN_PUTTS}
+          disabled={currentScore !== null && currentScore <= MIN_PUTTS}
           aria-label="Decrease score"
         >
           <Minus className="h-5 w-5" />
