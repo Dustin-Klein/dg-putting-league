@@ -136,7 +136,7 @@ describe('FrameWizard', () => {
       const increaseButtons = screen.getAllByRole('button', { name: /increase score/i });
       await user.click(increaseButtons[0]);
 
-      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 0);
+      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 1);
     });
 
     it('increments from existing score', async () => {
@@ -183,13 +183,15 @@ describe('FrameWizard', () => {
       expect(decreaseButtons[0]).toBeDisabled();
     });
 
-    it('disables decrement button when no score is set', () => {
-      render(<FrameWizard {...defaultProps} />);
+    it('decrements from null to 0', async () => {
+      const user = userEvent.setup();
+      const onScoreChange = jest.fn();
+      render(<FrameWizard {...defaultProps} onScoreChange={onScoreChange} />);
 
       const decreaseButtons = screen.getAllByRole('button', { name: /decrease score/i });
-      decreaseButtons.forEach((button) => {
-        expect(button).toBeDisabled();
-      });
+      await user.click(decreaseButtons[0]);
+
+      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 0);
     });
   });
 
