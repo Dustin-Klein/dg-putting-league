@@ -14,6 +14,12 @@ export async function GET(
     const params = await props.params;
     const { eventId, matchId } = params;
 
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(eventId)) {
+      return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
+    }
+
     const matchIdNum = parseInt(matchId, 10);
     if (isNaN(matchIdNum)) {
       return NextResponse.json({ error: 'Invalid match ID' }, { status: 400 });

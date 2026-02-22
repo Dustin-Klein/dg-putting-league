@@ -627,7 +627,11 @@ export function MatchScoringDialog({
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     variant="outline"
-                    onClick={() => setIsViewMode(true)}
+                    onClick={() => {
+                      setFinalScore1(String(matchDetails?.opponent1?.score ?? 0));
+                      setFinalScore2(String(matchDetails?.opponent2?.score ?? 0));
+                      setIsViewMode(true);
+                    }}
                     disabled={isCompleting}
                   >
                     Cancel

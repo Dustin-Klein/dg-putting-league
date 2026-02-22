@@ -76,6 +76,23 @@ export interface BracketMatchWithDetails {
   bonus_point_enabled: boolean;
 }
 
+/** Represents the public-facing match details returned by getPublicMatchDetails. */
+export interface PublicMatchDetails {
+  id: number;
+  event_id: string;
+  round_id: number;
+  number: number;
+  status: number;
+  lane_id: string | null;
+  opponent1: OpponentData | null;
+  opponent2: OpponentData | null;
+  team_one: TeamWithPlayers | null;
+  team_two: TeamWithPlayers | null;
+  frames: PublicFrameInfo[];
+  bracket_frame_count: number;
+  bonus_point_enabled: boolean;
+}
+
 export interface OpponentData {
   id: number | null;
   score?: number;
