@@ -1268,10 +1268,9 @@ export async function getFrameCountsForMatchIds(
 ): Promise<Record<number, number>> {
   if (matchIds.length === 0) return {};
 
-  const { data, error } = await supabase
-    .from('match_frames')
-    .select('bracket_match_id')
-    .in('bracket_match_id', matchIds);
+  const { data, error } = await supabase.rpc('get_frame_counts_for_matches', {
+    p_match_ids: matchIds,
+  });
 
   if (error) {
     throw new InternalError(`Failed to fetch frame counts: ${error.message}`);
@@ -1279,8 +1278,7 @@ export async function getFrameCountsForMatchIds(
 
   const counts: Record<number, number> = {};
   for (const row of data ?? []) {
-    const id = row.bracket_match_id as number;
-    counts[id] = (counts[id] ?? 0) + 1;
+    counts[row.bracket_match_id as number] = Number(row.frame_count);
   }
   return counts;
 }
