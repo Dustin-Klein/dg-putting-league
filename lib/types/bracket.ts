@@ -42,6 +42,8 @@ export interface BracketWithTeams {
   laneMap: Record<string, string>;
   eventStatus?: EventStatus;
   accessCode?: string;
+  bracketFrameCount?: number;
+  frameCountMap?: Record<number, number>;
 }
 
 /**

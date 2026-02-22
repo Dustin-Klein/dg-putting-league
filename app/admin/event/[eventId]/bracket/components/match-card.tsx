@@ -25,6 +25,8 @@ interface MatchCardProps {
   onClick?: () => void;
   isClickable?: boolean;
   isCorrectionMode?: boolean;
+  framesCompleted?: number;
+  totalFrames?: number;
 }
 
 function getTeamName(team?: Team): string {
@@ -135,6 +137,8 @@ export function MatchCard({
   onClick,
   isClickable = false,
   isCorrectionMode = false,
+  framesCompleted,
+  totalFrames,
 }: MatchCardProps) {
   const opponent1 = match.opponent1 as OpponentData | null;
   const opponent2 = match.opponent2 as OpponentData | null;
@@ -185,6 +189,11 @@ export function MatchCard({
               <MapPin className="h-2.5 w-2.5" aria-hidden="true" />
               <span className="text-sm font-medium">{laneNumber}</span>
             </div>
+          )}
+          {match.status === Status.Running && framesCompleted !== undefined && totalFrames !== undefined && (
+            <span className="text-[10px] font-medium text-muted-foreground leading-none tabular-nums">
+              {framesCompleted}/{totalFrames}
+            </span>
           )}
         </div>
         <CardContent className="p-0 divide-y flex-1 min-w-0">
