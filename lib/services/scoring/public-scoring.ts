@@ -15,7 +15,7 @@ import {
 } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket, getEventStatusByAccessCode, getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
-import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
+import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
@@ -31,6 +31,7 @@ import {
 import type {
   PublicEventInfo,
   PublicMatchInfo,
+  ScoringLane,
 } from '@/lib/types/scoring';
 import { MatchStatus } from '@/lib/types/bracket';
 
@@ -42,6 +43,7 @@ export type {
   PublicPlayerInfo,
   PublicFrameInfo,
   PublicFrameResult,
+  ScoringLane,
 } from '@/lib/types/scoring';
 
 /**
@@ -72,12 +74,18 @@ export async function getEventScoringContext(accessCode: string) {
   // Handle bracket mode
   if (eventCheck.status === 'bracket') {
     const event = await validateAccessCode(cleanedAccessCode, supabase);
-    const matches = await getMatchesForScoring(cleanedAccessCode);
+    const [matches, allLanes] = await Promise.all([
+      getMatchesForScoring(cleanedAccessCode),
+      getLanesForEvent(supabase, event.id),
+    ]);
+
+    const lanes: ScoringLane[] = allLanes.map(l => ({ id: l.id, label: l.label }));
 
     return {
       mode: 'bracket' as const,
       event,
       matches,
+      lanes,
     };
   }
 

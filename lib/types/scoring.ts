@@ -134,6 +134,11 @@ export interface FrameResult {
   order_in_frame: number;
 }
 
+export interface ScoringLane {
+  id: string;
+  label: string;
+}
+
 export interface RecordFrameResultInput {
   event_player_id: string;
   putts_made: number;
