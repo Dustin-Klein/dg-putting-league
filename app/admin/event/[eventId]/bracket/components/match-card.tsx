@@ -20,6 +20,8 @@ interface MatchCardProps {
   team1?: Team;
   team2?: Team;
   matchNumber: number;
+  opponent1Placeholder?: string;
+  opponent2Placeholder?: string;
   laneLabel?: string;
   isIdle?: boolean;
   onClick?: () => void;
@@ -81,16 +83,18 @@ function OpponentRow({
   team,
   isWinner,
   showScore,
+  placeholder,
 }: {
   opponent: OpponentData | null;
   team?: Team;
   isWinner: boolean;
   showScore: boolean;
+  placeholder?: string;
 }) {
-  if (!opponent || opponent.id === null) {
+  if (!opponent || opponent.id == null) {
     return (
       <div className="flex items-center justify-between px-2 py-1.5 text-sm text-muted-foreground">
-        <span className="italic">TBD</span>
+        <span className="italic">{placeholder || 'TBD'}</span>
       </div>
     );
   }
@@ -132,6 +136,8 @@ export function MatchCard({
   team1,
   team2,
   matchNumber,
+  opponent1Placeholder,
+  opponent2Placeholder,
   laneLabel,
   isIdle = false,
   onClick,
@@ -202,12 +208,14 @@ export function MatchCard({
             team={team1}
             isWinner={team1IsWinner}
             showScore={showScore}
+            placeholder={opponent1Placeholder}
           />
           <OpponentRow
             opponent={opponent2}
             team={team2}
             isWinner={team2IsWinner}
             showScore={showScore}
+            placeholder={opponent2Placeholder}
           />
         </CardContent>
       </div>
