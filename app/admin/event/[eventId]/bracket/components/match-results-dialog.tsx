@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { Match } from 'brackets-model';
-import type { BracketMatchWithDetails } from '@/lib/types/scoring';
+import type { PublicMatchDetails } from '@/lib/types/scoring';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ export function MatchResultsDialog({
   open,
   onOpenChange,
 }: MatchResultsDialogProps) {
-  const [matchDetails, setMatchDetails] = useState<BracketMatchWithDetails | null>(null);
+  const [matchDetails, setMatchDetails] = useState<PublicMatchDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,13 +45,13 @@ export function MatchResultsDialog({
     fetch(`/api/public/event/${eventId}/bracket/match/${match.id}`)
       .then(async (res) => {
         if (!res.ok) {
-          const message = await res.json().then((d) => d.error).catch(() => null);
+          const message = await res.json().then((errorBody) => errorBody.error).catch(() => null);
           throw new Error(message || 'Failed to load match results');
         }
         return res.json();
       })
-      .then((data) => {
-        if (!cancelled) setMatchDetails(data);
+      .then((matchDetails) => {
+        if (!cancelled) setMatchDetails(matchDetails);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load match results');

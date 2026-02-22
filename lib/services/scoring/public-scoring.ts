@@ -22,7 +22,7 @@ import {
   updateMatchStatus,
   getMatchByIdAndEvent,
 } from '@/lib/repositories/bracket-repository';
-import type { BracketMatchWithDetails, OpponentData } from '@/lib/types/scoring';
+import type { PublicMatchDetails, OpponentData } from '@/lib/types/scoring';
 import { InternalError } from '@/lib/errors';
 import {
   validateQualificationAccessCode,
@@ -536,7 +536,7 @@ export async function batchRecordScoresAndGetMatch(
 export async function getPublicMatchDetails(
   eventId: string,
   matchId: number
-): Promise<BracketMatchWithDetails> {
+): Promise<PublicMatchDetails> {
   const supabase = await createClient();
 
   const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
@@ -562,16 +562,20 @@ export async function getPublicMatchDetails(
   ]);
 
   return {
-    ...bracketMatch,
+    id: bracketMatch.id,
+    event_id: bracketMatch.event_id,
+    round_id: bracketMatch.round_id,
+    number: bracketMatch.number,
+    status: bracketMatch.status,
+    lane_id: bracketMatch.lane_id,
     opponent1,
     opponent2,
     team_one,
     team_two,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
+    frames: bracketMatch.frames?.sort((a, b) => a.frame_number - b.frame_number) ?? [],
     bracket_frame_count: bracketFrameCount,
     bonus_point_enabled: eventConfig.bonus_point_enabled,
-  } as BracketMatchWithDetails;
+  };
 }
 
 /**
