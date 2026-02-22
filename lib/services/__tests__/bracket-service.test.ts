@@ -65,6 +65,7 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
   deleteMatchFrames: jest.fn(),
   getMatchWithGroupInfo: jest.fn(),
   getSecondGrandFinalMatch: jest.fn(),
+  getFrameCountsForMatchIds: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('@/lib/repositories/event-repository', () => ({

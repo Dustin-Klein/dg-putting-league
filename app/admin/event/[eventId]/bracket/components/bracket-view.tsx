@@ -335,7 +335,7 @@ function RoundConnector({
 }
 
 export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
-  const { bracket, participantTeamMap, laneMap = {} } = data;
+  const { bracket, participantTeamMap, laneMap = {}, bracketFrameCount, frameCountMap = {} } = data;
   const [hideFinished, setHideFinished] = useState(() => {
     if (typeof window !== 'undefined') {
       return sessionStorage.getItem('bracket-hide-finished') === 'true';
@@ -514,6 +514,8 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
                             eventStatus === 'bracket' &&
                             (match.status === Status.Completed || match.status === Status.Archived)
                           }
+                          framesCompleted={frameCountMap[match.id as number]}
+                          totalFrames={bracketFrameCount}
                         />
                       </div>
                     )

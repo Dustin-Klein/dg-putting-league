@@ -34,6 +34,7 @@ import {
   getMatchWithGroupInfo,
   getSecondGrandFinalMatch,
   updateMatchStatus,
+  getFrameCountsForMatchIds,
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
@@ -209,6 +210,12 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
 
   const { stage, groups, rounds, matches, participants } = bracketStructure;
 
+  // Fetch frame counts for running matches
+  const runningMatchIds = (matches as Array<{ id: number; status: number }>)
+    .filter((m) => m.status === Status.Running)
+    .map((m) => m.id);
+  const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
+
   // Build participant to team mapping
   const participantTeamMap: Record<number, Team> = {};
   for (const p of participants) {
@@ -237,6 +244,8 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     lanes,
     laneMap,
     eventStatus: event.status,
+    bracketFrameCount: event.bracket_frame_count,
+    frameCountMap,
   };
 }
 
@@ -270,6 +279,8 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   participantTeamMap: Record<number, Team>;
   eventStatus?: EventStatus;
   accessCode?: string;
+  bracketFrameCount?: number;
+  frameCountMap: Record<number, number>;
 }> {
   const { supabase } = await requireEventAdmin(eventId);
 
@@ -280,6 +291,11 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     getParticipantsWithTeamIds(supabase, eventId),
   ]);
 
+  const runningMatchIds = bracket.matches
+    .filter((m) => m.status === Status.Running)
+    .map((m) => m.id as number);
+  const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
+
   const participantTeamMap: Record<number, Team> = {};
 
   for (const p of participantsWithTeams) {
@@ -289,7 +305,15 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     }
   }
 
-  return { bracket, teams, participantTeamMap, eventStatus: event?.status, accessCode: event?.access_code ?? undefined };
+  return {
+    bracket,
+    teams,
+    participantTeamMap,
+    eventStatus: event?.status,
+    accessCode: event?.access_code ?? undefined,
+    bracketFrameCount: event?.bracket_frame_count,
+    frameCountMap,
+  };
 }
 
 /**
