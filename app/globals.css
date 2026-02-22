@@ -68,6 +68,10 @@
   .animate-pulse-ring {
     animation: pulse-ring 1.5s ease-in-out infinite;
   }
+
+  .animate-pulse-ring-fast {
+    animation: pulse-ring 0.75s ease-in-out infinite;
+  }
 }
 
 @keyframes pulse-ring {
