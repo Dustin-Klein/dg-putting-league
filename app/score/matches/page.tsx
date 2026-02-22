@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, RefreshCw, LayoutGrid } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, RefreshCw, LayoutGrid, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { MatchStatus } from '@/lib/types/bracket';
-import type { PublicMatchInfo } from '@/lib/types/scoring';
+import type { PublicMatchInfo, ScoringLane } from '@/lib/types/scoring';
 
 interface EventInfo {
   id: string;
@@ -25,6 +26,8 @@ export default function MatchesPage() {
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [event, setEvent] = useState<EventInfo | null>(null);
   const [matches, setMatches] = useState<PublicMatchInfo[]>([]);
+  const [lanes, setLanes] = useState<ScoringLane[]>([]);
+  const [selectedLaneId, setSelectedLaneId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +48,7 @@ export default function MatchesPage() {
       const data = await response.json();
       setEvent(data.event);
       setMatches(data.matches);
+      setLanes(data.lanes ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load matches');
@@ -60,8 +64,41 @@ export default function MatchesPage() {
       return;
     }
     setAccessCode(code);
+
+    const storedLane = localStorage.getItem('scoring_device_lane');
+    if (storedLane) setSelectedLaneId(storedLane);
+
     fetchMatches(code);
   }, [router, fetchMatches]);
+
+  // Auto-navigate when a match on the selected lane becomes active.
+  // Skips navigation if we already auto-navigated to this match ID, so
+  // returning via the back button doesn't immediately redirect again.
+  useEffect(() => {
+    if (!selectedLaneId || !event) return;
+    const laneMatch = matches.find(
+      m => m.lane_id === selectedLaneId &&
+      (m.status === MatchStatus.Ready || m.status === MatchStatus.Running)
+    );
+    if (!laneMatch) return;
+
+    const lastNavKey = 'scoring_last_autonav_match';
+    const lastNavId = sessionStorage.getItem(lastNavKey);
+    if (lastNavId === String(laneMatch.id)) return;
+
+    sessionStorage.setItem(lastNavKey, String(laneMatch.id));
+    router.push(`/score/match/${laneMatch.id}`);
+  }, [selectedLaneId, matches, event, router]);
+
+  const handleLaneSelect = (value: string) => {
+    const laneId = value === 'all' ? null : value;
+    setSelectedLaneId(laneId);
+    if (laneId) {
+      localStorage.setItem('scoring_device_lane', laneId);
+    } else {
+      localStorage.removeItem('scoring_device_lane');
+    }
+  };
 
   const handleSelectMatch = (matchId: number) => {
     router.push(`/score/match/${matchId}`);
@@ -71,6 +108,12 @@ export default function MatchesPage() {
     sessionStorage.removeItem('scoring_access_code');
     router.push('/score');
   };
+
+  const displayedMatches = selectedLaneId
+    ? matches.filter(m => m.lane_id === selectedLaneId)
+    : matches;
+
+  const selectedLane = lanes.find(l => l.id === selectedLaneId);
 
   if (isLoading) {
     return (
@@ -125,7 +168,7 @@ export default function MatchesPage() {
           </div>
         </div>
 
-        <Card className="mb-6">
+        <Card className="mb-4">
           <CardHeader>
             <CardTitle>Available Matches</CardTitle>
             <CardDescription>
@@ -135,17 +178,27 @@ export default function MatchesPage() {
           </CardHeader>
         </Card>
 
-        {matches.length === 0 ? (
+        {displayedMatches.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-center text-muted-foreground">
-              No matches available for scoring right now.
-              <br />
-              Check back when matches are ready to play.
+              {selectedLane ? (
+                <>
+                  Waiting for match on {selectedLane.label}...
+                  <br />
+                  The page will navigate automatically when a match is assigned.
+                </>
+              ) : (
+                <>
+                  No matches available for scoring right now.
+                  <br />
+                  Check back when matches are ready to play.
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4">
-            {matches.map((match) => (
+            {displayedMatches.map((match) => (
               <Card
                 key={match.id}
                 className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -218,6 +271,40 @@ export default function MatchesPage() {
               </Card>
             ))}
           </div>
+        )}
+
+        {lanes.length > 0 && (
+          <Card className="mt-4">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium mb-1.5">This Device&apos;s Lane</p>
+                  <Select
+                    value={selectedLaneId ?? 'all'}
+                    onValueChange={handleLaneSelect}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="All Lanes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Lanes</SelectItem>
+                      {lanes.map(lane => (
+                        <SelectItem key={lane.id} value={lane.id}>
+                          {lane.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {selectedLane && (
+                <p className="text-xs text-muted-foreground mt-2 ml-7">
+                  Showing matches for {selectedLane.label}
+                </p>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
