@@ -187,7 +187,11 @@ export async function buildProgressionSourceMap(
     let nextMatches: Array<{ id: unknown }> = [];
     try {
       nextMatches = await nextMatchesFn(sourceMatchId);
-    } catch {
+    } catch (err) {
+      logger.warn('Failed to fetch next matches for progression map', {
+        sourceMatchId,
+        error: err,
+      });
       continue;
     }
 
@@ -409,7 +413,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     lanes,
     laneMap,
     eventStatus: event.status,
-    bracketFrameCount: event.bracket_frame_count,
+    bracketFrameCount: event.bracket_frame_count ?? undefined,
     frameCountMap,
     progressionSourceMap,
   };
@@ -490,7 +494,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     participantTeamMap,
     eventStatus: event?.status,
     accessCode: event?.access_code ?? undefined,
-    bracketFrameCount: event?.bracket_frame_count,
+    bracketFrameCount: event?.bracket_frame_count ?? undefined,
     frameCountMap,
     progressionSourceMap,
   };

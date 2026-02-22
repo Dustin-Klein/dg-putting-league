@@ -17,7 +17,7 @@ export interface Event {
   putt_distance_ft: number;
   access_code: string;
   qualification_round_enabled: boolean;
-  bracket_frame_count: number;
+  bracket_frame_count: number | null;
   qualification_frame_count: number;
   double_grand_final: boolean;
   entry_fee_per_player: number | null;
@@ -42,7 +42,7 @@ export interface EventWithDetails {
   access_code: string;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
-  bracket_frame_count: number;
+  bracket_frame_count: number | null;
   qualification_frame_count: number;
   double_grand_final: boolean;
   entry_fee_per_player: number | null;
