@@ -21,6 +21,30 @@ interface EventInfo {
   status: string;
 }
 
+function safeStorageGet(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(storage: Storage, key: string, value: string): void {
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // Storage unavailable (quota exceeded, private mode, etc.)
+  }
+}
+
+function safeStorageRemove(storage: Storage, key: string): void {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Storage unavailable
+  }
+}
+
 export default function MatchesPage() {
   const router = useRouter();
   const [accessCode, setAccessCode] = useState<string | null>(null);
@@ -58,18 +82,28 @@ export default function MatchesPage() {
   }, []);
 
   useEffect(() => {
-    const code = sessionStorage.getItem('scoring_access_code');
+    const code = safeStorageGet(sessionStorage, 'scoring_access_code');
     if (!code) {
       router.push('/score');
       return;
     }
     setAccessCode(code);
 
-    const storedLane = localStorage.getItem('scoring_device_lane');
+    const storedLane = safeStorageGet(localStorage, 'scoring_device_lane');
     if (storedLane) setSelectedLaneId(storedLane);
 
     fetchMatches(code);
   }, [router, fetchMatches]);
+
+  // Clear a persisted selectedLaneId if it isn't present in the loaded lanes.
+  // Prevents a stale localStorage value from filtering matches with no way to clear it.
+  useEffect(() => {
+    if (isLoading) return;
+    if (selectedLaneId && !lanes.find(l => l.id === selectedLaneId)) {
+      setSelectedLaneId(null);
+      safeStorageRemove(localStorage, 'scoring_device_lane');
+    }
+  }, [lanes, isLoading, selectedLaneId]);
 
   // Auto-navigate when a match on the selected lane becomes active.
   // Skips navigation if we already auto-navigated to this match ID, so
@@ -83,10 +117,10 @@ export default function MatchesPage() {
     if (!laneMatch) return;
 
     const lastNavKey = 'scoring_last_autonav_match';
-    const lastNavId = sessionStorage.getItem(lastNavKey);
+    const lastNavId = safeStorageGet(sessionStorage, lastNavKey);
     if (lastNavId === String(laneMatch.id)) return;
 
-    sessionStorage.setItem(lastNavKey, String(laneMatch.id));
+    safeStorageSet(sessionStorage, lastNavKey, String(laneMatch.id));
     router.push(`/score/match/${laneMatch.id}`);
   }, [selectedLaneId, matches, event, router]);
 
@@ -94,9 +128,9 @@ export default function MatchesPage() {
     const laneId = value === 'all' ? null : value;
     setSelectedLaneId(laneId);
     if (laneId) {
-      localStorage.setItem('scoring_device_lane', laneId);
+      safeStorageSet(localStorage, 'scoring_device_lane', laneId);
     } else {
-      localStorage.removeItem('scoring_device_lane');
+      safeStorageRemove(localStorage, 'scoring_device_lane');
     }
   };
 
@@ -105,7 +139,7 @@ export default function MatchesPage() {
   };
 
   const handleBack = () => {
-    sessionStorage.removeItem('scoring_access_code');
+    safeStorageRemove(sessionStorage, 'scoring_access_code');
     router.push('/score');
   };
 
