@@ -54,6 +54,7 @@ jest.mock('@/lib/repositories/event-repository', () => ({
 
 jest.mock('@/lib/repositories/lane-repository', () => ({
   getLaneLabelsForEvent: jest.fn(),
+  getLanesForEvent: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
@@ -86,7 +87,7 @@ import {
   verifyPlayersInTeams,
 } from '@/lib/repositories/team-repository';
 import { getEventByAccessCodeForBracket, getEventStatusByAccessCode } from '@/lib/repositories/event-repository';
-import { getLaneLabelsForEvent } from '@/lib/repositories/lane-repository';
+import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
@@ -176,13 +177,9 @@ describe('Scoring Service', () => {
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
-      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
+      (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
-
-      // getMatchesForScoring will return empty array if bracketMatches is empty
-      // So we need to mock it properly if we want a specific result
-      // But let's just check if it calls the right functions
 
       const result = await getEventScoringContext(accessCode);
 
@@ -219,7 +216,7 @@ describe('Scoring Service', () => {
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
-      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
+      (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
 
@@ -239,7 +236,7 @@ describe('Scoring Service', () => {
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
       (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
-      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
+      (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
 
