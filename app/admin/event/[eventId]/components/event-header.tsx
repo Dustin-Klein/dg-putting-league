@@ -67,8 +67,9 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
 
           {event.entry_fee_per_player != null && (() => {
             const entryFee = Number(event.entry_fee_per_player);
-            const cashCount = event.players?.filter(p => p.payment_type === 'cash').length ?? 0;
-            const electronicCount = event.players?.filter(p => p.payment_type === 'electronic').length ?? 0;
+            const players = Array.isArray(event.players) ? event.players : [];
+            const cashCount = players.filter(p => p.payment_type === 'cash').length;
+            const electronicCount = players.filter(p => p.payment_type === 'electronic').length;
             return (
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Fees Collected</h3>
