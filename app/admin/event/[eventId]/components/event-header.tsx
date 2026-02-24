@@ -72,7 +72,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
             const electronicCount = players.filter(p => p.payment_type === 'electronic').length;
             return (
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Fees Collected</h3>
+                <h3 className="text-sm font-medium text-muted-foreground">Entry Fees Collected</h3>
                 <p className="text-sm">Cash: ${(cashCount * entryFee).toFixed(2)}</p>
                 <p className="text-sm">Electronic: ${(electronicCount * entryFee).toFixed(2)}</p>
               </div>
