@@ -462,7 +462,24 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     getParticipantsWithTeamIds(supabase, eventId),
   ]);
 
-  const runningMatchIds = bracket.matches
+  let effectiveBracket = bracket;
+  if (event && !event.double_grand_final) {
+    const gfGroup = bracket.groups.find((g) => g.number === GRAND_FINAL_GROUP_NUMBER);
+    if (gfGroup) {
+      const resetRound = bracket.rounds.find(
+        (r) => r.group_id === gfGroup.id && r.number === 2
+      );
+      if (resetRound) {
+        effectiveBracket = {
+          ...bracket,
+          rounds: bracket.rounds.filter((r) => r.id !== resetRound.id),
+          matches: bracket.matches.filter((m) => m.round_id !== resetRound.id),
+        };
+      }
+    }
+  }
+
+  const runningMatchIds = effectiveBracket.matches
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id as number);
   const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
@@ -471,10 +488,10 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
   const progressionSourceMap = await buildProgressionSourceMap(
     {
-      stage: bracket.stage,
-      groups: bracket.groups,
-      rounds: bracket.rounds,
-      matches: bracket.matches,
+      stage: effectiveBracket.stage,
+      groups: effectiveBracket.groups,
+      rounds: effectiveBracket.rounds,
+      matches: effectiveBracket.matches,
     },
     managerFind ?? {}
   );
@@ -489,7 +506,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   }
 
   return {
-    bracket,
+    bracket: effectiveBracket,
     teams,
     participantTeamMap,
     eventStatus: event?.status,
