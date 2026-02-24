@@ -7,6 +7,7 @@ import {
   validateEventStatusTransition,
   finalizeEventPlacements,
 } from '@/lib/services/event';
+import { archiveGrandFinalResetMatch } from '@/lib/services/bracket';
 import {
   handleError,
   BadRequestError,
@@ -86,6 +87,11 @@ export async function PATCH(
       resolvedParams.eventId,
       parsed.data
     );
+
+    // When double_grand_final is toggled off, archive the reset match and release its lane
+    if (parsed.data.double_grand_final === false && currentEvent.double_grand_final === true) {
+      await archiveGrandFinalResetMatch(resolvedParams.eventId);
+    }
 
     return NextResponse.json(updatedEvent);
   } catch (error) {

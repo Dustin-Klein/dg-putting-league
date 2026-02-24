@@ -17,7 +17,7 @@ import {
   upsertFrameResultAtomic,
 } from '@/lib/repositories/frame-repository';
 import { getMatchFrame } from '@/lib/repositories/frame-repository';
-import { getEventScoringConfig, getEventBracketFrameCount } from '@/lib/repositories/event-repository';
+import { getEventScoringConfig, getEventBracketFrameCount, getEventById } from '@/lib/repositories/event-repository';
 import {
   getMatchByIdAndEvent,
   getMatchWithOpponents,
@@ -351,6 +351,9 @@ export async function correctMatchScores(
 
   const team1Won = team1Score > team2Score;
 
+  const event = await getEventById(supabase, eventId);
+  const doubleGrandFinal = event?.double_grand_final ?? true;
+
   await updateMatchOpponentScores(
     supabase,
     bracketMatchId,
@@ -367,7 +370,7 @@ export async function correctMatchScores(
   );
 
   // Handle grand final reset match archiving/un-archiving if winner changed
-  await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won);
+  await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won, doubleGrandFinal);
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }

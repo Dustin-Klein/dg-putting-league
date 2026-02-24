@@ -7,6 +7,7 @@ import {
   archiveMatch,
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
+import { getEventById } from '@/lib/repositories/event-repository';
 import { MatchStatus } from '@/lib/types/bracket';
 import { BadRequestError, InternalError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
@@ -34,6 +35,9 @@ export async function completeMatch(
 
   const team1Won = team1Score > team2Score;
 
+  const event = await getEventById(supabase, eventId);
+  const doubleGrandFinal = event?.double_grand_final ?? true;
+
   const storage = new SupabaseBracketStorage(supabase, eventId);
   const manager = new BracketsManager(storage);
 
@@ -51,7 +55,7 @@ export async function completeMatch(
     });
 
     // Handle grand final special case: if WB champion wins first GF match, archive the reset match
-    await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won);
+    await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won, doubleGrandFinal);
   } catch (bracketError) {
     console.error('Failed to update bracket match:', bracketError);
     throw new InternalError(`Failed to complete match: ${bracketError}`);
@@ -76,7 +80,8 @@ const FIRST_GF_ROUND_NUMBER = 1;
 export async function handleGrandFinalCompletion(
   supabase: SupabaseClient,
   completedMatchId: number,
-  opponent1Won: boolean
+  opponent1Won: boolean,
+  doubleGrandFinal: boolean = true
 ): Promise<void> {
   const match = await getMatchWithGroupInfo(supabase, completedMatchId);
   if (!match) return;
@@ -98,8 +103,8 @@ export async function handleGrandFinalCompletion(
       await archiveMatch(supabase, secondGFMatch.id);
     }
   } else {
-    // LB champion won - ensure the reset match is playable
-    if (secondGFMatch.status === MatchStatus.Archived) {
+    // LB champion won - ensure the reset match is playable (only when double GF is enabled)
+    if (doubleGrandFinal && secondGFMatch.status === MatchStatus.Archived) {
       await updateMatchStatus(supabase, secondGFMatch.id, MatchStatus.Ready);
     }
   }

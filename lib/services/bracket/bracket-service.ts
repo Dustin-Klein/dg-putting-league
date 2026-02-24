@@ -38,7 +38,7 @@ import {
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent, resetAllLanesToIdle } from '@/lib/repositories/lane-repository';
+import { getLanesForEvent, resetAllLanesToIdle, releaseMatchLane } from '@/lib/repositories/lane-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
 import type {
@@ -369,8 +369,24 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
   const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
   const { stage, groups, rounds, matches, participants } = bracketStructure;
 
+  // Apply same filtering as admin view when double_grand_final is disabled
+  let effectiveRounds = rounds as Round[];
+  let effectiveMatches = matches as Match[];
+  if (!event.double_grand_final) {
+    const gfGroup = (groups as Group[]).find((g) => g.number === GRAND_FINAL_GROUP_NUMBER);
+    if (gfGroup) {
+      const resetRound = effectiveRounds.find(
+        (r) => r.group_id === gfGroup.id && r.number === 2
+      );
+      if (resetRound) {
+        effectiveRounds = effectiveRounds.filter((r) => r.id !== resetRound.id);
+        effectiveMatches = effectiveMatches.filter((m) => m.round_id !== resetRound.id);
+      }
+    }
+  }
+
   // Fetch frame counts for running matches
-  const runningMatchIds = (matches as Array<{ id: number; status: number }>)
+  const runningMatchIds = (effectiveMatches as Array<{ id: number; status: number }>)
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id);
   const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
@@ -394,8 +410,8 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     {
       stage: stage as unknown as Stage,
       groups: groups as unknown as Group[],
-      rounds: rounds as unknown as Round[],
-      matches: matches as unknown as Match[],
+      rounds: effectiveRounds,
+      matches: effectiveMatches,
     },
     managerFind ?? {}
   );
@@ -404,8 +420,8 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     bracket: {
       stage: stage as unknown as Stage,
       groups: groups as unknown as Group[],
-      rounds: rounds as unknown as Round[],
-      matches: matches as unknown as Match[],
+      rounds: effectiveRounds,
+      matches: effectiveMatches,
       participants: participants as unknown as Participant[],
     },
     teams,
@@ -1242,6 +1258,34 @@ export async function resetMatchResult(
   });
 
   return { resetMatchIds };
+}
+
+/**
+ * Archive the grand final reset match and release its lane.
+ * Called when double_grand_final is toggled off to reconcile bracket state.
+ */
+export async function archiveGrandFinalResetMatch(eventId: string): Promise<void> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const bracketStructure = await fetchBracketStructure(supabase, eventId);
+  if (!bracketStructure) return;
+
+  const gfGroup = (bracketStructure.groups as Group[]).find(
+    (g) => g.number === GRAND_FINAL_GROUP_NUMBER
+  );
+  if (!gfGroup) return;
+
+  const resetMatch = await getSecondGrandFinalMatch(supabase, gfGroup.id as number);
+  if (!resetMatch) return;
+
+  if (resetMatch.status !== Status.Archived) {
+    try {
+      await releaseMatchLane(supabase, eventId, resetMatch.id);
+    } catch (laneError) {
+      logger.error('Failed to release lane for reset match during GF toggle:', { error: String(laneError) });
+    }
+    await updateMatchStatus(supabase, resetMatch.id, Status.Archived);
+  }
 }
 
 export { Status } from 'brackets-model';
