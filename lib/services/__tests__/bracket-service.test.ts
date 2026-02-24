@@ -80,6 +80,7 @@ jest.mock('@/lib/repositories/team-repository', () => ({
 jest.mock('@/lib/repositories/lane-repository', () => ({
   getLanesForEvent: jest.fn(),
   resetAllLanesToIdle: jest.fn(),
+  releaseMatchLane: jest.fn().mockResolvedValue(true),
 }));
 
 const mockFindNextMatches = jest.fn();
@@ -134,9 +135,10 @@ import {
   resetMatchResult,
   buildTaintedSlotPlan,
   findMatchesToReset,
+  archiveGrandFinalResetMatch,
 } from '../bracket/bracket-service';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getLanesForEvent, releaseMatchLane } from '@/lib/repositories/lane-repository';
 
 describe('Bracket Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -240,7 +242,7 @@ describe('Bracket Service', () => {
     });
 
     it('should use public team query and return bracket with mappings', async () => {
-      (getEventById as jest.Mock).mockResolvedValue({ id: eventId, status: 'bracket' });
+      (getEventById as jest.Mock).mockResolvedValue({ id: eventId, status: 'bracket', double_grand_final: true });
       (fetchBracketStructure as jest.Mock).mockResolvedValue({
         stage: { id: 1, tournament_id: eventId },
         groups: [{ id: 1, stage_id: 1 }],
@@ -268,6 +270,117 @@ describe('Bracket Service', () => {
       expect(result.participantTeamMap[10]?.id).toBe('team-1');
       expect(result.laneMap['lane-1']).toBe('Lane 1');
       expect(result.eventStatus).toBe('bracket');
+    });
+
+    it('should filter out the reset round and its matches when double_grand_final is false', async () => {
+      // GF group is number 3; reset round is number 2 in that group
+      const gfGroupId = 10;
+      const gfRound1Id = 20;
+      const gfRound2Id = 21; // reset round
+      (getEventById as jest.Mock).mockResolvedValue({
+        id: eventId,
+        status: 'bracket',
+        double_grand_final: false,
+      });
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1, tournament_id: eventId },
+        groups: [
+          { id: 1, stage_id: 1, number: 1 },
+          { id: gfGroupId, stage_id: 1, number: 3 },
+        ],
+        rounds: [
+          { id: gfRound1Id, group_id: gfGroupId, number: 1 },
+          { id: gfRound2Id, group_id: gfGroupId, number: 2 },
+        ],
+        matches: [
+          { id: 1, round_id: gfRound1Id, status: 4 },
+          { id: 2, round_id: gfRound2Id, status: 2 }, // reset match — should be filtered
+        ],
+        participants: [],
+      });
+      (getPublicTeamsForEvent as jest.Mock).mockResolvedValue([]);
+      (getLanesForEvent as jest.Mock).mockResolvedValue([]);
+
+      const result = await getPublicBracket(eventId);
+
+      expect(result.bracket.rounds).toHaveLength(1);
+      expect(result.bracket.rounds[0].id).toBe(gfRound1Id);
+      expect(result.bracket.matches).toHaveLength(1);
+      expect(result.bracket.matches[0].id).toBe(1);
+    });
+  });
+
+  describe('archiveGrandFinalResetMatch', () => {
+    const eventId = 'event-123';
+
+    it('should do nothing when bracket structure is not found', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue(null);
+
+      await archiveGrandFinalResetMatch(eventId);
+
+      expect(updateMatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when no grand final group exists', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 1, number: 1 }],
+        rounds: [],
+        matches: [],
+        participants: [],
+      });
+
+      await archiveGrandFinalResetMatch(eventId);
+
+      expect(updateMatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when no reset match exists', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 10, number: 3 }],
+        rounds: [],
+        matches: [],
+        participants: [],
+      });
+      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue(null);
+
+      await archiveGrandFinalResetMatch(eventId);
+
+      expect(updateMatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should archive and release lane when reset match is not already archived', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 10, number: 3 }],
+        rounds: [],
+        matches: [],
+        participants: [],
+      });
+      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({ id: 99, status: 2 }); // Ready
+      (updateMatchStatus as jest.Mock).mockResolvedValue(undefined);
+
+      await archiveGrandFinalResetMatch(eventId);
+
+      expect(releaseMatchLane).toHaveBeenCalledWith(mockSupabase, eventId, 99);
+      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 99, 5); // Status.Archived = 5
+    });
+
+    it('should skip archiving when reset match is already archived', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 10, number: 3 }],
+        rounds: [],
+        matches: [],
+        participants: [],
+      });
+      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({ id: 99, status: 5 }); // Archived
+
+      await archiveGrandFinalResetMatch(eventId);
+
+      expect(releaseMatchLane).not.toHaveBeenCalled();
+      expect(updateMatchStatus).not.toHaveBeenCalled();
     });
   });
 
