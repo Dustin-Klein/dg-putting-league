@@ -42,7 +42,7 @@ function EventContent({
         </div>
 
         <TabsContent value="bracket" className="space-y-4">
-          <BracketSection eventId={event.id} isAdmin={isAdmin} />
+          <BracketSection eventId={event.id} isAdmin={isAdmin} doubleGrandFinal={event.double_grand_final} />
         </TabsContent>
 
         <TabsContent value="teams">

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RefreshCw, Maximize2, Settings, Pencil, MapPin, DollarSign, Eraser, X } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 
 interface MatchWithTeamInfo extends Match {
@@ -22,9 +23,10 @@ interface MatchWithTeamInfo extends Match {
 interface BracketSectionProps {
   eventId: string;
   isAdmin?: boolean;
+  doubleGrandFinal?: boolean;
 }
 
-export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps) {
+export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: initialDoubleGrandFinal = true }: BracketSectionProps) {
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
   const [advanceMatch, setAdvanceMatch] = useState<Match | null>(null);
   const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [doubleGrandFinal, setDoubleGrandFinal] = useState(initialDoubleGrandFinal);
 
   const fetchBracket = useCallback(async () => {
     try {
@@ -259,14 +262,41 @@ export function BracketSection({ eventId, isAdmin = false }: BracketSectionProps
             Edit Mode - Click matches to advance/remove teams, edit non-winner score corrections, or reset when winner/progression must change
           </span>
           <Button
-            variant="ghost"
-            size="sm"
-            className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
-            onClick={() => setIsEditBracketMode(false)}
-          >
-            <X className="mr-1 h-4 w-4" />
-            Exit Edit Mode
-          </Button>
+              variant="ghost"
+              size="sm"
+              className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
+              onClick={() => setIsEditBracketMode(false)}
+            >
+              <X className="mr-1 h-4 w-4" />
+              Exit Edit Mode
+            </Button>
+        </div>
+      )}
+
+      {isEditBracketMode && (
+        <div className="rounded-lg border p-4 w-fit">
+          <div className="flex items-center justify-between gap-8">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Grand Final Reset</p>
+              <p className="text-sm text-muted-foreground">WB champion must lose twice in the grand final</p>
+            </div>
+            <Switch
+              checked={doubleGrandFinal}
+              onCheckedChange={async (checked) => {
+                setDoubleGrandFinal(checked);
+                const res = await fetch(`/api/event/${eventId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ double_grand_final: checked }),
+                });
+                if (!res.ok) {
+                  setDoubleGrandFinal(!checked);
+                } else {
+                  await fetchBracket();
+                }
+              }}
+            />
+          </div>
         </div>
       )}
 

@@ -19,6 +19,7 @@ const updateEventSchema = z.object({
     'pre-bracket',
     'completed',
   ]).optional(),
+  double_grand_final: z.boolean().optional(),
 });
 
 export async function GET(
