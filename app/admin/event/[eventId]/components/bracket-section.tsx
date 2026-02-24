@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RefreshCw, Maximize2, Settings, Pencil, MapPin, DollarSign, Eraser, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
 
 interface MatchWithTeamInfo extends Match {
@@ -39,6 +40,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
   const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [doubleGrandFinal, setDoubleGrandFinal] = useState(initialDoubleGrandFinal);
+  const { toast } = useToast();
 
   const fetchBracket = useCallback(async () => {
     try {
@@ -284,15 +286,22 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
               checked={doubleGrandFinal}
               onCheckedChange={async (checked) => {
                 setDoubleGrandFinal(checked);
-                const res = await fetch(`/api/event/${eventId}`, {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ double_grand_final: checked }),
-                });
-                if (!res.ok) {
-                  setDoubleGrandFinal(!checked);
-                } else {
+                try {
+                  const res = await fetch(`/api/event/${eventId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ double_grand_final: checked }),
+                  });
+                  if (!res.ok) {
+                    throw new Error('Request failed');
+                  }
                   await fetchBracket();
+                } catch {
+                  setDoubleGrandFinal(!checked);
+                  toast({
+                    title: 'Error',
+                    description: 'Failed to update Grand Final Reset. Please try again.',
+                  });
                 }
               }}
             />
