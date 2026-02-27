@@ -73,10 +73,6 @@ export interface MatchWithTeams extends Match {
 
 type ProgressionMatchSlot = 'opponent1' | 'opponent2';
 
-type BracketManagerFind = {
-  nextMatches?: (matchId: number) => Promise<Array<{ id: unknown }>>;
-};
-
 interface ProgressionContext {
   stage: Stage;
   groups: Group[];
@@ -94,14 +90,15 @@ function toNumericId(value: unknown): number | null {
  * This powers UI labels such as "winner of M3" and "loser of M5".
  */
 export async function buildProgressionSourceMap(
-  context: ProgressionContext,
-  managerFind: BracketManagerFind
+  context: ProgressionContext
 ): Promise<Record<number, MatchProgressionSources>> {
   const map: Record<number, MatchProgressionSources> = {};
   const matchById = new Map<number, Match>();
   const groupById = new Map<number, Group>();
   const roundById = new Map<number, Round>();
   const roundCountByGroupId = new Map<number, number>();
+  const roundsByGroupAndNumber = new Map<string, Round>();
+  const matchesByGroupRoundAndNumber = new Map<string, Match>();
   const { matches } = context;
 
   for (const group of context.groups) {
@@ -115,16 +112,200 @@ export async function buildProgressionSourceMap(
     if (roundId == null || roundGroupId == null) continue;
     roundById.set(roundId, round);
     roundCountByGroupId.set(roundGroupId, (roundCountByGroupId.get(roundGroupId) ?? 0) + 1);
+    roundsByGroupAndNumber.set(`${roundGroupId}:${round.number}`, round);
   }
-
-  const nextMatchesFn = managerFind.nextMatches?.bind(managerFind);
-  if (!nextMatchesFn) return map;
 
   for (const match of matches) {
     const matchId = toNumericId(match.id);
-    if (matchId == null) continue;
+    const roundId = toNumericId(match.round_id);
+    if (matchId == null || roundId == null) continue;
     matchById.set(matchId, match);
+    const round = roundById.get(roundId);
+    if (!round) continue;
+    const groupId = toNumericId(round.group_id);
+    const matchNumber = toNumericId(match.number);
+    if (groupId == null || matchNumber == null) continue;
+    matchesByGroupRoundAndNumber.set(`${groupId}:${round.number}:${matchNumber}`, match);
   }
+
+  const finalGroup = context.groups.find((g) =>
+    helpers.isFinalGroup(context.stage.type, g.number)
+  );
+  const loserGroup = context.groups.find((g) =>
+    helpers.isLoserBracket(context.stage.type, g.number)
+  );
+
+  const getMatchByGroupRoundAndNumber = (
+    groupId: number,
+    roundNumber: number,
+    matchNumber: number
+  ): Match | null => {
+    return (
+      matchesByGroupRoundAndNumber.get(`${groupId}:${roundNumber}:${matchNumber}`) ??
+      null
+    );
+  };
+
+  const getFinalGroupFirstMatch = (): Match | null => {
+    const finalGroupId = toNumericId(finalGroup?.id);
+    if (finalGroupId == null) return null;
+    return getMatchByGroupRoundAndNumber(finalGroupId, 1, 1);
+  };
+
+  const getConsolationFinalMatch = (): Match | null => {
+    const finalGroupId = toNumericId(finalGroup?.id);
+    if (finalGroupId == null) return null;
+    const targetRound = roundsByGroupAndNumber.get(`${finalGroupId}:1`);
+    if (!targetRound) return null;
+    return (
+      matches.find((m) => {
+        const mRoundId = toNumericId(m.round_id);
+        return mRoundId === toNumericId(targetRound.id) && toNumericId(m.number) === 2;
+      }) ?? null
+    );
+  };
+
+  const getNextDiagonalMatch = (sourceMatch: Match, sourceRoundNumber: number): Match | null => {
+    const sourceGroupId = toNumericId(sourceMatch.group_id);
+    const sourceMatchNumber = toNumericId(sourceMatch.number);
+    if (sourceGroupId == null || sourceMatchNumber == null) return null;
+    const targetMatchNumber = helpers.getDiagonalMatchNumber(sourceMatchNumber);
+    return getMatchByGroupRoundAndNumber(
+      sourceGroupId,
+      sourceRoundNumber + 1,
+      targetMatchNumber
+    );
+  };
+
+  const getNextParallelMatch = (sourceMatch: Match, sourceRoundNumber: number): Match | null => {
+    const sourceGroupId = toNumericId(sourceMatch.group_id);
+    const sourceMatchNumber = toNumericId(sourceMatch.number);
+    if (sourceGroupId == null || sourceMatchNumber == null) return null;
+    return getMatchByGroupRoundAndNumber(
+      sourceGroupId,
+      sourceRoundNumber + 1,
+      sourceMatchNumber
+    );
+  };
+
+  const resolveNextTargets = (
+    sourceMatch: Match
+  ): { winnerTarget: Match | null; loserTarget: Match | null } => {
+    const sourceRound = roundById.get(Number(sourceMatch.round_id));
+    const sourceGroup = groupById.get(Number(sourceMatch.group_id));
+    if (!sourceRound || !sourceGroup) {
+      return { winnerTarget: null, loserTarget: null };
+    }
+
+    const roundNumber = sourceRound.number;
+    const roundCount = roundCountByGroupId.get(Number(sourceGroup.id));
+    if (!roundCount) {
+      return { winnerTarget: null, loserTarget: null };
+    }
+
+    const stage = context.stage;
+    const matchLocation = helpers.getMatchLocation(stage.type as never, sourceGroup.number);
+    const consolationFinalEnabled = Boolean(stage.settings?.consolationFinal);
+
+    if (matchLocation === 'single_bracket') {
+      if (roundNumber === roundCount - 1) {
+        return {
+          winnerTarget: getNextDiagonalMatch(sourceMatch, roundNumber),
+          loserTarget: consolationFinalEnabled ? getConsolationFinalMatch() : null,
+        };
+      }
+      if (roundNumber === roundCount) {
+        return { winnerTarget: null, loserTarget: null };
+      }
+      return {
+        winnerTarget: getNextDiagonalMatch(sourceMatch, roundNumber),
+        loserTarget: null,
+      };
+    }
+
+    if (matchLocation === 'winner_bracket') {
+      const winnerTarget =
+        roundNumber === roundCount
+          ? getFinalGroupFirstMatch()
+          : getNextDiagonalMatch(sourceMatch, roundNumber);
+
+      const loserGroupId = toNumericId(loserGroup?.id);
+      const sourceMatchNumber = toNumericId(sourceMatch.number);
+      const participantCount = Number(stage.settings?.size ?? 0);
+      if (loserGroupId == null || sourceMatchNumber == null || participantCount <= 0) {
+        return { winnerTarget, loserTarget: null };
+      }
+
+      const actualRoundNumber = stage.settings?.skipFirstRound ? roundNumber + 1 : roundNumber;
+      const roundNumberLB = actualRoundNumber > 1 ? (actualRoundNumber - 1) * 2 : 1;
+      const loserOrdering = helpers.getLoserOrdering(
+        (stage.settings?.seedOrdering ?? []) as never,
+        roundNumberLB
+      );
+      const loserMatchNumber = helpers.findLoserMatchNumber(
+        participantCount,
+        roundNumberLB,
+        sourceMatchNumber,
+        loserOrdering
+      );
+      const loserTarget = getMatchByGroupRoundAndNumber(
+        loserGroupId,
+        roundNumberLB,
+        loserMatchNumber
+      );
+      return { winnerTarget, loserTarget };
+    }
+
+    if (matchLocation === 'loser_bracket') {
+      if (roundNumber === roundCount - 1) {
+        return {
+          winnerTarget: getNextParallelMatch(sourceMatch, roundNumber),
+          loserTarget: consolationFinalEnabled ? getConsolationFinalMatch() : null,
+        };
+      }
+      if (roundNumber === roundCount) {
+        return {
+          winnerTarget: getFinalGroupFirstMatch(),
+          loserTarget: consolationFinalEnabled ? getConsolationFinalMatch() : null,
+        };
+      }
+      if (helpers.isMajorRound(roundNumber)) {
+        return {
+          winnerTarget: getNextParallelMatch(sourceMatch, roundNumber),
+          loserTarget: null,
+        };
+      }
+      return {
+        winnerTarget: getNextDiagonalMatch(sourceMatch, roundNumber),
+        loserTarget: null,
+      };
+    }
+
+    if (matchLocation === 'final_group') {
+      if (roundNumber === roundCount) {
+        return { winnerTarget: null, loserTarget: null };
+      }
+      if (
+        stage.settings?.consolationFinal &&
+        toNumericId(sourceMatch.number) === 1 &&
+        roundNumber === roundCount - 1
+      ) {
+        return { winnerTarget: null, loserTarget: null };
+      }
+
+      const groupId = toNumericId(sourceMatch.group_id);
+      if (groupId == null) {
+        return { winnerTarget: null, loserTarget: null };
+      }
+
+      return {
+        winnerTarget: getMatchByGroupRoundAndNumber(groupId, roundNumber + 1, 1),
+        loserTarget: null,
+      };
+    }
+
+    return { winnerTarget: null, loserTarget: null };
+  };
 
   const resolveWinnerSlot = (sourceMatch: Match): ProgressionMatchSlot | null => {
     const sourceGroup = groupById.get(Number(sourceMatch.group_id));
@@ -184,18 +365,9 @@ export async function buildProgressionSourceMap(
     const sourceMatchId = toNumericId(sourceMatch.id);
     if (sourceMatchId == null) continue;
 
-    let nextMatches: Array<{ id: unknown }> = [];
-    try {
-      nextMatches = await nextMatchesFn(sourceMatchId);
-    } catch (err) {
-      logger.warn('Failed to fetch next matches for progression map', {
-        sourceMatchId,
-        error: err,
-      });
-      continue;
-    }
+    const { winnerTarget, loserTarget } = resolveNextTargets(sourceMatch);
 
-    const winnerTargetId = toNumericId(nextMatches[0]?.id);
+    const winnerTargetId = toNumericId(winnerTarget?.id);
     if (winnerTargetId != null) {
       const winnerSlot = resolveWinnerSlot(sourceMatch);
       if (winnerSlot) {
@@ -207,7 +379,7 @@ export async function buildProgressionSourceMap(
       }
     }
 
-    const loserTargetId = toNumericId(nextMatches[1]?.id);
+    const loserTargetId = toNumericId(loserTarget?.id);
     if (loserTargetId != null) {
       const loserTargetMatch = matchById.get(loserTargetId);
       if (!loserTargetMatch) continue;
@@ -364,9 +536,6 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
     throw new NotFoundError('Bracket not found for this event');
   }
 
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
-  const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
   const { stage, groups, rounds, matches, participants } = bracketStructure;
 
   // Apply same filtering as admin view when double_grand_final is disabled
@@ -412,8 +581,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
       groups: groups as unknown as Group[],
       rounds: effectiveRounds,
       matches: effectiveMatches,
-    },
-    managerFind ?? {}
+    }
   );
 
   return {
@@ -499,17 +667,13 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id as number);
   const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
-  const managerFind = (manager as unknown as { find?: BracketManagerFind }).find;
   const progressionSourceMap = await buildProgressionSourceMap(
     {
       stage: effectiveBracket.stage,
       groups: effectiveBracket.groups,
       rounds: effectiveBracket.rounds,
       matches: effectiveBracket.matches,
-    },
-    managerFind ?? {}
+    }
   );
 
   const participantTeamMap: Record<number, Team> = {};
