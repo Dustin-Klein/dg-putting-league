@@ -97,7 +97,6 @@ export async function buildProgressionSourceMap(
   const groupById = new Map<number, Group>();
   const roundById = new Map<number, Round>();
   const roundCountByGroupId = new Map<number, number>();
-  const roundsByGroupAndNumber = new Map<string, Round>();
   const matchesByGroupRoundAndNumber = new Map<string, Match>();
   const { matches } = context;
 
@@ -112,7 +111,6 @@ export async function buildProgressionSourceMap(
     if (roundId == null || roundGroupId == null) continue;
     roundById.set(roundId, round);
     roundCountByGroupId.set(roundGroupId, (roundCountByGroupId.get(roundGroupId) ?? 0) + 1);
-    roundsByGroupAndNumber.set(`${roundGroupId}:${round.number}`, round);
   }
 
   for (const match of matches) {
@@ -154,15 +152,7 @@ export async function buildProgressionSourceMap(
 
   const getConsolationFinalMatch = (): Match | null => {
     const finalGroupId = toNumericId(finalGroup?.id);
-    if (finalGroupId == null) return null;
-    const targetRound = roundsByGroupAndNumber.get(`${finalGroupId}:1`);
-    if (!targetRound) return null;
-    return (
-      matches.find((m) => {
-        const mRoundId = toNumericId(m.round_id);
-        return mRoundId === toNumericId(targetRound.id) && toNumericId(m.number) === 2;
-      }) ?? null
-    );
+    return finalGroupId == null ? null : getMatchByGroupRoundAndNumber(finalGroupId, 1, 2);
   };
 
   const getNextDiagonalMatch = (sourceMatch: Match, sourceRoundNumber: number): Match | null => {
@@ -232,7 +222,12 @@ export async function buildProgressionSourceMap(
       const loserGroupId = toNumericId(loserGroup?.id);
       const sourceMatchNumber = toNumericId(sourceMatch.number);
       const participantCount = Number(stage.settings?.size ?? 0);
-      if (loserGroupId == null || sourceMatchNumber == null || participantCount <= 0) {
+      if (
+        loserGroupId == null ||
+        sourceMatchNumber == null ||
+        !Number.isFinite(participantCount) ||
+        participantCount <= 0
+      ) {
         return { winnerTarget, loserTarget: null };
       }
 
@@ -285,11 +280,9 @@ export async function buildProgressionSourceMap(
       if (roundNumber === roundCount) {
         return { winnerTarget: null, loserTarget: null };
       }
-      if (
-        stage.settings?.consolationFinal &&
-        toNumericId(sourceMatch.number) === 1 &&
-        roundNumber === roundCount - 1
-      ) {
+      const matchNumber = toNumericId(sourceMatch.number);
+      // In final_group: grand final is match #1 and consolation final is match #2.
+      if (matchNumber !== 1) {
         return { winnerTarget: null, loserTarget: null };
       }
 
