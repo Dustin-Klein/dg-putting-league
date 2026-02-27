@@ -132,6 +132,7 @@ import {
   getReadyMatches,
   assignLaneToMatch,
   bracketExists,
+  buildProgressionSourceMap,
   resetMatchResult,
   buildTaintedSlotPlan,
   findMatchesToReset,
@@ -718,6 +719,40 @@ describe('Bracket Service', () => {
 
       expect(plan.affectedMatchIds).toEqual([10]);
       expect(plan.taintedSlotsByMatch.get(10)).toEqual(new Set(['opponent1']));
+    });
+  });
+
+  describe('buildProgressionSourceMap', () => {
+    it('should advance only grand final match #1 to reset round when consolation final exists', async () => {
+      const context = {
+        stage: {
+          id: 1,
+          type: 'double_elimination',
+          settings: { consolationFinal: true, grandFinal: 'double' },
+        },
+        groups: [
+          { id: 10, number: 1 },
+          { id: 20, number: 2 },
+          { id: 30, number: 3 },
+        ],
+        rounds: [
+          { id: 301, group_id: 30, number: 1 },
+          { id: 302, group_id: 30, number: 2 },
+        ],
+        matches: [
+          { id: 1001, stage_id: 1, group_id: 30, round_id: 301, number: 1, status: 4, opponent1: null, opponent2: null },
+          { id: 1002, stage_id: 1, group_id: 30, round_id: 301, number: 2, status: 4, opponent1: null, opponent2: null },
+          { id: 1003, stage_id: 1, group_id: 30, round_id: 302, number: 1, status: 0, opponent1: null, opponent2: null },
+        ],
+      };
+
+      const map = await buildProgressionSourceMap(context as never);
+      const resetSources = map[1003];
+
+      expect(resetSources).toBeDefined();
+      const allResetSourceIds = Object.values(resetSources).map((source) => source.sourceMatchId);
+      expect(allResetSourceIds).toContain(1001);
+      expect(allResetSourceIds).not.toContain(1002);
     });
   });
 
