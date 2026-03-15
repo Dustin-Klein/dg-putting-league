@@ -11,6 +11,7 @@ interface ScoreStepperRowProps {
   subtitle: string;
   score: number | null;
   bonusPointEnabled: boolean;
+  disabled?: boolean;
   onChange: (puttsMade: number) => void;
 }
 
@@ -19,6 +20,7 @@ export function ScoreStepperRow({
   subtitle,
   score,
   bonusPointEnabled,
+  disabled = false,
   onChange,
 }: ScoreStepperRowProps) {
   const handleIncrement = useCallback(() => {
@@ -59,7 +61,7 @@ export function ScoreStepperRow({
           size="icon"
           className="h-12 w-12 rounded-full"
           onClick={handleDecrement}
-          disabled={score !== null && score <= MIN_PUTTS}
+          disabled={disabled || (score !== null && score <= MIN_PUTTS)}
           aria-label="Decrease score"
         >
           <Minus className="h-5 w-5" />
@@ -81,7 +83,7 @@ export function ScoreStepperRow({
           size="icon"
           className="h-12 w-12 rounded-full"
           onClick={handleIncrement}
-          disabled={score !== null && score >= MAX_PUTTS}
+          disabled={disabled || (score !== null && score >= MAX_PUTTS)}
           aria-label="Increase score"
         >
           <Plus className="h-5 w-5" />
