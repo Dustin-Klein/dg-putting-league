@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Check } from 'lucide-react';
-import { cn } from '@/lib/utils/utils';
 import { useToast } from '@/components/ui/use-toast';
-import { ScoreInput } from '@/components/ui/score-input';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
+import { FrameNavigation } from '@/app/score/components/scoring-wizard/frame-navigation';
+import { ScoreStepperRow } from '@/app/score/components/scoring-wizard/score-stepper-row';
+import {
+  getResolvedScore,
+  getScoreKey,
+  getSequentialFrameNumbers,
+  type ScoreState,
+} from '@/app/score/components/scoring-wizard/scoring-utils';
+import { useWizardActionState } from '@/app/score/components/scoring-wizard/use-wizard-action-state';
+import { QualificationReviewSubmit } from './components/review-submit';
 
 interface FrameInfo {
   id: string;
@@ -43,18 +51,75 @@ interface RoundInfo {
   frame_count: number;
 }
 
+type WizardStage = 'scoring' | 'review';
+
+interface QualificationPersistedFrame {
+  frame_number: number;
+  results: Array<{
+    event_player_id: string;
+    putts_made: number;
+    points_earned: number;
+  }>;
+}
+
+function buildPersistedFrames(players: PlayerInfo[]): QualificationPersistedFrame[] {
+  const frames = new Map<number, QualificationPersistedFrame>();
+
+  for (const player of players) {
+    for (const frame of player.frames) {
+      const existingFrame = frames.get(frame.frame_number) ?? {
+        frame_number: frame.frame_number,
+        results: [],
+      };
+
+      existingFrame.results.push({
+        event_player_id: player.event_player_id,
+        putts_made: frame.putts_made,
+        points_earned: frame.points_earned,
+      });
+
+      frames.set(frame.frame_number, existingFrame);
+    }
+  }
+
+  return Array.from(frames.values()).sort((left, right) => left.frame_number - right.frame_number);
+}
+
+function getFirstIncompleteFrame(players: PlayerInfo[], frameNumbers: number[]): number {
+  const persistedFrames = buildPersistedFrames(players);
+
+  for (const frameNumber of frameNumbers) {
+    const complete = players.every(
+      (player) => getResolvedScore(player.event_player_id, frameNumber, new Map(), persistedFrames) !== null
+    );
+
+    if (!complete) {
+      return frameNumber;
+    }
+  }
+
+  return frameNumbers[frameNumbers.length - 1] ?? 1;
+}
+
 export default function QualificationScoringPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { isSaving, runAction } = useWizardActionState();
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [event, setEvent] = useState<EventInfo | null>(null);
   const [round, setRound] = useState<RoundInfo | null>(null);
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
+  const [localScores, setLocalScores] = useState<ScoreState>(new Map());
+  const [currentFrame, setCurrentFrame] = useState(1);
+  const [wizardStage, setWizardStage] = useState<WizardStage>('scoring');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isSavingRef = useRef(false);
+  const persistedFrames = useMemo(() => buildPersistedFrames(players), [players]);
+  const frameNumbers = useMemo(
+    () => (round ? getSequentialFrameNumbers([], round.frame_count) : []),
+    [round]
+  );
 
   const fetchPlayersData = useCallback(async (code: string, playerIds: string[], showLoading = true) => {
     try {
@@ -80,6 +145,9 @@ export default function QualificationScoringPage() {
       setEvent(data.event);
       setRound(data.round);
       setPlayers(data.players || []);
+      setCurrentFrame(getFirstIncompleteFrame(data.players || [], getSequentialFrameNumbers([], data.round.frame_count)));
+      setLocalScores(new Map());
+      setWizardStage('scoring');
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load players');
@@ -112,77 +180,117 @@ export default function QualificationScoringPage() {
       }
 
       setAccessCode(code);
-      fetchPlayersData(code, selectedPlayers);
+      void fetchPlayersData(code, selectedPlayers);
     } catch {
       router.push('/score/qualification');
     }
-  }, [router, fetchPlayersData]);
+  }, [fetchPlayersData, router]);
 
-  const handleScoreChange = async (
-    eventPlayerId: string,
-    frameNumber: number,
-    puttsMade: number
-  ) => {
-    if (!accessCode) return;
+  const getPlayerScore = useCallback(
+    (player: PlayerInfo, frameNumber: number): number | null =>
+      getResolvedScore(player.event_player_id, frameNumber, localScores, persistedFrames),
+    [localScores, persistedFrames]
+  );
 
-    const saveKey = `${eventPlayerId}-${frameNumber}`;
-    setIsSaving(saveKey);
-    isSavingRef.current = true;
+  const frameComplete = players.every((player) => getPlayerScore(player, currentFrame) !== null);
+  const allFramesComplete =
+    frameNumbers.length > 0 &&
+    frameNumbers.every((frameNumber) => players.every((player) => getPlayerScore(player, frameNumber) !== null));
+
+  const saveFrameScores = useCallback(async (frameNumber: number): Promise<boolean> => {
+    if (!accessCode) {
+      return false;
+    }
+
+    const frameEntries = players
+      .map((player) => ({
+        player,
+        puttsMade: localScores.get(getScoreKey(player.event_player_id, frameNumber)),
+      }))
+      .filter(
+        (entry): entry is { player: PlayerInfo; puttsMade: number } => entry.puttsMade !== undefined
+      );
+
+    if (frameEntries.length === 0) {
+      return true;
+    }
 
     try {
-      const response = await fetch(`/api/score/qualification/${eventPlayerId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_code: accessCode,
-          frame_number: frameNumber,
-          putts_made: puttsMade,
-        }),
-      });
+      const responses = await Promise.all(
+        frameEntries.map(async ({ player, puttsMade }) => {
+          const response = await fetch(`/api/score/qualification/${player.event_player_id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_code: accessCode,
+              frame_number: frameNumber,
+              putts_made: puttsMade,
+            }),
+          });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save score');
-      }
-
-      const result = await response.json();
-
-      // Update local state
-      setPlayers((prev) =>
-        prev.map((p) => {
-          if (p.event_player_id === eventPlayerId) {
-            const existingFrameIndex = p.frames.findIndex(
-              (f) => f.frame_number === frameNumber
-            );
-            const newFrames =
-              existingFrameIndex >= 0
-                ? p.frames.map((f, i) =>
-                    i === existingFrameIndex ? result.frame : f
-                  )
-                : [...p.frames, result.frame].sort(
-                    (a, b) => a.frame_number - b.frame_number
-                  );
-
-            return {
-              ...p,
-              frames: newFrames,
-              frames_completed: result.player.frames_completed,
-              total_points: result.player.total_points,
-              is_complete: result.player.is_complete,
-            };
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || `Failed to save score for ${player.full_name}`);
           }
-          return p;
+
+          return response.json() as Promise<{
+            frame: FrameInfo;
+            player: Omit<PlayerInfo, 'frames'>;
+          }>;
         })
       );
+
+      setPlayers((previousPlayers) =>
+        previousPlayers.map((player) => {
+          const update = responses.find((item) => item.player.event_player_id === player.event_player_id);
+
+          if (!update) {
+            return player;
+          }
+
+          const existingIndex = player.frames.findIndex(
+            (frame) => frame.frame_number === update.frame.frame_number
+          );
+          const nextFrames =
+            existingIndex >= 0
+              ? player.frames.map((frame, index) => (index === existingIndex ? update.frame : frame))
+              : [...player.frames, update.frame].sort((left, right) => left.frame_number - right.frame_number);
+
+          return {
+            ...player,
+            ...update.player,
+            frames: nextFrames,
+          };
+        })
+      );
+
+      setLocalScores((previousScores) => {
+        const nextScores = new Map(previousScores);
+
+        for (const { player } of frameEntries) {
+          nextScores.delete(getScoreKey(player.event_player_id, frameNumber));
+        }
+
+        return nextScores;
+      });
+
+      return true;
     } catch (err) {
       toast({
         title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to save score',
+        description: err instanceof Error ? err.message : 'Failed to save scores',
       });
-    } finally {
-      setIsSaving(null);
-      isSavingRef.current = false;
+
+      return false;
     }
+  }, [accessCode, localScores, players, toast]);
+
+  const handleScoreChange = (eventPlayerId: string, frameNumber: number, puttsMade: number) => {
+    setLocalScores((previousScores) => {
+      const nextScores = new Map(previousScores);
+      nextScores.set(getScoreKey(eventPlayerId, frameNumber), puttsMade);
+      return nextScores;
+    });
   };
 
   const handleBack = () => {
@@ -190,14 +298,14 @@ export default function QualificationScoringPage() {
     router.push('/score/qualification');
   };
 
-  const handleDone = () => {
+  const handleSubmit = async () => {
+    const saved = await saveFrameScores(currentFrame);
+    if (!saved) {
+      return;
+    }
+
     sessionStorage.removeItem('qualification_selected_players');
     router.push('/score/qualification');
-  };
-
-  const getPlayerScore = (player: PlayerInfo, frameNumber: number): number | null => {
-    const frame = player.frames.find((f) => f.frame_number === frameNumber);
-    return frame?.putts_made ?? null;
   };
 
   if (isLoading) {
@@ -221,9 +329,21 @@ export default function QualificationScoringPage() {
     );
   }
 
-  const frameCount = round.frame_count;
-  const frameNumbers = Array.from({ length: frameCount }, (_, i) => i + 1);
-  const allComplete = players.every((p) => p.is_complete);
+  if (wizardStage === 'review') {
+    return (
+      <QualificationReviewSubmit
+        players={players}
+        frameCount={round.frame_count}
+        isSubmitting={isSaving}
+        onSubmit={() => void runAction(handleSubmit)}
+        onEditFrame={(frameNumber) => {
+          setCurrentFrame(frameNumber);
+          setWizardStage('scoring');
+        }}
+        onBack={() => setWizardStage('scoring')}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -236,8 +356,7 @@ export default function QualificationScoringPage() {
           <Badge>Qualification</Badge>
         </div>
 
-        {/* Event Info */}
-        <Card className="mb-6">
+        <Card className="mb-4">
           <CardContent className="pt-6">
             <div className="text-center">
               <div className="text-sm text-muted-foreground mb-1">
@@ -245,127 +364,143 @@ export default function QualificationScoringPage() {
                 {event?.event_date && formatDisplayDate(event.event_date)}
               </div>
               <div className="text-lg font-semibold">
+                Frame {currentFrame} of {round.frame_count}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
                 Scoring {players.length} Player{players.length !== 1 ? 's' : ''}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Scoring Table */}
-        <Card className="mb-6 overflow-hidden">
+        <Card className="mb-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Frame Scores</CardTitle>
+            <CardTitle className="text-lg">Qualification Scores</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-3 font-medium">Player</th>
-                    {frameNumbers.map((num) => (
-                      <th
-                        key={num}
-                        className="text-center p-3 font-medium min-w-[60px]"
-                      >
-                        {num}
-                      </th>
-                    ))}
-                    <th className="text-center p-3 font-medium bg-muted min-w-[70px]">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {players.map((player) => (
-                    <PlayerRow
-                      key={player.event_player_id}
-                      player={player}
-                      frameNumbers={frameNumbers}
-                      getScore={getPlayerScore}
-                      onScoreChange={handleScoreChange}
-                      isSaving={isSaving}
-                      bonusPointEnabled={event?.bonus_point_enabled ?? false}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <CardContent className="space-y-2">
+            {players.map((player) => (
+              <ScoreStepperRow
+                key={player.event_player_id}
+                label={player.full_name}
+                subtitle={
+                  player.player_number
+                    ? `#${player.player_number} • ${player.total_points} pts total`
+                    : `${player.total_points} pts total`
+                }
+                score={getPlayerScore(player, currentFrame)}
+                bonusPointEnabled={event?.bonus_point_enabled ?? false}
+                onChange={(puttsMade) => handleScoreChange(player.event_player_id, currentFrame, puttsMade)}
+              />
+            ))}
           </CardContent>
         </Card>
 
-        {/* Done Button */}
-        <div className="text-center">
+        <FrameNavigation
+          frameNumbers={frameNumbers}
+          currentFrame={currentFrame}
+          standardFrames={round.frame_count}
+          disabled={isSaving}
+          onGoToFrame={(frameNumber) => {
+            if (frameNumber === currentFrame) {
+              return;
+            }
+
+            void runAction(async () => {
+              const saved = await saveFrameScores(currentFrame);
+              if (!saved) {
+                return;
+              }
+
+              setCurrentFrame(frameNumber);
+            });
+          }}
+        />
+
+        <div className="flex gap-2 sticky bottom-0 mt-auto pt-2 pb-1 bg-background">
           <Button
-            size="lg"
-            onClick={handleDone}
-            disabled={!allComplete}
-            className="min-w-[200px]"
+            variant="outline"
+            className="flex-1 h-12"
+            onClick={() =>
+              void runAction(async () => {
+                const saved = await saveFrameScores(currentFrame);
+                if (!saved || currentFrame === 1) {
+                  return;
+                }
+
+                setCurrentFrame((previousFrame) => previousFrame - 1);
+              })
+            }
+            disabled={currentFrame === 1 || isSaving}
           >
-            <Check className="mr-2 h-4 w-4" />
-            Submit Scores
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Prev
+              </>
+            )}
           </Button>
-          {!allComplete && (
-            <p className="text-sm text-muted-foreground mt-2">
-              All players must complete {frameCount} frames before submitting
-            </p>
+
+          {allFramesComplete ? (
+            <Button
+              className="flex-1 h-12"
+              onClick={() =>
+                void runAction(async () => {
+                  const saved = await saveFrameScores(currentFrame);
+                  if (!saved) {
+                    return;
+                  }
+
+                  setWizardStage('review');
+                })
+              }
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Review
+                  <Check className="ml-1 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              className="flex-1 h-12"
+              onClick={() =>
+                void runAction(async () => {
+                  const saved = await saveFrameScores(currentFrame);
+                  if (!saved || !frameComplete) {
+                    return;
+                  }
+
+                  setCurrentFrame((previousFrame) =>
+                    Math.min(previousFrame + 1, frameNumbers[frameNumbers.length - 1] ?? previousFrame)
+                  );
+                })
+              }
+              disabled={!frameComplete || isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Next
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </>
+              )}
+            </Button>
           )}
         </div>
+
+        {!frameComplete && (
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Enter scores for all selected players to continue
+          </p>
+        )}
       </div>
     </div>
   );
 }
-
-interface PlayerRowProps {
-  player: PlayerInfo;
-  frameNumbers: number[];
-  getScore: (player: PlayerInfo, frameNumber: number) => number | null;
-  onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
-  isSaving: string | null;
-  bonusPointEnabled: boolean;
-}
-
-function PlayerRow({
-  player,
-  frameNumbers,
-  getScore,
-  onScoreChange,
-  isSaving,
-  bonusPointEnabled,
-}: PlayerRowProps) {
-  return (
-    <tr className={cn("border-b", player.is_complete && "bg-green-50/50 dark:bg-green-950/20")}>
-      <td className="p-3">
-        <div className="font-medium">{player.full_name}</div>
-        <div className="text-xs text-muted-foreground">
-          {player.player_number ? `#${player.player_number}` : ''}
-          {player.is_complete && (
-            <Badge variant="outline" className="ml-2 text-green-600 border-green-300">
-              Complete
-            </Badge>
-          )}
-        </div>
-      </td>
-      {frameNumbers.map((frameNum) => {
-        const score = getScore(player, frameNum);
-        const saveKey = `${player.event_player_id}-${frameNum}`;
-        const isCurrentlySaving = isSaving === saveKey;
-
-        return (
-          <td key={frameNum} className="text-center p-1">
-            <ScoreInput
-              value={score}
-              onChange={(val) => onScoreChange(player.event_player_id, frameNum, val)}
-              disabled={isCurrentlySaving}
-              isSaving={isCurrentlySaving}
-              bonusPointEnabled={bonusPointEnabled}
-            />
-          </td>
-        );
-      })}
-      <td className="text-center p-3 bg-muted font-mono font-bold text-lg">
-        {player.total_points}
-      </td>
-    </tr>
-  );
-}
-
