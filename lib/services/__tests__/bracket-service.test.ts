@@ -137,6 +137,7 @@ import {
   buildTaintedSlotPlan,
   findMatchesToReset,
   archiveGrandFinalResetMatch,
+  restoreGrandFinalResetMatch,
 } from '../bracket/bracket-service';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, releaseMatchLane } from '@/lib/repositories/lane-repository';
@@ -719,6 +720,57 @@ describe('Bracket Service', () => {
 
       expect(plan.affectedMatchIds).toEqual([10]);
       expect(plan.taintedSlotsByMatch.get(10)).toEqual(new Set(['opponent1']));
+    });
+  });
+
+  describe('restoreGrandFinalResetMatch', () => {
+    const eventId = 'event-123';
+
+    it('should unarchive reset match to waiting when first grand final is not completed', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 10, number: 3 }],
+        rounds: [
+          { id: 101, group_id: 10, number: 1 },
+          { id: 102, group_id: 10, number: 2 },
+        ],
+        matches: [
+          { id: 201, round_id: 101, number: 1, status: 2, opponent1: { id: 1 }, opponent2: { id: 2 } },
+          { id: 202, round_id: 102, number: 1, status: 5, opponent1: { id: null, position: 201 }, opponent2: { id: null, position: 201 } },
+        ],
+        participants: [],
+      });
+
+      await restoreGrandFinalResetMatch(eventId);
+
+      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 202, 1); // Waiting
+    });
+
+    it('should keep reset match archived when WB champion already won first grand final', async () => {
+      (fetchBracketStructure as jest.Mock).mockResolvedValue({
+        stage: { id: 1 },
+        groups: [{ id: 10, number: 3 }],
+        rounds: [
+          { id: 101, group_id: 10, number: 1 },
+          { id: 102, group_id: 10, number: 2 },
+        ],
+        matches: [
+          {
+            id: 201,
+            round_id: 101,
+            number: 1,
+            status: 4,
+            opponent1: { id: 1, result: 'win' },
+            opponent2: { id: 2, result: 'loss' },
+          },
+          { id: 202, round_id: 102, number: 1, status: 5, opponent1: { id: 1 }, opponent2: { id: 2 } },
+        ],
+        participants: [],
+      });
+
+      await restoreGrandFinalResetMatch(eventId);
+
+      expect(updateMatchStatus).not.toHaveBeenCalled();
     });
   });
 

@@ -1445,4 +1445,72 @@ export async function archiveGrandFinalResetMatch(eventId: string): Promise<void
   }
 }
 
+function hasParticipantInSlot(opponent: unknown): boolean {
+  if (!opponent || typeof opponent !== 'object') return false;
+  const id = (opponent as { id?: number | null }).id;
+  return id != null;
+}
+
+function getReenabledResetStatus(
+  firstGrandFinalMatch: Match | undefined,
+  resetMatch: Match
+): number {
+  const resetHasBothParticipants =
+    hasParticipantInSlot(resetMatch.opponent1) &&
+    hasParticipantInSlot(resetMatch.opponent2);
+  const defaultResetStatus = resetHasBothParticipants ? Status.Ready : Status.Waiting;
+
+  if (!firstGrandFinalMatch || firstGrandFinalMatch.status !== Status.Completed) {
+    return defaultResetStatus;
+  }
+
+  const firstOpp1 = firstGrandFinalMatch.opponent1 as { result?: string } | null;
+  const firstOpp2 = firstGrandFinalMatch.opponent2 as { result?: string } | null;
+  if (firstOpp1?.result === 'win' && firstOpp2?.result === 'loss') {
+    return Status.Archived;
+  }
+
+  if (firstOpp2?.result === 'win' && firstOpp1?.result === 'loss') {
+    return defaultResetStatus;
+  }
+
+  return defaultResetStatus;
+}
+
+/**
+ * Restore/reconcile the grand final reset match when double_grand_final is toggled on.
+ */
+export async function restoreGrandFinalResetMatch(eventId: string): Promise<void> {
+  const { supabase } = await requireEventAdmin(eventId);
+
+  const bracketStructure = await fetchBracketStructure(supabase, eventId);
+  if (!bracketStructure) return;
+
+  const gfGroup = (bracketStructure.groups as Group[]).find(
+    (g) => g.number === GRAND_FINAL_GROUP_NUMBER
+  );
+  if (!gfGroup) return;
+
+  const gfRoundOne = (bracketStructure.rounds as Round[]).find(
+    (r) => r.group_id === gfGroup.id && r.number === 1
+  );
+  const gfRoundTwo = (bracketStructure.rounds as Round[]).find(
+    (r) => r.group_id === gfGroup.id && r.number === 2
+  );
+  if (!gfRoundTwo) return;
+
+  const firstGrandFinalMatch = (bracketStructure.matches as Match[]).find(
+    (m) => m.round_id === gfRoundOne?.id && m.number === 1
+  );
+  const resetMatch = (bracketStructure.matches as Match[]).find(
+    (m) => m.round_id === gfRoundTwo.id && m.number === 1
+  );
+  if (!resetMatch) return;
+
+  const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
+  if (resetMatch.status !== desiredStatus) {
+    await updateMatchStatus(supabase, Number(resetMatch.id), desiredStatus);
+  }
+}
+
 export { Status } from 'brackets-model';
