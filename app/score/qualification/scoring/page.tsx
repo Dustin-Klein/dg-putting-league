@@ -350,10 +350,20 @@ export default function QualificationScoringPage() {
         isSubmitting={isSaving}
         onSubmit={() => void runAction(handleSubmit)}
         onEditFrame={(frameNumber) => {
+          if (isSaving) {
+            return;
+          }
+
           setCurrentFrame(frameNumber);
           setWizardStage('scoring');
         }}
-        onBack={() => setWizardStage('scoring')}
+        onBack={() => {
+          if (isSaving) {
+            return;
+          }
+
+          setWizardStage('scoring');
+        }}
       />
     );
   }
