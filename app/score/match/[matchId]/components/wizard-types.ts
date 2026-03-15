@@ -2,8 +2,25 @@
  * Types and constants for the match scoring wizard
  */
 
-export const MIN_PUTTS = 0;
-export const MAX_PUTTS = 3;
+import {
+  MIN_PUTTS,
+  MAX_PUTTS,
+  getScoreKey,
+  calculatePoints,
+  isFrameComplete,
+  getSequentialFrameNumbers,
+  type ScoreState,
+} from '@/app/score/components/scoring-wizard/scoring-utils';
+
+export {
+  MIN_PUTTS,
+  MAX_PUTTS,
+  getScoreKey,
+  calculatePoints,
+  isFrameComplete,
+  getSequentialFrameNumbers,
+  type ScoreState,
+};
 
 export type WizardStage = 'setup' | 'scoring' | 'review';
 
@@ -49,46 +66,6 @@ export interface MatchInfo {
 }
 
 /**
- * Local state for tracking scores during wizard flow
- * Key: `${event_player_id}-${frame_number}`
- */
-export type ScoreState = Map<string, number>;
-
-/**
- * Get the score key for a player and frame
- */
-export function getScoreKey(eventPlayerId: string, frameNumber: number): string {
-  return `${eventPlayerId}-${frameNumber}`;
-}
-
-/**
- * Check if a frame is complete (all 4 players have scored)
- */
-export function isFrameComplete(
-  frameNumber: number,
-  match: MatchInfo,
-  localScores: ScoreState
-): boolean {
-  const allPlayers = [...match.team_one.players, ...match.team_two.players];
-
-  for (const player of allPlayers) {
-    const key = getScoreKey(player.event_player_id, frameNumber);
-    const localScore = localScores.get(key);
-
-    // Check local scores first, then server data
-    if (localScore === undefined) {
-      const frame = match.frames.find(f => f.frame_number === frameNumber);
-      const result = frame?.results.find(r => r.event_player_id === player.event_player_id);
-      if (result?.putts_made === undefined) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-/**
  * Calculate team score for a specific frame
  */
 export function getTeamFrameScore(
@@ -119,14 +96,6 @@ export function getTeamFrameScore(
   }
 
   return total;
-}
-
-/**
- * Calculate points from putts made
- */
-export function calculatePoints(puttsMade: number, bonusPointEnabled: boolean): number {
-  if (puttsMade < 3) return puttsMade;
-  return bonusPointEnabled ? 4 : 3;
 }
 
 /**
@@ -168,12 +137,11 @@ export function getMaxFrameNumber(match: MatchInfo, standardFrames: number): num
  * Get all frame numbers that should be available
  */
 export function getFrameNumbers(match: MatchInfo, standardFrames: number): number[] {
-  const maxFrame = getMaxFrameNumber(match, standardFrames);
-  const frames = Array.from({ length: maxFrame }, (_, i) => i + 1);
+  const frames = getSequentialFrameNumbers(match.frames, standardFrames);
 
   // Add overtime frame if needed
-  if (needsOvertime(match, standardFrames) && frames.length === maxFrame) {
-    frames.push(maxFrame + 1);
+  if (needsOvertime(match, standardFrames)) {
+    frames.push(frames[frames.length - 1] + 1);
   }
 
   return frames;
