@@ -28,8 +28,9 @@ export function FrameNavigation({
             'w-7 h-7 rounded-full text-xs font-medium transition-all touch-manipulation disabled:opacity-50',
             frameNumber === currentFrame
               ? 'bg-primary text-primary-foreground scale-110'
-              : 'bg-muted hover:bg-muted/80',
-            frameNumber > standardFrames && 'bg-yellow-200 dark:bg-yellow-900'
+              : frameNumber > standardFrames
+                ? 'bg-yellow-200 dark:bg-yellow-900'
+                : 'bg-muted hover:bg-muted/80'
           )}
           aria-label={`Go to frame ${frameNumber}`}
         >
