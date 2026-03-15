@@ -398,4 +398,5 @@ describe('QualificationScoringPage', () => {
       expect(screen.getByText('Qualification Review')).toBeInTheDocument();
     });
   });
+
 });

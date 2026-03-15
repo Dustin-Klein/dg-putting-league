@@ -43,7 +43,7 @@ export function QualificationReviewSubmit({
     <div className="min-h-screen bg-background p-4 pb-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={onBack} disabled={isSubmitting}>
             <ArrowLeft className="mr-1 h-4 w-4" />
             Back to Scoring
           </Button>
@@ -73,8 +73,9 @@ export function QualificationReviewSubmit({
                       <th key={frameNumber} className="text-center p-2 font-medium min-w-[40px]">
                         <button
                           onClick={() => onEditFrame(frameNumber)}
-                          className="hover:underline flex items-center justify-center gap-0.5 mx-auto"
+                          className="flex items-center justify-center gap-0.5 mx-auto hover:underline disabled:pointer-events-none disabled:opacity-50"
                           title={`Edit frame ${frameNumber}`}
+                          disabled={isSubmitting}
                         >
                           {frameNumber}
                           <Edit className="h-3 w-3 opacity-50" />
