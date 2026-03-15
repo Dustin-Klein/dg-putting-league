@@ -101,6 +101,21 @@ function getFirstIncompleteFrame(players: PlayerInfo[], frameNumbers: number[]):
   return frameNumbers[frameNumbers.length - 1] ?? 1;
 }
 
+export function clearSentLocalScores(
+  previousScores: ScoreState,
+  sentScoresByKey: ReadonlyMap<string, number>
+): ScoreState {
+  const nextScores = new Map(previousScores);
+
+  for (const [scoreKey, puttsMadeSent] of sentScoresByKey) {
+    if (nextScores.get(scoreKey) === puttsMadeSent) {
+      nextScores.delete(scoreKey);
+    }
+  }
+
+  return nextScores;
+}
+
 export default function QualificationScoringPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -215,6 +230,10 @@ export default function QualificationScoringPage() {
       return true;
     }
 
+    const sentScoresByKey = new Map(
+      frameEntries.map(({ player, puttsMade }) => [getScoreKey(player.event_player_id, frameNumber), puttsMade])
+    );
+
     try {
       const responses = await Promise.all(
         frameEntries.map(async ({ player, puttsMade }) => {
@@ -265,13 +284,7 @@ export default function QualificationScoringPage() {
       );
 
       setLocalScores((previousScores) => {
-        const nextScores = new Map(previousScores);
-
-        for (const { player } of frameEntries) {
-          nextScores.delete(getScoreKey(player.event_player_id, frameNumber));
-        }
-
-        return nextScores;
+        return clearSentLocalScores(previousScores, sentScoresByKey);
       });
 
       return true;
@@ -389,6 +402,7 @@ export default function QualificationScoringPage() {
                 }
                 score={getPlayerScore(player, currentFrame)}
                 bonusPointEnabled={event?.bonus_point_enabled ?? false}
+                disabled={isSaving}
                 onChange={(puttsMade) => handleScoreChange(player.event_player_id, currentFrame, puttsMade)}
               />
             ))}
