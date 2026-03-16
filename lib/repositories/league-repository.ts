@@ -325,6 +325,23 @@ export async function deleteLeagueAdmin(
 }
 
 /**
+ * Delete a league
+ */
+export async function deleteLeague(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leagueId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('leagues')
+    .delete()
+    .eq('id', leagueId);
+
+  if (error) {
+    throw new InternalError(`Failed to delete league: ${error.message}`);
+  }
+}
+
+/**
  * Get all public leagues with event counts
  */
 export async function getAllLeagues(
