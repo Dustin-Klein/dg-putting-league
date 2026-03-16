@@ -113,17 +113,11 @@ USING (
   public.is_league_admin_for_event(teams.event_id)
 );
 
-CREATE POLICY "Enable delete for league owners"
+CREATE POLICY "Enable delete for league admins"
 ON public.teams
 FOR DELETE
 USING (
-  EXISTS (
-    SELECT 1 FROM public.events e
-    JOIN public.league_admins la ON la.league_id = e.league_id
-    WHERE e.id = teams.event_id
-    AND la.user_id = (select auth.uid())
-    AND la.role = 'owner'
-  )
+  public.is_league_admin_for_event(teams.event_id)
 );
 
 CREATE POLICY "Enable read for admins or bracket events"
@@ -167,16 +161,13 @@ USING (
   )
 );
 
-CREATE POLICY "Enable delete for league owners"
+CREATE POLICY "Enable delete for league admins"
 ON public.team_members
 FOR DELETE
 USING (
   EXISTS (
     SELECT 1 FROM public.teams t
-    JOIN public.events e ON e.id = t.event_id
-    JOIN public.league_admins la ON la.league_id = e.league_id
     WHERE t.id = team_members.team_id
-    AND la.user_id = (select auth.uid())
-    AND la.role = 'owner'
+    AND public.is_league_admin_for_event(t.event_id)
   )
 );

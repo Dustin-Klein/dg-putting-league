@@ -39,7 +39,7 @@ USING (
   )
 );
 
-CREATE POLICY "Enable delete for league owners"
+CREATE POLICY "Enable delete for league admins"
 ON public.events
 FOR DELETE
 TO authenticated
@@ -48,7 +48,7 @@ USING (
     SELECT 1 FROM public.league_admins
     WHERE league_admins.league_id = events.league_id
     AND league_admins.user_id = (select auth.uid())
-    AND league_admins.role = 'owner'
+    AND league_admins.role IN ('owner', 'admin')
   )
 );
 
