@@ -285,14 +285,18 @@ describe('Event Service', () => {
   describe('deleteEvent', () => {
     const eventId = 'event-123';
 
-    it('should delete event when user is admin', async () => {
+    it('should delete event when user is a non-owner league admin', async () => {
       (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({
+        user: createMockUser({ id: 'user-123' }),
+        isAdmin: true,
+      });
 
       (eventRepo.deleteEvent as jest.Mock).mockResolvedValue(undefined);
 
       await deleteEvent(eventId);
 
+      expect(requireLeagueAdmin).toHaveBeenCalledWith('league-123');
       expect(eventRepo.deleteEvent).toHaveBeenCalledWith(mockSupabase, eventId);
     });
 
