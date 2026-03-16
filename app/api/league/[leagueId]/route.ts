@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createEvent } from '@/lib/services/event';
+import { deleteLeague } from '@/lib/services/league';
 import {
   handleError,
   BadRequestError,
@@ -48,6 +49,19 @@ export async function POST(
     });
 
     return NextResponse.json(event, { status: 201 });
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
+) {
+  try {
+    const params = await Promise.resolve(paramsPromise);
+    await deleteLeague(params.leagueId);
+    return NextResponse.json({ success: true });
   } catch (error) {
     return handleError(error);
   }

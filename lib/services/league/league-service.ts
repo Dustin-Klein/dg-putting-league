@@ -145,6 +145,21 @@ export async function checkIsLeagueOwner(leagueId: string): Promise<boolean> {
 }
 
 /**
+ * Delete a league (owner-only)
+ */
+export async function deleteLeague(leagueId: string): Promise<void> {
+  const supabase = await createClient();
+  const user = await requireAuthenticatedUser();
+
+  const isOwner = await leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
+  if (!isOwner) {
+    throw new ForbiddenError('Only the league owner can delete the league');
+  }
+
+  await leagueRepo.deleteLeague(supabase, leagueId);
+}
+
+/**
  * Add a league admin by email (owner-only)
  */
 export async function addLeagueAdmin(leagueId: string, email: string): Promise<void> {
