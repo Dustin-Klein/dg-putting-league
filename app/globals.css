@@ -1,6 +1,60 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@utility touch-manipulation {
+  touch-action: manipulation;
+}
+
+@utility animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-in-out infinite;
+}
+
+@utility animate-pulse-ring-fast {
+  animation: pulse-ring 0.75s ease-in-out infinite;
+}
 
 @layer base {
   :root {
@@ -63,8 +117,19 @@
     overflow-x: hidden;
   }
 
-  * {
+  /* v4 defaults border-color to currentColor; keep the theme border color. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
     @apply border-border;
+  }
+
+  /* v4 dropped Preflight's pointer cursor on buttons; keep the v3 behavior. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
   }
 
   body {
@@ -74,17 +139,50 @@
   }
 }
 
+/*
+  v4 moved space-* from a top/left margin on every child but the first to a
+  bottom/right margin on every child but the last. Inline children such as
+  <label> ignore vertical margins, and inline-flex children change their line
+  box height, so forms and lists rendered tighter than on v3. Restore the v3
+  behavior for the values this codebase uses; add new values here if needed,
+  or prefer flex/grid with gap for new layouts.
+*/
 @layer utilities {
-  .touch-manipulation {
-    touch-action: manipulation;
+  :where(.space-y-0\.5 > *, .space-y-1 > *, .space-y-1\.5 > *, .space-y-2 > *, .space-y-3 > *, .space-y-4 > *, .space-y-6 > *, .space-y-8 > *) {
+    margin-block-end: 0;
   }
-
-  .animate-pulse-ring {
-    animation: pulse-ring 1.5s ease-in-out infinite;
+  :where(.space-x-2 > *, .space-x-4 > *) {
+    margin-inline-end: 0;
   }
-
-  .animate-pulse-ring-fast {
-    animation: pulse-ring 0.75s ease-in-out infinite;
+  .space-y-0\.5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 0.5);
+  }
+  .space-y-1 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 1);
+  }
+  .space-y-1\.5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 1.5);
+  }
+  .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 2);
+  }
+  .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 3);
+  }
+  .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 4);
+  }
+  .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 6);
+  }
+  .space-y-8 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: calc(var(--spacing) * 8);
+  }
+  .space-x-2 > :not([hidden]) ~ :not([hidden]) {
+    margin-left: calc(var(--spacing) * 2);
+  }
+  .space-x-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-left: calc(var(--spacing) * 4);
   }
 }
 
