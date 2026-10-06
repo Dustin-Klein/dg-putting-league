@@ -29,10 +29,12 @@ updates:
       # compatible plugin release. See the note in eslint.config.mjs.
       - dependency-name: "eslint"
         versions: ["10.x"]
-      # ts-jest has a hard peer of typescript <7, so TypeScript cannot move
-      # past 5.x until the Jest transform is replaced.
+      # typescript-eslint (via eslint-config-next/typescript) peers on
+      # typescript <6.1.0, and TS 7's native compiler drops the classic
+      # compiler API that typescript-eslint and next build load. package.json
+      # pins ~6.0.3; revisit when typescript-eslint ships TS 7 support.
       - dependency-name: "typescript"
-        versions: ["6.x", "7.x"]
+        versions: [">=6.1.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
