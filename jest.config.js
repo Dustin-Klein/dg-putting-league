@@ -1,36 +1,39 @@
+const nextJest = require('next/jest');
+
+// next/jest compiles tests with SWC, so the test stack doesn't load the
+// TypeScript compiler API. Type safety for tests comes from `npm run type-check`.
+const createJestConfig = nextJest({ dir: './' });
+
 /** @type {import('jest').Config} */
-module.exports = {
+const backendConfig = {
+  displayName: 'backend',
+  testEnvironment: 'node',
+  roots: ['<rootDir>/lib'],
+  testMatch: ['**/__tests__/**/*.test.ts'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/$1',
+    '^server-only$': '<rootDir>/lib/services/__tests__/__mocks__/server-only.ts',
+  },
+};
+
+/** @type {import('jest').Config} */
+const frontendConfig = {
+  displayName: 'frontend',
+  testEnvironment: 'jsdom',
+  roots: ['<rootDir>/components', '<rootDir>/app'],
+  testMatch: ['**/__tests__/**/*.test.tsx'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/$1',
+  },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+};
+
+module.exports = async () => ({
+  // next/jest only applies its transform to the config it wraps, not to
+  // nested projects, so each project is wrapped individually.
   projects: [
-    // Backend tests (services, repositories)
-    {
-      displayName: 'backend',
-      preset: 'ts-jest',
-      testEnvironment: 'node',
-      roots: ['<rootDir>/lib'],
-      testMatch: ['**/__tests__/**/*.test.ts'],
-      transform: {
-        '^.+\\.ts$': 'ts-jest',
-      },
-      moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/$1',
-        '^server-only$': '<rootDir>/lib/services/__tests__/__mocks__/server-only.ts',
-      },
-    },
-    // Frontend component tests
-    {
-      displayName: 'frontend',
-      preset: 'ts-jest',
-      testEnvironment: 'jsdom',
-      roots: ['<rootDir>/components', '<rootDir>/app'],
-      testMatch: ['**/__tests__/**/*.test.tsx'],
-      transform: {
-        '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
-      },
-      moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/$1',
-      },
-      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-    },
+    await createJestConfig(backendConfig)(),
+    await createJestConfig(frontendConfig)(),
   ],
   collectCoverageFrom: [
     'lib/**/*.ts',
@@ -40,4 +43,4 @@ module.exports = {
     '!lib/__tests__/**',
     '!**/__tests__/**',
   ],
-};
+});
