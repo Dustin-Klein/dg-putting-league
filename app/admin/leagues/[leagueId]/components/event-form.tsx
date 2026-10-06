@@ -138,7 +138,7 @@ export function EventForm({
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => !isFutureOrToday(date)}
-                    initialFocus
+                    autoFocus
                   />
                 </PopoverContent>
               </Popover>
