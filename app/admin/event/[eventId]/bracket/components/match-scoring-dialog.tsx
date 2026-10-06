@@ -365,7 +365,7 @@ export function MatchScoringDialog({
                 className={cn(
                   "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                   scoringMode === 'frames'
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-background text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -376,7 +376,7 @@ export function MatchScoringDialog({
                 className={cn(
                   "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                   scoringMode === 'final'
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-background text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
