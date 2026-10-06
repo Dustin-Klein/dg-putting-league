@@ -6,14 +6,33 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
 
+    # Minor and patch bumps are grouped so they stay easy to merge in bulk.
+    # Major bumps are deliberately left ungrouped so each arrives as its own
+    # PR: the previous single catch-all group mixed majors with patches, which
+    # is how a styling regression landed without being attributable to a
+    # specific dependency.
     groups:
-      all-npm-dependencies:
+      npm-minor-patch:
         patterns:
           - "*"
         exclude-patterns:
           - "next"
           - "react"
           - "react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+
+    ignore:
+      # ESLint 10 removed context.getFilename(), which eslint-plugin-react
+      # still calls; eslint-config-next depends on that plugin and there is no
+      # compatible plugin release. See the note in eslint.config.mjs.
+      - dependency-name: "eslint"
+        versions: ["10.x"]
+      # ts-jest has a hard peer of typescript <7, so TypeScript cannot move
+      # past 5.x until the Jest transform is replaced.
+      - dependency-name: "typescript"
+        versions: ["6.x", "7.x"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
