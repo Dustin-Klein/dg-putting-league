@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { InternalError } from '@/lib/errors';
+import { InternalError, NotFoundError } from '@/lib/errors';
 import type { PublicLeague, PublicEvent, PublicLeagueDetail } from '@/lib/types/public';
 
 export interface LeagueData {
@@ -298,11 +298,11 @@ export async function isLeagueOwner(
     .eq('role', 'owner')
     .maybeSingle();
 
-  if (error || !data) {
-    return false;
+  if (error) {
+    throw new InternalError(`Failed to check league owner: ${error.message}`);
   }
 
-  return true;
+  return !!data;
 }
 
 /**
@@ -331,13 +331,19 @@ export async function deleteLeague(
   supabase: Awaited<ReturnType<typeof createClient>>,
   leagueId: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('leagues')
     .delete()
-    .eq('id', leagueId);
+    .eq('id', leagueId)
+    .select('id');
 
   if (error) {
     throw new InternalError(`Failed to delete league: ${error.message}`);
+  }
+
+  // RLS filters rows instead of erroring, so a blocked delete affects zero rows
+  if (!data || data.length === 0) {
+    throw new NotFoundError('League not found or you do not have permission to delete it');
   }
 }
 

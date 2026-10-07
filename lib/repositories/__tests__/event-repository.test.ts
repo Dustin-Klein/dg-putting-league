@@ -291,19 +291,32 @@ describe('Event Repository', () => {
     it('should delete event', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.delete.mockReturnThis();
-      mockQuery.eq.mockResolvedValue({ error: null });
+      mockQuery.eq.mockReturnThis();
+      mockQuery.select.mockResolvedValue({ data: [{ id: 'event-123' }], error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
       await deleteEvent(mockSupabase as any, 'event-123');
 
       expect(mockSupabase.from).toHaveBeenCalledWith('events');
       expect(mockQuery.delete).toHaveBeenCalled();
+      expect(mockQuery.eq).toHaveBeenCalledWith('id', 'event-123');
+    });
+
+    it('should throw NotFoundError when no rows are deleted', async () => {
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.delete.mockReturnThis();
+      mockQuery.eq.mockReturnThis();
+      mockQuery.select.mockResolvedValue({ data: [], error: null });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      await expect(deleteEvent(mockSupabase as any, 'event-123')).rejects.toThrow(NotFoundError);
     });
 
     it('should throw InternalError on failure', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.delete.mockReturnThis();
-      mockQuery.eq.mockResolvedValue({ error: { message: 'Delete failed' } });
+      mockQuery.eq.mockReturnThis();
+      mockQuery.select.mockResolvedValue({ data: null, error: { message: 'Delete failed' } });
       mockSupabase.from.mockReturnValue(mockQuery);
 
       await expect(deleteEvent(mockSupabase as any, 'event-123')).rejects.toThrow(InternalError);
