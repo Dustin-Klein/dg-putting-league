@@ -234,13 +234,19 @@ export async function deleteEvent(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('events')
     .delete()
-    .eq('id', eventId);
+    .eq('id', eventId)
+    .select('id');
 
   if (error) {
     throw new InternalError('Failed to delete event');
+  }
+
+  // RLS filters rows instead of erroring, so a blocked delete affects zero rows
+  if (!data || data.length === 0) {
+    throw new NotFoundError('Event not found or you do not have permission to delete it');
   }
 }
 

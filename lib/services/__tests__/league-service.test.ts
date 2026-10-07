@@ -54,6 +54,7 @@ jest.mock('@/lib/repositories/league-repository', () => ({
   getUserIdByEmail: jest.fn(),
   getLeagueAdminByUserAndLeague: jest.fn(),
   deleteLeagueAdmin: jest.fn(),
+  deleteLeague: jest.fn(),
 }));
 
 // Import after mocking
@@ -66,6 +67,7 @@ import {
   createLeague,
   getLeagueAdminsForOwner,
   checkIsLeagueOwner,
+  deleteLeague,
   addLeagueAdmin,
   removeLeagueAdmin,
 } from '../league/league-service';
@@ -453,6 +455,31 @@ describe('League Service', () => {
       );
 
       await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(BadRequestError);
+    });
+  });
+
+  describe('deleteLeague', () => {
+    const leagueId = 'league-123';
+    const userId = 'user-123';
+
+    beforeEach(() => {
+      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+    });
+
+    it('should delete a league when user is owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
+
+      await deleteLeague(leagueId);
+
+      expect(leagueRepo.isLeagueOwner).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
+      expect(leagueRepo.deleteLeague).toHaveBeenCalledWith(mockSupabase, leagueId);
+    });
+
+    it('should throw ForbiddenError when user is not owner', async () => {
+      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      await expect(deleteLeague(leagueId)).rejects.toThrow(ForbiddenError);
+      expect(leagueRepo.deleteLeague).not.toHaveBeenCalled();
     });
   });
 

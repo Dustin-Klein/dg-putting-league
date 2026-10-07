@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { formatShortDate } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { LeagueWithRole } from '@/lib/types/league';
 import { CreateLeagueDialog } from './create-league-dialog';
+import { Trash2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 interface LeaguesListProps {
   leagues: LeagueWithRole[];
@@ -13,9 +16,41 @@ interface LeaguesListProps {
 
 export default function LeaguesList({ leagues }: LeaguesListProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [deletingLeagueId, setDeletingLeagueId] = useState<string | null>(null);
 
   const handleCardClick = (leagueId: string) => {
     router.push(`/admin/leagues/${leagueId}`);
+  };
+
+  const handleDeleteLeague = async (leagueId: string) => {
+    if (!confirm('Are you sure you want to delete this league? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingLeagueId(leagueId);
+
+    try {
+      const response = await fetch(`/api/league/${leagueId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete league');
+      }
+
+      window.location.reload();
+    } catch (error) {
+      console.error('Error deleting league:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete league',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingLeagueId(null);
+    }
   };
 
   return (
@@ -45,9 +80,27 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
                   <h3 className="font-semibold text-lg">{league.name}</h3>
                   {league.city && <p className="text-muted-foreground">{league.city}</p>}
                 </div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {league.role}
-                </span>
+                <div className="flex items-start gap-2">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {league.role}
+                  </span>
+                  {league.role === 'owner' && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteLeague(league.id);
+                      }}
+                      disabled={deletingLeagueId === league.id}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete league</span>
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-4 text-sm">

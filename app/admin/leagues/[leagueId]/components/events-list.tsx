@@ -51,6 +51,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to delete event',
+        variant: 'destructive',
       });
     } finally {
       setDeletingEventId(null);
