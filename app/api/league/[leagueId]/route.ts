@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createEvent } from '@/lib/services/event';
 import { deleteLeague } from '@/lib/services/league';
@@ -6,6 +6,8 @@ import {
   handleError,
   BadRequestError,
 } from '@/lib/errors';
+import { validateCsrfOrigin } from '@/lib/utils';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 const eventSchema = z.object({
   event_date: z.string().refine((val) => {
@@ -54,13 +56,21 @@ export async function POST(
   }
 }
 
+const deleteParamsSchema = z.object({
+  leagueId: z.uuid('Invalid league ID'),
+});
+
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
 ) {
+  const rateLimitResponse = withStrictRateLimit(request, 'league:delete');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
-    const params = await Promise.resolve(paramsPromise);
-    await deleteLeague(params.leagueId);
+    validateCsrfOrigin(request);
+    const { leagueId } = deleteParamsSchema.parse(await Promise.resolve(paramsPromise));
+    await deleteLeague(leagueId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleError(error);

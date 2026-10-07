@@ -13,6 +13,7 @@ import {
   BadRequestError,
 } from '@/lib/errors';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
+import { validateCsrfOrigin } from '@/lib/utils';
 
 const updateEventSchema = z.object({
   status: z.enum([
@@ -44,6 +45,7 @@ export async function DELETE(
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
+    validateCsrfOrigin(request);
     const resolvedParams = await Promise.resolve(params);
     await deleteEvent(resolvedParams.eventId);
     return NextResponse.json({ success: true });
