@@ -5,15 +5,20 @@ import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
 import {
   BadRequestError,
   ForbiddenError,
-  InternalError,
+  NotFoundError,
   UnauthorizedError,
 } from '@/lib/errors';
 import { requireLeagueAdmin, authorizeEventAdmin, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
 import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
 import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
-import { createBracket } from '@/lib/services/bracket';
-import { autoAssignLanes } from '@/lib/services/lane';
+import { createBracketTx } from '@/lib/services/bracket';
+import { autoAssignLanesTx } from '@/lib/services/lane';
+import { lockEvent, withTransaction, type Executor } from '@/lib/db/tx';
+import * as eventDb from '@/lib/repositories/event-repository.db';
+import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
+import * as teamDb from '@/lib/repositories/team-repository.db';
+import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
 import * as eventRepo from '@/lib/repositories/event-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
@@ -23,11 +28,12 @@ import { logger } from '@/lib/utils/logger';
 
 /**
  * Ensure the current user is an admin of the event's league.
- * Returns the privileged client, which may be used for this event's reads and writes.
+ * Returns the privileged Supabase client and the direct Postgres connection (`pg`),
+ * which may be used for this event's reads and writes.
  */
 export async function requireEventAdmin(eventId: string) {
-  const { user, db } = await authorizeEventAdmin(eventId);
-  return { supabase: db, user };
+  const { user, db, pg } = await authorizeEventAdmin(eventId);
+  return { supabase: db, pg, user };
 }
 
 /**
@@ -259,19 +265,9 @@ export async function updateEvent(
 }
 
 /**
- * Handle the transition from pre-bracket to bracket status.
- * Uses an atomic database transaction (RPC) to ensure all operations
- * succeed or fail together, preventing data inconsistency.
- *
- * Steps performed atomically:
- * 1. Update event status to 'bracket'
- * 2. Assign players to pools (A/B based on scores)
- * 3. Create teams (pairing pool A and B players)
- * 4. Create lanes
- *
- * After atomic transaction succeeds:
- * 5. Create bracket structure (uses brackets-manager library)
- * 6. Auto-assign lanes to initial matches
+ * Handle the transition from pre-bracket to bracket status, in one transaction:
+ * pool assignments, teams, lanes, event status, bracket structure and initial lane
+ * assignments all commit together or not at all.
  *
  * @param eventId - The event ID
  * @param event - The event with details
@@ -284,7 +280,7 @@ export async function transitionEventToBracket(
   providedPoolAssignments?: PoolAssignment[],
   providedTeamPairings?: TeamPairing[]
 ) {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   await validateEventStatusTransition(eventId, 'bracket', event);
 
@@ -292,70 +288,65 @@ export async function transitionEventToBracket(
   const poolAssignments = providedPoolAssignments ?? await computePoolAssignments(eventId, event);
   const teamPairings = providedTeamPairings ?? computeTeamPairings(poolAssignments);
 
-  // Convert to JSON format for RPC
-  const poolAssignmentsJson = poolAssignments.map((pa: PoolAssignment) => ({
-    event_player_id: pa.eventPlayerId,
-    pool: pa.pool,
-    pfa_score: pa.pfaScore,
-    scoring_method: pa.scoringMethod,
-  }));
+  await startBracket(pg, eventId, poolAssignments, teamPairings);
+}
 
-  const teamsJson = teamPairings.map((tp: TeamPairing) => ({
-    seed: tp.seed,
-    pool_combo: tp.poolCombo,
-    members: tp.members.map((m) => ({
-      event_player_id: m.eventPlayerId,
-      role: m.role,
-    })),
-  }));
+/**
+ * Start bracket play for a pre-bracket event (the transactional part of
+ * `transitionEventToBracket`). Callers authorize and validate first.
+ */
+export async function startBracket(
+  pg: Executor,
+  eventId: string,
+  poolAssignments: PoolAssignment[],
+  teamPairings: TeamPairing[]
+): Promise<void> {
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
 
-  // Execute atomic transition RPC
-  const { error } = await supabase.rpc('transition_event_to_bracket', {
-    p_event_id: eventId,
-    p_pool_assignments: poolAssignmentsJson,
-    p_teams: teamsJson,
-    p_lane_count: event.lane_count || 0,
+    const current = await eventDb.getEventBracketConfig(tx, eventId, { forUpdate: true });
+    if (!current) {
+      throw new NotFoundError('Event not found');
+    }
+    if (current.status !== 'pre-bracket') {
+      throw new BadRequestError(`Event must be in pre-bracket status to start bracket play (current status: ${current.status})`);
+    }
+
+    const eventPlayerIds = new Set(await eventPlayerDb.getEventPlayerIds(tx, eventId));
+    const memberIds = teamPairings.flatMap((tp) => tp.members.map((m) => m.eventPlayerId));
+    if (memberIds.some((id) => !eventPlayerIds.has(id)) || new Set(memberIds).size !== memberIds.length) {
+      throw new BadRequestError('Teams must be made of distinct players registered for this event');
+    }
+
+    await eventPlayerDb.applyPoolAssignments(
+      tx,
+      eventId,
+      poolAssignments.map((pa) => ({
+        event_player_id: pa.eventPlayerId,
+        pool: pa.pool,
+        pfa_score: pa.pfaScore,
+        scoring_method: pa.scoringMethod,
+      }))
+    );
+
+    await teamDb.insertTeamsWithMembers(
+      tx,
+      eventId,
+      teamPairings.map((tp) => ({
+        seed: tp.seed,
+        pool_combo: tp.poolCombo,
+        members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role })),
+      }))
+    );
+
+    if (current.lane_count > 0 && !(await laneDb.hasLanes(tx, eventId))) {
+      await laneDb.insertLanes(tx, eventId, current.lane_count);
+    }
+
+    await eventDb.setEventStatus(tx, eventId, 'bracket');
+    await createBracketTx(tx, eventId, current.double_grand_final);
+    await autoAssignLanesTx(tx, eventId);
   });
-
-  if (error) {
-    throw new InternalError(`Failed to transition event to bracket: ${error.message}`);
-  }
-
-  // After atomic transaction succeeds, create bracket structure
-  // (uses brackets-manager JS library, already idempotent)
-  try {
-    await createBracket(eventId, true);
-  } catch (error) {
-    if (error instanceof BadRequestError && error.message.includes('already been created')) {
-      // Idempotent - bracket exists, continue
-    } else {
-      // Rollback the transition
-      const originalErrorMessage = error instanceof Error ? error.message : String(error);
-      const { error: rollbackError } = await supabase.rpc('rollback_bracket_transition', {
-        p_event_id: eventId,
-      });
-      if (rollbackError) {
-        console.error('Rollback failed:', rollbackError);
-        throw new InternalError(
-          `CRITICAL: Bracket creation failed and the automatic rollback also failed. Manual intervention required. ` +
-          `Original error: ${originalErrorMessage}. Rollback error: ${rollbackError.message}`
-        );
-      }
-      throw new InternalError(
-        `Failed to create bracket. Transaction rolled back. ` +
-        `Error: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  // Auto-assign lanes to initial ready matches
-  if (event.lane_count && event.lane_count > 0) {
-    try {
-      await autoAssignLanes(eventId);
-    } catch (error) {
-      console.error('Auto-assign lanes error:', error);
-    }
-  }
 }
 
 /**

@@ -1,10 +1,14 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
-import type { PrivilegedClient } from '@/lib/services/auth';
+import type { Db } from '@/lib/services/auth';
+import { lockEvent, withTransaction, type Tx } from '@/lib/db/tx';
 import * as laneRepo from '@/lib/repositories/lane-repository';
-import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
-import { BadRequestError } from '@/lib/errors';
+import * as laneDb from '@/lib/repositories/lane-repository.db';
+import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
+import { getStageForEvent } from '@/lib/repositories/bracket-repository.db';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { BadRequestError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { Status } from 'brackets-model';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
@@ -144,59 +148,46 @@ export async function getLanesWithMatches(
 }
 
 /**
- * Internal function to auto-assign lanes using atomic RPC calls
- * Shared between admin and public versions
+ * Put idle lanes on unassigned Ready/Waiting matches, in play order. Runs inside the
+ * caller's transaction, which must hold the event lock. Returns the number assigned.
  */
-async function autoAssignLanesInternal(
-  supabase: PrivilegedClient,
-  eventId: string
-): Promise<number> {
-  // Check event is still in bracket status before attempting lane assignments
-  const eventStatus = await laneRepo.getEventStatus(supabase, eventId);
-
-  if (!eventStatus || eventStatus !== 'bracket') {
+export async function autoAssignLanesTx(tx: Tx, eventId: string): Promise<number> {
+  const event = await getEventBracketConfig(tx, eventId);
+  if (event?.status !== 'bracket') {
     // Event is no longer in bracket play - skip lane assignment
     return 0;
   }
 
-  // Get available lanes (idle status)
-  const availableLanes = await laneRepo.getAvailableLanes(supabase, eventId);
-
-  if (availableLanes.length === 0) {
-    return 0;
-  }
-
-  // Get bracket stage
-  const stage = await getBracketStage(supabase, eventId);
-
+  const stage = await getStageForEvent(tx, eventId);
   if (!stage) {
     return 0;
   }
 
-  // Get unassigned ready/waiting matches in play order
-  const unassignedMatches = await laneRepo.getUnassignedReadyMatches(supabase, stage.id);
-
-  if (unassignedMatches.length === 0) {
+  const idleLanes = (await laneDb.lockEventLanes(tx, eventId))
+    .filter((lane) => lane.status === 'idle')
+    .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+  if (idleLanes.length === 0) {
     return 0;
   }
 
-  // Prepare assignments for bulk operation
-  const maxAssignments = Math.min(availableLanes.length, unassignedMatches.length);
+  const matches = await laneDb.getUnassignedReadyMatches(tx, stage.id);
 
-  if (maxAssignments === 0) {
-    return 0;
+  let assigned = 0;
+  for (let i = 0; i < Math.min(idleLanes.length, matches.length); i++) {
+    if (await laneDb.assignLane(tx, eventId, idleLanes[i].id, matches[i].id)) {
+      assigned++;
+    }
   }
+  return assigned;
+}
 
-  const assignments: Array<{ laneId: string; matchId: number }> = [];
-  for (let i = 0; i < maxAssignments; i++) {
-    assignments.push({
-      laneId: availableLanes[i].id,
-      matchId: unassignedMatches[i].id,
-    });
-  }
-
-  // Bulk assign lanes to matches (1 query instead of N)
-  return laneRepo.bulkAssignLanesToMatches(supabase, eventId, assignments);
+/**
+ * Release a match's lane and give the free lanes to the next matches, inside the
+ * caller's transaction (which must hold the event lock).
+ */
+export async function releaseLaneAndAutoAssignTx(tx: Tx, eventId: string, matchId: number): Promise<number> {
+  await laneDb.releaseMatchLane(tx, eventId, matchId);
+  return autoAssignLanesTx(tx, eventId);
 }
 
 /**
@@ -204,41 +195,11 @@ async function autoAssignLanesInternal(
  * Returns the number of matches that were successfully assigned lanes
  */
 export async function autoAssignLanes(eventId: string): Promise<number> {
-  const { supabase } = await requireEventAdmin(eventId);
-  return autoAssignLanesInternal(supabase, eventId);
-}
-
-/**
- * Release lane from a specific match and trigger auto-assignment
- */
-export async function releaseMatchLaneAndReassign(
-  eventId: string,
-  matchId: number
-): Promise<number> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  // Release the lane using atomic RPC
-  await laneRepo.releaseMatchLane(supabase, eventId, matchId);
-
-  // Auto-assign lanes to next ready matches
-  return autoAssignLanesInternal(supabase, eventId);
-}
-
-/**
- * Release lane from a specific match and trigger auto-assignment (public version)
- * The caller must already have authorized the scorer for this event (access code)
- * and passes the privileged client it received.
- */
-export async function releaseAndReassignLanePublic(
-  supabase: PrivilegedClient,
-  eventId: string,
-  matchId: number
-): Promise<number> {
-  // Release the lane using atomic RPC
-  await laneRepo.releaseMatchLane(supabase, eventId, matchId);
-
-  // Auto-assign lanes to next ready matches
-  return autoAssignLanesInternal(supabase, eventId);
+  const { pg } = await requireEventAdmin(eventId);
+  return withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    return autoAssignLanesTx(tx, eventId);
+  });
 }
 
 /**
@@ -296,8 +257,12 @@ export async function releaseLane(
   laneId: string,
   matchId: number
 ): Promise<boolean> {
-  const { supabase, user } = await requireEventAdmin(eventId);
-  const result = await laneRepo.releaseMatchLane(supabase, eventId, matchId, laneId);
+  const { pg, user } = await requireEventAdmin(eventId);
+  const result = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await laneDb.lockEventLanes(tx, eventId);
+    return laneDb.releaseMatchLane(tx, eventId, matchId, laneId);
+  });
 
   logger.info('Lane released from match', {
     userId: user.id,
@@ -311,6 +276,22 @@ export async function releaseLane(
   return result;
 }
 
+async function setLaneStatus(
+  pg: Db,
+  eventId: string,
+  laneId: string,
+  status: 'idle' | 'maintenance'
+): Promise<void> {
+  const found = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await laneDb.lockEventLanes(tx, eventId);
+    return laneDb.setLaneStatusAndClearMatch(tx, eventId, laneId, status);
+  });
+  if (!found) {
+    throw new NotFoundError('Lane not found');
+  }
+}
+
 /**
  * Set a lane to maintenance status (removes from rotation)
  */
@@ -318,10 +299,9 @@ export async function setLaneMaintenance(
   eventId: string,
   laneId: string
 ): Promise<Lane> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
 
-  // Use atomic RPC for maintenance mode
-  await laneRepo.setLaneMaintenanceRPC(supabase, eventId, laneId);
+  await setLaneStatus(pg, eventId, laneId, 'maintenance');
 
   // Fetch and return the updated lane
   return laneRepo.getLaneById(supabase, eventId, laneId);
@@ -334,10 +314,9 @@ export async function setLaneIdle(
   eventId: string,
   laneId: string
 ): Promise<Lane> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
 
-  // Use atomic RPC for idle mode
-  await laneRepo.setLaneIdleRPC(supabase, eventId, laneId);
+  await setLaneStatus(pg, eventId, laneId, 'idle');
 
   // Fetch and return the updated lane
   return laneRepo.getLaneById(supabase, eventId, laneId);

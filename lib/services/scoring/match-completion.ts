@@ -1,72 +1,101 @@
+import 'server-only';
 import { BracketsManager } from 'brackets-manager';
-import type { PrivilegedClient } from '@/lib/supabase/types';
+import { lockEvent, lockMatch, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
+import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
 import {
-  SupabaseBracketStorage,
-  getMatchByIdAndEvent,
-  getMatchWithGroupInfo,
+  getMatchGroupInfo,
   getSecondGrandFinalMatch,
-  archiveMatch,
   updateMatchStatus,
-} from '@/lib/repositories/bracket-repository';
-import { getEventById } from '@/lib/repositories/event-repository';
+} from '@/lib/repositories/bracket-repository.db';
+import { releaseMatchLane } from '@/lib/repositories/lane-repository.db';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { releaseLaneAndAutoAssignTx } from '@/lib/services/lane';
 import { MatchStatus } from '@/lib/types/bracket';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
 
 export type { MatchScores } from '@/lib/types/scoring';
 
-/**
- * Complete a bracket match and update bracket progression
- *
- * This is the core match completion logic used by both admin and public scoring.
- * It uses brackets-manager to handle bracket progression.
- */
-export async function completeMatch(
-  supabase: PrivilegedClient,
-  eventId: string,
-  bracketMatchId: number,
-  scores: MatchScores
-): Promise<void> {
-  const { team1Score, team2Score } = scores;
+type OpponentJson = { id?: number | null; score?: number } | null;
 
-  if (team1Score === team2Score) {
-    throw new BadRequestError('Match cannot be completed with a tied score');
+/**
+ * Complete a bracket match inside the caller's transaction, which must hold the event
+ * lock: record the result, advance winner and loser (brackets-manager), settle the
+ * grand-final reset match, release the match's lane and hand free lanes to the next
+ * matches. Either all of it commits or none of it does.
+ *
+ * Without `scores`, the match's stored scores (kept in sync with its frames by the
+ * frame_results trigger) decide the result.
+ */
+export async function completeMatchTx(
+  tx: Tx,
+  eventId: string,
+  matchId: number,
+  scores?: MatchScores
+): Promise<void> {
+  const event = await getEventBracketConfig(tx, eventId);
+  if (!event) {
+    throw new NotFoundError('Event not found');
+  }
+  if (event.status !== 'bracket') {
+    throw new BadRequestError('Event is not in bracket play');
   }
 
-  const team1Won = team1Score > team2Score;
-
-  // The privileged client bypasses RLS, so verify the match belongs to the
-  // authorized event before brackets-manager writes to it.
-  const matchInEvent = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
-  if (!matchInEvent) {
+  const match = await lockMatch(tx, matchId, eventId);
+  if (!match) {
     throw new NotFoundError('Match not found');
   }
+  if (match.status === MatchStatus.Completed || match.status === MatchStatus.Archived) {
+    throw new BadRequestError('Match is already completed');
+  }
 
-  const event = await getEventById(supabase, eventId);
-  const doubleGrandFinal = event?.double_grand_final ?? true;
+  const opponent1 = match.opponent1 as OpponentJson;
+  const opponent2 = match.opponent2 as OpponentJson;
+  if (opponent1?.id == null || opponent2?.id == null) {
+    throw new BadRequestError('Match has no participants yet');
+  }
 
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
+  const team1Score = scores?.team1Score ?? opponent1.score ?? 0;
+  const team2Score = scores?.team2Score ?? opponent2.score ?? 0;
+  if (team1Score === team2Score) {
+    throw new BadRequestError(
+      scores
+        ? 'Match cannot be completed with a tied score'
+        : 'Match cannot be completed with a tied score. Continue scoring in overtime.'
+    );
+  }
+  const team1Won = team1Score > team2Score;
 
+  const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
   try {
     await manager.update.match({
-      id: bracketMatchId,
-      opponent1: {
-        score: team1Score,
-        result: team1Won ? 'win' : 'loss',
-      },
-      opponent2: {
-        score: team2Score,
-        result: team1Won ? 'loss' : 'win',
-      },
+      id: matchId,
+      opponent1: { score: team1Score, result: team1Won ? 'win' : 'loss' },
+      opponent2: { score: team2Score, result: team1Won ? 'loss' : 'win' },
     });
-
-    // Handle grand final special case: if WB champion wins first GF match, archive the reset match
-    await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won, doubleGrandFinal);
-  } catch (bracketError) {
-    console.error('Failed to update bracket match:', bracketError);
-    throw new InternalError(`Failed to complete match: ${bracketError}`);
+  } catch (error) {
+    if (error instanceof InternalError) throw error;
+    throw new InternalError(`Failed to complete match: ${error instanceof Error ? error.message : String(error)}`);
   }
+
+  await handleGrandFinalCompletionTx(tx, eventId, matchId, team1Won, event.double_grand_final);
+  await releaseLaneAndAutoAssignTx(tx, eventId, matchId);
+}
+
+/**
+ * Complete a match in its own transaction (see `completeMatchTx`).
+ * Callers authorize first (access code or event admin).
+ */
+export async function completeMatch(
+  ex: Executor,
+  eventId: string,
+  matchId: number,
+  scores?: MatchScores
+): Promise<void> {
+  await withTransaction(ex, async (tx) => {
+    await lockEvent(tx, eventId);
+    await completeMatchTx(tx, eventId, matchId, scores);
+  });
 }
 
 const GRAND_FINAL_GROUP_NUMBER = 3;
@@ -82,37 +111,38 @@ const FIRST_GF_ROUND_NUMBER = 1;
  * - If opponent1 wins → tournament over, archive reset match
  * - If opponent2 wins → reset match is needed, ensure it's Ready
  *
- * This function handles both initial completion and score corrections.
+ * This function handles both initial completion and score corrections. Runs in the
+ * caller's transaction, which must hold the event lock.
  */
-export async function handleGrandFinalCompletion(
-  supabase: PrivilegedClient,
+export async function handleGrandFinalCompletionTx(
+  tx: Tx,
+  eventId: string,
   completedMatchId: number,
   opponent1Won: boolean,
   doubleGrandFinal: boolean = true
 ): Promise<void> {
-  const match = await getMatchWithGroupInfo(supabase, completedMatchId);
+  const match = await getMatchGroupInfo(tx, completedMatchId);
   if (!match) return;
 
-  // Check if this is a grand final match (group number 3 in double elimination)
-  const groupNumber = match.round?.group?.number;
-  const roundNumber = match.round?.number;
-
-  if (groupNumber !== GRAND_FINAL_GROUP_NUMBER) return;
-  if (roundNumber !== FIRST_GF_ROUND_NUMBER) return;
+  if (match.group_number !== GRAND_FINAL_GROUP_NUMBER) return;
+  if (match.round_number !== FIRST_GF_ROUND_NUMBER) return;
 
   // This is the first grand final match - find the reset match
-  const secondGFMatch = await getSecondGrandFinalMatch(supabase, match.group_id);
+  const secondGFMatch = await getSecondGrandFinalMatch(tx, match.group_id);
   if (!secondGFMatch) return;
 
   if (opponent1Won) {
     // WB champion won - archive the reset match if not already archived
     if (secondGFMatch.status !== MatchStatus.Archived) {
-      await archiveMatch(supabase, secondGFMatch.id);
+      if (secondGFMatch.lane_id) {
+        await releaseMatchLane(tx, eventId, secondGFMatch.id);
+      }
+      await updateMatchStatus(tx, secondGFMatch.id, MatchStatus.Archived);
     }
   } else {
     // LB champion won - ensure the reset match is playable (only when double GF is enabled)
     if (doubleGrandFinal && secondGFMatch.status === MatchStatus.Archived) {
-      await updateMatchStatus(supabase, secondGFMatch.id, MatchStatus.Ready);
+      await updateMatchStatus(tx, secondGFMatch.id, MatchStatus.Ready);
     }
   }
 }

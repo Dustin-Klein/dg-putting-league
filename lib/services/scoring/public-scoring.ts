@@ -1,20 +1,14 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { authorizeAccessCode, type AccessCodeEvent, type PrivilegedClient } from '@/lib/services/auth';
-import { releaseAndReassignLanePublic } from '@/lib/services/lane';
+import { authorizeAccessCode, type AccessCodeEvent, type Db, type PrivilegedClient } from '@/lib/services/auth';
 import {
   BadRequestError,
   NotFoundError,
   ForbiddenError,
 } from '@/lib/errors';
-import { calculatePoints } from './points-calculator';
 import { completeMatch } from './match-completion';
-import {
-  getOrCreateFrame,
-  upsertFrameResultAtomic,
-  bulkUpsertFrameResults,
-} from '@/lib/repositories/frame-repository';
-import { getPublicTeamFromParticipant, getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
+import { recordFrameScores, type FrameScore } from './score-submission';
+import { getPublicTeamFromParticipant, getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import { getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
@@ -65,9 +59,9 @@ function toPublicEventInfo(event: AccessCodeEvent): PublicEventInfo {
  */
 async function authorizeBracketScorer(
   accessCode: string
-): Promise<{ event: PublicEventInfo; db: PrivilegedClient }> {
-  const { event, db } = await authorizeAccessCode(accessCode, { mode: 'bracket' });
-  return { event: toPublicEventInfo(event), db };
+): Promise<{ event: PublicEventInfo; db: PrivilegedClient; pg: Db }> {
+  const { event, db, pg } = await authorizeAccessCode(accessCode, { mode: 'bracket' });
+  return { event: toPublicEventInfo(event), db, pg };
 }
 
 /**
@@ -256,64 +250,14 @@ export async function recordScore(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<void> {
-  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
-
-  // Verify bracket match belongs to event and get opponent info
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Match not found');
-  }
-
-  if (bracketMatch.status === 4) { // Completed
-    throw new BadRequestError('Match is already completed');
-  }
-
-  // Verify player belongs to one of the teams in this match
-  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id !== null);
-
-  if (participantIds.length === 0) {
-    throw new BadRequestError('Match has no participants yet');
-  }
-
-  // Validate putts early (no DB needed)
-  if (puttsMade < 0 || puttsMade > 3) {
-    throw new BadRequestError('Putts must be between 0 and 3');
-  }
-
-  // Calculate points using server-validated event setting (not client-provided value)
-  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
-  const isOvertime = frameNumber > event.bracket_frame_count;
-
-  // Parallel: Get team IDs and get/create frame simultaneously
-  const [teamIds, frame] = await Promise.all([
-    getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
-  ]);
-
-  if (teamIds.length === 0) {
-    throw new BadRequestError('Match teams not found');
-  }
-
-  // Verify player is in this match
-  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
-
-  if (!playerInMatch) {
-    throw new BadRequestError('Player is not in this match');
-  }
-
-  await upsertFrameResultAtomic(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
+  const { event, pg } = await authorizeBracketScorer(accessCode);
+  await recordFrameScores(pg, {
+    eventId: event.id,
+    matchId: bracketMatchId,
+    frameNumber,
+    scores: [{ event_player_id: eventPlayerId, putts_made: puttsMade }],
+    scorer: 'public',
   });
-
-  // Update bracket match status to Running if Ready
-  if (bracketMatch.status === 2) { // Ready
-    await updateMatchStatus(supabase, bracketMatchId, 3); // Running
-  }
 }
 
 /**
@@ -327,108 +271,15 @@ export async function recordScoreAndGetMatch(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<PublicMatchInfo> {
-  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
-
-  // Verify bracket match belongs to event and get opponent info
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Match not found');
-  }
-
-  if (bracketMatch.status === 4) {
-    throw new BadRequestError('Match is already completed');
-  }
-
-  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id !== null);
-
-  if (participantIds.length === 0) {
-    throw new BadRequestError('Match has no participants yet');
-  }
-
-  if (puttsMade < 0 || puttsMade > 3) {
-    throw new BadRequestError('Putts must be between 0 and 3');
-  }
-
-  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
-  const isOvertime = frameNumber > event.bracket_frame_count;
-
-  // Parallel: Get team IDs and get/create frame simultaneously
-  const [teamIds, frame] = await Promise.all([
-    getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
+  return batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, [
+    { event_player_id: eventPlayerId, putts_made: puttsMade },
   ]);
-
-  if (teamIds.length === 0) {
-    throw new BadRequestError('Match teams not found');
-  }
-
-  // Verify player is in this match
-  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
-
-  if (!playerInMatch) {
-    throw new BadRequestError('Player is not in this match');
-  }
-
-  await upsertFrameResultAtomic(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
-  });
-
-  // Update bracket match status to Running if Ready
-  let newStatus = bracketMatch.status;
-  if (bracketMatch.status === 2) {
-    newStatus = 3;
-    await updateMatchStatus(supabase, bracketMatchId, newStatus);
-  }
-
-  // Fetch updated match data using repository
-  const updatedMatch = await getMatchForScoringById(supabase, bracketMatchId);
-
-  if (!updatedMatch) {
-    throw new NotFoundError('Match data not found');
-  }
-
-  // Fetch lanes and teams for response
-  const [laneMap, team_one, team_two] = await Promise.all([
-    getLaneLabelsForEvent(supabase, event.id),
-    getPublicTeamFromParticipant(supabase, bracketMatch.opponent1?.id ?? null),
-    getPublicTeamFromParticipant(supabase, bracketMatch.opponent2?.id ?? null),
-  ]);
-
-  if (!team_one || !team_two) {
-    throw new NotFoundError('Match data not found');
-  }
-
-  const updatedOpponent1 = updatedMatch.opponent1 as { id?: number; score?: number } | null;
-  const updatedOpponent2 = updatedMatch.opponent2 as { id?: number; score?: number } | null;
-
-  return {
-    id: bracketMatchId,
-    round_id: updatedMatch.round_id,
-    number: updatedMatch.number,
-    status: newStatus,
-    lane_id: updatedMatch.lane_id,
-    lane_label: updatedMatch.lane_id ? laneMap[updatedMatch.lane_id] || null : null,
-    team_one,
-    team_two,
-    team_one_score: updatedOpponent1?.score ?? 0,
-    team_two_score: updatedOpponent2?.score ?? 0,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    frames: ((updatedMatch.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
-  };
 }
 
 /**
  * Input for a single score in a batch operation
  */
-export interface BatchScoreInput {
-  event_player_id: string;
-  putts_made: number;
-}
+export type BatchScoreInput = FrameScore;
 
 /**
  * Record multiple scores for a single frame and return updated match
@@ -440,108 +291,19 @@ export async function batchRecordScoresAndGetMatch(
   frameNumber: number,
   scores: BatchScoreInput[]
 ): Promise<PublicMatchInfo> {
-  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
+  const { event, db, pg } = await authorizeBracketScorer(accessCode);
 
-  // Verify bracket match belongs to event and get opponent info
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
+  const { status } = await recordFrameScores(pg, {
+    eventId: event.id,
+    matchId: bracketMatchId,
+    frameNumber,
+    scores,
+    scorer: 'public',
+  });
 
-  if (!bracketMatch) {
-    throw new NotFoundError('Match not found');
-  }
-
-  if (bracketMatch.status === 4) {
-    throw new BadRequestError('Match is already completed');
-  }
-
-  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id !== null);
-
-  if (participantIds.length === 0) {
-    throw new BadRequestError('Match has no participants yet');
-  }
-
-  // Validate all scores upfront
-  for (const score of scores) {
-    if (score.putts_made < 0 || score.putts_made > 3) {
-      throw new BadRequestError('Putts must be between 0 and 3');
-    }
-  }
-
-  // Get team IDs and frame once for all scores
-  const isOvertime = frameNumber > event.bracket_frame_count;
-  const [teamIds, frame] = await Promise.all([
-    getTeamIdsFromParticipants(supabase, participantIds),
-    getOrCreateFrame(supabase, bracketMatchId, frameNumber, isOvertime),
-  ]);
-
-  if (teamIds.length === 0) {
-    throw new BadRequestError('Match teams not found');
-  }
-
-  // Verify all players are in this match
-  if (scores.length > 0) {
-    const playerIdsToVerify = scores.map(s => s.event_player_id);
-    const allPlayersInMatch = await verifyPlayersInTeams(supabase, playerIdsToVerify, teamIds);
-
-    if (!allPlayersInMatch) {
-      throw new BadRequestError('One or more players are not in this match');
-    }
-  }
-
-  // Record all scores in a single batch operation
-  if (scores.length > 0) {
-    const resultsToUpsert = scores.map((score) => ({
-      match_frame_id: frame.id,
-      event_player_id: score.event_player_id,
-      bracket_match_id: bracketMatchId,
-      putts_made: score.putts_made,
-      points_earned: calculatePoints(score.putts_made, event.bonus_point_enabled),
-    }));
-
-    await bulkUpsertFrameResults(supabase, resultsToUpsert);
-  }
-
-  // Update bracket match status to Running if Ready
-  let newStatus = bracketMatch.status;
-  if (bracketMatch.status === 2 && scores.length > 0) {
-    newStatus = 3;
-    await updateMatchStatus(supabase, bracketMatchId, newStatus);
-  }
-
-  // Fetch updated match data using repository
-  const updatedMatch = await getMatchForScoringById(supabase, bracketMatchId);
-
-  if (!updatedMatch) {
-    throw new NotFoundError('Match data not found');
-  }
-
-  // Fetch lanes and teams for response
-  const [laneMap, team_one, team_two] = await Promise.all([
-    getLaneLabelsForEvent(supabase, event.id),
-    getPublicTeamFromParticipant(supabase, bracketMatch.opponent1?.id ?? null),
-    getPublicTeamFromParticipant(supabase, bracketMatch.opponent2?.id ?? null),
-  ]);
-
-  if (!team_one || !team_two) {
-    throw new NotFoundError('Match data not found');
-  }
-
-  const updatedOpponent1 = updatedMatch.opponent1 as { id?: number; score?: number } | null;
-  const updatedOpponent2 = updatedMatch.opponent2 as { id?: number; score?: number } | null;
-
-  return {
-    id: bracketMatchId,
-    round_id: updatedMatch.round_id,
-    number: updatedMatch.number,
-    status: newStatus,
-    lane_id: updatedMatch.lane_id,
-    lane_label: updatedMatch.lane_id ? laneMap[updatedMatch.lane_id] || null : null,
-    team_one,
-    team_two,
-    team_one_score: updatedOpponent1?.score ?? 0,
-    team_two_score: updatedOpponent2?.score ?? 0,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    frames: ((updatedMatch.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
-  };
+  // Read back after commit (outside the transaction, so the match lock is short).
+  const match = await getMatchForScoringInternal(db, event, bracketMatchId);
+  return { ...match, status };
 }
 
 /**
@@ -626,29 +388,13 @@ export async function completeMatchPublic(
   accessCode: string,
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
-  // Create client once and reuse for all operations
-  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
+  const { event, db: supabase, pg } = await authorizeBracketScorer(accessCode);
 
-  // Get match with scores (reuse client)
+  // Pre-fetch for the response fallback below (and to 404 on a foreign match early).
   const match = await getMatchForScoringInternal(supabase, event, bracketMatchId);
 
-  if (match.team_one_score === match.team_two_score) {
-    throw new BadRequestError('Match cannot be completed with a tied score. Continue scoring in overtime.');
-  }
-
-  // Use shared match completion logic
-  await completeMatch(supabase, event.id, bracketMatchId, {
-    team1Score: match.team_one_score,
-    team2Score: match.team_two_score,
-  });
-
-  // Release the lane and auto-assign to next ready match
-  try {
-    await releaseAndReassignLanePublic(supabase, event.id, bracketMatchId);
-  } catch (laneError) {
-    // Log but don't fail - lane management is secondary to match completion
-    console.error('Failed to release lane and reassign:', laneError);
-  }
+  // Result (from the match's frames), bracket progression and lane release commit together.
+  await completeMatch(pg, event.id, bracketMatchId);
 
   // Try to re-fetch the match for accurate data, but fall back to pre-fetched
   // data with updated status if the query times out (the client redirects

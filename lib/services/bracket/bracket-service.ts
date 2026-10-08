@@ -3,10 +3,15 @@ import { BracketsManager, helpers } from 'brackets-manager';
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
-import { SupabaseBracketStorage } from '@/lib/repositories/bracket-repository';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import type { PrivilegedClient } from '@/lib/services/auth';
+import { requireEventAdmin } from '@/lib/services/event';
 import { getEventTeams, Team } from '@/lib/services/team';
+import { autoAssignLanesTx } from '@/lib/services/lane';
+import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
+import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
+import * as bracketDb from '@/lib/repositories/bracket-repository.db';
+import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
+import { assignLane, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import {
   BadRequestError,
   InternalError,
@@ -15,31 +20,16 @@ import {
 import { logger } from '@/lib/utils/logger';
 import {
   bracketStageExists,
-  getBracketParticipants,
-  linkParticipantsToTeams,
-  setEventIdOnMatches,
-  getMatchesByStageId,
-  bulkUpdateMatchStatuses,
   getBracketStage,
   fetchBracketStructure,
   getParticipantsWithTeamIds,
-  getMatchWithStage,
   getReadyMatchesByStageId,
-  assignLaneToMatchRpc,
   getMatchForScoringById,
-  getMatchForAdvancement,
-  updateMatchWithOpponents,
-  clearAllMatchOpponents,
-  getBracketResetContext,
-  deleteMatchFrames,
-  getMatchWithGroupInfo,
-  getSecondGrandFinalMatch,
-  updateMatchStatus,
   getFrameCountsForMatchIds,
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent, resetAllLanesToIdle, releaseMatchLane } from '@/lib/repositories/lane-repository';
+import { getLanesForEvent } from '@/lib/repositories/lane-repository';
 import { getEventById, getEventAccessCode } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
 import type {
@@ -391,114 +381,86 @@ export async function buildProgressionSourceMap(
 }
 
 /**
- * Create a double elimination bracket for an event
- * @param eventId - The event ID
- * @param allowPreBracketStatus - If true, allows creation when status is 'pre-bracket' (for transactional status changes)
+ * Create the double-elimination bracket for an event from its teams (seed order),
+ * inside the caller's transaction, which must hold the event lock: brackets-manager
+ * structure, participant → team links, and first-round matches set Ready.
  */
-export async function createBracket(eventId: string, allowPreBracketStatus = false): Promise<BracketData> {
-  const { supabase } = await requireEventAdmin(eventId);
-  const event = await getEventWithPlayers(eventId);
-
-  const validStatuses = allowPreBracketStatus ? ['bracket', 'pre-bracket'] : ['bracket'];
-  if (!validStatuses.includes(event.status)) {
-    throw new BadRequestError('Bracket can only be created for events in bracket status');
-  }
-
-  // Check if bracket already exists
-  const exists = await bracketStageExists(supabase, eventId);
-
-  if (exists) {
+export async function createBracketTx(
+  tx: Tx,
+  eventId: string,
+  doubleGrandFinal: boolean
+): Promise<void> {
+  if (await bracketDb.getStageForEvent(tx, eventId)) {
     throw new BadRequestError('Bracket has already been created for this event');
   }
 
-  // Get teams for seeding
-  const teams = await getEventTeams(eventId);
-
+  const teams = await getTeamsForSeeding(tx, eventId);
   if (teams.length < 2) {
     throw new BadRequestError('At least 2 teams are required to create a bracket');
   }
-
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
 
   const sortedTeams = [...teams].sort((a, b) => (a.seed || 0) - (b.seed || 0));
 
   // brackets-manager requires participant count to be a power of 2
   const bracketSize = nextPowerOf2(sortedTeams.length);
-  const seeding: (string | null)[] = sortedTeams.map((team) => team.pool_combo);
+  const seeding: (string | null)[] = sortedTeams.map((team) => team.pool_combo ?? `Team ${team.seed}`);
 
   // Fill remaining slots with BYEs
   while (seeding.length < bracketSize) {
     seeding.push(null);
   }
 
+  const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
   await manager.create.stage({
     tournamentId: eventId as unknown as number,
     name: 'Double Elimination',
     type: 'double_elimination',
     seeding,
     settings: {
-      grandFinal: event.double_grand_final ? 'double' : 'simple',
+      grandFinal: doubleGrandFinal ? 'double' : 'simple',
       seedOrdering: ['inner_outer'],
       balanceByes: true,
     },
   });
 
-  const participants = await getBracketParticipants(supabase, eventId);
+  // Participants are created in seeding order.
+  const participants = await bracketDb.getParticipantsForEvent(tx, eventId);
+  await bracketDb.linkParticipantsToTeams(
+    tx,
+    eventId,
+    participants
+      .map((participant, i) => ({ participantId: participant.id, teamId: sortedTeams[i]?.id }))
+      .filter((m): m is { participantId: number; teamId: string } => m.teamId !== undefined)
+  );
 
-  if (participants.length > 0) {
-    const mappings: Array<{ participantId: number; teamId: string }> = [];
-    for (let i = 0; i < participants.length; i++) {
-      const team = sortedTeams[i];
-      if (team) {
-        mappings.push({ participantId: participants[i].id, teamId: team.id });
-      }
-    }
-    if (mappings.length > 0) {
-      await linkParticipantsToTeams(supabase, mappings);
-    }
+  const stage = await bracketDb.getStageForEvent(tx, eventId);
+  if (!stage) {
+    throw new InternalError('Bracket stage was not created');
   }
-
-  const stage = await getBracketStage(supabase, eventId);
-
-  if (stage) {
-    await setEventIdOnMatches(supabase, stage.id, eventId);
-  }
-
-  await setInitialMatchesReady(supabase, eventId);
-
-  return getBracket(eventId);
+  await bracketDb.setEventIdOnMatches(tx, stage.id, eventId);
+  await bracketDb.setFilledMatchesReady(tx, stage.id);
 }
 
 /**
- * Set initial matches (first round) to ready status
+ * Create a double elimination bracket for an event that is already in bracket play
+ * but has no bracket yet.
  */
-async function setInitialMatchesReady(
-  supabase: PrivilegedClient,
-  eventId: string
-): Promise<void> {
-  const stage = await getBracketStage(supabase, eventId);
+export async function createBracket(eventId: string): Promise<BracketData> {
+  const { pg } = await requireEventAdmin(eventId);
 
-  if (!stage) return;
-
-  const matches = await getMatchesByStageId(supabase, stage.id);
-  if (matches.length === 0) return;
-
-  // Collect all match IDs that need Ready status
-  const matchIdsToUpdate: number[] = [];
-  for (const match of matches) {
-    const opp1 = match.opponent1 as { id: number | null } | null;
-    const opp2 = match.opponent2 as { id: number | null } | null;
-
-    if (opp1?.id !== null && opp2?.id !== null) {
-      matchIdsToUpdate.push(match.id);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    const event = await getEventBracketConfig(tx, eventId);
+    if (!event) {
+      throw new NotFoundError('Event not found');
     }
-  }
+    if (event.status !== 'bracket') {
+      throw new BadRequestError('Bracket can only be created for events in bracket status');
+    }
+    await createBracketTx(tx, eventId, event.double_grand_final);
+  });
 
-  // Single bulk update
-  if (matchIdsToUpdate.length > 0) {
-    await bulkUpdateMatchStatuses(supabase, matchIdsToUpdate, Status.Ready);
-  }
+  return getBracket(eventId);
 }
 
 /**
@@ -702,55 +664,53 @@ export async function updateMatchResult(
   opponent2Score: number,
   winnerId?: number | null
 ): Promise<Match> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
 
-  const match = await getMatchWithStage(supabase, matchId);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await requireBracketPlay(tx, eventId);
 
-  if (!match) {
-    throw new NotFoundError('Match not found');
-  }
-
-  if (match.bracket_stage.tournament_id !== eventId) {
-    throw new BadRequestError('Match does not belong to this event');
-  }
-
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
-
-  let result1: 'win' | 'loss' | 'draw' | undefined;
-  let result2: 'win' | 'loss' | 'draw' | undefined;
-
-  if (winnerId !== undefined) {
-    const opp1 = match.opponent1;
-    const opp2 = match.opponent2;
-
-    if (winnerId === null) {
-      // Draw
-      result1 = 'draw';
-      result2 = 'draw';
-    } else if (winnerId === opp1?.id) {
-      result1 = 'win';
-      result2 = 'loss';
-    } else if (winnerId === opp2?.id) {
-      result1 = 'loss';
-      result2 = 'win';
-    } else {
-      throw new BadRequestError('Winner ID does not match any opponent in this match');
+    const match = await lockMatch(tx, matchId, eventId);
+    if (!match) {
+      throw new NotFoundError('Match not found');
     }
-  } else if (opponent1Score !== opponent2Score) {
-    if (opponent1Score > opponent2Score) {
-      result1 = 'win';
-      result2 = 'loss';
-    } else {
-      result1 = 'loss';
-      result2 = 'win';
-    }
-  }
 
-  await manager.update.match({
-    id: matchId,
-    opponent1: { score: opponent1Score, result: result1 },
-    opponent2: { score: opponent2Score, result: result2 },
+    let result1: 'win' | 'loss' | 'draw' | undefined;
+    let result2: 'win' | 'loss' | 'draw' | undefined;
+
+    if (winnerId !== undefined) {
+      const opp1 = match.opponent1 as { id?: number | null } | null;
+      const opp2 = match.opponent2 as { id?: number | null } | null;
+
+      if (winnerId === null) {
+        // Draw
+        result1 = 'draw';
+        result2 = 'draw';
+      } else if (winnerId === opp1?.id) {
+        result1 = 'win';
+        result2 = 'loss';
+      } else if (winnerId === opp2?.id) {
+        result1 = 'loss';
+        result2 = 'win';
+      } else {
+        throw new BadRequestError('Winner ID does not match any opponent in this match');
+      }
+    } else if (opponent1Score !== opponent2Score) {
+      if (opponent1Score > opponent2Score) {
+        result1 = 'win';
+        result2 = 'loss';
+      } else {
+        result1 = 'loss';
+        result2 = 'win';
+      }
+    }
+
+    const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
+    await manager.update.match({
+      id: matchId,
+      opponent1: { score: opponent1Score, result: result1 },
+      opponent2: { score: opponent2Score, result: result2 },
+    });
   });
 
   const updatedMatch = await getMatchForScoringById(supabase, matchId);
@@ -760,6 +720,17 @@ export async function updateMatchResult(
   }
 
   return updatedMatch as unknown as Match;
+}
+
+async function requireBracketPlay(tx: Tx, eventId: string) {
+  const event = await getEventBracketConfig(tx, eventId);
+  if (!event) {
+    throw new NotFoundError('Event not found');
+  }
+  if (event.status !== 'bracket') {
+    throw new BadRequestError('Event is not in bracket play');
+  }
+  return event;
 }
 
 /**
@@ -778,16 +749,28 @@ export async function getReadyMatches(eventId: string): Promise<Match[]> {
 }
 
 /**
- * Assign a lane to a match using atomic RPC
+ * Put a match on an idle lane (manual assignment)
  */
 export async function assignLaneToMatch(
   eventId: string,
   matchId: number,
   laneId: string
 ): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  await assignLaneToMatchRpc(supabase, eventId, laneId, matchId);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await requireBracketPlay(tx, eventId);
+
+    const match = await lockMatch(tx, matchId, eventId);
+    const lane = (await lockEventLanes(tx, eventId)).find((l) => l.id === laneId);
+    if (!lane) {
+      throw new NotFoundError('Lane not found');
+    }
+    if (!match || lane.status !== 'idle' || !(await assignLane(tx, eventId, laneId, matchId))) {
+      throw new BadRequestError('Lane is not available for assignment');
+    }
+  });
 }
 
 /**
@@ -807,42 +790,45 @@ export async function manuallyAdvanceTeam(
   participantId: number,
   slot: 'opponent1' | 'opponent2'
 ): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const match = await getMatchForAdvancement(supabase, targetMatchId, eventId);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await requireBracketPlay(tx, eventId);
 
-  if (!match) {
-    throw new NotFoundError('Match not found');
-  }
+    const match = await lockMatch(tx, targetMatchId, eventId);
 
-  if (match.status === Status.Completed || match.status === Status.Running) {
-    throw new BadRequestError('Cannot advance into a match that is completed or running');
-  }
+    if (!match) {
+      throw new NotFoundError('Match not found');
+    }
 
-  if (slot === 'opponent1' && (match.opponent1 as { id?: number | null } | null)?.id != null) {
-    throw new BadRequestError('Top slot is already occupied');
-  }
-  if (slot === 'opponent2' && (match.opponent2 as { id?: number | null } | null)?.id != null) {
-    throw new BadRequestError('Bottom slot is already occupied');
-  }
+    if (match.status === Status.Completed || match.status === Status.Running) {
+      throw new BadRequestError('Cannot advance into a match that is completed or running');
+    }
 
-  // Verify participant exists for this event
-  const participants = await getBracketParticipants(supabase, eventId);
-  const participant = participants.find((p) => p.id === participantId);
+    if (slot === 'opponent1' && (match.opponent1 as { id?: number | null } | null)?.id != null) {
+      throw new BadRequestError('Top slot is already occupied');
+    }
+    if (slot === 'opponent2' && (match.opponent2 as { id?: number | null } | null)?.id != null) {
+      throw new BadRequestError('Bottom slot is already occupied');
+    }
 
-  if (!participant) {
-    throw new BadRequestError('Participant not found in this event');
-  }
+    // Verify participant exists for this event
+    const participants = await bracketDb.getParticipantsForEvent(tx, eventId);
+    if (!participants.some((p) => p.id === participantId)) {
+      throw new BadRequestError('Participant not found in this event');
+    }
 
-  const newOpponent = { id: participantId };
+    const newOpponent = { id: participantId };
 
-  await updateMatchWithOpponents(
-    supabase,
-    targetMatchId,
-    slot === 'opponent1' ? newOpponent : null,
-    slot === 'opponent2' ? newOpponent : null,
-    match.status
-  );
+    await bracketDb.mergeMatchOpponents(
+      tx,
+      match,
+      slot === 'opponent1' ? newOpponent : null,
+      slot === 'opponent2' ? newOpponent : null,
+      match.status
+    );
+  });
 }
 
 /**
@@ -853,32 +839,37 @@ export async function removeTeamFromMatch(
   targetMatchId: number,
   slot: 'opponent1' | 'opponent2'
 ): Promise<void> {
-  const { supabase, user } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
-  const match = await getMatchForAdvancement(supabase, targetMatchId, eventId);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await requireBracketPlay(tx, eventId);
 
-  if (!match) {
-    throw new NotFoundError('Match not found');
-  }
+    const match = await lockMatch(tx, targetMatchId, eventId);
 
-  if (match.status === Status.Completed || match.status === Status.Running) {
-    throw new BadRequestError('Cannot remove a team from a match that is completed or running');
-  }
+    if (!match) {
+      throw new NotFoundError('Match not found');
+    }
 
-  const opponent = slot === 'opponent1' ? match.opponent1 : match.opponent2;
-  if (!opponent || (opponent as { id?: number | null }).id == null) {
-    throw new BadRequestError('Slot is already empty');
-  }
+    if (match.status === Status.Completed || match.status === Status.Running) {
+      throw new BadRequestError('Cannot remove a team from a match that is completed or running');
+    }
 
-  const emptyOpponent = { id: null };
+    const opponent = slot === 'opponent1' ? match.opponent1 : match.opponent2;
+    if (!opponent || (opponent as { id?: number | null }).id == null) {
+      throw new BadRequestError('Slot is already empty');
+    }
 
-  await updateMatchWithOpponents(
-    supabase,
-    targetMatchId,
-    slot === 'opponent1' ? emptyOpponent : null,
-    slot === 'opponent2' ? emptyOpponent : null,
-    match.status
-  );
+    const emptyOpponent = { id: null };
+
+    await bracketDb.mergeMatchOpponents(
+      tx,
+      match,
+      slot === 'opponent1' ? emptyOpponent : null,
+      slot === 'opponent2' ? emptyOpponent : null,
+      match.status
+    );
+  });
 
   logger.info('Team removed from match', {
     userId: user.id,
@@ -895,16 +886,21 @@ export async function removeTeamFromMatch(
  * Preserves the bracket structure and participants
  */
 export async function clearBracketPlacements(eventId: string): Promise<BracketData> {
-  const { supabase, user } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
-  const stage = await getBracketStage(supabase, eventId);
+  const stage = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
 
-  if (!stage) {
-    throw new NotFoundError('Bracket not found for this event');
-  }
+    const stage = await bracketDb.getStageForEvent(tx, eventId);
+    if (!stage) {
+      throw new NotFoundError('Bracket not found for this event');
+    }
 
-  await clearAllMatchOpponents(supabase, stage.id);
-  await resetAllLanesToIdle(supabase, eventId);
+    await bracketDb.clearAllMatchOpponents(tx, stage.id);
+    await lockEventLanes(tx, eventId);
+    await resetOccupiedLanesToIdle(tx, eventId);
+    return stage;
+  });
 
   logger.info('Bracket placements cleared', {
     userId: user.id,
@@ -1215,184 +1211,121 @@ export async function resetMatchResult(
     teamsNotified?: boolean;
   }
 ): Promise<{ resetMatchIds: number[] }> {
-  const { supabase, user } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
-  const context = await getBracketResetContext(supabase, eventId);
-  if (!context) {
-    throw new NotFoundError('Match not found');
-  }
+  // Rewrites, frame deletes, grand-final archive and lane release/reassignment all
+  // commit together, under the event lock.
+  const { resetMatchIds, taintPlan } = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await requireBracketPlay(tx, eventId);
 
-  const targetMatch = context.matches.find((m) => m.id === matchId);
-
-  if (!targetMatch) {
-    throw new NotFoundError('Match not found');
-  }
-
-  const targetResettableStatuses = new Set([Status.Completed, Status.Running, Status.Archived]);
-  if (!targetResettableStatuses.has(targetMatch.status)) {
-    throw new BadRequestError('Only completed, running, or archived matches can be reset');
-  }
-
-  const storage = new SupabaseBracketStorage(supabase, eventId);
-  const manager = new BracketsManager(storage);
-  const managerFind = (
-    manager as unknown as {
-      find?: {
-        nextMatches?: (matchId: number) => Promise<Array<{ id: number }>>;
-      };
-    }
-  ).find;
-  const toMatchId = (id: unknown): number | null => {
-    const parsed = Number(id);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  if (!managerFind?.nextMatches) {
-    throw new InternalError('Bracket reset graph traversal is unavailable');
-  }
-
-  const nextMatchesResolver = async (currentId: number): Promise<number[]> => {
-    const nextMatches = await managerFind.nextMatches!(currentId);
-    return nextMatches
-      .map((nextMatch) => toMatchId((nextMatch as { id: unknown }).id))
-      .filter((nextId): nextId is number => nextId != null);
-  };
-
-  const taintPlan = await buildTaintedSlotPlan(matchId, context, nextMatchesResolver);
-  const resetMatchIds = [matchId, ...taintPlan.affectedMatchIds.filter((id) => id !== matchId)];
-  const baselineById = new Map<number, BracketMatchForReset>(context.matches.map((match) => [match.id, match]));
-  const resetOperations = resetMatchIds.map((currentId) => {
-    const baselineMatch = baselineById.get(currentId);
-    if (!baselineMatch) {
-      throw new InternalError(`Match ${currentId} not found in baseline reset snapshot`);
+    const context = await bracketDb.getBracketResetContext(tx, eventId);
+    if (!context) {
+      throw new NotFoundError('Match not found');
     }
 
-    const taintedSlots = taintPlan.taintedSlotsByMatch.get(currentId) ?? new Set<MatchSlot>();
-    const isTargetMatch = currentId === matchId;
-    const desiredOpponent1Id =
-      !isTargetMatch && taintedSlots.has('opponent1') ? null : baselineMatch.opponent1?.id ?? null;
-    const desiredOpponent2Id =
-      !isTargetMatch && taintedSlots.has('opponent2') ? null : baselineMatch.opponent2?.id ?? null;
-    const opp1WasLiteralNull = baselineMatch.opponent1 === null;
-    const opp2WasLiteralNull = baselineMatch.opponent2 === null;
+    const targetMatch = context.matches.find((m) => m.id === matchId);
 
-    // Preserve BYE semantics: literal `null` must remain SQL NULL, not `{id:null}`.
-    const scrubOpponent1 = opp1WasLiteralNull ? null : { id: null };
-    const scrubOpponent2 = opp2WasLiteralNull ? null : { id: null };
-    const restoreOpponent1 = desiredOpponent1Id != null
-      ? { id: desiredOpponent1Id }
-      : (opp1WasLiteralNull ? null : { id: null });
-    const restoreOpponent2 = desiredOpponent2Id != null
-      ? { id: desiredOpponent2Id }
-      : (opp2WasLiteralNull ? null : { id: null });
+    if (!targetMatch) {
+      throw new NotFoundError('Match not found');
+    }
 
-    return {
-      matchId: currentId,
-      scrubOpponent1,
-      scrubOpponent2,
-      restoreOpponent1,
-      restoreOpponent2,
-      rollbackOpponent1: baselineMatch.opponent1,
-      rollbackOpponent2: baselineMatch.opponent2,
-      rollbackStatus: baselineMatch.status,
+    const targetResettableStatuses = new Set([Status.Completed, Status.Running, Status.Archived]);
+    if (!targetResettableStatuses.has(targetMatch.status)) {
+      throw new BadRequestError('Only completed, running, or archived matches can be reset');
+    }
+
+    const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
+    const managerFind = (
+      manager as unknown as {
+        find?: {
+          nextMatches?: (matchId: number) => Promise<Array<{ id: number }>>;
+        };
+      }
+    ).find;
+    const toMatchId = (id: unknown): number | null => {
+      const parsed = Number(id);
+      return Number.isFinite(parsed) ? parsed : null;
     };
-  });
-  const operationByMatchId = new Map(resetOperations.map((operation) => [operation.matchId, operation]));
-  const rewrittenMatchIds: number[] = [];
 
-  try {
-    for (const operation of resetOperations) {
+    if (!managerFind?.nextMatches) {
+      throw new InternalError('Bracket reset graph traversal is unavailable');
+    }
+
+    const nextMatchesResolver = async (currentId: number): Promise<number[]> => {
+      const nextMatches = await managerFind.nextMatches!(currentId);
+      return nextMatches
+        .map((nextMatch) => toMatchId((nextMatch as { id: unknown }).id))
+        .filter((nextId): nextId is number => nextId != null);
+    };
+
+    const taintPlan = await buildTaintedSlotPlan(matchId, context, nextMatchesResolver);
+    const resetMatchIds = [matchId, ...taintPlan.affectedMatchIds.filter((id) => id !== matchId)];
+    const baselineById = new Map<number, BracketMatchForReset>(context.matches.map((match) => [match.id, match]));
+
+    // Matches being reset give their lanes back; free lanes are reassigned at the end.
+    for (const { id } of await bracketDb.getMatchesWithLanes(tx, resetMatchIds)) {
+      await releaseMatchLane(tx, eventId, id);
+    }
+
+    for (const currentId of resetMatchIds) {
+      const baselineMatch = baselineById.get(currentId);
+      if (!baselineMatch) {
+        throw new InternalError(`Match ${currentId} not found in baseline reset snapshot`);
+      }
+
+      const taintedSlots = taintPlan.taintedSlotsByMatch.get(currentId) ?? new Set<MatchSlot>();
+      const isTargetMatch = currentId === matchId;
+      const desiredOpponent1Id =
+        !isTargetMatch && taintedSlots.has('opponent1') ? null : baselineMatch.opponent1?.id ?? null;
+      const desiredOpponent2Id =
+        !isTargetMatch && taintedSlots.has('opponent2') ? null : baselineMatch.opponent2?.id ?? null;
+      const opp1WasLiteralNull = baselineMatch.opponent1 === null;
+      const opp2WasLiteralNull = baselineMatch.opponent2 === null;
+
+      // Preserve BYE semantics: literal `null` must remain SQL NULL, not `{id:null}`.
+      const scrubOpponent1 = opp1WasLiteralNull ? null : { id: null };
+      const scrubOpponent2 = opp2WasLiteralNull ? null : { id: null };
+      const restoreOpponent1 = desiredOpponent1Id != null
+        ? { id: desiredOpponent1Id }
+        : (opp1WasLiteralNull ? null : { id: null });
+      const restoreOpponent2 = desiredOpponent2Id != null
+        ? { id: desiredOpponent2Id }
+        : (opp2WasLiteralNull ? null : { id: null });
+
       // Step A: force-clear score/result artifacts from both slots.
-      await updateMatchWithOpponents(
-        supabase,
-        operation.matchId,
-        operation.scrubOpponent1,
-        operation.scrubOpponent2,
-        Status.Waiting
-      );
+      const before = await lockMatch(tx, currentId, eventId);
+      if (!before) {
+        throw new InternalError(`Match ${currentId} disappeared during reset`);
+      }
+      await bracketDb.mergeMatchOpponents(tx, before, scrubOpponent1, scrubOpponent2, Status.Waiting);
 
       // Step B: restore canonical replay participants for this match.
-      await updateMatchWithOpponents(
-        supabase,
-        operation.matchId,
-        operation.restoreOpponent1,
-        operation.restoreOpponent2,
-        Status.Waiting
-      );
-
-      rewrittenMatchIds.push(operation.matchId);
-    }
-  } catch (error) {
-    const rollbackFailures: Array<{ matchId: number; error: string }> = [];
-    for (const rewrittenMatchId of [...rewrittenMatchIds].reverse()) {
-      const operation = operationByMatchId.get(rewrittenMatchId);
-      if (!operation) continue;
-      try {
-        await updateMatchWithOpponents(
-          supabase,
-          operation.matchId,
-          operation.rollbackOpponent1,
-          operation.rollbackOpponent2,
-          operation.rollbackStatus
-        );
-      } catch (rollbackError) {
-        rollbackFailures.push({
-          matchId: operation.matchId,
-          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
-        });
-      }
+      const scrubbed = (await lockMatch(tx, currentId, eventId))!;
+      await bracketDb.mergeMatchOpponents(tx, scrubbed, restoreOpponent1, restoreOpponent2, Status.Waiting);
     }
 
-    logger.error('Match result reset failed during rewrite phase', {
-      userId: user.id,
-      action: 'reset_match_result',
-      eventId,
-      targetMatchId: matchId,
-      resetMatchIds,
-      rewrittenMatchIds,
-      rollbackFailures,
-      outcome: 'failure',
-      error: error instanceof Error ? error.message : String(error),
-    });
+    await bracketDb.deleteMatchFrames(tx, resetMatchIds);
 
-    throw new InternalError(
-      'Failed while rewriting reset matches; no frame deletions were attempted. Retry is safe.'
-    );
-  }
-
-  try {
-    for (const currentId of resetMatchIds) {
-      await deleteMatchFrames(supabase, currentId);
-    }
-  } catch (error) {
-    logger.error('Match result reset failed during frame deletion phase', {
-      userId: user.id,
-      action: 'reset_match_result',
-      eventId,
-      targetMatchId: matchId,
-      resetMatchIds,
-      rewrittenMatchIds,
-      outcome: 'failure',
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw new InternalError(
-      'Reset rewrites were applied but frame deletion only partially completed. Retry the reset to finish cleanup.'
-    );
-  }
-
-  // Handle grand final: if the target is the first GF match, keep the reset
-  // match archived until the replayed first GF determines whether it is needed.
-  const matchWithGroup = await getMatchWithGroupInfo(supabase, matchId);
-  if (matchWithGroup) {
-    const groupNumber = matchWithGroup.round?.group?.number;
-    const roundNumber = matchWithGroup.round?.number;
-    if (groupNumber === GRAND_FINAL_GROUP_NUMBER && roundNumber === FIRST_GF_ROUND_NUMBER) {
-      const secondGFMatch = await getSecondGrandFinalMatch(supabase, matchWithGroup.group_id);
+    // Handle grand final: if the target is the first GF match, keep the reset
+    // match archived until the replayed first GF determines whether it is needed.
+    const matchWithGroup = await bracketDb.getMatchGroupInfo(tx, matchId);
+    if (
+      matchWithGroup &&
+      matchWithGroup.group_number === GRAND_FINAL_GROUP_NUMBER &&
+      matchWithGroup.round_number === FIRST_GF_ROUND_NUMBER
+    ) {
+      const secondGFMatch = await bracketDb.getSecondGrandFinalMatch(tx, matchWithGroup.group_id);
       if (secondGFMatch && secondGFMatch.status !== Status.Archived) {
-        await updateMatchStatus(supabase, secondGFMatch.id, Status.Archived);
+        await releaseMatchLane(tx, eventId, secondGFMatch.id);
+        await bracketDb.updateMatchStatus(tx, secondGFMatch.id, Status.Archived);
       }
     }
-  }
+
+    await autoAssignLanesTx(tx, eventId);
+
+    return { resetMatchIds, taintPlan };
+  });
 
   logger.info('Match result reset', {
     userId: user.id,
@@ -1424,27 +1357,22 @@ export async function resetMatchResult(
  * Called when double_grand_final is toggled off to reconcile bracket state.
  */
 export async function archiveGrandFinalResetMatch(eventId: string): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const bracketStructure = await fetchBracketStructure(supabase, eventId);
-  if (!bracketStructure) return;
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
 
-  const gfGroup = (bracketStructure.groups as Group[]).find(
-    (g) => g.number === GRAND_FINAL_GROUP_NUMBER
-  );
-  if (!gfGroup) return;
+    const gfGroupId = await bracketDb.getGrandFinalGroupId(tx, eventId, GRAND_FINAL_GROUP_NUMBER);
+    if (gfGroupId == null) return;
 
-  const resetMatch = await getSecondGrandFinalMatch(supabase, gfGroup.id as number);
-  if (!resetMatch) return;
+    const resetMatch = await bracketDb.getSecondGrandFinalMatch(tx, gfGroupId);
+    if (!resetMatch) return;
 
-  if (resetMatch.status !== Status.Archived) {
-    try {
-      await releaseMatchLane(supabase, eventId, resetMatch.id);
-    } catch (laneError) {
-      logger.error('Failed to release lane for reset match during GF toggle:', { error: String(laneError) });
+    if (resetMatch.status !== Status.Archived) {
+      await releaseMatchLane(tx, eventId, resetMatch.id);
+      await bracketDb.updateMatchStatus(tx, resetMatch.id, Status.Archived);
     }
-    await updateMatchStatus(supabase, resetMatch.id, Status.Archived);
-  }
+  });
 }
 
 function hasParticipantInSlot(opponent: unknown): boolean {
@@ -1483,36 +1411,34 @@ function getReenabledResetStatus(
  * Restore/reconcile the grand final reset match when double_grand_final is toggled on.
  */
 export async function restoreGrandFinalResetMatch(eventId: string): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const bracketStructure = await fetchBracketStructure(supabase, eventId);
-  if (!bracketStructure) return;
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
 
-  const gfGroup = (bracketStructure.groups as Group[]).find(
-    (g) => g.number === GRAND_FINAL_GROUP_NUMBER
-  );
-  if (!gfGroup) return;
+    const context = await bracketDb.getBracketResetContext(tx, eventId);
+    if (!context) return;
 
-  const gfRoundOne = (bracketStructure.rounds as Round[]).find(
-    (r) => r.group_id === gfGroup.id && r.number === 1
-  );
-  const gfRoundTwo = (bracketStructure.rounds as Round[]).find(
-    (r) => r.group_id === gfGroup.id && r.number === 2
-  );
-  if (!gfRoundTwo) return;
+    const gfGroup = context.groups.find((g) => g.number === GRAND_FINAL_GROUP_NUMBER);
+    if (!gfGroup) return;
 
-  const firstGrandFinalMatch = (bracketStructure.matches as Match[]).find(
-    (m) => m.round_id === gfRoundOne?.id && m.number === 1
-  );
-  const resetMatch = (bracketStructure.matches as Match[]).find(
-    (m) => m.round_id === gfRoundTwo.id && m.number === 1
-  );
-  if (!resetMatch) return;
+    const gfRoundOne = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 1);
+    const gfRoundTwo = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 2);
+    if (!gfRoundTwo) return;
 
-  const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
-  if (resetMatch.status !== desiredStatus) {
-    await updateMatchStatus(supabase, Number(resetMatch.id), desiredStatus);
-  }
+    const firstGrandFinalMatch = context.matches.find(
+      (m) => m.round_id === gfRoundOne?.id && m.number === 1
+    ) as unknown as Match | undefined;
+    const resetMatch = context.matches.find(
+      (m) => m.round_id === gfRoundTwo.id && m.number === 1
+    ) as unknown as Match | undefined;
+    if (!resetMatch) return;
+
+    const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
+    if (resetMatch.status !== desiredStatus) {
+      await bracketDb.updateMatchStatus(tx, Number(resetMatch.id), desiredStatus);
+    }
+  });
 }
 
 export { Status } from 'brackets-model';

@@ -2,6 +2,7 @@ import 'server-only';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient, type PrivilegedClient } from '@/lib/supabase/privileged';
+import { _getDb, type Db } from '@/lib/db/client';
 import { UnauthorizedError, ForbiddenError, NotFoundError, InvalidAccessCodeError } from '@/lib/errors';
 import {
   getLeagueAdminByUserAndLeague,
@@ -10,12 +11,13 @@ import {
 } from '@/lib/repositories/league-repository';
 import {
   getEventLeagueId,
-  getEventByAccessCode,
   type AccessCodeEvent,
 } from '@/lib/repositories/event-repository';
+import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
 import { normalizeAccessCode } from '@/lib/utils/access-code';
 
 export type { PrivilegedClient } from '@/lib/supabase/privileged';
+export type { Db } from '@/lib/db/client';
 export type { AccessCodeEvent } from '@/lib/repositories/event-repository';
 
 export async function requireAuthenticatedUser() {
@@ -45,8 +47,10 @@ export async function requireLeagueAdmin(leagueId: string) {
 // ---------------------------------------------------------------------------
 // Authorization → privileged client
 //
-// These are the only way to obtain a PrivilegedClient (RLS-bypassing). Each one
-// performs its authorization check before handing out the client.
+// These are the only way to obtain a PrivilegedClient or a Db (both bypass RLS).
+// Each one performs its authorization check before handing them out.
+// `db` is the Supabase (PostgREST) client; `pg` is the direct Postgres connection
+// used for transactional service methods (lib/db). Plan 04 retires `db`.
 // ---------------------------------------------------------------------------
 
 /**
@@ -54,7 +58,7 @@ export async function requireLeagueAdmin(leagueId: string) {
  */
 export async function authorizeLeagueAdmin(
     leagueId: string
-): Promise<{ user: User; db: PrivilegedClient }> {
+): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
     const db = _createPrivilegedClient();
 
@@ -63,7 +67,7 @@ export async function authorizeLeagueAdmin(
         throw new ForbiddenError('Insufficient permissions');
     }
 
-    return { user, db };
+    return { user, db, pg: _getDb() };
 }
 
 /**
@@ -72,7 +76,7 @@ export async function authorizeLeagueAdmin(
 export async function authorizeLeagueOwner(
     leagueId: string,
     forbiddenMessage = 'Only the league owner can perform this action'
-): Promise<{ user: User; db: PrivilegedClient }> {
+): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
     const db = _createPrivilegedClient();
 
@@ -81,7 +85,7 @@ export async function authorizeLeagueOwner(
         throw new ForbiddenError(forbiddenMessage);
     }
 
-    return { user, db };
+    return { user, db, pg: _getDb() };
 }
 
 /**
@@ -89,7 +93,7 @@ export async function authorizeLeagueOwner(
  */
 export async function authorizeEventAdmin(
     eventId: string
-): Promise<{ user: User; db: PrivilegedClient }> {
+): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
     const db = _createPrivilegedClient();
 
@@ -103,14 +107,14 @@ export async function authorizeEventAdmin(
         throw new ForbiddenError('Insufficient permissions');
     }
 
-    return { user, db };
+    return { user, db, pg: _getDb() };
 }
 
 /**
  * Require the current user to be an admin of at least one league
  * (e.g. to create players, which are shared across leagues).
  */
-export async function authorizeAnyLeagueAdmin(): Promise<{ user: User; db: PrivilegedClient }> {
+export async function authorizeAnyLeagueAdmin(): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
     const db = _createPrivilegedClient();
 
@@ -119,16 +123,16 @@ export async function authorizeAnyLeagueAdmin(): Promise<{ user: User; db: Privi
         throw new ForbiddenError('Only league admins can perform this action');
     }
 
-    return { user, db };
+    return { user, db, pg: _getDb() };
 }
 
 /**
  * Require an authenticated user who may create a new league.
  * Today any signed-in user may create a league (they become its owner).
  */
-export async function authorizeLeagueCreation(): Promise<{ user: User; db: PrivilegedClient }> {
+export async function authorizeLeagueCreation(): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
-    return { user, db: _createPrivilegedClient() };
+    return { user, db: _createPrivilegedClient(), pg: _getDb() };
 }
 
 export type AccessCodeMode = 'bracket' | 'qualification';
@@ -149,7 +153,7 @@ function eventAcceptsMode(event: AccessCodeEvent, mode: AccessCodeMode): boolean
 export async function authorizeAccessCode(
     accessCode: string,
     opts: { mode?: AccessCodeMode } = {}
-): Promise<{ event: AccessCodeEvent; db: PrivilegedClient }> {
+): Promise<{ event: AccessCodeEvent; db: PrivilegedClient; pg: Db }> {
     const notFoundMessage =
         opts.mode === 'bracket'
             ? 'Invalid access code or event is not in bracket play'
@@ -162,8 +166,8 @@ export async function authorizeAccessCode(
         throw new InvalidAccessCodeError(notFoundMessage);
     }
 
-    const db = _createPrivilegedClient();
-    const event = await getEventByAccessCode(db, normalized);
+    const pg = _getDb();
+    const event = await getEventByAccessCode(pg, normalized);
 
     if (!event) {
         throw new InvalidAccessCodeError(notFoundMessage);
@@ -175,5 +179,5 @@ export async function authorizeAccessCode(
         throw new NotFoundError(notFoundMessage);
     }
 
-    return { event, db };
+    return { event, db: _createPrivilegedClient(), pg };
 }
