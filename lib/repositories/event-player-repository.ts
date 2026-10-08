@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
 
@@ -24,7 +25,7 @@ export async function getEventPlayerByPlayerAndEvent(
 ): Promise<EventPlayerData | null> {
   const { data: existingPlayer, error } = await supabase
     .from('event_players')
-    .select('*')
+    .select('id, event_id, player_id, created_at, payment_type, pool, pfa_score, scoring_method')
     .eq('event_id', eventId)
     .eq('player_id', playerId)
     .maybeSingle();
@@ -40,7 +41,7 @@ export async function getEventPlayerByPlayerAndEvent(
  * Insert a new event player
  */
 export async function insertEventPlayer(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   playerId: string
 ): Promise<string> {
@@ -84,7 +85,6 @@ export async function getEventPlayer(
         id,
         full_name,
         nickname,
-        email,
         created_at,
         default_pool,
         player_number
@@ -126,7 +126,6 @@ export async function getEventPlayersBulk(
         id,
         full_name,
         nickname,
-        email,
         created_at,
         default_pool,
         player_number
@@ -145,7 +144,7 @@ export async function getEventPlayersBulk(
  * Delete an event player
  */
 export async function deleteEventPlayer(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   eventPlayerId: string
 ): Promise<void> {
@@ -164,7 +163,7 @@ export async function deleteEventPlayer(
  * Update player payment status
  */
 export async function updateEventPlayerPayment(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   playerId: string,
   paymentType: PaymentType | null
@@ -209,7 +208,6 @@ export async function getEventPlayersWithPools(
         id,
         full_name,
         nickname,
-        email,
         created_at,
         default_pool,
         player_number
@@ -229,7 +227,7 @@ export async function getEventPlayersWithPools(
  * Update event player pool assignment
  */
 export async function updateEventPlayerPool(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventPlayerId: string,
   pool: 'A' | 'B',
   pfaScore: number,
@@ -373,7 +371,7 @@ export async function getPlayerIdsByEvent(
  * Bulk insert multiple event_players at once
  */
 export async function insertEventPlayersBulk(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   playerIds: string[]
 ): Promise<void> {
@@ -401,7 +399,7 @@ export async function insertEventPlayersBulk(
  * Returns a Map where key is player_id and value is { totalPoints, frameCount }
  */
 export async function getPfaScoresBulk(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   playerEventPlayerMap: Map<string, string[]>,
   sinceDate: Date
 ): Promise<Map<string, { totalPoints: number; frameCount: number }>> {

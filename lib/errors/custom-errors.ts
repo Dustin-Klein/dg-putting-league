@@ -52,3 +52,14 @@ export class BadRequestError extends Error {
     this.name = 'BadRequestError';
   }
 }
+
+/**
+ * Error thrown when an event access code does not match any event.
+ * A NotFoundError (HTTP 404), distinguished so routes can rate-limit failed attempts.
+ */
+export class InvalidAccessCodeError extends NotFoundError {
+  constructor(message = 'Invalid access code') {
+    super(message);
+    this.name = 'InvalidAccessCodeError';
+  }
+}

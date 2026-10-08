@@ -1,5 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
+import { authorizeAccessCode, type AccessCodeEvent, type PrivilegedClient } from '@/lib/services/auth';
 import { releaseAndReassignLanePublic } from '@/lib/services/lane';
 import {
   BadRequestError,
@@ -14,7 +15,7 @@ import {
   bulkUpsertFrameResults,
 } from '@/lib/repositories/frame-repository';
 import { getPublicTeamFromParticipant, getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams, verifyPlayersInTeams } from '@/lib/repositories/team-repository';
-import { getEventByAccessCodeForBracket, getEventStatusByAccessCode, getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
+import { getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
@@ -46,23 +47,40 @@ export type {
   ScoringLane,
 } from '@/lib/types/scoring';
 
+function toPublicEventInfo(event: AccessCodeEvent): PublicEventInfo {
+  return {
+    id: event.id,
+    event_date: event.event_date,
+    location: event.location,
+    lane_count: event.lane_count,
+    bonus_point_enabled: event.bonus_point_enabled,
+    bracket_frame_count: event.bracket_frame_count,
+    status: event.status,
+  };
+}
+
+/**
+ * Authorize a bracket scorer by access code.
+ * Returns the event and the privileged client to use for this request.
+ */
+async function authorizeBracketScorer(
+  accessCode: string
+): Promise<{ event: PublicEventInfo; db: PrivilegedClient }> {
+  const { event, db } = await authorizeAccessCode(accessCode, { mode: 'bracket' });
+  return { event: toPublicEventInfo(event), db };
+}
+
 /**
  * Get event scoring context based on access code
  * Determines if event is in qualification or bracket mode
  */
 export async function getEventScoringContext(accessCode: string) {
-  const supabase = await createClient();
-  const cleanedAccessCode = accessCode.trim();
-  const eventCheck = await getEventStatusByAccessCode(supabase, cleanedAccessCode);
-
-  if (!eventCheck) {
-    throw new NotFoundError('Invalid access code');
-  }
+  const { event: eventCheck, db } = await authorizeAccessCode(accessCode);
 
   // Handle qualification mode
   if (eventCheck.status === 'pre-bracket' && eventCheck.qualification_round_enabled) {
-    const event = await validateQualificationAccessCode(cleanedAccessCode);
-    const players = await getPlayersForQualification(cleanedAccessCode);
+    const event = await validateQualificationAccessCode(accessCode);
+    const players = await getPlayersForQualification(accessCode);
 
     return {
       mode: 'qualification' as const,
@@ -73,10 +91,10 @@ export async function getEventScoringContext(accessCode: string) {
 
   // Handle bracket mode
   if (eventCheck.status === 'bracket') {
-    const event = await validateAccessCode(cleanedAccessCode, supabase);
+    const event = toPublicEventInfo(eventCheck);
     const [matches, allLanes] = await Promise.all([
-      getMatchesForScoring(cleanedAccessCode),
-      getLanesForEvent(supabase, event.id),
+      getMatchesForScoringInternal(db, event),
+      getLanesForEvent(db, event.id),
     ]);
 
     const lanes: ScoringLane[] = allLanes.map(l => ({ id: l.id, label: l.label }));
@@ -96,22 +114,10 @@ export async function getEventScoringContext(accessCode: string) {
 /**
  * Validate access code and get event info
  * @param accessCode - The event access code
- * @param supabaseClient - Optional existing Supabase client (for connection reuse)
  */
-export async function validateAccessCode(
-  accessCode: string,
-  supabaseClient?: Awaited<ReturnType<typeof createClient>>
-): Promise<PublicEventInfo> {
-  const supabase = supabaseClient ?? await createClient();
-  const cleanedAccessCode = accessCode.trim();
-
-  const event = await getEventByAccessCodeForBracket(supabase, cleanedAccessCode);
-
-  if (!event) {
-    throw new NotFoundError('Invalid access code or event is not in bracket play');
-  }
-
-  return event as PublicEventInfo;
+export async function validateAccessCode(accessCode: string): Promise<PublicEventInfo> {
+  const { event } = await authorizeBracketScorer(accessCode);
+  return event;
 }
 
 
@@ -119,9 +125,14 @@ export async function validateAccessCode(
  * Get matches ready for scoring (status = ready or in_progress)
  */
 export async function getMatchesForScoring(accessCode: string): Promise<PublicMatchInfo[]> {
-  const supabase = await createClient();
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db } = await authorizeBracketScorer(accessCode);
+  return getMatchesForScoringInternal(db, event);
+}
 
+async function getMatchesForScoringInternal(
+  supabase: PrivilegedClient,
+  event: PublicEventInfo
+): Promise<PublicMatchInfo[]> {
   // Parallel: Get lanes and bracket matches simultaneously
   const [laneMap, bracketMatches] = await Promise.all([
     getLaneLabelsForEvent(supabase, event.id),
@@ -182,12 +193,17 @@ export async function getMatchesForScoring(accessCode: string): Promise<PublicMa
  */
 export async function getMatchForScoring(
   accessCode: string,
-  bracketMatchId: number,
-  supabaseClient?: Awaited<ReturnType<typeof createClient>>
+  bracketMatchId: number
 ): Promise<PublicMatchInfo> {
-  const supabase = supabaseClient ?? await createClient();
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db } = await authorizeBracketScorer(accessCode);
+  return getMatchForScoringInternal(db, event, bracketMatchId);
+}
 
+async function getMatchForScoringInternal(
+  supabase: PrivilegedClient,
+  event: PublicEventInfo,
+  bracketMatchId: number
+): Promise<PublicMatchInfo> {
   // Parallel: Get lanes and bracket match simultaneously
   const [laneMap, bracketMatch] = await Promise.all([
     getLaneLabelsForEvent(supabase, event.id),
@@ -240,10 +256,7 @@ export async function recordScore(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<void> {
-  // Create client once and reuse for all operations
-  const supabase = await createClient();
-
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
 
   // Verify bracket match belongs to event and get opponent info
   const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
@@ -314,10 +327,7 @@ export async function recordScoreAndGetMatch(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<PublicMatchInfo> {
-  // Create client once and reuse for ALL operations
-  const supabase = await createClient();
-
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
 
   // Verify bracket match belongs to event and get opponent info
   const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
@@ -430,8 +440,7 @@ export async function batchRecordScoresAndGetMatch(
   frameNumber: number,
   scores: BatchScoreInput[]
 ): Promise<PublicMatchInfo> {
-  const supabase = await createClient();
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
 
   // Verify bracket match belongs to event and get opponent info
   const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
@@ -594,8 +603,7 @@ export async function startMatchPublic(
   accessCode: string,
   bracketMatchId: number
 ): Promise<void> {
-  const supabase = await createClient();
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
 
   const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
 
@@ -619,11 +627,10 @@ export async function completeMatchPublic(
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
   // Create client once and reuse for all operations
-  const supabase = await createClient();
-  const event = await validateAccessCode(accessCode, supabase);
+  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
 
   // Get match with scores (reuse client)
-  const match = await getMatchForScoring(accessCode, bracketMatchId, supabase);
+  const match = await getMatchForScoringInternal(supabase, event, bracketMatchId);
 
   if (match.team_one_score === match.team_two_score) {
     throw new BadRequestError('Match cannot be completed with a tied score. Continue scoring in overtime.');
@@ -637,7 +644,7 @@ export async function completeMatchPublic(
 
   // Release the lane and auto-assign to next ready match
   try {
-    await releaseAndReassignLanePublic(event.id, bracketMatchId);
+    await releaseAndReassignLanePublic(supabase, event.id, bracketMatchId);
   } catch (laneError) {
     // Log but don't fail - lane management is secondary to match completion
     console.error('Failed to release lane and reassign:', laneError);
@@ -647,7 +654,7 @@ export async function completeMatchPublic(
   // data with updated status if the query times out (the client redirects
   // immediately anyway and doesn't use the response body)
   try {
-    return await getMatchForScoring(accessCode, bracketMatchId, supabase);
+    return await getMatchForScoringInternal(supabase, event, bracketMatchId);
   } catch (fetchError) {
     console.error('Failed to fetch updated match after completion:', fetchError);
     return {

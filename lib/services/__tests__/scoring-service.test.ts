@@ -30,6 +30,10 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/supabase/privileged', () => ({
+  _createPrivilegedClient: jest.fn(),
+}));
+
 jest.mock('@/lib/services/lane', () => ({
   releaseAndReassignLanePublic: jest.fn(),
 }));
@@ -48,8 +52,7 @@ jest.mock('@/lib/repositories/team-repository', () => ({
 }));
 
 jest.mock('@/lib/repositories/event-repository', () => ({
-  getEventByAccessCodeForBracket: jest.fn(),
-  getEventStatusByAccessCode: jest.fn(),
+  getEventByAccessCode: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/lane-repository', () => ({
@@ -75,6 +78,7 @@ jest.mock('@/lib/services/qualification', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
+import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import {
   getOrCreateFrame,
   upsertFrameResultAtomic,
@@ -86,7 +90,7 @@ import {
   verifyPlayerInTeams,
   verifyPlayersInTeams,
 } from '@/lib/repositories/team-repository';
-import { getEventByAccessCodeForBracket, getEventStatusByAccessCode } from '@/lib/repositories/event-repository';
+import { getEventByAccessCode } from '@/lib/repositories/event-repository';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
@@ -141,13 +145,14 @@ describe('Scoring Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
+    (_createPrivilegedClient as jest.Mock).mockReturnValue(mockSupabase);
   });
 
   describe('getEventScoringContext', () => {
     const accessCode = 'ABC123';
 
     it('should return qualification context when event is pre-bracket and qualification is enabled', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue({
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
         id: 'event-123',
         status: 'pre-bracket',
         qualification_round_enabled: true,
@@ -165,18 +170,18 @@ describe('Scoring Service', () => {
         event: mockEvent,
         players: mockPlayers,
       });
-      expect(getEventStatusByAccessCode).toHaveBeenCalledWith(mockSupabase, accessCode);
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, accessCode.toLowerCase());
     });
 
     it('should return bracket context when event is in bracket status', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue({
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
         id: 'event-123',
         status: 'bracket',
         qualification_round_enabled: false,
       });
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
@@ -189,13 +194,13 @@ describe('Scoring Service', () => {
     });
 
     it('should throw NotFoundError for invalid access code', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue(null);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(null);
 
       await expect(getEventScoringContext('INVALID')).rejects.toThrow(NotFoundError);
     });
 
     it('should throw BadRequestError for event not in scoreable state', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue({
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
         id: 'event-123',
         status: 'created',
         qualification_round_enabled: false,
@@ -208,34 +213,33 @@ describe('Scoring Service', () => {
     });
 
     it('should handle access code case-insensitively', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue({
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
         id: 'event-123',
         status: 'bracket',
         qualification_round_enabled: false,
       });
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
 
-      // Pass lowercase code, expect it to work (repo uses ilike)
-      await getEventScoringContext('abc123');
+      // Codes are normalized to lower case and matched exactly
+      await getEventScoringContext('ABC123');
 
-      // Verify we passed the code to the repo (repo handles insensitive check)
-      expect(getEventStatusByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
     });
 
     it('should trim whitespace from access code', async () => {
-      (getEventStatusByAccessCode as jest.Mock).mockResolvedValue({
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
         id: 'event-123',
         status: 'bracket',
         qualification_round_enabled: false,
       });
 
       const mockEvent = { id: 'event-123', status: 'bracket' };
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
       (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
@@ -244,7 +248,7 @@ describe('Scoring Service', () => {
       await getEventScoringContext('  ABC123  ');
 
       // Verify repo was called with trimmed code
-      expect(getEventStatusByAccessCode).toHaveBeenCalledWith(mockSupabase, 'ABC123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
     });
   });
 
@@ -255,16 +259,17 @@ describe('Scoring Service', () => {
         status: 'bracket',
         access_code: 'ABC123',
       });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
 
       const result = await validateAccessCode('ABC123');
 
-      expect(result).toEqual(mockEvent);
-      expect(getEventByAccessCodeForBracket).toHaveBeenCalledWith(mockSupabase, 'ABC123');
+      expect(result).toMatchObject({ id: mockEvent.id, status: 'bracket' });
+      expect(result).not.toHaveProperty('access_code');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
     });
 
     it('should throw NotFoundError for invalid access code', async () => {
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(null);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(null);
 
       await expect(validateAccessCode('INVALID')).rejects.toThrow(NotFoundError);
       await expect(validateAccessCode('INVALID')).rejects.toThrow(
@@ -273,7 +278,7 @@ describe('Scoring Service', () => {
     });
 
     it('should throw InternalError on database error', async () => {
-      (getEventByAccessCodeForBracket as jest.Mock).mockRejectedValue(
+      (getEventByAccessCode as jest.Mock).mockRejectedValue(
         new InternalError('Failed to fetch event by access code: DB error')
       );
 
@@ -283,27 +288,13 @@ describe('Scoring Service', () => {
       );
     });
 
-    it('should accept optional supabase client', async () => {
-      const existingClient = createMockSupabaseClient();
-      const mockEvent = createMockEvent({ status: 'bracket' });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
-
-      const result = await validateAccessCode(
-        'ABC123',
-        existingClient as unknown as Parameters<typeof validateAccessCode>[1]
-      );
-
-      expect(result).toEqual(mockEvent);
-      expect(getEventByAccessCodeForBracket).toHaveBeenCalledWith(existingClient, 'ABC123');
-    });
-
     it('should trim whitespace from access code', async () => {
       const mockEvent = createMockEvent({ status: 'bracket' });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
 
       await validateAccessCode('  ABC123  ');
 
-      expect(getEventByAccessCodeForBracket).toHaveBeenCalledWith(mockSupabase, 'ABC123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
     });
   });
 
@@ -313,7 +304,7 @@ describe('Scoring Service', () => {
     beforeEach(() => {
       // Mock successful access code validation
       const mockEvent = createMockEvent({ id: 'event-123', status: 'bracket' });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
 
       // Mock lanes query
       (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({ 'lane-1': 'Lane 1' });
@@ -369,7 +360,7 @@ describe('Scoring Service', () => {
 
     beforeEach(() => {
       const mockEvent = createMockEvent({ id: 'event-123', status: 'bracket' });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({ 'lane-1': 'Lane 1' });
     });
 
@@ -459,7 +450,7 @@ describe('Scoring Service', () => {
         bonus_point_enabled: true,
         bracket_frame_count: 10,
       });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
 
       // Mock bracket match query via repository
       const mockMatch = createMockBracketMatch({
@@ -568,7 +559,7 @@ describe('Scoring Service', () => {
 
     it('should throw BadRequestError when scores are tied', async () => {
       const mockEvent = createMockEvent({ id: 'event-123', status: 'bracket' });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
 
       const mockMatch = {
@@ -608,7 +599,7 @@ describe('Scoring Service', () => {
         bonus_point_enabled: true,
         bracket_frame_count: 10,
       });
-      (getEventByAccessCodeForBracket as jest.Mock).mockResolvedValue(mockEvent);
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
 
       const mockMatch = createMockBracketMatch({
         id: bracketMatchId,

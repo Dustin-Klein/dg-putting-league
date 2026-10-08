@@ -65,6 +65,40 @@ jobs:
       - name: Run tests
         run: npm test --passWithNoTests
 
+  database:
+    name: Database Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Match production's Postgres image. 17.6.1.106 segfaults when a role calls a
+      # function it lacks EXECUTE on (supautils bug), which these tests do on purpose.
+      - name: Pin Postgres image to production version
+        run: mkdir -p supabase/.temp && echo 17.6.1.063 > supabase/.temp/postgres-version
+
+      - name: Start local Supabase
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit
+
+      - name: Run pgTAP tests
+        run: supabase test db
+
+      - name: Run client lockdown integration tests
+        run: npm run test:int
+
   build:
     name: Build
     runs-on: ubuntu-latest

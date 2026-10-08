@@ -1,8 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils/utils";
+import { getOriginMismatchReason, requiresCsrfCheck } from "../utils/same-origin";
 
 export async function updateSession(request: NextRequest) {
+  // CSRF: every state-changing API request must come from our own origin.
+  if (
+    requiresCsrfCheck(request.method, request.nextUrl.pathname) &&
+    getOriginMismatchReason(request)
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });

@@ -4,7 +4,7 @@ import { handleError } from '@/lib/errors';
 import { withRateLimit } from '@/lib/middleware/rate-limit';
 
 export async function GET(request: NextRequest) {
-  const rateLimitResponse = withRateLimit(request, 'public:leagues');
+  const rateLimitResponse = await withRateLimit(request, 'public:leagues');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

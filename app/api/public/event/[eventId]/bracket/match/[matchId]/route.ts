@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicMatchDetails } from '@/lib/services/scoring/public-scoring';
 import { handleError } from '@/lib/errors';
-import { withRateLimit } from '@/lib/middleware/rate-limit';
+import { withPublicBracketRateLimit } from '@/lib/middleware/rate-limit';
 
 export async function GET(
   request: NextRequest,
   props: { params: Promise<{ eventId: string; matchId: string }> }
 ) {
-  const rateLimitResponse = withRateLimit(request, 'public:bracket');
+  const rateLimitResponse = await withPublicBracketRateLimit(request);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

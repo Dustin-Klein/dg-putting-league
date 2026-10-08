@@ -1,32 +1,17 @@
 import 'server-only';
 import { ForbiddenError } from '@/lib/errors';
+import { getOriginMismatchReason } from './same-origin';
 
 /**
  * Validates Origin header against Host to prevent CSRF attacks.
- * Should be called for state-changing requests (POST, PUT, DELETE, PATCH).
+ * The proxy already applies this check to every state-changing /api request;
+ * routes may still call it explicitly.
  * @param request - The incoming request
  * @throws ForbiddenError if Origin doesn't match Host
  */
 export function validateCsrfOrigin(request: Request): void {
-  const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-
-  if (!origin) {
-    throw new ForbiddenError('Missing origin header');
-  }
-
-  if (!host) {
-    throw new ForbiddenError('Missing host header');
-  }
-
-  let originHost: string;
-  try {
-    originHost = new URL(origin).host;
-  } catch {
-    throw new ForbiddenError('Invalid origin header');
-  }
-
-  if (originHost !== host) {
-    throw new ForbiddenError('Origin mismatch');
+  const reason = getOriginMismatchReason(request);
+  if (reason) {
+    throw new ForbiddenError(reason);
   }
 }

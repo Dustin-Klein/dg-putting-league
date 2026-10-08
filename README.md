@@ -65,12 +65,25 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    ```env
    NEXT_PUBLIC_SUPABASE_URL=[YOUR_SUPABASE_PROJECT_URL]
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[YOUR_SUPABASE_ANON_KEY]
+   SUPABASE_SECRET_KEY=[YOUR_SUPABASE_SECRET_KEY]
    ```
 
-4. Run database migrations:
+   `SUPABASE_SECRET_KEY` is server-only (never prefix with `NEXT_PUBLIC_`). For local development, find it under `SECRET_KEY` in `npx supabase status`.
+
+4. Run database migrations and tests:
+
+   Pin the Postgres image version to `17.6.1.063` (matching production; image `17.6.1.106` has a known supautils bug) before starting the local stack:
 
    ```bash
+   mkdir -p supabase/.temp && echo 17.6.1.063 > supabase/.temp/postgres-version
+   npx supabase start
    npx supabase db reset
+   ```
+
+   Run the database security tests (pgTAP):
+
+   ```bash
+   npx supabase test db
    ```
 
 5. Start the development server:

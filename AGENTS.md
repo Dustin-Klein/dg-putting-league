@@ -11,13 +11,19 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
 - Routes parse input (zod), authenticate, call one service entry point, and return
   errors via `handleError` (`lib/errors`). Business logic does not belong in routes;
   Supabase queries do not belong in services.
-- State-changing routes call `validateCsrfOrigin` (`lib/utils/csrf.ts`); many
-  routes, including `app/api/public/*`, use `lib/middleware/rate-limit.ts`.
+- Trust model: browser/client roles (`anon`, `authenticated`) can only SELECT via RLS.
+  All writes and business RPCs require a type-branded `PrivilegedClient` (`lib/supabase/types.ts`)
+  obtained via authorization functions in `lib/services/auth/auth-service.ts` (`authorize*`)
+  or `requireEventAdmin`. Because `PrivilegedClient` bypasses RLS, services must verify that
+  all entity IDs belong to the authorized event before writing.
+- CSRF protection is enforced centrally in `lib/supabase/proxy.ts` (rejects non-GET/HEAD/OPTIONS
+  `/api/**` requests where Origin does not match Host). `validateCsrfOrigin` (`lib/utils/csrf.ts`)
+  remains available for explicit checks. Many routes use `lib/middleware/rate-limit.ts`.
 - Authorization is enforced in two places: service-layer checks and Postgres RLS
   policies / `SECURITY DEFINER` functions in `supabase/migrations/`.
-- Schema changes are made by editing the existing `init_*` migration files rather
-  than appending new migrations (see `docs/architecture.md`). Do not flag this as
-  a problem in itself.
+- Schema changes are additive migrations (new timestamped files in `supabase/migrations/`,
+  starting with `202610070000000_security_lockdown.sql`). Do not edit existing `init_*`
+  migration files (flag any edits to them). Emergency rollback SQL lives in `supabase/rollbacks/`.
 - Checks: `npm run lint`, `npm run type-check`, `npm test` (Jest), `npm run build`.
 
 # Code Review Instructions
@@ -113,18 +119,23 @@ Pay particular attention to:
 - Authentication and authorization boundaries: API routes must derive the user
   from Supabase auth, never from client-provided user IDs, and admin-only
   operations must verify league/event admin rights.
+- Privileged client rules: flag any import of the privileged client (`lib/supabase/privileged.ts`)
+  outside `lib/services/auth/**`, and flag any write or business RPC repository function
+  typed with the non-privileged client instead of `PrivilegedClient`.
 - RLS policies and `SECURITY DEFINER` functions: check that policies are not
   loosened unintentionally, that definer functions set `search_path` and perform
   their own authorization checks, and that `GRANT EXECUTE` is not broader than
-  needed.
+  needed. Flag any new GRANT to `anon` or `authenticated`.
 - Public access-code scoring endpoints (`app/api/score`, `app/api/public`): access
   codes must only grant access to their own event. New public routes should use
   the rate limiter like the existing ones in `app/api/public`.
-- Missing `validateCsrfOrigin` on new state-changing routes.
+- CSRF protection: proxy covers `/api/**` automatically; flag state-changing
+  routes that bypass `/api`.
 - Service-role keys or other secrets reaching client code or `NEXT_PUBLIC_*` vars.
 - Input validation (zod schemas on route inputs), injection, sensitive data
   exposure (e.g. returning player emails or full DB rows to the UI), path
-  traversal, and privilege escalation.
+  traversal, and privilege escalation. Flag any `select('*')` on `events` (use
+  `EVENT_COLUMNS`) or `players` (email must not be exposed).
 
 ## Review comments
 

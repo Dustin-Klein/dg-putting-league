@@ -7,6 +7,7 @@ import {
   startMatchPublic,
 } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
 import { validateCsrfOrigin } from '@/lib/utils';
 
 const getMatchSchema = z.object({
@@ -33,6 +34,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(req);
     const { matchId } = await params;
@@ -52,6 +56,7 @@ export async function POST(
     const match = await getMatchForScoring(parsed.data.access_code, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }
@@ -63,6 +68,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(req);
     const { matchId } = await params;
@@ -90,6 +98,7 @@ export async function PUT(
 
     return NextResponse.json(match);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }
@@ -101,6 +110,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(req);
     const { matchId } = await params;
@@ -125,6 +137,7 @@ export async function PATCH(
     const match = await completeMatchPublic(parsed.data.access_code, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }

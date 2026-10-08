@@ -1,7 +1,8 @@
 import { BracketsManager } from 'brackets-manager';
-import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import {
   SupabaseBracketStorage,
+  getMatchByIdAndEvent,
   getMatchWithGroupInfo,
   getSecondGrandFinalMatch,
   archiveMatch,
@@ -9,9 +10,8 @@ import {
 } from '@/lib/repositories/bracket-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import { MatchStatus } from '@/lib/types/bracket';
-import { BadRequestError, InternalError } from '@/lib/errors';
+import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type { MatchScores } from '@/lib/types/scoring';
 
@@ -22,7 +22,7 @@ export type { MatchScores } from '@/lib/types/scoring';
  * It uses brackets-manager to handle bracket progression.
  */
 export async function completeMatch(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   bracketMatchId: number,
   scores: MatchScores
@@ -34,6 +34,13 @@ export async function completeMatch(
   }
 
   const team1Won = team1Score > team2Score;
+
+  // The privileged client bypasses RLS, so verify the match belongs to the
+  // authorized event before brackets-manager writes to it.
+  const matchInEvent = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
+  if (!matchInEvent) {
+    throw new NotFoundError('Match not found');
+  }
 
   const event = await getEventById(supabase, eventId);
   const doubleGrandFinal = event?.double_grand_final ?? true;
@@ -78,7 +85,7 @@ const FIRST_GF_ROUND_NUMBER = 1;
  * This function handles both initial completion and score corrections.
  */
 export async function handleGrandFinalCompletion(
-  supabase: SupabaseClient,
+  supabase: PrivilegedClient,
   completedMatchId: number,
   opponent1Won: boolean,
   doubleGrandFinal: boolean = true

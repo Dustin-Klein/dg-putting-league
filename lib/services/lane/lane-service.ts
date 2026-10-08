@@ -1,6 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
+import type { PrivilegedClient } from '@/lib/services/auth';
 import * as laneRepo from '@/lib/repositories/lane-repository';
 import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import { BadRequestError } from '@/lib/errors';
@@ -147,7 +148,7 @@ export async function getLanesWithMatches(
  * Shared between admin and public versions
  */
 async function autoAssignLanesInternal(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string
 ): Promise<number> {
   // Check event is still in bracket status before attempting lane assignments
@@ -225,15 +226,15 @@ export async function releaseMatchLaneAndReassign(
 
 /**
  * Release lane from a specific match and trigger auto-assignment (public version)
- * This version uses the regular supabase client for public scoring flow
+ * The caller must already have authorized the scorer for this event (access code)
+ * and passes the privileged client it received.
  */
 export async function releaseAndReassignLanePublic(
+  supabase: PrivilegedClient,
   eventId: string,
   matchId: number
 ): Promise<number> {
-  const supabase = await createClient();
-
-  // Release the lane using atomic RPC (works with public client)
+  // Release the lane using atomic RPC
   await laneRepo.releaseMatchLane(supabase, eventId, matchId);
 
   // Auto-assign lanes to next ready matches

@@ -1,5 +1,4 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import {
   NotFoundError,
   BadRequestError,
@@ -255,7 +254,7 @@ export async function computePoolAssignments(
   eventId: string,
   event: EventWithDetails
 ): Promise<PoolAssignment[]> {
-  const supabase = await createClient();
+  const { supabase } = await requireEventAdmin(eventId);
 
   if (!event.players || event.players.length === 0) {
     throw new BadRequestError('No players registered for this event');

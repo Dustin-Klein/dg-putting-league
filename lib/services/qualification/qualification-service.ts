@@ -1,13 +1,11 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import {
   BadRequestError,
-  NotFoundError,
   ForbiddenError,
 } from '@/lib/errors';
 import { calculatePoints } from '@/lib/services/scoring/points-calculator';
+import { authorizeAccessCode, authorizeEventAdmin, type PrivilegedClient } from '@/lib/services/auth';
 import * as qualificationRepo from '@/lib/repositories/qualification-repository';
-import * as eventRepo from '@/lib/repositories/event-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import type {
   QualificationRound,
@@ -46,22 +44,37 @@ export interface PublicQualificationPlayerInfo {
 }
 
 /**
+ * Authorize a qualification scorer by access code.
+ * Returns the event and the privileged client to use for this request.
+ */
+async function authorizeQualificationScorer(
+  accessCode: string
+): Promise<{ event: PublicQualificationEventInfo; db: PrivilegedClient }> {
+  const { event, db } = await authorizeAccessCode(accessCode, { mode: 'qualification' });
+  return {
+    event: {
+      id: event.id,
+      event_date: event.event_date,
+      location: event.location,
+      lane_count: event.lane_count,
+      bonus_point_enabled: event.bonus_point_enabled,
+      qualification_round_enabled: event.qualification_round_enabled,
+      qualification_frame_count: event.qualification_frame_count,
+      status: event.status,
+    },
+    db,
+  };
+}
+
+/**
  * Validate access code for qualification scoring
  * Returns event info if valid, throws if not
  */
 export async function validateQualificationAccessCode(
   accessCode: string
 ): Promise<PublicQualificationEventInfo> {
-  const supabase = await createClient();
-  const cleanedAccessCode = accessCode.trim();
-
-  const event = await eventRepo.getEventByAccessCodeForQualification(supabase, cleanedAccessCode);
-
-  if (!event) {
-    throw new NotFoundError('Invalid access code or event is not accepting qualification scores');
-  }
-
-  return event as PublicQualificationEventInfo;
+  const { event } = await authorizeQualificationScorer(accessCode);
+  return event;
 }
 
 /**
@@ -70,8 +83,7 @@ export async function validateQualificationAccessCode(
 export async function getPlayersForQualification(
   accessCode: string
 ): Promise<PublicQualificationPlayerInfo[]> {
-  const event = await validateQualificationAccessCode(accessCode);
-  const supabase = await createClient();
+  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
 
   // Get or create qualification round
   const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
@@ -111,8 +123,7 @@ export async function getPlayerQualificationData(
   frames: QualificationFrame[];
   nextFrameNumber: number;
 }> {
-  const event = await validateQualificationAccessCode(accessCode);
-  const supabase = await createClient();
+  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
 
   // Get player info from repository
   const eventPlayer = await eventPlayerRepo.getEventPlayer(supabase, eventPlayerId);
@@ -163,8 +174,7 @@ export async function recordQualificationScore(
   frameNumber: number,
   puttsMade: number
 ): Promise<{ frame: QualificationFrame; player: PublicQualificationPlayerInfo }> {
-  const event = await validateQualificationAccessCode(accessCode);
-  const supabase = await createClient();
+  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
 
   // Validate putts
   if (puttsMade < 0 || puttsMade > 3) {
@@ -248,7 +258,8 @@ export async function getEventQualificationStatus(
   players: PlayerQualificationStatus[];
   allComplete: boolean;
 }> {
-  const supabase = await createClient();
+  // Reads payment status, which only the server can see
+  const { db: supabase } = await authorizeEventAdmin(eventId);
 
   const round = await qualificationRepo.getQualificationRoundFull(supabase, eventId);
   if (!round) {
@@ -272,8 +283,7 @@ export async function getBatchPlayerQualificationData(
   round: { id: string; frame_count: number };
   players: Array<PublicQualificationPlayerInfo & { frames: QualificationFrame[] }>;
 }> {
-  const event = await validateQualificationAccessCode(accessCode);
-  const supabase = await createClient();
+  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
 
   // Get qualification round
   const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);

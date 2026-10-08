@@ -1,5 +1,5 @@
 import 'server-only';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import type {
   DataTypes,
   OmitId,
@@ -26,10 +26,10 @@ const TABLE_MAP: Record<Table, string> = {
  * Implements the Storage interface required by brackets-manager
  */
 export class SupabaseBracketStorage implements Storage {
-  private supabase: SupabaseClient;
+  private supabase: PrivilegedClient;
   private eventId: string;
 
-  constructor(supabase: SupabaseClient, eventId: string) {
+  constructor(supabase: PrivilegedClient, eventId: string) {
     this.supabase = supabase;
     this.eventId = eventId;
   }
@@ -572,7 +572,7 @@ export async function getMatchForScoringById(
  * Update bracket match status
  */
 export async function updateMatchStatus(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   matchId: number,
   status: number
 ): Promise<void> {
@@ -590,7 +590,7 @@ export async function updateMatchStatus(
  * Bulk update match statuses (single query for multiple matches)
  */
 export async function bulkUpdateMatchStatuses(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   matchIds: number[],
   status: number
 ): Promise<void> {
@@ -652,7 +652,7 @@ export async function getBracketStage(
  * Link participants to teams in batch (parallel updates)
  */
 export async function linkParticipantsToTeams(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   mappings: Array<{ participantId: number; teamId: string }>
 ): Promise<void> {
   const updatePromises = mappings.map(async (mapping) => {
@@ -693,7 +693,7 @@ export async function getBracketParticipants(
  * Update all bracket matches with event_id for a given stage
  */
 export async function setEventIdOnMatches(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   stageId: number,
   eventId: string
 ): Promise<void> {
@@ -819,7 +819,7 @@ export async function getSecondGrandFinalMatch(
  * Archive a match (set status to Archived = 5)
  */
 export async function archiveMatch(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   matchId: number
 ): Promise<void> {
   const { error } = await supabase
@@ -971,7 +971,7 @@ export interface OpponentScoreUpdate {
  * Update match opponent scores
  */
 export async function updateMatchOpponentScores(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   matchId: number,
   opponent1: OpponentScoreUpdate,
   opponent2: OpponentScoreUpdate
@@ -1100,7 +1100,7 @@ export async function getMatchForAdvancement(
  * Update match opponents and status atomically via the merge RPC
  */
 export async function updateMatchWithOpponents(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   matchId: number,
   opponent1: { id?: number | null; position?: number } | null,
   opponent2: { id?: number | null; position?: number } | null,
@@ -1122,7 +1122,7 @@ export async function updateMatchWithOpponents(
  * Clear all match opponents, lane assignments, and reset status to Waiting for a stage
  */
 export async function clearAllMatchOpponents(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   stageId: number
 ): Promise<void> {
   const { error } = await supabase
@@ -1287,7 +1287,7 @@ export async function getFrameCountsForMatchIds(
  * Delete match frames for a bracket match (frame_results cascade-delete via FK)
  */
 export async function deleteMatchFrames(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   bracketMatchId: number
 ): Promise<void> {
   const { error } = await supabase
@@ -1301,7 +1301,7 @@ export async function deleteMatchFrames(
 }
 
 export async function assignLaneToMatchRpc(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneId: string,
   matchId: number

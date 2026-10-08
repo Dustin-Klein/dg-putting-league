@@ -29,24 +29,28 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Access Code</h3>
-            <div className="flex items-center mt-1">
-              <code className="font-mono bg-muted px-2 py-1 rounded">
-                {event.access_code}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-2"
-                onClick={() => {
-                  navigator.clipboard.writeText(event.access_code);
-                }}
-              >
-                Copy
-              </Button>
+          {event.access_code && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground">Access Code</h3>
+              <div className="flex items-center mt-1">
+                <code className="font-mono bg-muted px-2 py-1 rounded">
+                  {event.access_code}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-2"
+                  onClick={() => {
+                    if (event.access_code) {
+                      navigator.clipboard.writeText(event.access_code);
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Putt Distance</h3>

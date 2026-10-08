@@ -35,7 +35,7 @@ export async function POST(
   request: NextRequest,
   { params: paramsPromise }: RouteParams
 ) {
-  const rateLimitResponse = withStrictRateLimit(request, 'league:admins:add');
+  const rateLimitResponse = await withStrictRateLimit(request, 'league:admins:add');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

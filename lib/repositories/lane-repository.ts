@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import { Status } from 'brackets-model';
 import type { Lane } from '@/lib/types/bracket';
@@ -47,7 +48,7 @@ export async function hasLanes(
  * Insert lanes for an event
  */
 export async function insertLanes(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneCount: number
 ): Promise<Lane[]> {
@@ -205,7 +206,7 @@ export async function getEventStatus(
  * Assign lane to match using atomic RPC
  */
 export async function assignLaneToMatch(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneId: string,
   matchId: number
@@ -229,7 +230,7 @@ export async function assignLaneToMatch(
  * Release lane from a match using atomic RPC
  */
 export async function releaseMatchLane(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   matchId: number,
   laneId?: string
@@ -253,7 +254,7 @@ export async function releaseMatchLane(
  * Set lane to maintenance using atomic RPC
  */
 export async function setLaneMaintenanceRPC(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneId: string
 ): Promise<void> {
@@ -272,7 +273,7 @@ export async function setLaneMaintenanceRPC(
  * Set lane to idle using atomic RPC
  */
 export async function setLaneIdleRPC(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneId: string
 ): Promise<void> {
@@ -291,7 +292,7 @@ export async function setLaneIdleRPC(
  * Reset all occupied lanes for an event back to idle
  */
 export async function resetAllLanesToIdle(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string
 ): Promise<void> {
   const { error } = await supabase
@@ -331,7 +332,7 @@ export async function getLaneById(
  * Add lanes to an event, continuing from the highest existing "Lane N" number
  */
 export async function addLanesToEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   count: number
 ): Promise<Lane[]> {
@@ -367,7 +368,7 @@ export async function addLanesToEvent(
  * Delete a lane only if it is idle
  */
 export async function deleteIdleLane(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   laneId: string
 ): Promise<boolean> {
@@ -415,7 +416,7 @@ export async function getLaneLabelsForEvent(
  * Returns the number of successful assignments
  */
 export async function bulkAssignLanesToMatches(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   assignments: Array<{ laneId: string; matchId: number }>
 ): Promise<number> {

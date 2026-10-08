@@ -5,6 +5,7 @@ import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseBracketStorage } from '@/lib/repositories/bracket-repository';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import type { PrivilegedClient } from '@/lib/services/auth';
 import { getEventTeams, Team } from '@/lib/services/team';
 import {
   BadRequestError,
@@ -39,7 +40,7 @@ import {
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent, resetAllLanesToIdle, releaseMatchLane } from '@/lib/repositories/lane-repository';
-import { getEventById } from '@/lib/repositories/event-repository';
+import { getEventById, getEventAccessCode } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
 import type {
   BracketWithTeams,
@@ -473,7 +474,7 @@ export async function createBracket(eventId: string, allowPreBracketStatus = fal
  * Set initial matches (first round) to ready status
  */
 async function setInitialMatchesReady(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string
 ): Promise<void> {
   const stage = await getBracketStage(supabase, eventId);
@@ -632,10 +633,11 @@ export async function getBracketWithTeams(eventId: string): Promise<{
 }> {
   const { supabase } = await requireEventAdmin(eventId);
 
-  const [bracket, teams, event, participantsWithTeams] = await Promise.all([
+  const [bracket, teams, event, accessCode, participantsWithTeams] = await Promise.all([
     getBracket(eventId),
     getEventTeams(eventId),
     getEventById(supabase, eventId),
+    getEventAccessCode(supabase, eventId),
     getParticipantsWithTeamIds(supabase, eventId),
   ]);
 
@@ -683,7 +685,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     teams,
     participantTeamMap,
     eventStatus: event?.status,
-    accessCode: event?.access_code ?? undefined,
+    accessCode: accessCode ?? undefined,
     bracketFrameCount: event?.bracket_frame_count ?? undefined,
     frameCountMap,
     progressionSourceMap,

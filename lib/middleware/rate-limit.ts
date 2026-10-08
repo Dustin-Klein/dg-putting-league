@@ -1,21 +1,12 @@
 import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
+import { consumeRateLimit, peekRateLimit } from '@/lib/services/auth/rate-limit-service';
+import { InvalidAccessCodeError } from '@/lib/errors';
+import { logger } from '@/lib/utils/logger';
 
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-const MAX_STORE_SIZE = 10000;
-
-function evictOldestEntries(count: number): void {
-  const entries = Array.from(rateLimitStore.entries());
-  entries.sort((a, b) => a[1].resetTime - b[1].resetTime);
-  for (let i = 0; i < count && i < entries.length; i++) {
-    rateLimitStore.delete(entries[i][0]);
-  }
-}
+// Counters live in Postgres (public.rate_limits) so limits hold across serverless
+// instances. If the store is unreachable, requests are allowed (fail open) and the
+// failure is logged: rate limiting must not take scoring down with it.
 
 interface RateLimitConfig {
   windowMs: number;
@@ -32,7 +23,38 @@ const strictConfig: RateLimitConfig = {
   maxRequests: 10, // 10 requests per minute for sensitive operations
 };
 
-function getClientIp(request: NextRequest): string {
+// Venue traffic shares IPs (venue Wi-Fi, carrier NAT), so limits on routes used
+// during an event are deliberately generous: they only need to stop runaway
+// clients and abuse, not normal use by a crowd.
+
+/**
+ * Public scoring traffic: every scorer page load and frame save is a request.
+ * Access-code guessing is limited separately by failed attempts.
+ */
+const scoringConfig: RateLimitConfig = {
+  windowMs: 60 * 1000,
+  maxRequests: 500,
+};
+
+/**
+ * Failed access-code attempts per IP. Leaves room for a check-in rush of typos;
+ * guessing a 6+ character code at this rate is still hopeless.
+ */
+const accessCodeFailureConfig: RateLimitConfig = {
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+};
+
+/**
+ * Public bracket views. The page refetches on every match update, so a handful of
+ * spectators (or a TV in presentation mode) on one IP easily make 100+ requests/min.
+ */
+const publicBracketConfig: RateLimitConfig = {
+  windowMs: 60 * 1000,
+  maxRequests: 1000,
+};
+
+function getClientIp(request: Request): string {
   // request.ip is available on Vercel/Edge runtime but not in all environments
   const ip = (request as NextRequest & { ip?: string }).ip;
   if (ip) {
@@ -42,68 +64,38 @@ function getClientIp(request: NextRequest): string {
   if (forwarded) {
     return forwarded.split(',')[0].trim();
   }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
   return 'unknown';
 }
 
-function cleanupExpiredEntries(): void {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetTime < now) {
-      rateLimitStore.delete(key);
-    }
-  }
-}
-
-export function checkRateLimit(
-  request: NextRequest,
+export async function checkRateLimit(
+  request: Request,
   routeKey: string,
   config: RateLimitConfig = defaultConfig
-): { allowed: boolean; remaining: number; resetTime: number } {
-  // Periodic cleanup (every 100 checks)
-  if (Math.random() < 0.01) {
-    cleanupExpiredEntries();
-  }
+): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
+  const key = `${getClientIp(request)}:${routeKey}`;
 
-  const ip = getClientIp(request);
-  const key = `${ip}:${routeKey}`;
-  const now = Date.now();
-
-  const entry = rateLimitStore.get(key);
-
-  if (!entry || entry.resetTime < now) {
-    if (rateLimitStore.size >= MAX_STORE_SIZE) {
-      evictOldestEntries(Math.ceil(MAX_STORE_SIZE * 0.1));
-    }
-    const newEntry: RateLimitEntry = {
-      count: 1,
-      resetTime: now + config.windowMs,
-    };
-    rateLimitStore.set(key, newEntry);
+  try {
+    const { count, resetTime } = await consumeRateLimit(key, config.windowMs);
     return {
-      allowed: true,
-      remaining: config.maxRequests - 1,
-      resetTime: newEntry.resetTime,
+      allowed: count <= config.maxRequests,
+      remaining: Math.max(0, config.maxRequests - count),
+      resetTime,
     };
+  } catch (error) {
+    logger.warn('Rate limit store unavailable; allowing request', {
+      routeKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { allowed: true, remaining: config.maxRequests, resetTime: Date.now() + config.windowMs };
   }
-
-  if (entry.count >= config.maxRequests) {
-    return {
-      allowed: false,
-      remaining: 0,
-      resetTime: entry.resetTime,
-    };
-  }
-
-  entry.count++;
-  return {
-    allowed: true,
-    remaining: config.maxRequests - entry.count,
-    resetTime: entry.resetTime,
-  };
 }
 
 export function rateLimitResponse(resetTime: number): NextResponse {
-  const retryAfter = Math.ceil((resetTime - Date.now()) / 1000);
+  const retryAfter = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000));
   return NextResponse.json(
     { error: 'Too many requests. Please try again later.' },
     {
@@ -115,21 +107,62 @@ export function rateLimitResponse(resetTime: number): NextResponse {
   );
 }
 
-export function withRateLimit(
-  request: NextRequest,
+export async function withRateLimit(
+  request: Request,
   routeKey: string,
   config: RateLimitConfig = defaultConfig
-): NextResponse | null {
-  const result = checkRateLimit(request, routeKey, config);
+): Promise<NextResponse | null> {
+  const result = await checkRateLimit(request, routeKey, config);
   if (!result.allowed) {
     return rateLimitResponse(result.resetTime);
   }
   return null;
 }
 
-export function withStrictRateLimit(
-  request: NextRequest,
+export async function withStrictRateLimit(
+  request: Request,
   routeKey: string
-): NextResponse | null {
+): Promise<NextResponse | null> {
   return withRateLimit(request, routeKey, strictConfig);
+}
+
+export async function withPublicBracketRateLimit(
+  request: Request
+): Promise<NextResponse | null> {
+  return withRateLimit(request, 'public:bracket', publicBracketConfig);
+}
+
+const ACCESS_CODE_FAILURE_KEY = 'score:access-code-failure';
+
+/**
+ * Rate limit for access-code (public scoring) routes:
+ * - all requests count against a generous shared scoring limit, and
+ * - an IP with too many recent failed access codes is blocked until the window resets.
+ * Pair with `recordAccessCodeFailure` in the route's error handler.
+ */
+export async function withScoringRateLimit(request: Request): Promise<NextResponse | null> {
+  const key = `${getClientIp(request)}:${ACCESS_CODE_FAILURE_KEY}`;
+  try {
+    const failures = await peekRateLimit(key, accessCodeFailureConfig.windowMs);
+    if (failures.count >= accessCodeFailureConfig.maxRequests) {
+      return rateLimitResponse(failures.resetTime);
+    }
+  } catch (error) {
+    logger.warn('Rate limit store unavailable; allowing request', {
+      routeKey: ACCESS_CODE_FAILURE_KEY,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return withRateLimit(request, 'score', scoringConfig);
+}
+
+/**
+ * Count a failed access-code attempt against the caller's IP. No-op for other errors.
+ */
+export async function recordAccessCodeFailure(request: Request, error: unknown): Promise<void> {
+  if (!(error instanceof InvalidAccessCodeError)) {
+    return;
+  }
+  await checkRateLimit(request, ACCESS_CODE_FAILURE_KEY, accessCodeFailureConfig);
 }

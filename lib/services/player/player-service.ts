@@ -1,7 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { BadRequestError } from '@/lib/errors';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
+import { requireAuthenticatedUser, authorizeAnyLeagueAdmin } from '@/lib/services/auth';
 import * as playerRepo from '@/lib/repositories/player-repository';
 
 // Re-export types for consumers
@@ -18,8 +18,7 @@ type CreatePlayerInput = {
  * Create a new player
  */
 export async function createPlayer(input: CreatePlayerInput) {
-  const supabase = await createClient();
-  await requireAuthenticatedUser();
+  const { db } = await authorizeAnyLeagueAdmin();
 
   const { name, email, nickname, defaultPool } = input;
 
@@ -31,7 +30,7 @@ export async function createPlayer(input: CreatePlayerInput) {
     throw new BadRequestError('Email is required');
   }
 
-  return playerRepo.insertPlayer(supabase, {
+  return playerRepo.insertPlayer(db, {
     full_name: name,
     email,
     nickname,

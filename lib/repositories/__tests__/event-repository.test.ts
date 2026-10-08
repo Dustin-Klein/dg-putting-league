@@ -31,11 +31,11 @@ import {
   deleteEvent,
   getQualificationRound,
   getQualificationFrameCounts,
-  getEventByAccessCodeForQualification,
-  getEventByAccessCodeForBracket,
+  getEventByAccessCode,
+  getEventAccessCode,
   getEventScoringConfig,
-  getEventStatusByAccessCode,
   isAccessCodeUnique,
+  EVENT_COLUMNS,
   createEvent,
   getEventBracketFrameCount,
 } from '../event-repository';
@@ -382,49 +382,8 @@ describe('Event Repository', () => {
     });
   });
 
-  describe('getEventByAccessCodeForQualification', () => {
-    it('should return event matching access code for qualification', async () => {
-      const mockEvent = {
-        id: 'event-123',
-        event_date: '2024-06-15',
-        location: 'Test',
-        lane_count: 4,
-        bonus_point_enabled: true,
-        qualification_round_enabled: true,
-        qualification_frame_count: 10,
-        status: 'pre-bracket',
-      };
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.maybeSingle.mockResolvedValue({ data: mockEvent, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getEventByAccessCodeForQualification(mockSupabase as any, 'ABC123');
-
-      expect(result).toEqual(mockEvent);
-      expect(mockQuery.ilike).toHaveBeenCalledWith('access_code', 'ABC123');
-      expect(mockQuery.eq).toHaveBeenCalledWith('status', 'pre-bracket');
-      expect(mockQuery.eq).toHaveBeenCalledWith('qualification_round_enabled', true);
-    });
-
-    it('should return null when no matching event', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getEventByAccessCodeForQualification(mockSupabase as any, 'INVALID');
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('getEventByAccessCodeForBracket', () => {
-    it('should return event matching access code for bracket', async () => {
+  describe('getEventByAccessCode', () => {
+    it('matches the access code exactly (never ilike)', async () => {
       const mockEvent = {
         id: 'event-123',
         event_date: '2024-06-15',
@@ -432,19 +391,55 @@ describe('Event Repository', () => {
         lane_count: 4,
         bonus_point_enabled: true,
         bracket_frame_count: 5,
+        qualification_round_enabled: false,
+        qualification_frame_count: 5,
         status: 'bracket',
       };
       const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
       mockQuery.maybeSingle.mockResolvedValue({ data: mockEvent, error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
-      const result = await getEventByAccessCodeForBracket(mockSupabase as any, 'ABC123');
+      const result = await getEventByAccessCode(mockSupabase as any, 'abc123');
 
       expect(result).toEqual(mockEvent);
-      expect(mockQuery.eq).toHaveBeenCalledWith('status', 'bracket');
+      expect(mockQuery.eq).toHaveBeenCalledWith('access_code', 'abc123');
+      expect(mockQuery.ilike).not.toHaveBeenCalled();
+    });
+
+    it('should return null when no matching event', async () => {
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      const result = await getEventByAccessCode(mockSupabase as any, 'invalid');
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw InternalError on query failure', async () => {
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: { message: 'Query failed' } });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      await expect(getEventByAccessCode(mockSupabase as any, 'abc123')).rejects.toThrow(InternalError);
+    });
+  });
+
+  describe('getEventAccessCode', () => {
+    it('returns the access code for the event', async () => {
+      const mockQuery = createMockQueryBuilder();
+      mockQuery.maybeSingle.mockResolvedValue({ data: { access_code: 'abc123' }, error: null });
+      mockSupabase.from.mockReturnValue(mockQuery);
+
+      await expect(getEventAccessCode(mockSupabase as any, 'event-123')).resolves.toBe('abc123');
+      expect(mockQuery.select).toHaveBeenCalledWith('access_code');
+    });
+  });
+
+  describe('EVENT_COLUMNS', () => {
+    it('never includes access_code', () => {
+      expect(EVENT_COLUMNS).not.toContain('access_code');
+      expect(EVENT_COLUMNS).not.toContain('*');
     });
   });
 
@@ -475,42 +470,22 @@ describe('Event Repository', () => {
     });
   });
 
-  describe('getEventStatusByAccessCode', () => {
-    it('should return event status info', async () => {
-      const mockStatus = {
-        id: 'event-123',
-        status: 'bracket',
-        qualification_round_enabled: false,
-      };
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
-      mockQuery.maybeSingle.mockResolvedValue({ data: mockStatus, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getEventStatusByAccessCode(mockSupabase as any, 'ABC123');
-
-      expect(result).toEqual(mockStatus);
-    });
-  });
-
   describe('isAccessCodeUnique', () => {
     it('should return true when access code is unique', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
       mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
-      const result = await isAccessCodeUnique(mockSupabase as any, 'NEWCODE');
+      const result = await isAccessCodeUnique(mockSupabase as any, 'newcode');
 
       expect(result).toBe(true);
+      expect(mockQuery.eq).toHaveBeenCalledWith('access_code', 'newcode');
     });
 
     it('should return false when access code exists', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
       mockQuery.maybeSingle.mockResolvedValue({ data: { id: 'event-123' }, error: null });
       mockSupabase.from.mockReturnValue(mockQuery);
 
@@ -522,7 +497,6 @@ describe('Event Repository', () => {
     it('should throw InternalError on query failure', async () => {
       const mockQuery = createMockQueryBuilder();
       mockQuery.select.mockReturnThis();
-      mockQuery.ilike.mockReturnThis();
       mockQuery.maybeSingle.mockResolvedValue({ data: null, error: { message: 'Query failed' } });
       mockSupabase.from.mockReturnValue(mockQuery);
 

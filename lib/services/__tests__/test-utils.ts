@@ -567,3 +567,70 @@ export function createMockTeamsFromPlayers(
 export function flushPromises(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+// ============================================================================
+// Auth service mock
+// ============================================================================
+
+/**
+ * Factory for `jest.mock('@/lib/services/auth', ...)`.
+ *
+ * The authorize* functions are derived from the `requireLeagueAdmin` /
+ * `requireAuthenticatedUser` mocks and the mocked repositories (`getEventLeagueId`,
+ * `isLeagueOwner`), and hand out the mocked
+ * `createClient()` result as the privileged `db`. Tests can keep stubbing
+ * `requireLeagueAdmin` / `requireAuthenticatedUser` to control authorization.
+ *
+ * Usage:
+ *   jest.mock('@/lib/services/auth', () =>
+ *     jest.requireActual('./test-utils').createAuthServiceMock());
+ */
+export function createAuthServiceMock() {
+  const { ForbiddenError } = jest.requireActual('@/lib/errors');
+  const server = jest.requireMock('@/lib/supabase/server');
+  const requireAuthenticatedUser = jest.fn();
+  const requireLeagueAdmin = jest.fn();
+
+  const getEventLeagueId = async (db: unknown, eventId: string) => {
+    const eventRepo = jest.requireMock('@/lib/repositories/event-repository');
+    return eventRepo.getEventLeagueId(db, eventId);
+  };
+
+  return {
+    requireAuthenticatedUser,
+    requireLeagueAdmin,
+    authorizeLeagueAdmin: jest.fn(async (leagueId: string) => {
+      const { user } = await requireLeagueAdmin(leagueId);
+      return { user, db: await server.createClient() };
+    }),
+    authorizeEventAdmin: jest.fn(async (eventId: string) => {
+      const db = await server.createClient();
+      const leagueId = await getEventLeagueId(db, eventId);
+      if (!leagueId) {
+        throw new ForbiddenError('Event not found');
+      }
+      const { user } = await requireLeagueAdmin(leagueId);
+      return { user, db };
+    }),
+    authorizeLeagueOwner: jest.fn(
+      async (leagueId: string, message = 'Only the league owner can perform this action') => {
+        const user = await requireAuthenticatedUser();
+        const db = await server.createClient();
+        const leagueRepo = jest.requireMock('@/lib/repositories/league-repository');
+        if (!(await leagueRepo.isLeagueOwner(db, leagueId, user.id))) {
+          throw new ForbiddenError(message);
+        }
+        return { user, db };
+      }
+    ),
+    authorizeAnyLeagueAdmin: jest.fn(async () => {
+      const user = await requireAuthenticatedUser();
+      return { user, db: await server.createClient() };
+    }),
+    authorizeLeagueCreation: jest.fn(async () => {
+      const user = await requireAuthenticatedUser();
+      return { user, db: await server.createClient() };
+    }),
+    authorizeAccessCode: jest.fn(),
+  };
+}

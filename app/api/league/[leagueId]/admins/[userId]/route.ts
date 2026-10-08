@@ -17,7 +17,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const rateLimitResponse = withStrictRateLimit(request, 'league:admins:remove');
+  const rateLimitResponse = await withStrictRateLimit(request, 'league:admins:remove');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

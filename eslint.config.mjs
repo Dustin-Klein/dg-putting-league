@@ -15,7 +15,7 @@ import nextTypeScript from "eslint-config-next/typescript";
 
 const eslintConfig = [
   {
-    ignores: ["node_modules/**", ".next/**", "jest.config.js"],
+    ignores: ["node_modules/**", ".next/**", "jest.config.js", "jest.integration.config.js"],
   },
   ...nextCoreWebVitals,
   ...nextTypeScript,
@@ -24,6 +24,26 @@ const eslintConfig = [
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/error-boundaries": "off",
       "react-hooks/incompatible-library": "off",
+    },
+  },
+  {
+    // The privileged (secret-key) Supabase client bypasses RLS. Only the auth
+    // services may create it, and only after an authorization check.
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
+    ignores: ["lib/services/auth/**", "lib/supabase/privileged.ts", "**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
+              message:
+                "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
+            },
+          ],
+        },
+      ],
     },
   },
 ];

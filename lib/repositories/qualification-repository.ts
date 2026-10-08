@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 
 export interface QualificationRound {
@@ -47,7 +48,7 @@ export interface PlayerQualificationStatus {
  * Get or create a qualification round for an event
  */
 export async function getOrCreateQualificationRound(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   frameCount: number
 ): Promise<QualificationRound> {
@@ -108,7 +109,7 @@ export async function getQualificationRoundFull(
  * Update qualification round status
  */
 export async function updateQualificationRoundStatus(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   roundId: string,
   status: 'not_started' | 'in_progress' | 'completed'
 ): Promise<void> {
@@ -242,7 +243,7 @@ export async function getEventQualificationFrames(
  * Record a qualification frame score
  */
 export async function recordQualificationFrame(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   data: {
     qualificationRoundId: string;
     eventId: string;
@@ -418,7 +419,7 @@ export async function getQualificationFrame(
  * Delete a qualification frame
  */
 export async function deleteQualificationFrame(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   frameId: string
 ): Promise<void> {
   const { error } = await supabase

@@ -349,14 +349,20 @@ describe('Lane Service', () => {
     const eventId = 'event-123';
     const matchId = 1;
 
-    it('should release lane using public client', async () => {
+    it('should release lane using the caller-provided privileged client', async () => {
+      const privilegedClient = createMockSupabaseClient();
       (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([]);
 
-      const result = await releaseAndReassignLanePublic(eventId, matchId);
+      const result = await releaseAndReassignLanePublic(
+        privilegedClient as unknown as Parameters<typeof releaseAndReassignLanePublic>[0],
+        eventId,
+        matchId
+      );
 
-      expect(laneRepo.releaseMatchLane).toHaveBeenCalledWith(mockSupabase, eventId, matchId);
+      expect(laneRepo.releaseMatchLane).toHaveBeenCalledWith(privilegedClient, eventId, matchId);
+      expect(createClient).not.toHaveBeenCalled();
       expect(result).toBe(0);
     });
 
@@ -365,7 +371,11 @@ describe('Lane Service', () => {
       (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
       (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([]);
 
-      await releaseAndReassignLanePublic(eventId, matchId);
+      await releaseAndReassignLanePublic(
+        mockSupabase as unknown as Parameters<typeof releaseAndReassignLanePublic>[0],
+        eventId,
+        matchId
+      );
 
       expect(requireEventAdmin).not.toHaveBeenCalled();
     });
