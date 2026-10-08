@@ -3,7 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { LeagueWithRole, LeagueAdminRole } from '@/lib/types/league';
 import type { PublicLeague, PublicLeagueDetail } from '@/lib/types/public';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
+import {
+  requireAuthenticatedUser,
+  authorizeLeagueCreation,
+  authorizeLeagueOwner,
+} from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository';
 
 export interface LeagueAdminWithEmail {
@@ -85,8 +89,7 @@ type CreateLeagueInput = {
  * Create a new league with the current user as owner
  */
 export async function createLeague(input: CreateLeagueInput) {
-  const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
+  const { user, db } = await authorizeLeagueCreation();
 
   const { name, city } = input;
 
@@ -94,17 +97,20 @@ export async function createLeague(input: CreateLeagueInput) {
     throw new BadRequestError('League name is required');
   }
 
-  // Generate UUID for the new league (avoids RLS issues with RETURNING)
   const leagueId = crypto.randomUUID();
 
   // Create the league
-  await leagueRepo.insertLeague(supabase, leagueId, name, city ?? null);
+  await leagueRepo.insertLeague(db, leagueId, name, city ?? null);
 
-  // Create the admin record for the owner
-  await leagueRepo.insertLeagueAdmin(supabase, leagueId, user.id, 'owner');
+  // Create the admin record for the owner; don't leave an ownerless league behind
+  try {
+    await leagueRepo.insertLeagueAdmin(db, leagueId, user.id, 'owner');
+  } catch (error) {
+    await leagueRepo.deleteLeague(db, leagueId).catch(() => undefined);
+    throw error;
+  }
 
-  // Now fetch the full league (RLS will allow since user is now an admin)
-  return leagueRepo.fetchLeague(supabase, leagueId);
+  return leagueRepo.fetchLeague(db, leagueId);
 }
 
 /**
@@ -148,28 +154,18 @@ export async function checkIsLeagueOwner(leagueId: string): Promise<boolean> {
  * Delete a league (owner-only)
  */
 export async function deleteLeague(leagueId: string): Promise<void> {
-  const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
+  const { db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can delete the league');
 
-  const isOwner = await leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
-  if (!isOwner) {
-    throw new ForbiddenError('Only the league owner can delete the league');
-  }
-
-  await leagueRepo.deleteLeague(supabase, leagueId);
+  await leagueRepo.deleteLeague(db, leagueId);
 }
 
 /**
  * Add a league admin by email (owner-only)
  */
 export async function addLeagueAdmin(leagueId: string, email: string): Promise<void> {
+  const { db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can add admins');
+  // get_user_id_by_email checks auth.uid() itself, so it runs with the user's client
   const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
-
-  const isOwner = await leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
-  if (!isOwner) {
-    throw new ForbiddenError('Only the league owner can add admins');
-  }
 
   const normalizedEmail = (email || '').trim().toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -182,29 +178,23 @@ export async function addLeagueAdmin(leagueId: string, email: string): Promise<v
     throw new NotFoundError('No account found with that email');
   }
 
-  const existingAdmin = await leagueRepo.getLeagueAdminByUserAndLeague(supabase, leagueId, targetUserId);
+  const existingAdmin = await leagueRepo.getLeagueAdminByUserAndLeague(db, leagueId, targetUserId);
   if (existingAdmin) {
     throw new BadRequestError('User is already an admin');
   }
 
-  await leagueRepo.insertLeagueAdmin(supabase, leagueId, targetUserId, 'admin');
+  await leagueRepo.insertLeagueAdmin(db, leagueId, targetUserId, 'admin');
 }
 
 /**
  * Remove a league admin (owner-only, can't remove self)
  */
 export async function removeLeagueAdmin(leagueId: string, targetUserId: string): Promise<void> {
-  const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
-
-  const isOwner = await leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
-  if (!isOwner) {
-    throw new ForbiddenError('Only the league owner can remove admins');
-  }
+  const { user, db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can remove admins');
 
   if (targetUserId === user.id) {
     throw new BadRequestError('Cannot remove yourself as owner');
   }
 
-  await leagueRepo.deleteLeagueAdmin(supabase, leagueId, targetUserId);
+  await leagueRepo.deleteLeagueAdmin(db, leagueId, targetUserId);
 }

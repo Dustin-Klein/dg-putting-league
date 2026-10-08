@@ -5,6 +5,7 @@ import {
   recordQualificationScore,
 } from '@/lib/services/qualification';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
 import { validateCsrfOrigin } from '@/lib/utils';
 
 const recordScoreSchema = z.object({
@@ -20,6 +21,9 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ eventPlayerId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const { eventPlayerId } = await params;
     const { searchParams } = new URL(req.url);
@@ -33,6 +37,7 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }
@@ -44,6 +49,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ eventPlayerId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(req);
     const { eventPlayerId } = await params;
@@ -63,6 +71,7 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }

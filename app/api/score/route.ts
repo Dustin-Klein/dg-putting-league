@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getEventScoringContext } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
 import { validateCsrfOrigin } from '@/lib/utils';
 
 const validateCodeSchema = z.object({
@@ -15,6 +16,9 @@ const validateCodeSchema = z.object({
  * - bracket: matches for scoring
  */
 export async function POST(req: Request) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     validateCsrfOrigin(req);
     const body = await req.json();
@@ -29,6 +33,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }

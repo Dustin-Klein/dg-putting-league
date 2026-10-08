@@ -18,7 +18,7 @@ const eventSchema = z.object({
   location: z.string().nullable(),
   lane_count: z.number().int().positive(),
   putt_distance_ft: z.number().positive(),
-  access_code: z.string().min(4),
+  access_code: z.string().trim().min(6).max(50),
   qualification_round_enabled: z.boolean().optional().default(false),
   double_grand_final: z.boolean().optional().default(true),
   bracket_frame_count: z.number().int().min(1).max(10).default(5),
@@ -64,7 +64,7 @@ export async function DELETE(
   request: NextRequest,
   { params: paramsPromise }: { params: Promise<{ leagueId: string }> | { leagueId: string } }
 ) {
-  const rateLimitResponse = withStrictRateLimit(request, 'league:delete');
+  const rateLimitResponse = await withStrictRateLimit(request, 'league:delete');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

@@ -33,7 +33,7 @@ export const eventFormSchema = z.object({
   location: z.string().min(2, 'Location must be at least 2 characters').optional(),
   lane_count: z.coerce.number().int().positive('Must have at least 1 lane').default(1),
   putt_distance_ft: z.coerce.number().positive('Distance must be greater than 0').default(15),
-  access_code: z.string().min(4, 'Access code must be at least 4 characters'),
+  access_code: z.string().trim().min(6, 'Access code must be at least 6 characters'),
   qualification_round_enabled: z.boolean().default(false),
   double_grand_final: z.boolean().default(true),
   bracket_frame_count: z.coerce.number().int().min(1).max(10).default(5),

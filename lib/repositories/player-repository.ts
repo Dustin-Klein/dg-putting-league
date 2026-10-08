@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import type { PlayerSearchResult } from '@/lib/types/player';
 
@@ -6,7 +7,7 @@ import type { PlayerSearchResult } from '@/lib/types/player';
  * Insert a new player
  */
 export async function insertPlayer(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   playerData: {
     full_name: string;
     email?: string;

@@ -84,13 +84,14 @@ export async function recordScoreAdmin(
   }
 
   // Verify player belongs to one of the teams in this match
-  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id !== null);
-  if (participantIds.length > 0) {
-    const teamIds = await getTeamIdsFromParticipants(supabase, participantIds);
-    const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
-    if (!playerInMatch) {
-      throw new BadRequestError('Player is not in this match');
-    }
+  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id != null);
+  if (participantIds.length === 0) {
+    throw new BadRequestError('Match has no participants yet');
+  }
+  const teamIds = await getTeamIdsFromParticipants(supabase, participantIds);
+  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
+  if (!playerInMatch) {
+    throw new BadRequestError('Player is not in this match');
   }
 
   const isCompletedOrArchived = bracketMatch.status === 4 || bracketMatch.status === 5;

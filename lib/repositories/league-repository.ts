@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError, NotFoundError } from '@/lib/errors';
 import type { PublicLeague, PublicEvent, PublicLeagueDetail } from '@/lib/types/public';
 
@@ -86,7 +87,7 @@ export async function getEventCountForLeague(
 ): Promise<number> {
   const { count, error } = await supabase
     .from('events')
-    .select('*', { count: 'exact', head: true })
+    .select('id', { count: 'exact', head: true })
     .eq('league_id', leagueId);
 
   if (error) {
@@ -105,7 +106,7 @@ export async function getActiveEventCountForLeague(
 ): Promise<number> {
   const { count, error } = await supabase
     .from('events')
-    .select('*', { count: 'exact', head: true })
+    .select('id', { count: 'exact', head: true })
     .eq('league_id', leagueId)
     .neq('status', 'completed');
 
@@ -142,7 +143,7 @@ export async function getLastEventDateForLeague(
  * Insert a new league
  */
 export async function insertLeague(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   leagueId: string,
   name: string,
   city: string | null
@@ -160,7 +161,7 @@ export async function insertLeague(
  * Insert a league admin record
  */
 export async function insertLeagueAdmin(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   leagueId: string,
   userId: string,
   role: string
@@ -306,10 +307,30 @@ export async function isLeagueOwner(
 }
 
 /**
+ * Check if a user is an admin (any role) of at least one league
+ */
+export async function isAnyLeagueAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('league_admins')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1);
+
+  if (error) {
+    throw new InternalError(`Failed to check league admin: ${error.message}`);
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Delete a league admin
  */
 export async function deleteLeagueAdmin(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   leagueId: string,
   userId: string
 ): Promise<void> {
@@ -328,7 +349,7 @@ export async function deleteLeagueAdmin(
  * Delete a league
  */
 export async function deleteLeague(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   leagueId: string
 ): Promise<void> {
   const { data, error } = await supabase
@@ -367,11 +388,14 @@ export async function getAllLeagues(
     return [];
   }
 
-  return leagues.map((league) => ({
-    id: league.id,
-    name: league.name,
-    event_count: league.events[0]?.count ?? 0,
-  }));
+  // Leagues with no publicly visible events (e.g. empty test or draft leagues) are hidden
+  return leagues
+    .map((league) => ({
+      id: league.id,
+      name: league.name,
+      event_count: league.events[0]?.count ?? 0,
+    }))
+    .filter((league) => league.event_count > 0);
 }
 
 /**
@@ -411,7 +435,7 @@ export async function getLeagueWithEvents(
     (events || []).map(async (event) => {
       const { count } = await supabase
         .from('event_players')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('event_id', event.id);
 
       return {

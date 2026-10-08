@@ -4,9 +4,16 @@
  * Tests for authentication and authorization functions:
  * - requireAuthenticatedUser()
  * - requireLeagueAdmin()
+ * - authorize*() — the only way to obtain the privileged client
  */
 
-import { UnauthorizedError, ForbiddenError, InternalError } from '@/lib/errors';
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  InternalError,
+  NotFoundError,
+  InvalidAccessCodeError,
+} from '@/lib/errors';
 import {
   createMockSupabaseClient,
   createMockUser,
@@ -19,22 +26,65 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/supabase/privileged', () => ({
+  _createPrivilegedClient: jest.fn(),
+}));
+
 jest.mock('@/lib/repositories/league-repository', () => ({
   getLeagueAdminByUserAndLeague: jest.fn(),
+  isLeagueOwner: jest.fn(),
+  isAnyLeagueAdmin: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/event-repository', () => ({
+  getEventLeagueId: jest.fn(),
+  getEventByAccessCode: jest.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { getLeagueAdminByUserAndLeague } from '@/lib/repositories/league-repository';
-import { requireAuthenticatedUser, requireLeagueAdmin } from '../auth/auth-service';
+import { _createPrivilegedClient } from '@/lib/supabase/privileged';
+import {
+  getLeagueAdminByUserAndLeague,
+  isLeagueOwner,
+  isAnyLeagueAdmin,
+} from '@/lib/repositories/league-repository';
+import { getEventLeagueId, getEventByAccessCode } from '@/lib/repositories/event-repository';
+import {
+  requireAuthenticatedUser,
+  requireLeagueAdmin,
+  authorizeLeagueAdmin,
+  authorizeLeagueOwner,
+  authorizeEventAdmin,
+  authorizeAnyLeagueAdmin,
+  authorizeLeagueCreation,
+  authorizeAccessCode,
+} from '../auth/auth-service';
 
 describe('Auth Service', () => {
   let mockSupabase: MockSupabaseClient;
+  let mockDb: MockSupabaseClient;
+
+  const signIn = (userId = 'user-123') => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: createMockUser({ id: userId }) },
+      error: null,
+    });
+  };
+
+  const signOut = () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: null,
+    });
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
+    mockDb = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
+    (_createPrivilegedClient as jest.Mock).mockReturnValue(mockDb);
   });
 
   describe('requireAuthenticatedUser', () => {
@@ -52,10 +102,7 @@ describe('Auth Service', () => {
     });
 
     it('should throw UnauthorizedError when no user is found', async () => {
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: null },
-        error: null,
-      });
+      signOut();
 
       await expect(requireAuthenticatedUser()).rejects.toThrow(UnauthorizedError);
       await expect(requireAuthenticatedUser()).rejects.toThrow('Authentication required');
@@ -84,28 +131,18 @@ describe('Auth Service', () => {
   describe('requireLeagueAdmin', () => {
     const leagueId = 'league-123';
 
-    beforeEach(() => {
-      // Set up successful auth by default
-      const mockUser = createMockUser({ id: 'user-123' });
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-    });
+    beforeEach(() => signIn());
 
     it('should return user and isAdmin flag when user is a league admin', async () => {
-      const mockAdmin = createMockLeagueAdmin({
-        league_id: leagueId,
-        user_id: 'user-123',
-      });
-
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(
+        createMockLeagueAdmin({ league_id: leagueId, user_id: 'user-123' })
+      );
 
       const result = await requireLeagueAdmin(leagueId);
 
       expect(result.user.id).toBe('user-123');
       expect(result.isAdmin).toBe(true);
-      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, leagueId, 'user-123');
+      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockDb, leagueId, 'user-123');
     });
 
     it('should throw ForbiddenError when user is not a league admin', async () => {
@@ -116,48 +153,10 @@ describe('Auth Service', () => {
     });
 
     it('should throw UnauthorizedError when user is not authenticated', async () => {
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: null },
-        error: null,
-      });
+      signOut();
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(UnauthorizedError);
-    });
-
-    it('should work with different league IDs', async () => {
-      const differentLeagueId = 'league-456';
-      const mockAdmin = createMockLeagueAdmin({
-        league_id: differentLeagueId,
-        user_id: 'user-123',
-      });
-
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
-
-      const result = await requireLeagueAdmin(differentLeagueId);
-
-      expect(result.isAdmin).toBe(true);
-      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, differentLeagueId, 'user-123');
-    });
-
-    it('should check admin status for the authenticated user', async () => {
-      const userId = 'specific-user-789';
-      const mockUser = createMockUser({ id: userId });
-      mockSupabase.auth.getUser.mockResolvedValue({
-        data: { user: mockUser },
-        error: null,
-      });
-
-      const mockAdmin = createMockLeagueAdmin({
-        league_id: leagueId,
-        user_id: userId,
-      });
-
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(mockAdmin);
-
-      const result = await requireLeagueAdmin(leagueId);
-
-      expect(result.user.id).toBe(userId);
-      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
+      expect(_createPrivilegedClient).not.toHaveBeenCalled();
     });
 
     it('should propagate InternalError when repository throws database error', async () => {
@@ -167,6 +166,165 @@ describe('Auth Service', () => {
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(InternalError);
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow('Failed to fetch league admin');
+    });
+  });
+
+  describe('authorizeLeagueAdmin', () => {
+    it('returns the privileged client for a league admin', async () => {
+      signIn();
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue({ id: 'admin-1' });
+
+      const result = await authorizeLeagueAdmin('league-1');
+
+      expect(result.db).toBe(mockDb);
+      expect(result.user.id).toBe('user-123');
+    });
+
+    it('rejects a non-admin', async () => {
+      signIn();
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeLeagueAdmin('league-1')).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('authorizeLeagueOwner', () => {
+    it('returns the privileged client for the owner', async () => {
+      signIn('owner-1');
+      (isLeagueOwner as jest.Mock).mockResolvedValue(true);
+
+      const result = await authorizeLeagueOwner('league-1');
+
+      expect(result.db).toBe(mockDb);
+      expect(isLeagueOwner).toHaveBeenCalledWith(mockDb, 'league-1', 'owner-1');
+    });
+
+    it('rejects a non-owner admin with the given message', async () => {
+      signIn();
+      (isLeagueOwner as jest.Mock).mockResolvedValue(false);
+
+      await expect(authorizeLeagueOwner('league-1', 'Owners only')).rejects.toThrow('Owners only');
+    });
+
+    it('rejects an anonymous caller before creating a privileged client', async () => {
+      signOut();
+
+      await expect(authorizeLeagueOwner('league-1')).rejects.toThrow(UnauthorizedError);
+      expect(_createPrivilegedClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('authorizeEventAdmin', () => {
+    it('checks admin rights on the event league', async () => {
+      signIn();
+      (getEventLeagueId as jest.Mock).mockResolvedValue('league-9');
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue({ id: 'admin-1' });
+
+      const result = await authorizeEventAdmin('event-1');
+
+      expect(result.db).toBe(mockDb);
+      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockDb, 'league-9', 'user-123');
+    });
+
+    it('rejects an unknown event', async () => {
+      signIn();
+      (getEventLeagueId as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeEventAdmin('missing')).rejects.toThrow(ForbiddenError);
+      expect(getLeagueAdminByUserAndLeague).not.toHaveBeenCalled();
+    });
+
+    it('rejects an admin of a different league', async () => {
+      signIn();
+      (getEventLeagueId as jest.Mock).mockResolvedValue('league-9');
+      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeEventAdmin('event-1')).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('authorizeAnyLeagueAdmin', () => {
+    it('allows an admin of any league', async () => {
+      signIn();
+      (isAnyLeagueAdmin as jest.Mock).mockResolvedValue(true);
+
+      await expect(authorizeAnyLeagueAdmin()).resolves.toMatchObject({ db: mockDb });
+    });
+
+    it('rejects a signed-in user who administers no league', async () => {
+      signIn();
+      (isAnyLeagueAdmin as jest.Mock).mockResolvedValue(false);
+
+      await expect(authorizeAnyLeagueAdmin()).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('authorizeLeagueCreation', () => {
+    it('requires a signed-in user', async () => {
+      signOut();
+
+      await expect(authorizeLeagueCreation()).rejects.toThrow(UnauthorizedError);
+      expect(_createPrivilegedClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('authorizeAccessCode', () => {
+    const bracketEvent = {
+      id: 'event-1',
+      event_date: '2026-01-01',
+      location: null,
+      lane_count: 4,
+      bonus_point_enabled: true,
+      bracket_frame_count: 5,
+      qualification_round_enabled: false,
+      qualification_frame_count: 5,
+      status: 'bracket',
+    };
+
+    it('normalizes the code and looks it up exactly', async () => {
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(bracketEvent);
+
+      const result = await authorizeAccessCode('  AbC123 ');
+
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, 'abc123');
+      expect(result).toEqual({ event: bracketEvent, db: mockDb });
+    });
+
+    it('does not treat LIKE wildcards specially', async () => {
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeAccessCode('%')).rejects.toThrow(InvalidAccessCodeError);
+      await expect(authorizeAccessCode('______')).rejects.toThrow(InvalidAccessCodeError);
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, '%');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, '______');
+    });
+
+    it('rejects an empty code without a lookup', async () => {
+      await expect(authorizeAccessCode('   ')).rejects.toThrow(InvalidAccessCodeError);
+      expect(getEventByAccessCode).not.toHaveBeenCalled();
+    });
+
+    it('rejects a valid code when the event is in the wrong mode', async () => {
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(bracketEvent);
+
+      const promise = authorizeAccessCode('abc123', { mode: 'qualification' });
+      await expect(promise).rejects.toThrow(NotFoundError);
+      await expect(authorizeAccessCode('abc123', { mode: 'qualification' })).rejects.not.toThrow(
+        InvalidAccessCodeError
+      );
+    });
+
+    it('accepts qualification mode only for pre-bracket events with qualification enabled', async () => {
+      (getEventByAccessCode as jest.Mock).mockResolvedValue({
+        ...bracketEvent,
+        status: 'pre-bracket',
+        qualification_round_enabled: true,
+      });
+
+      await expect(authorizeAccessCode('abc123', { mode: 'qualification' })).resolves.toMatchObject({
+        event: { id: 'event-1' },
+      });
+      await expect(authorizeAccessCode('abc123', { mode: 'bracket' })).rejects.toThrow(NotFoundError);
     });
   });
 });

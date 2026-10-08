@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError, NotFoundError } from '@/lib/errors';
 import type { EventStatus, PayoutPlace } from '@/lib/types/event';
 import type { EventPlayer } from '@/lib/types/player';
@@ -21,9 +22,14 @@ export interface EventData {
   admin_fee_per_player: number | null;
   payout_pool_override: number | null;
   payout_structure: PayoutPlace[] | null;
-  access_code: string | null;
   created_at: string;
 }
+
+/**
+ * Every events column except access_code. Clients (anon/authenticated) have no
+ * SELECT privilege on access_code, so `select('*')` on events fails for them.
+ */
+export const EVENT_COLUMNS = 'id, league_id, event_date, location, lane_count, putt_distance_ft, bonus_point_enabled, qualification_round_enabled, bracket_frame_count, qualification_frame_count, double_grand_final, entry_fee_per_player, admin_fees, admin_fee_per_player, payout_pool_override, payout_structure, status, created_at';
 
 export interface EventWithPlayersData extends EventData {
   players: EventPlayer[];
@@ -40,7 +46,7 @@ export async function getEventWithPlayers(
   const { data: event, error } = await supabase
     .from('events')
     .select(`
-      *,
+      ${EVENT_COLUMNS},
       players:event_players(
         id,
         event_id,
@@ -54,7 +60,6 @@ export async function getEventWithPlayers(
           id,
           full_name,
           nickname,
-          email,
           created_at,
           default_pool,
           player_number
@@ -83,7 +88,6 @@ export async function getEventWithPlayers(
               id,
               full_name,
               nickname,
-              email,
               created_at,
               default_pool,
               player_number
@@ -115,7 +119,7 @@ export async function getEventById(
 ): Promise<EventData | null> {
   const { data: event, error } = await supabase
     .from('events')
-    .select('*')
+    .select(EVENT_COLUMNS)
     .eq('id', eventId)
     .maybeSingle();
 
@@ -155,7 +159,7 @@ export async function getEventsByLeagueId(
 ): Promise<(EventData & { participant_count: number })[]> {
   const { data: events, error: eventsError } = await supabase
     .from('events')
-    .select('*')
+    .select(EVENT_COLUMNS)
     .eq('league_id', leagueId)
     .order('event_date', { ascending: false });
 
@@ -191,7 +195,7 @@ export async function getEventsByLeagueId(
  * Update event data
  */
 export async function updateEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   data: Record<string, unknown>
 ): Promise<EventData> {
@@ -199,7 +203,7 @@ export async function updateEvent(
     .from('events')
     .update(data)
     .eq('id', eventId)
-    .select()
+    .select(EVENT_COLUMNS)
     .single();
 
   if (error || !updatedEvent) {
@@ -213,7 +217,7 @@ export async function updateEvent(
  * Update event status
  */
 export async function updateEventStatus(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   status: EventData['status']
 ): Promise<void> {
@@ -231,7 +235,7 @@ export async function updateEventStatus(
  * Delete an event
  */
 export async function deleteEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string
 ): Promise<void> {
   const { data, error } = await supabase
@@ -295,85 +299,6 @@ export async function getQualificationFrameCounts(
 }
 
 /**
- * Get event by access code for qualification scoring
- * Returns only events that are in pre-bracket status with qualification enabled
- */
-export async function getEventByAccessCodeForQualification(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  accessCode: string
-): Promise<{
-  id: string;
-  event_date: string;
-  location: string | null;
-  lane_count: number;
-  bonus_point_enabled: boolean;
-  qualification_round_enabled: boolean;
-  qualification_frame_count: number;
-  status: string;
-} | null> {
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, qualification_round_enabled, qualification_frame_count, status')
-    .ilike('access_code', accessCode)
-    .eq('status', 'pre-bracket')
-    .eq('qualification_round_enabled', true)
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
-  }
-
-  return event as {
-    id: string;
-    event_date: string;
-    location: string | null;
-    lane_count: number;
-    bonus_point_enabled: boolean;
-    qualification_round_enabled: boolean;
-    qualification_frame_count: number;
-    status: string;
-  } | null;
-}
-
-/**
- * Get event by access code for bracket scoring
- * Returns only events that are in bracket status
- */
-export async function getEventByAccessCodeForBracket(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  accessCode: string
-): Promise<{
-  id: string;
-  event_date: string;
-  location: string | null;
-  lane_count: number;
-  bonus_point_enabled: boolean;
-  bracket_frame_count: number;
-  status: string;
-} | null> {
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, bracket_frame_count, status')
-    .ilike('access_code', accessCode)
-    .eq('status', 'bracket')
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
-  }
-
-  return event as {
-    id: string;
-    event_date: string;
-    location: string | null;
-    lane_count: number;
-    bonus_point_enabled: boolean;
-    bracket_frame_count: number;
-    status: string;
-  } | null;
-}
-
-/**
  * Get event scoring configuration for validation
  */
 export async function getEventScoringConfig(
@@ -393,45 +318,71 @@ export async function getEventScoringConfig(
   return event as { status: EventStatus; bonus_point_enabled: boolean } | null;
 }
 
-/**
- * Get event basic info by access code (case insensitive)
- */
-export async function getEventStatusByAccessCode(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  accessCode: string
-): Promise<{
+export interface AccessCodeEvent {
   id: string;
-  status: EventStatus;
+  event_date: string;
+  location: string | null;
+  lane_count: number;
+  bonus_point_enabled: boolean;
+  bracket_frame_count: number;
   qualification_round_enabled: boolean;
-} | null> {
+  qualification_frame_count: number;
+  status: EventStatus;
+}
+
+/**
+ * Get the event an access code belongs to.
+ * `accessCode` must already be normalized; it is matched exactly (never with LIKE).
+ */
+export async function getEventByAccessCode(
+  supabase: PrivilegedClient,
+  accessCode: string
+): Promise<AccessCodeEvent | null> {
   const { data: event, error } = await supabase
     .from('events')
-    .select('id, status, qualification_round_enabled')
-    .ilike('access_code', accessCode)
+    .select('id, event_date, location, lane_count, bonus_point_enabled, bracket_frame_count, qualification_round_enabled, qualification_frame_count, status')
+    .eq('access_code', accessCode)
     .maybeSingle();
 
   if (error) {
     throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
   }
 
-  return event as {
-    id: string;
-    status: EventStatus;
-    qualification_round_enabled: boolean;
-  } | null;
+  return event as AccessCodeEvent | null;
 }
 
 /**
- * Check if an access code is already in use (case insensitive)
+ * Get an event's access code (admin display only)
+ */
+export async function getEventAccessCode(
+  supabase: PrivilegedClient,
+  eventId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('events')
+    .select('access_code')
+    .eq('id', eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalError(`Failed to fetch event access code: ${error.message}`);
+  }
+
+  return (data?.access_code as string | undefined) ?? null;
+}
+
+/**
+ * Check if an access code is already in use across all leagues.
+ * `accessCode` must already be normalized.
  */
 export async function isAccessCodeUnique(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   accessCode: string
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from('events')
     .select('id')
-    .ilike('access_code', accessCode)
+    .eq('access_code', accessCode)
     .maybeSingle();
 
   if (error) {
@@ -445,7 +396,7 @@ export async function isAccessCodeUnique(
  * Create a new event
  */
 export async function createEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   data: {
     league_id: string;
     event_date: string;
@@ -466,7 +417,7 @@ export async function createEvent(
   const { data: event, error } = await supabase
     .from('events')
     .insert(data)
-    .select()
+    .select(EVENT_COLUMNS)
     .single();
 
   if (error) {
@@ -500,7 +451,7 @@ export async function getEventBracketFrameCount(
  * Update event payout structure
  */
 export async function updateEventPayouts(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   payoutStructure: PayoutPlace[] | null,
   payoutPoolOverride?: number | null

@@ -15,7 +15,6 @@ export interface Event {
   status: EventStatus;
   lane_count: number;
   putt_distance_ft: number;
-  access_code: string;
   qualification_round_enabled: boolean;
   bracket_frame_count: number | null;
   qualification_frame_count: number;
@@ -39,7 +38,8 @@ export interface EventWithDetails {
   status: EventStatus;
   lane_count: number;
   putt_distance_ft: number;
-  access_code: string;
+  /** Present only for league admins (see getEventForViewer); never readable by clients directly. */
+  access_code?: string | null;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
   bracket_frame_count: number | null;

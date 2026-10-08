@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import type { Team } from '@/lib/types/team';
 
@@ -278,7 +279,7 @@ export async function getTeamsForEvent(
  * Insert a new team
  */
 export async function insertTeam(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   eventId: string,
   seed: number,
   poolCombo: string
@@ -304,7 +305,7 @@ export async function insertTeam(
  * Insert a team member
  */
 export async function insertTeamMember(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   teamId: string,
   eventPlayerId: string,
   role: 'A_pool' | 'B_pool'
@@ -345,7 +346,7 @@ export async function getTeamsWithMembersForEvent(
  * Update team seed
  */
 export async function updateTeamSeed(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   teamId: string,
   seed: number
 ): Promise<void> {
@@ -381,7 +382,14 @@ export async function getFullTeamsForEvent(
           pool,
           pfa_score,
           scoring_method,
-          player:players(*)
+          player:players(
+            id,
+            player_number,
+            full_name,
+            nickname,
+            created_at,
+            default_pool
+          )
         )
       )
     `)
@@ -414,7 +422,6 @@ export async function getPublicTeamsForEvent(
           event_id,
           player_id,
           created_at,
-          payment_type,
           pool,
           pfa_score,
           scoring_method,
@@ -444,7 +451,7 @@ export async function getPublicTeamsForEvent(
  * Returns array of team IDs in the same order as input
  */
 export async function insertTeamsBulk(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   teams: Array<{ eventId: string; seed: number; poolCombo: string }>
 ): Promise<string[]> {
   if (teams.length === 0) {
@@ -474,7 +481,7 @@ export async function insertTeamsBulk(
  * Insert multiple team members at once (bulk operation)
  */
 export async function insertTeamMembersBulk(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   members: Array<{ teamId: string; eventPlayerId: string; role: 'A_pool' | 'B_pool' }>
 ): Promise<void> {
   if (members.length === 0) {

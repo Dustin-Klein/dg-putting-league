@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { batchRecordScoresAndGetMatch } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
 
 const batchRecordScoreSchema = z.object({
   access_code: z.string().min(1),
@@ -19,6 +20,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> }
 ) {
+  const rateLimitResponse = await withScoringRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const { matchId } = await params;
     const bracketMatchId = parseInt(matchId, 10);
@@ -43,6 +47,7 @@ export async function PUT(
 
     return NextResponse.json(match);
   } catch (error) {
+    await recordAccessCodeFailure(req, error);
     return handleError(error);
   }
 }

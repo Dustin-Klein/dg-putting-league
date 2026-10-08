@@ -10,7 +10,7 @@ const createLeagueSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = withStrictRateLimit(request, 'league:create');
+  const rateLimitResponse = await withStrictRateLimit(request, 'league:create');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

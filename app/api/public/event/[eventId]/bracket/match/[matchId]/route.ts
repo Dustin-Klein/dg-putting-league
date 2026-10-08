@@ -7,7 +7,7 @@ export async function GET(
   request: NextRequest,
   props: { params: Promise<{ eventId: string; matchId: string }> }
 ) {
-  const rateLimitResponse = withRateLimit(request, 'public:bracket');
+  const rateLimitResponse = await withRateLimit(request, 'public:bracket');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

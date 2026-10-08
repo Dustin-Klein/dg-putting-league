@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   getEventWithPlayers,
+  getEventForViewer,
   deleteEvent,
   updateEvent,
   validateEventStatusTransition,
@@ -30,7 +31,7 @@ export async function GET(
 ) {
   try {
     const resolvedParams = await Promise.resolve(params);
-    const event = await getEventWithPlayers(resolvedParams.eventId);
+    const event = await getEventForViewer(resolvedParams.eventId);
     return NextResponse.json(event);
   } catch (error) {
     return handleError(error);
@@ -41,7 +42,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { eventId: string } | Promise<{ eventId: string }> }
 ) {
-  const rateLimitResponse = withStrictRateLimit(request, 'event:delete');
+  const rateLimitResponse = await withStrictRateLimit(request, 'event:delete');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

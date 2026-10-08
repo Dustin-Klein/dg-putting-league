@@ -31,10 +31,9 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
-jest.mock('@/lib/services/auth', () => ({
-  requireAuthenticatedUser: jest.fn(),
-  requireLeagueAdmin: jest.fn(),
-}));
+jest.mock('@/lib/services/auth', () =>
+  jest.requireActual('./test-utils').createAuthServiceMock()
+);
 
 jest.mock('@/lib/repositories/event-repository', () => ({
   getEventLeagueId: jest.fn(),
@@ -46,6 +45,7 @@ jest.mock('@/lib/repositories/event-repository', () => ({
   updateEvent: jest.fn(),
   isAccessCodeUnique: jest.fn(),
   createEvent: jest.fn(),
+  getEventAccessCode: jest.fn(),
 }));
 
 jest.mock('@/lib/services/event-player', () => ({
@@ -80,6 +80,7 @@ import { redirect } from 'next/navigation';
 import {
   requireEventAdmin,
   getEventWithPlayers,
+  getEventForViewer,
   getEventsByLeagueId,
   createEvent,
   deleteEvent,
@@ -127,9 +128,10 @@ describe('Event Service', () => {
 
       expect(result).toBeDefined();
       expect(requireLeagueAdmin).toHaveBeenCalledWith(leagueId);
-      expect(eventRepo.isAccessCodeUnique).toHaveBeenCalledWith(mockSupabase, eventData.access_code);
+      expect(eventRepo.isAccessCodeUnique).toHaveBeenCalledWith(mockSupabase, 'test2026');
       expect(eventRepo.createEvent).toHaveBeenCalledWith(mockSupabase, {
         ...eventData,
+        access_code: 'test2026',
         entry_fee_per_player: null,
         admin_fees: null,
         admin_fee_per_player: null,
@@ -279,6 +281,84 @@ describe('Event Service', () => {
       (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
 
       await expect(getEventsByLeagueId(leagueId)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('createEvent access code rules', () => {
+    const baseData = {
+      league_id: 'league-123',
+      event_date: '2026-01-20',
+      location: null,
+      lane_count: 4,
+      putt_distance_ft: 15,
+      access_code: 'TEST2026',
+      qualification_round_enabled: false,
+      bracket_frame_count: 5,
+      qualification_frame_count: 5,
+    };
+
+    beforeEach(() => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+      (eventRepo.isAccessCodeUnique as jest.Mock).mockResolvedValue(true);
+      (eventRepo.createEvent as jest.Mock).mockResolvedValue(createMockEvent());
+    });
+
+    it('stores the code trimmed and lower-cased', async () => {
+      await createEvent({ ...baseData, access_code: '  MiXeD9  ' });
+
+      expect(eventRepo.isAccessCodeUnique).toHaveBeenCalledWith(mockSupabase, 'mixed9');
+      expect(eventRepo.createEvent).toHaveBeenCalledWith(
+        mockSupabase,
+        expect.objectContaining({ access_code: 'mixed9' })
+      );
+    });
+
+    it('rejects codes shorter than 6 characters after trimming', async () => {
+      await expect(createEvent({ ...baseData, access_code: ' abcde ' })).rejects.toThrow(BadRequestError);
+      expect(eventRepo.createEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getEventForViewer', () => {
+    const eventId = 'event-123';
+
+    beforeEach(() => {
+      (eventRepo.getEventWithPlayers as jest.Mock).mockResolvedValue(
+        createMockEventWithDetails({ id: eventId })
+      );
+      (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
+      (eventRepo.getEventAccessCode as jest.Mock).mockResolvedValue('abc123');
+    });
+
+    it('includes the access code for a league admin', async () => {
+      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), isAdmin: true });
+
+      const result = await getEventForViewer(eventId);
+
+      expect(result.access_code).toBe('abc123');
+    });
+
+    it('returns null access code for a non-admin', async () => {
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
+
+      const result = await getEventForViewer(eventId);
+
+      expect(result.access_code).toBeNull();
+      expect(eventRepo.getEventAccessCode).not.toHaveBeenCalled();
+    });
+
+    it('returns null access code when signed out', async () => {
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new UnauthorizedError('Authentication required'));
+
+      const result = await getEventForViewer(eventId);
+
+      expect(result.access_code).toBeNull();
+    });
+
+    it('propagates unexpected errors', async () => {
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new InternalError('db down'));
+
+      await expect(getEventForViewer(eventId)).rejects.toThrow(InternalError);
     });
   });
 

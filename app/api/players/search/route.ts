@@ -7,7 +7,7 @@ import { withRateLimit } from '@/lib/middleware/rate-limit';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const rateLimitResponse = withRateLimit(request, 'players:search');
+  const rateLimitResponse = await withRateLimit(request, 'players:search');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

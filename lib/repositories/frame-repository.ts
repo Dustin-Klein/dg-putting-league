@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import type { MatchFrame, FrameResult } from '@/lib/types/scoring';
 
@@ -10,7 +11,7 @@ export type FrameData = Omit<MatchFrame, 'results'>;
  * Returns existing frame if found, otherwise creates new one
  */
 export async function getOrCreateFrame(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   bracketMatchId: number,
   frameNumber: number,
   isOvertime: boolean
@@ -87,7 +88,7 @@ export async function getMatchFrame(
  * Get or create a frame for a bracket match, returning frame with results
  */
 export async function getOrCreateFrameWithResults(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   bracketMatchId: number,
   frameNumber: number,
   isOvertime: boolean
@@ -173,7 +174,7 @@ export interface UpsertFrameResultInput {
  * Upsert a single frame result
  */
 export async function upsertFrameResult(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   data: UpsertFrameResultInput
 ): Promise<FrameResult> {
   const { data: result, error } = await supabase
@@ -214,7 +215,7 @@ export interface UpsertFrameResultAtomicParams {
  * Handles race conditions where concurrent requests could assign duplicate order values
  */
 export async function upsertFrameResultAtomic(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   params: UpsertFrameResultAtomicParams
 ): Promise<void> {
   const { error } = await supabase.rpc('upsert_frame_result_atomic', {
@@ -242,7 +243,7 @@ export interface BulkFrameResultInput {
  * Bulk upsert multiple frame results via RPC
  */
 export async function bulkUpsertFrameResults(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PrivilegedClient,
   results: BulkFrameResultInput[]
 ): Promise<void> {
   const { error } = await supabase.rpc('bulk_upsert_frame_results', {

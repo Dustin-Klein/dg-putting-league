@@ -6,7 +6,7 @@ import { logger } from '@/lib/utils/logger';
 import { withRateLimit } from '@/lib/middleware/rate-limit';
 
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = withRateLimit(request, 'players:create');
+  const rateLimitResponse = await withRateLimit(request, 'players:create');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

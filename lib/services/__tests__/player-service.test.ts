@@ -19,9 +19,9 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
-jest.mock('@/lib/services/auth', () => ({
-  requireAuthenticatedUser: jest.fn(),
-}));
+jest.mock('@/lib/services/auth', () =>
+  jest.requireActual('./test-utils').createAuthServiceMock()
+);
 
 jest.mock('@/lib/repositories/player-repository', () => ({
   insertPlayer: jest.fn(),

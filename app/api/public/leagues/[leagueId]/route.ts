@@ -7,7 +7,7 @@ export async function GET(
   request: NextRequest,
   props: { params: Promise<{ leagueId: string }> }
 ) {
-  const rateLimitResponse = withRateLimit(request, 'public:league');
+  const rateLimitResponse = await withRateLimit(request, 'public:league');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

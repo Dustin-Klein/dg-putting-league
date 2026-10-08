@@ -26,6 +26,26 @@ const eslintConfig = [
       "react-hooks/incompatible-library": "off",
     },
   },
+  {
+    // The privileged (secret-key) Supabase client bypasses RLS. Only the auth
+    // services may create it, and only after an authorization check.
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
+    ignores: ["lib/services/auth/**", "lib/supabase/privileged.ts", "**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
+              message:
+                "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;

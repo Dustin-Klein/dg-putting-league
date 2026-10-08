@@ -3,11 +3,13 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
 import {
-  ForbiddenError,
   BadRequestError,
+  ForbiddenError,
   InternalError,
+  UnauthorizedError,
 } from '@/lib/errors';
-import { requireLeagueAdmin } from '@/lib/services/auth';
+import { requireLeagueAdmin, authorizeEventAdmin, authorizeLeagueAdmin } from '@/lib/services/auth';
+import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
 import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
 import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
 import { createBracket } from '@/lib/services/bracket';
@@ -20,20 +22,12 @@ import * as eventPlacementRepo from '@/lib/repositories/event-placement-reposito
 import { logger } from '@/lib/utils/logger';
 
 /**
- * Ensure the current user is an admin of the event's league
+ * Ensure the current user is an admin of the event's league.
+ * Returns the privileged client, which may be used for this event's reads and writes.
  */
 export async function requireEventAdmin(eventId: string) {
-  const supabase = await createClient();
-
-  const leagueId = await eventRepo.getEventLeagueId(supabase, eventId);
-
-  if (!leagueId) {
-    throw new ForbiddenError('Event not found');
-  }
-
-  const { user } = await requireLeagueAdmin(leagueId);
-
-  return { supabase, user };
+  const { user, db } = await authorizeEventAdmin(eventId);
+  return { supabase: db, user };
 }
 
 /**
@@ -47,6 +41,26 @@ export async function getEventWithPlayers(eventId: string) {
 
   const supabase = await createClient();
   return eventRepo.getEventWithPlayers(supabase, eventId) as Promise<EventWithDetails>;
+}
+
+/**
+ * Get event with players for display. The access code is included only when the
+ * current user is an admin of the event's league; otherwise it is null.
+ */
+export async function getEventForViewer(eventId: string): Promise<EventWithDetails> {
+  const event = await getEventWithPlayers(eventId);
+
+  let accessCode: string | null = null;
+  try {
+    const { db } = await authorizeEventAdmin(eventId);
+    accessCode = await eventRepo.getEventAccessCode(db, eventId);
+  } catch (error) {
+    if (!(error instanceof UnauthorizedError || error instanceof ForbiddenError)) {
+      throw error;
+    }
+  }
+
+  return { ...event, access_code: accessCode };
 }
 
 /**
@@ -79,13 +93,14 @@ export async function createEvent(data: {
   admin_fee_per_player?: number | null;
   copy_players_from_event_id?: string;
 }) {
-  const supabase = await createClient();
-
   // 1. Auth check
-  const { user } = await requireLeagueAdmin(data.league_id);
+  const { user, db: supabase } = await authorizeLeagueAdmin(data.league_id);
 
-  // 2. Normalize and check access code uniqueness
-  const accessCode = data.access_code.trim();
+  // 2. Normalize and check access code uniqueness (across all leagues)
+  const accessCode = normalizeAccessCode(data.access_code);
+  if (accessCode.length < ACCESS_CODE_MIN_LENGTH) {
+    throw new BadRequestError(`Access code must be at least ${ACCESS_CODE_MIN_LENGTH} characters`);
+  }
   const isUnique = await eventRepo.isAccessCodeUnique(supabase, accessCode);
   if (!isUnique) {
     throw new BadRequestError('An event with this access code already exists');
@@ -334,7 +349,7 @@ export async function transitionEventToBracket(
  * Calculates final placements from bracket results and stores them for fast retrieval.
  */
 export async function finalizeEventPlacements(eventId: string): Promise<void> {
-  const supabase = await createClient();
+  const { supabase } = await requireEventAdmin(eventId);
 
   const placements = await playerStatsRepo.calculateEventPlacements(supabase, eventId);
 

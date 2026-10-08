@@ -38,7 +38,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
-  const rateLimitResponse = withStrictRateLimit(req, 'event:start-bracket');
+  const rateLimitResponse = await withStrictRateLimit(req, 'event:start-bracket');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

@@ -30,8 +30,25 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 
 jest.mock('@/lib/repositories/event-repository', () => ({
-  getEventByAccessCodeForQualification: jest.fn(),
+  getEventByAccessCode: jest.fn(),
 }));
+
+// Access-code authorization is covered by auth-service tests; here it resolves
+// whatever event the repository mock returns, with the mock client as `db`.
+jest.mock('@/lib/services/auth', () => {
+  const { NotFoundError: MockNotFoundError } = jest.requireActual('@/lib/errors');
+  const repo = jest.requireMock('@/lib/repositories/event-repository');
+  const server = jest.requireMock('@/lib/supabase/server');
+  return {
+    authorizeAccessCode: jest.fn(async (code: string) => {
+      const event = await repo.getEventByAccessCode(null, code);
+      if (!event) {
+        throw new MockNotFoundError('Invalid access code or event is not accepting qualification scores');
+      }
+      return { event, db: await server.createClient() };
+    }),
+  };
+});
 
 jest.mock('@/lib/repositories/qualification-repository', () => ({
   getOrCreateQualificationRound: jest.fn(),
@@ -81,17 +98,18 @@ describe('Qualification Service', () => {
         qualification_round_enabled: true,
       });
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
 
       const result = await validateQualificationAccessCode('ABC123');
 
-      expect(result).toEqual(mockEvent);
+      expect(result).toMatchObject({ id: 'event-123', status: 'pre-bracket' });
+      expect(result).not.toHaveProperty('access_code');
     });
 
     it('should throw NotFoundError for invalid access code', async () => {
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(null);
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(null);
 
       await expect(validateQualificationAccessCode('INVALID')).rejects.toThrow(
         NotFoundError
@@ -137,7 +155,7 @@ describe('Qualification Service', () => {
         'ep-2': { count: 5, totalPoints: 12 },
       };
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (qualificationRepo.getOrCreateQualificationRound as jest.Mock).mockResolvedValue(
@@ -183,7 +201,7 @@ describe('Qualification Service', () => {
         },
       ];
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (qualificationRepo.getOrCreateQualificationRound as jest.Mock).mockResolvedValue(
@@ -219,7 +237,7 @@ describe('Qualification Service', () => {
         createMockQualificationFrame({ frame_number: 2, points_earned: 2 }),
       ];
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (eventPlayerRepo.getEventPlayer as jest.Mock).mockResolvedValue(mockEventPlayer);
@@ -238,7 +256,7 @@ describe('Qualification Service', () => {
         mockEvent.qualification_frame_count
       );
 
-      expect(result.event).toEqual(mockEvent);
+      expect(result.event).toMatchObject({ id: mockEvent.id, event_date: mockEvent.event_date });
       expect(result.player.frames_completed).toBe(2);
       expect(result.player.total_points).toBe(5);
       expect(result.player.is_complete).toBe(false);
@@ -254,7 +272,7 @@ describe('Qualification Service', () => {
         payment_type: 'cash',
       });
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (eventPlayerRepo.getEventPlayer as jest.Mock).mockResolvedValue(mockEventPlayer);
@@ -275,7 +293,7 @@ describe('Qualification Service', () => {
         payment_type: null,
       });
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (eventPlayerRepo.getEventPlayer as jest.Mock).mockResolvedValue(mockEventPlayer);
@@ -311,7 +329,7 @@ describe('Qualification Service', () => {
         status: 'not_started',
       });
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (eventPlayerRepo.getEventPlayer as jest.Mock).mockResolvedValue(mockEventPlayer);
@@ -549,7 +567,7 @@ describe('Qualification Service', () => {
         'ep-2': [],
       };
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (qualificationRepo.getOrCreateQualificationRound as jest.Mock).mockResolvedValue(
@@ -570,7 +588,7 @@ describe('Qualification Service', () => {
         mockEvent.qualification_frame_count
       );
 
-      expect(result.event).toEqual(mockEvent);
+      expect(result.event).toMatchObject({ id: mockEvent.id, event_date: mockEvent.event_date });
       expect(result.round.id).toBe('round-123');
       expect(result.players).toHaveLength(2);
       expect(result.players[0].frames_completed).toBe(2);
@@ -599,7 +617,7 @@ describe('Qualification Service', () => {
         }),
       ];
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (qualificationRepo.getOrCreateQualificationRound as jest.Mock).mockResolvedValue(
@@ -624,7 +642,7 @@ describe('Qualification Service', () => {
       const mockEvent = createMockEvent({ id: 'event-123' });
       const mockRound = createMockQualificationRound({ frame_count: 10 });
 
-      (eventRepo.getEventByAccessCodeForQualification as jest.Mock).mockResolvedValue(
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(
         mockEvent
       );
       (qualificationRepo.getOrCreateQualificationRound as jest.Mock).mockResolvedValue(

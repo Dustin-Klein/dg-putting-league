@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -10,7 +11,7 @@ export interface EventPlacement {
 }
 
 export async function storeEventPlacements(
-  supabase: SupabaseClient,
+  supabase: PrivilegedClient,
   placements: EventPlacement[]
 ): Promise<void> {
   if (placements.length === 0) return;
