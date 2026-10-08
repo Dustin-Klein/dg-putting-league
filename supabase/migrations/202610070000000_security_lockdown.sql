@@ -14,6 +14,9 @@
 -- 1. Functions: nothing is executable by clients except RLS helper predicates
 -- ----------------------------------------------------------------------------
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
+-- The server's role. Supabase already grants this explicitly; restated so revoking
+-- PUBLIC can never leave the server unable to call business functions.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
 -- New functions start revoked. The PUBLIC default is global (not per-schema), so it
 -- is revoked without IN SCHEMA; anon/authenticated defaults are per-schema grants.
@@ -72,10 +75,10 @@ REVOKE SELECT ON public.players FROM anon, authenticated;
 GRANT SELECT (id, player_number, full_name, nickname, created_at, default_pool)
 ON public.players TO anon, authenticated;
 
--- event_players.payment_type is admin information.
-REVOKE SELECT ON public.event_players FROM anon;
+-- event_players.payment_type is admin information (admins read it via the server).
+REVOKE SELECT ON public.event_players FROM anon, authenticated;
 GRANT SELECT (id, event_id, player_id, pool, qualification_seed, pfa_score, scoring_method, created_at)
-ON public.event_players TO anon;
+ON public.event_players TO anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 4. Drop every write policy. With no INSERT/UPDATE/DELETE grants they are dead,
@@ -98,9 +101,28 @@ END $$;
 
 -- ----------------------------------------------------------------------------
 -- 5. Access codes: stored normalized, matched exactly
---    Pre-check (must return no rows):
---      SELECT lower(trim(access_code)), count(*) FROM events GROUP BY 1 HAVING count(*) > 1;
 -- ----------------------------------------------------------------------------
+-- Codes that differ only by case/whitespace would collide on the UNIQUE constraint.
+-- Fail with a clear message instead; resolve by changing one of the codes first.
+DO $$
+DECLARE
+  collisions TEXT;
+BEGIN
+  SELECT string_agg(format('%s (events: %s)', code, ids), '; ')
+  INTO collisions
+  FROM (
+    SELECT lower(trim(access_code)) AS code, string_agg(id::text, ', ') AS ids
+    FROM public.events
+    GROUP BY 1
+    HAVING count(*) > 1
+  ) dupes;
+
+  IF collisions IS NOT NULL THEN
+    RAISE EXCEPTION 'Access codes collide after normalization: %', collisions
+      USING HINT = 'Change one access code in each group, then re-run this migration.';
+  END IF;
+END $$;
+
 UPDATE public.events
 SET access_code = lower(trim(access_code))
 WHERE access_code <> lower(trim(access_code));

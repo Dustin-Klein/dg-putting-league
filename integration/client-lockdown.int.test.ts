@@ -99,6 +99,11 @@ describe.each([
     expectDenied(error);
   });
 
+  it('cannot read payment status', async () => {
+    const { error } = await client.from('event_players').select('payment_type').limit(1);
+    expectDenied(error);
+  });
+
   it('cannot touch the rate limit store', async () => {
     const { error } = await client.rpc('rate_limit_hit', { p_key: 'x', p_window_ms: 1000 });
     expectDenied(error);

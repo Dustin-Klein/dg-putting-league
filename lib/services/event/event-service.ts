@@ -31,12 +31,33 @@ export async function requireEventAdmin(eventId: string) {
 }
 
 /**
- * Get event with players (with redirect on missing eventId)
+ * Authorize the current user as an event admin, or return null if they aren't one.
+ */
+async function tryAuthorizeEventAdmin(eventId: string) {
+  try {
+    return await authorizeEventAdmin(eventId);
+  } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get event with players (with redirect on missing eventId).
+ * Admins of the event's league get admin-only fields (payment_type); others get
+ * what RLS and column privileges allow.
  */
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
     console.error('No eventId provided');
     redirect('/admin/leagues');
+  }
+
+  const admin = await tryAuthorizeEventAdmin(eventId);
+  if (admin) {
+    return eventRepo.getEventWithPlayers(admin.db, eventId, { includePaymentType: true }) as Promise<EventWithDetails>;
   }
 
   const supabase = await createClient();
@@ -50,15 +71,8 @@ export async function getEventWithPlayers(eventId: string) {
 export async function getEventForViewer(eventId: string): Promise<EventWithDetails> {
   const event = await getEventWithPlayers(eventId);
 
-  let accessCode: string | null = null;
-  try {
-    const { db } = await authorizeEventAdmin(eventId);
-    accessCode = await eventRepo.getEventAccessCode(db, eventId);
-  } catch (error) {
-    if (!(error instanceof UnauthorizedError || error instanceof ForbiddenError)) {
-      throw error;
-    }
-  }
+  const admin = await tryAuthorizeEventAdmin(eventId);
+  const accessCode = admin ? await eventRepo.getEventAccessCode(admin.db, eventId) : null;
 
   return { ...event, access_code: accessCode };
 }
@@ -375,8 +389,7 @@ export interface EventPayoutInfo {
  * Get computed payout breakdown for an event
  */
 export async function getEventPayouts(eventId: string): Promise<EventPayoutInfo | null> {
-  const supabase = await createClient();
-  const event = await eventRepo.getEventWithPlayers(supabase, eventId);
+  const event = await getEventWithPlayers(eventId);
 
   if (event.entry_fee_per_player == null) {
     return null;

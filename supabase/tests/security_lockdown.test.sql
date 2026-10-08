@@ -161,7 +161,8 @@ SELECT column_privs_are('public', 'players', 'email', 'anon', ARRAY[]::text[]);
 SELECT column_privs_are('public', 'players', 'email', 'authenticated', ARRAY[]::text[]);
 SELECT column_privs_are('public', 'players', 'full_name', 'authenticated', ARRAY['SELECT']);
 SELECT column_privs_are('public', 'event_players', 'payment_type', 'anon', ARRAY[]::text[]);
-SELECT column_privs_are('public', 'event_players', 'payment_type', 'authenticated', ARRAY['SELECT']);
+SELECT column_privs_are('public', 'event_players', 'payment_type', 'authenticated', ARRAY[]::text[]);
+SELECT column_privs_are('public', 'event_players', 'pool', 'authenticated', ARRAY['SELECT']);
 
 -- ---------------------------------------------------------------------------
 -- Behaviour as real client roles

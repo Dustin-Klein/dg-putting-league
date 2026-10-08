@@ -41,8 +41,11 @@ export interface EventWithPlayersData extends EventData {
  */
 export async function getEventWithPlayers(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  eventId: string
+  eventId: string,
+  opts: { includePaymentType?: boolean } = {}
 ): Promise<EventWithPlayersData> {
+  // Clients can't read event_players.payment_type; only privileged (admin) reads include it.
+  const paymentType = opts.includePaymentType ? 'payment_type,' : '';
   const { data: event, error } = await supabase
     .from('events')
     .select(`
@@ -52,7 +55,7 @@ export async function getEventWithPlayers(
         event_id,
         player_id,
         created_at,
-        payment_type,
+        ${paymentType}
         pool,
         pfa_score,
         scoring_method,
@@ -80,7 +83,7 @@ export async function getEventWithPlayers(
             event_id,
             player_id,
             created_at,
-            payment_type,
+            ${paymentType}
             pool,
             pfa_score,
             scoring_method,

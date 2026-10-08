@@ -24,6 +24,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENC
 REVOKE SELECT ON public.players FROM anon;
 GRANT SELECT (id, player_number, full_name, nickname, created_at, default_pool) ON public.players TO anon;
 
+-- event_players column restriction is dropped by the GRANT ALL above (as before the lockdown)
+
 -- rate_limits stays server-only
 REVOKE ALL ON public.rate_limits FROM anon, authenticated;
 

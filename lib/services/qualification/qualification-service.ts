@@ -1,11 +1,10 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import {
   BadRequestError,
   ForbiddenError,
 } from '@/lib/errors';
 import { calculatePoints } from '@/lib/services/scoring/points-calculator';
-import { authorizeAccessCode, type PrivilegedClient } from '@/lib/services/auth';
+import { authorizeAccessCode, authorizeEventAdmin, type PrivilegedClient } from '@/lib/services/auth';
 import * as qualificationRepo from '@/lib/repositories/qualification-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import type {
@@ -259,7 +258,8 @@ export async function getEventQualificationStatus(
   players: PlayerQualificationStatus[];
   allComplete: boolean;
 }> {
-  const supabase = await createClient();
+  // Reads payment status, which only the server can see
+  const { db: supabase } = await authorizeEventAdmin(eventId);
 
   const round = await qualificationRepo.getQualificationRoundFull(supabase, eventId);
   if (!round) {

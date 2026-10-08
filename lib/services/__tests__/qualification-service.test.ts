@@ -47,6 +47,7 @@ jest.mock('@/lib/services/auth', () => {
       }
       return { event, db: await server.createClient() };
     }),
+    authorizeEventAdmin: jest.fn(async () => ({ user: { id: 'admin-1' }, db: await server.createClient() })),
   };
 });
 
