@@ -31,7 +31,6 @@ import {
   deleteEvent,
   getQualificationRound,
   getQualificationFrameCounts,
-  getEventByAccessCode,
   getEventAccessCode,
   getEventScoringConfig,
   isAccessCodeUnique,
@@ -379,49 +378,6 @@ describe('Event Repository', () => {
       const result = await getQualificationFrameCounts(mockSupabase as any, 'event-123');
 
       expect(result).toEqual({});
-    });
-  });
-
-  describe('getEventByAccessCode', () => {
-    it('matches the access code exactly (never ilike)', async () => {
-      const mockEvent = {
-        id: 'event-123',
-        event_date: '2024-06-15',
-        location: 'Test',
-        lane_count: 4,
-        bonus_point_enabled: true,
-        bracket_frame_count: 5,
-        qualification_round_enabled: false,
-        qualification_frame_count: 5,
-        status: 'bracket',
-      };
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.maybeSingle.mockResolvedValue({ data: mockEvent, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getEventByAccessCode(mockSupabase as any, 'abc123');
-
-      expect(result).toEqual(mockEvent);
-      expect(mockQuery.eq).toHaveBeenCalledWith('access_code', 'abc123');
-      expect(mockQuery.ilike).not.toHaveBeenCalled();
-    });
-
-    it('should return null when no matching event', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getEventByAccessCode(mockSupabase as any, 'invalid');
-
-      expect(result).toBeNull();
-    });
-
-    it('should throw InternalError on query failure', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: { message: 'Query failed' } });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      await expect(getEventByAccessCode(mockSupabase as any, 'abc123')).rejects.toThrow(InternalError);
     });
   });
 

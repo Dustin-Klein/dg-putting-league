@@ -14,7 +14,7 @@ const config = {
   testEnvironment: 'node',
   roots: ['<rootDir>/integration'],
   testMatch: ['**/*.int.test.ts'],
-  globalSetup: '<rootDir>/integration/db/global-setup.js',
+  globalSetup: '<rootDir>/integration/db/global-setup.ts',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^server-only$': '<rootDir>/lib/services/__tests__/__mocks__/server-only.ts',

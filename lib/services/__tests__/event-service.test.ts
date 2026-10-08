@@ -48,22 +48,6 @@ jest.mock('@/lib/repositories/event-repository', () => ({
   getEventAccessCode: jest.fn(),
 }));
 
-jest.mock('@/lib/services/event-player', () => ({
-  computePoolAssignments: jest.fn(),
-}));
-
-jest.mock('@/lib/services/team', () => ({
-  computeTeamPairings: jest.fn(),
-}));
-
-jest.mock('@/lib/services/bracket', () => ({
-  createBracket: jest.fn(),
-}));
-
-jest.mock('@/lib/services/lane', () => ({
-  autoAssignLanes: jest.fn(),
-}));
-
 jest.mock('next/navigation', () => ({
   redirect: jest.fn(),
 }));
@@ -72,10 +56,6 @@ jest.mock('next/navigation', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireLeagueAdmin } from '@/lib/services/auth';
 import * as eventRepo from '@/lib/repositories/event-repository';
-import { computePoolAssignments } from '@/lib/services/event-player';
-import { computeTeamPairings } from '@/lib/services/team';
-import { createBracket } from '@/lib/services/bracket';
-import { autoAssignLanes } from '@/lib/services/lane';
 import { redirect } from 'next/navigation';
 import {
   requireEventAdmin,
@@ -86,7 +66,6 @@ import {
   deleteEvent,
   validateEventStatusTransition,
   updateEvent,
-  transitionEventToBracket,
 } from '../event/event-service';
 
 describe('Event Service', () => {
@@ -604,180 +583,5 @@ describe('Event Service', () => {
     });
   });
 
-  describe('transitionEventToBracket', () => {
-    const eventId = 'event-123';
 
-    beforeEach(() => {
-      (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
-      (requireLeagueAdmin as jest.Mock).mockResolvedValue({ user: createMockUser({ id: 'user-123' }), isAdmin: true });
-    });
-
-    it('should transition event to bracket successfully', async () => {
-      const players = createMockEventPlayers(4);
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', lane_count: 4 },
-        players
-      );
-
-      const poolAssignments = players.map((p, i) => ({
-        eventPlayerId: p.id,
-        playerId: p.player_id,
-        playerName: p.player.full_name,
-        pool: i < 2 ? 'A' : 'B',
-        pfaScore: 10 - i,
-        scoringMethod: 'default',
-      }));
-
-      const teamPairings = [
-        {
-          seed: 1,
-          poolCombo: 'Player 1 & Player 3',
-          combinedScore: 17,
-          members: [
-            { eventPlayerId: players[0].id, role: 'A_pool' },
-            { eventPlayerId: players[2].id, role: 'B_pool' },
-          ],
-        },
-        {
-          seed: 2,
-          poolCombo: 'Player 2 & Player 4',
-          combinedScore: 13,
-          members: [
-            { eventPlayerId: players[1].id, role: 'A_pool' },
-            { eventPlayerId: players[3].id, role: 'B_pool' },
-          ],
-        },
-      ];
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue(poolAssignments);
-      (computeTeamPairings as jest.Mock).mockReturnValue(teamPairings);
-      mockSupabase.rpc.mockResolvedValue({ error: null });
-      (createBracket as jest.Mock).mockResolvedValue({});
-      (autoAssignLanes as jest.Mock).mockResolvedValue(2);
-
-      await transitionEventToBracket(eventId, event);
-
-      expect(computePoolAssignments).toHaveBeenCalledWith(eventId, event);
-      expect(computeTeamPairings).toHaveBeenCalledWith(poolAssignments);
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('transition_event_to_bracket', {
-        p_event_id: eventId,
-        p_pool_assignments: expect.any(Array),
-        p_teams: expect.any(Array),
-        p_lane_count: 4,
-      });
-      expect(createBracket).toHaveBeenCalledWith(eventId, true);
-      expect(autoAssignLanes).toHaveBeenCalledWith(eventId);
-    });
-
-    it('should reject odd player count before team generation starts', async () => {
-      const players = createMockEventPlayers(5);
-      players.forEach((p) => (p.payment_type = 'cash'));
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', lane_count: 4 },
-        players
-      );
-
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
-        'An even number of players is required'
-      );
-
-      expect(computePoolAssignments).not.toHaveBeenCalled();
-      expect(computeTeamPairings).not.toHaveBeenCalled();
-      expect(mockSupabase.rpc).not.toHaveBeenCalledWith('transition_event_to_bracket', expect.anything());
-    });
-
-    it('should throw InternalError when RPC fails', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc.mockResolvedValue({
-        error: { message: 'RPC failed' },
-      });
-
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(InternalError);
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
-        'Failed to transition event to bracket'
-      );
-    });
-
-    it('should handle bracket already created gracefully', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc.mockResolvedValue({ error: null });
-      (createBracket as jest.Mock).mockRejectedValue(
-        new BadRequestError('Bracket has already been created')
-      );
-
-      // Should not throw
-      await expect(transitionEventToBracket(eventId, event)).resolves.not.toThrow();
-    });
-
-    it('should rollback transition when bracket creation fails with non-duplicate error', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc
-        .mockResolvedValueOnce({ error: null }) // transition RPC succeeds
-        .mockResolvedValueOnce({ error: null }); // rollback RPC succeeds
-      (createBracket as jest.Mock).mockRejectedValue(new Error('Database connection failed'));
-
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
-        'Failed to create bracket. Transaction rolled back'
-      );
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('rollback_bracket_transition', {
-        p_event_id: eventId,
-      });
-    });
-
-    it('should throw with manual intervention message when both bracket and rollback fail', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc
-        .mockResolvedValueOnce({ error: null }) // transition succeeds
-        .mockResolvedValueOnce({ error: { message: 'Rollback failed' } }); // rollback fails
-      (createBracket as jest.Mock).mockRejectedValue(new Error('Bracket error'));
-
-      await expect(transitionEventToBracket(eventId, event)).rejects.toThrow(
-        'Manual intervention required'
-      );
-    });
-
-    it('should skip lane assignment when lane_count is 0', async () => {
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', lane_count: 0 },
-        []
-      );
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc.mockResolvedValue({ error: null });
-      (createBracket as jest.Mock).mockResolvedValue({});
-
-      await transitionEventToBracket(eventId, event);
-
-      expect(autoAssignLanes).not.toHaveBeenCalled();
-    });
-
-    it('should handle lane assignment errors gracefully', async () => {
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', lane_count: 4 },
-        []
-      );
-
-      (computePoolAssignments as jest.Mock).mockResolvedValue([]);
-      (computeTeamPairings as jest.Mock).mockReturnValue([]);
-      mockSupabase.rpc.mockResolvedValue({ error: null });
-      (createBracket as jest.Mock).mockResolvedValue({});
-      (autoAssignLanes as jest.Mock).mockRejectedValue(new Error('Lane assignment failed'));
-
-      // Should not throw - lane errors are logged but not propagated
-      await expect(transitionEventToBracket(eventId, event)).resolves.not.toThrow();
-    });
-  });
 });

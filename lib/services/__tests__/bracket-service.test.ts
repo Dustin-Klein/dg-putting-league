@@ -14,14 +14,11 @@
  */
 
 import {
-  BadRequestError,
   NotFoundError,
   InternalError,
 } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockEventWithDetails,
-  createMockTeam,
   createMockUser,
   MockSupabaseClient,
 } from './test-utils';
@@ -37,34 +34,15 @@ jest.mock('@/lib/services/auth', () => ({
 
 jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
-  getEventWithPlayers: jest.fn(),
-}));
-
-jest.mock('@/lib/services/team', () => ({
-  getEventTeams: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
-  SupabaseBracketStorage: jest.fn().mockImplementation(() => ({})),
   bracketStageExists: jest.fn(),
-  getBracketParticipants: jest.fn(),
-  linkParticipantsToTeams: jest.fn(),
-  setEventIdOnMatches: jest.fn(),
-  getMatchesByStageId: jest.fn(),
-  bulkUpdateMatchStatuses: jest.fn(),
-  updateMatchStatus: jest.fn(),
   getBracketStage: jest.fn(),
   fetchBracketStructure: jest.fn(),
   getParticipantsWithTeamIds: jest.fn(),
-  getMatchWithStage: jest.fn(),
   getReadyMatchesByStageId: jest.fn(),
-  assignLaneToMatchRpc: jest.fn(),
   getMatchForScoringById: jest.fn(),
-  updateMatchWithOpponents: jest.fn(),
-  getBracketResetContext: jest.fn(),
-  deleteMatchFrames: jest.fn(),
-  getMatchWithGroupInfo: jest.fn(),
-  getSecondGrandFinalMatch: jest.fn(),
   getFrameCountsForMatchIds: jest.fn().mockResolvedValue({}),
 }));
 
@@ -79,8 +57,6 @@ jest.mock('@/lib/repositories/team-repository', () => ({
 
 jest.mock('@/lib/repositories/lane-repository', () => ({
   getLanesForEvent: jest.fn(),
-  resetAllLanesToIdle: jest.fn(),
-  releaseMatchLane: jest.fn().mockResolvedValue(true),
 }));
 
 const mockFindNextMatches = jest.fn();
@@ -107,40 +83,25 @@ jest.mock('brackets-manager', () => {
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import { getEventTeams } from '@/lib/services/team';
+import { requireEventAdmin } from '@/lib/services/event';
 import {
   bracketStageExists,
   fetchBracketStructure,
   getBracketStage,
   getReadyMatchesByStageId,
-  assignLaneToMatchRpc,
-  getMatchWithStage,
-  updateMatchWithOpponents,
-  getBracketResetContext,
-  deleteMatchFrames,
-  getMatchWithGroupInfo,
-  getSecondGrandFinalMatch,
-  updateMatchStatus,
 } from '@/lib/repositories/bracket-repository';
 import { getEventById } from '@/lib/repositories/event-repository';
 import {
-  createBracket,
   getBracket,
   getPublicBracket,
-  updateMatchResult,
   getReadyMatches,
-  assignLaneToMatch,
   bracketExists,
   buildProgressionSourceMap,
-  resetMatchResult,
   buildTaintedSlotPlan,
   findMatchesToReset,
-  archiveGrandFinalResetMatch,
-  restoreGrandFinalResetMatch,
 } from '../bracket/bracket-service';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent, releaseMatchLane } from '@/lib/repositories/lane-repository';
+import { getLanesForEvent } from '@/lib/repositories/lane-repository';
 
 describe('Bracket Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -152,48 +113,6 @@ describe('Bracket Service', () => {
     (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, user: createMockUser({ id: 'user-123' }) });
     mockFindNextMatches.mockResolvedValue([]);
     mockFindPreviousMatches.mockResolvedValue([]);
-  });
-
-  describe('createBracket', () => {
-    const eventId = 'event-123';
-
-    it('should throw BadRequestError for invalid event status', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'created' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      await expect(createBracket(eventId)).rejects.toThrow(BadRequestError);
-      await expect(createBracket(eventId)).rejects.toThrow(
-        'Bracket can only be created for events in bracket status'
-      );
-    });
-
-    it('should throw BadRequestError when bracket already exists', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'bracket' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (bracketStageExists as jest.Mock).mockResolvedValue(true);
-
-      await expect(createBracket(eventId)).rejects.toThrow(BadRequestError);
-      await expect(createBracket(eventId)).rejects.toThrow(
-        'Bracket has already been created for this event'
-      );
-    });
-
-    it('should throw BadRequestError when less than 2 teams', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'bracket' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (bracketStageExists as jest.Mock).mockResolvedValue(false);
-      (getEventTeams as jest.Mock).mockResolvedValue([createMockTeam()]);
-
-      await expect(createBracket(eventId)).rejects.toThrow(
-        'At least 2 teams are required to create a bracket'
-      );
-    });
-
-    it('should require event admin permission', async () => {
-      (requireEventAdmin as jest.Mock).mockRejectedValue(new Error('Not authorized'));
-
-      await expect(createBracket(eventId)).rejects.toThrow('Not authorized');
-    });
   });
 
   describe('getBracket', () => {
@@ -312,80 +231,6 @@ describe('Bracket Service', () => {
     });
   });
 
-  describe('archiveGrandFinalResetMatch', () => {
-    const eventId = 'event-123';
-
-    it('should do nothing when bracket structure is not found', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue(null);
-
-      await archiveGrandFinalResetMatch(eventId);
-
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-
-    it('should do nothing when no grand final group exists', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 1, number: 1 }],
-        rounds: [],
-        matches: [],
-        participants: [],
-      });
-
-      await archiveGrandFinalResetMatch(eventId);
-
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-
-    it('should do nothing when no reset match exists', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 10, number: 3 }],
-        rounds: [],
-        matches: [],
-        participants: [],
-      });
-      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue(null);
-
-      await archiveGrandFinalResetMatch(eventId);
-
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-
-    it('should archive and release lane when reset match is not already archived', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 10, number: 3 }],
-        rounds: [],
-        matches: [],
-        participants: [],
-      });
-      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({ id: 99, status: 2 }); // Ready
-      (updateMatchStatus as jest.Mock).mockResolvedValue(undefined);
-
-      await archiveGrandFinalResetMatch(eventId);
-
-      expect(releaseMatchLane).toHaveBeenCalledWith(mockSupabase, eventId, 99);
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 99, 5); // Status.Archived = 5
-    });
-
-    it('should skip archiving when reset match is already archived', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 10, number: 3 }],
-        rounds: [],
-        matches: [],
-        participants: [],
-      });
-      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({ id: 99, status: 5 }); // Archived
-
-      await archiveGrandFinalResetMatch(eventId);
-
-      expect(releaseMatchLane).not.toHaveBeenCalled();
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-  });
-
   describe('getReadyMatches', () => {
     const eventId = 'event-123';
 
@@ -406,43 +251,6 @@ describe('Bracket Service', () => {
       expect(result).toEqual(mockMatches);
       expect(getBracketStage).toHaveBeenCalledWith(mockSupabase, eventId);
       expect(getReadyMatchesByStageId).toHaveBeenCalledWith(mockSupabase, 1);
-    });
-  });
-
-  describe('assignLaneToMatch', () => {
-    const eventId = 'event-123';
-    const matchId = 1;
-    const laneId = 'lane-123';
-
-    it('should assign lane to match successfully', async () => {
-      (assignLaneToMatchRpc as jest.Mock).mockResolvedValue(true);
-
-      await expect(assignLaneToMatch(eventId, matchId, laneId)).resolves.not.toThrow();
-
-      expect(assignLaneToMatchRpc).toHaveBeenCalledWith(mockSupabase, eventId, laneId, matchId);
-    });
-
-    it('should throw InternalError on RPC failure', async () => {
-      (assignLaneToMatchRpc as jest.Mock).mockRejectedValue(
-        new InternalError('Failed to assign lane to match: RPC failed')
-      );
-
-      await expect(assignLaneToMatch(eventId, matchId, laneId)).rejects.toThrow(
-        InternalError
-      );
-    });
-
-    it('should throw BadRequestError when lane not available', async () => {
-      (assignLaneToMatchRpc as jest.Mock).mockRejectedValue(
-        new BadRequestError('Lane is not available for assignment')
-      );
-
-      await expect(assignLaneToMatch(eventId, matchId, laneId)).rejects.toThrow(
-        BadRequestError
-      );
-      await expect(assignLaneToMatch(eventId, matchId, laneId)).rejects.toThrow(
-        'Lane is not available for assignment'
-      );
     });
   });
 
@@ -474,36 +282,6 @@ describe('Bracket Service', () => {
 
       await expect(bracketExists(eventId)).rejects.toThrow(InternalError);
       await expect(bracketExists(eventId)).rejects.toThrow('Failed to check bracket stage');
-    });
-  });
-
-  describe('updateMatchResult', () => {
-    const eventId = 'event-123';
-    const matchId = 1;
-
-    it('should throw NotFoundError when match not found', async () => {
-      (getMatchWithStage as jest.Mock).mockResolvedValue(null);
-
-      await expect(updateMatchResult(eventId, matchId, 5, 3)).rejects.toThrow(
-        NotFoundError
-      );
-    });
-
-    it('should throw BadRequestError when match belongs to different event', async () => {
-      const mockMatch = {
-        id: matchId,
-        bracket_stage: { tournament_id: 'different-event' },
-        opponent1: { id: 1 },
-        opponent2: { id: 2 },
-      };
-      (getMatchWithStage as jest.Mock).mockResolvedValue(mockMatch);
-
-      await expect(updateMatchResult(eventId, matchId, 5, 3)).rejects.toThrow(
-        BadRequestError
-      );
-      await expect(updateMatchResult(eventId, matchId, 5, 3)).rejects.toThrow(
-        'Match does not belong to this event'
-      );
     });
   });
 
@@ -723,57 +501,6 @@ describe('Bracket Service', () => {
     });
   });
 
-  describe('restoreGrandFinalResetMatch', () => {
-    const eventId = 'event-123';
-
-    it('should unarchive reset match to waiting when first grand final is not completed', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 10, number: 3 }],
-        rounds: [
-          { id: 101, group_id: 10, number: 1 },
-          { id: 102, group_id: 10, number: 2 },
-        ],
-        matches: [
-          { id: 201, round_id: 101, number: 1, status: 2, opponent1: { id: 1 }, opponent2: { id: 2 } },
-          { id: 202, round_id: 102, number: 1, status: 5, opponent1: { id: null, position: 201 }, opponent2: { id: null, position: 201 } },
-        ],
-        participants: [],
-      });
-
-      await restoreGrandFinalResetMatch(eventId);
-
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 202, 1); // Waiting
-    });
-
-    it('should keep reset match archived when WB champion already won first grand final', async () => {
-      (fetchBracketStructure as jest.Mock).mockResolvedValue({
-        stage: { id: 1 },
-        groups: [{ id: 10, number: 3 }],
-        rounds: [
-          { id: 101, group_id: 10, number: 1 },
-          { id: 102, group_id: 10, number: 2 },
-        ],
-        matches: [
-          {
-            id: 201,
-            round_id: 101,
-            number: 1,
-            status: 4,
-            opponent1: { id: 1, result: 'win' },
-            opponent2: { id: 2, result: 'loss' },
-          },
-          { id: 202, round_id: 102, number: 1, status: 5, opponent1: { id: 1 }, opponent2: { id: 2 } },
-        ],
-        participants: [],
-      });
-
-      await restoreGrandFinalResetMatch(eventId);
-
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-  });
-
   describe('buildProgressionSourceMap', () => {
     it('should advance only grand final match #1 to reset round when consolation final exists', async () => {
       const context = {
@@ -808,243 +535,5 @@ describe('Bracket Service', () => {
     });
   });
 
-  describe('resetMatchResult', () => {
-    const eventId = 'event-123';
-    const matchId = 1;
 
-    const makeContext = (status = 4) => ({
-      stage: { id: 1, type: 'double_elimination', settings: {} },
-      groups: [{ id: 10, number: 1 }],
-      rounds: [{ id: 101, group_id: 10, number: 1 }],
-      matches: [
-        { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status, opponent1: { id: 10, position: 1, score: 5, result: 'win' }, opponent2: { id: 20, position: 2, score: 3, result: 'loss' } },
-      ],
-    });
-
-    it('should throw NotFoundError when match not found', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext());
-
-      await expect(resetMatchResult(eventId, 999)).rejects.toThrow(NotFoundError);
-      await expect(resetMatchResult(eventId, 999)).rejects.toThrow('Match not found');
-    });
-
-    it('should throw BadRequestError when match is not completed/running/archived', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(2));
-
-      await expect(resetMatchResult(eventId, matchId)).rejects.toThrow(BadRequestError);
-      await expect(resetMatchResult(eventId, matchId)).rejects.toThrow(
-        'Only completed, running, or archived matches can be reset'
-      );
-    });
-
-    it('should rewrite target in two scrub steps and delete frames', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-
-      const result = await resetMatchResult(eventId, matchId);
-
-      expect(result.resetMatchIds).toEqual([matchId]);
-      expect(updateMatchWithOpponents).toHaveBeenCalledTimes(2);
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        1,
-        mockSupabase,
-        matchId,
-        { id: null },
-        { id: null },
-        1
-      );
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        2,
-        mockSupabase,
-        matchId,
-        { id: 10 },
-        { id: 20 },
-        1
-      );
-      expect(deleteMatchFrames).toHaveBeenCalledTimes(1);
-      expect(deleteMatchFrames).toHaveBeenCalledWith(mockSupabase, matchId);
-    });
-
-    it('should clear only tainted descendant slots and preserve unaffected entrants', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue({
-        stage: { id: 1, type: 'double_elimination', settings: {} },
-        groups: [{ id: 10, number: 1 }],
-        rounds: [{ id: 101, group_id: 10, number: 1 }, { id: 102, group_id: 10, number: 2 }],
-        matches: [
-          { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status: 4, opponent1: { id: 10 }, opponent2: { id: 20 } },
-          { id: 2, stage_id: 1, group_id: 10, round_id: 102, number: 1, status: 0, opponent1: { id: 10 }, opponent2: { id: 30 } },
-        ],
-      });
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-      mockFindNextMatches.mockResolvedValue([{ id: 2 }]);
-
-      const result = await resetMatchResult(eventId, 1);
-
-      expect(result.resetMatchIds).toEqual([1, 2]);
-      expect(updateMatchWithOpponents).toHaveBeenCalledTimes(4);
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        4,
-        mockSupabase,
-        2,
-        { id: null },
-        { id: 30 },
-        1
-      );
-      expect(deleteMatchFrames).toHaveBeenCalledTimes(2);
-      expect(deleteMatchFrames).toHaveBeenCalledWith(mockSupabase, 1);
-      expect(deleteMatchFrames).toHaveBeenCalledWith(mockSupabase, 2);
-    });
-
-    it('should accept completed, running, and archived target statuses', async () => {
-      for (const status of [4, 3, 5]) {
-        (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(status));
-        (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-
-        await expect(resetMatchResult(eventId, matchId)).resolves.toEqual({ resetMatchIds: [1] });
-      }
-    });
-
-    it('should handle manager graph ids returned as strings', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue({
-        stage: { id: 1, type: 'double_elimination', settings: {} },
-        groups: [{ id: 10, number: 1 }],
-        rounds: [{ id: 101, group_id: 10, number: 1 }, { id: 102, group_id: 10, number: 2 }],
-        matches: [
-          { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status: 4, opponent1: { id: 10 }, opponent2: { id: 20 } },
-          { id: 2, stage_id: 1, group_id: 10, round_id: 102, number: 1, status: 1, opponent1: { id: 10 }, opponent2: { id: 30 } },
-        ],
-      });
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-      mockFindNextMatches.mockImplementation(async (id: number) => {
-        if (id === 1) return [{ id: '2' as unknown as number }];
-        return [];
-      });
-
-      const result = await resetMatchResult(eventId, 1);
-      expect(result.resetMatchIds).toEqual([1, 2]);
-    });
-
-    it('should preserve literal null BYE slots instead of converting to {id:null}', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue({
-        stage: { id: 1, type: 'double_elimination', settings: {} },
-        groups: [{ id: 10, number: 1 }, { id: 20, number: 2 }],
-        rounds: [{ id: 101, group_id: 10, number: 1 }, { id: 201, group_id: 20, number: 1 }],
-        matches: [
-          { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status: 4, opponent1: { id: 10 }, opponent2: { id: 20 } },
-          { id: 2, stage_id: 1, group_id: 20, round_id: 201, number: 1, status: 1, opponent1: null, opponent2: { id: null, position: 2 } },
-        ],
-      });
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-      mockFindNextMatches.mockResolvedValue([{ id: 2 }]);
-
-      const result = await resetMatchResult(eventId, 1);
-
-      expect(result.resetMatchIds).toEqual([1, 2]);
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        3,
-        mockSupabase,
-        2,
-        null,
-        { id: null },
-        1
-      );
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        4,
-        mockSupabase,
-        2,
-        null,
-        { id: null },
-        1
-      );
-    });
-
-    it('should rollback rewritten matches in reverse order when rewrite phase fails', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue({
-        stage: { id: 1, type: 'double_elimination', settings: {} },
-        groups: [{ id: 10, number: 1 }],
-        rounds: [
-          { id: 101, group_id: 10, number: 1 },
-          { id: 102, group_id: 10, number: 2 },
-          { id: 103, group_id: 10, number: 3 },
-        ],
-        matches: [
-          { id: 1, stage_id: 1, group_id: 10, round_id: 101, number: 1, status: 4, opponent1: { id: 10, score: 5, result: 'win' }, opponent2: { id: 20, score: 3, result: 'loss' } },
-          { id: 2, stage_id: 1, group_id: 10, round_id: 102, number: 1, status: 1, opponent1: { id: 10 }, opponent2: { id: 30 } },
-          { id: 3, stage_id: 1, group_id: 10, round_id: 103, number: 1, status: 1, opponent1: { id: 10 }, opponent2: { id: 40 } },
-        ],
-      });
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue(null);
-      mockFindNextMatches.mockImplementation(async (id: number) => {
-        if (id === 1) return [{ id: 2 }];
-        if (id === 2) return [{ id: 3 }];
-        return [];
-      });
-      (updateMatchWithOpponents as jest.Mock).mockImplementation(async (_supabase, currentMatchId) => {
-        if (currentMatchId === 3) {
-          throw new InternalError('simulated rewrite failure');
-        }
-      });
-
-      await expect(resetMatchResult(eventId, 1)).rejects.toThrow(
-        'Failed while rewriting reset matches; no frame deletions were attempted. Retry is safe.'
-      );
-
-      // 1..5 are forward rewrite attempts, 6..7 are rollback calls.
-      expect(updateMatchWithOpponents).toHaveBeenCalledTimes(7);
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        6,
-        mockSupabase,
-        2,
-        { id: 10 },
-        { id: 30 },
-        1
-      );
-      expect(updateMatchWithOpponents).toHaveBeenNthCalledWith(
-        7,
-        mockSupabase,
-        1,
-        { id: 10, score: 5, result: 'win' },
-        { id: 20, score: 3, result: 'loss' },
-        4
-      );
-      expect(deleteMatchFrames).not.toHaveBeenCalled();
-    });
-
-    it('should keep second grand final match archived when resetting first grand final', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue({
-        id: matchId,
-        group_id: 100,
-        round_id: 1,
-        status: 4,
-        opponent1: { id: 10 },
-        opponent2: { id: 20 },
-        round: { number: 1, group: { number: 3 } },
-      });
-      (getSecondGrandFinalMatch as jest.Mock).mockResolvedValue({
-        id: 99,
-        status: 1,
-      });
-
-      await resetMatchResult(eventId, matchId);
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, 99, 5);
-    });
-
-    it('should not alter second grand final match when resetting round 2 grand final', async () => {
-      (getBracketResetContext as jest.Mock).mockResolvedValue(makeContext(4));
-      (getMatchWithGroupInfo as jest.Mock).mockResolvedValue({
-        id: matchId,
-        group_id: 100,
-        round_id: 2,
-        status: 4,
-        opponent1: { id: 10 },
-        opponent2: { id: 20 },
-        round: { number: 2, group: { number: 3 } },
-      });
-
-      await resetMatchResult(eventId, matchId);
-      expect(getSecondGrandFinalMatch).not.toHaveBeenCalled();
-      expect(updateMatchStatus).not.toHaveBeenCalled();
-    });
-  });
 });

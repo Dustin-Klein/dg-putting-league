@@ -10,7 +10,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:int": "jest --config jest.integration.config.js",
-    "test:db": "supabase test db"
+    "test:db": "supabase test db",
+    "db:pull": "node tools/db-pull.mjs",
+    "db:check": "node tools/db-pull.mjs --check"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

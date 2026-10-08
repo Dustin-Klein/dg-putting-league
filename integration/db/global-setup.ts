@@ -1,9 +1,9 @@
 // Runs once before the integration suite. Against the local stack (no
 // TEST_DATABASE_URL given), make sure the app_server role can log in with the
 // throwaway local password that supabase/seed.sql sets on `db reset`.
-const postgres = require('postgres');
+import postgres from 'postgres';
 
-module.exports = async () => {
+export default async function globalSetup(): Promise<void> {
   if (process.env.TEST_DATABASE_URL) return;
   const admin = postgres(
     process.env.TEST_ADMIN_DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
@@ -14,4 +14,4 @@ module.exports = async () => {
   } finally {
     await admin.end();
   }
-};
+}
