@@ -152,7 +152,7 @@ export async function getLanesWithMatches(
  * caller's transaction, which must hold the event lock. Returns the number assigned.
  */
 export async function autoAssignLanesTx(tx: Tx, eventId: string): Promise<number> {
-  const event = await getEventBracketConfig(tx, eventId);
+  const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
   if (event?.status !== 'bracket') {
     // Event is no longer in bracket play - skip lane assignment
     return 0;

@@ -2,6 +2,9 @@
  * Concurrency tests: these commit real data (each iteration seeds its own event) so
  * that two connections genuinely race. Seeds are removed in afterAll.
  */
+import { eq } from 'drizzle-orm';
+import { events } from '@/lib/db/schema';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import { completeMatch } from '@/lib/services/scoring/match-completion';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { MatchStatus } from '@/lib/types/bracket';
@@ -157,5 +160,34 @@ describe('race: concurrent scorers on one frame', () => {
       expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
       await expectScoresMatchFrames(db, event.eventId, match.id);
     }
+  });
+});
+
+describe('race: event completion vs. bracket writes', () => {
+  it('cannot complete the event while a bracket write holds the event row, and writes after completion are rejected', async () => {
+    const event = await newBracket(4);
+    const match = (await getBracketSnapshot(db, event.eventId)).matches.find((m) => m.status === MatchStatus.Ready)!;
+
+    let completedEvent: Promise<unknown> | undefined;
+    let settled = false;
+    await db.transaction(async (tx) => {
+      // What every bracket write does before touching matches
+      await getEventBracketConfig(tx, event.eventId, { lock: 'share' });
+      completedEvent = db
+        .update(events)
+        .set({ status: 'completed' })
+        .where(eq(events.id, event.eventId))
+        .then(() => {
+          settled = true;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(settled).toBe(false); // blocked behind the write's share lock
+    });
+    await completedEvent;
+    expect(settled).toBe(true);
+
+    await expect(
+      completeMatch(db, event.eventId, match.id, { team1Score: 10, team2Score: 5 })
+    ).rejects.toThrow('Event is not in bracket play');
   });
 });

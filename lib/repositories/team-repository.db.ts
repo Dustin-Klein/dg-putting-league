@@ -49,18 +49,19 @@ export async function insertTeamsWithMembers(
   eventId: string,
   newTeams: NewTeam[]
 ): Promise<Array<{ id: string; seed: number | null; pool_combo: string | null }>> {
-  if (newTeams.length === 0) return [];
-
-  const inserted = await ex
-    .insert(teams)
-    .values(newTeams.map((t) => ({ event_id: eventId, seed: t.seed, pool_combo: t.pool_combo })))
-    .returning({ id: teams.id, seed: teams.seed, pool_combo: teams.pool_combo });
-
-  const members = inserted.flatMap((team, i) =>
-    newTeams[i].members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role }))
-  );
-  if (members.length > 0) {
-    await ex.insert(team_members).values(members);
+  // One insert per team: a multi-row RETURNING isn't guaranteed to come back in input order.
+  const inserted: Array<{ id: string; seed: number | null; pool_combo: string | null }> = [];
+  for (const t of newTeams) {
+    const [team] = await ex
+      .insert(teams)
+      .values({ event_id: eventId, seed: t.seed, pool_combo: t.pool_combo })
+      .returning({ id: teams.id, seed: teams.seed, pool_combo: teams.pool_combo });
+    if (t.members.length > 0) {
+      await ex
+        .insert(team_members)
+        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role })));
+    }
+    inserted.push(team);
   }
 
   return inserted;

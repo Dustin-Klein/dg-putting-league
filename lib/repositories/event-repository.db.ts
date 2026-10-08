@@ -42,12 +42,14 @@ export interface EventBracketConfig {
 
 /**
  * Read the settings that scoring and bracket flows depend on. Call inside the
- * transaction so the checks see the same state the writes do.
+ * transaction so the checks see the same state the writes do. `lock: 'share'`
+ * holds the event row until commit, so the event can't change status (e.g. be
+ * completed) under a write that already checked it.
  */
 export async function getEventBracketConfig(
   ex: Executor,
   eventId: string,
-  opts: { forUpdate?: boolean } = {}
+  opts: { lock?: 'share' | 'update' } = {}
 ): Promise<EventBracketConfig | null> {
   const query = ex
     .select({
@@ -61,7 +63,7 @@ export async function getEventBracketConfig(
     .from(events)
     .where(eq(events.id, eventId));
 
-  const rows = opts.forUpdate ? await query.for('update') : await query;
+  const rows = opts.lock ? await query.for(opts.lock) : await query;
   return rows[0] ?? null;
 }
 

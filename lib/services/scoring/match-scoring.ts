@@ -262,6 +262,7 @@ export async function correctMatchScores(
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
+    const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
 
     const match = await lockMatch(tx, bracketMatchId, eventId);
     if (!match) {
@@ -273,7 +274,6 @@ export async function correctMatchScores(
       throw new BadRequestError('Score correction is only valid for completed matches');
     }
 
-    const event = await getEventBracketConfig(tx, eventId);
     const doubleGrandFinal = event?.double_grand_final ?? true;
 
     await updateMatchOpponents(

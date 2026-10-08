@@ -13,8 +13,8 @@ export type Executor = Db | Tx;
  * open their own. Throwing inside `fn` rolls everything back. Given a transaction
  * instead of the Db, it runs `fn` in a savepoint (integration tests rely on this).
  *
- * Lock order (prevents deadlocks): event advisory lock → match rows (ascending id)
- * → lane rows (ascending id).
+ * Lock order (prevents deadlocks): event advisory lock → event row (FOR SHARE /
+ * FOR UPDATE) → match rows (ascending id) → lane rows (ascending id).
  */
 export function withTransaction<T>(
   ex: Executor,

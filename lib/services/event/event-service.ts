@@ -304,7 +304,7 @@ export async function startBracket(
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
 
-    const current = await eventDb.getEventBracketConfig(tx, eventId, { forUpdate: true });
+    const current = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
     if (!current) {
       throw new NotFoundError('Event not found');
     }

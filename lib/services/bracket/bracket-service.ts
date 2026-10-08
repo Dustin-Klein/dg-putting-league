@@ -450,7 +450,7 @@ export async function createBracket(eventId: string): Promise<BracketData> {
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-    const event = await getEventBracketConfig(tx, eventId);
+    const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
     if (!event) {
       throw new NotFoundError('Event not found');
     }
@@ -723,7 +723,7 @@ export async function updateMatchResult(
 }
 
 async function requireBracketPlay(tx: Tx, eventId: string) {
-  const event = await getEventBracketConfig(tx, eventId);
+  const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
   if (!event) {
     throw new NotFoundError('Event not found');
   }

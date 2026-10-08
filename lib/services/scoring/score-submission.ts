@@ -63,7 +63,7 @@ export async function recordFrameScores(
   const { eventId, matchId, frameNumber, scores, scorer } = input;
 
   return withTransaction(ex, async (tx) => {
-    const event = await getEventBracketConfig(tx, eventId);
+    const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
     if (!event) {
       throw new NotFoundError('Event not found');
     }

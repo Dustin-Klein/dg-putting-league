@@ -20,8 +20,8 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
   connection as role `app_server`). Authorization functions return `{ db, pg }` (`pg` is `Db`).
 - Services own transactions (`withTransaction`); repositories never open transactions. Repositories
   using Drizzle use `.db.ts` suffix and take `ex: Executor` (`Db | Tx`) as their first parameter.
-- Lock order (prevents deadlocks): event advisory lock (`lockEvent`) → match rows (`lockMatch`,
-  ascending id) → lane rows (ascending id). Mutating bracket structure/progression or lanes takes the
+- Lock order (prevents deadlocks): event advisory lock (`lockEvent`) → event row (`FOR SHARE`, or
+  `FOR UPDATE` when changing it) → match rows (`lockMatch`, ascending id) → lane rows (ascending id). Mutating bracket structure/progression or lanes takes the
   event lock first; score submission locks only the match row.
 - CSRF protection is enforced centrally in `lib/supabase/proxy.ts` (rejects non-GET/HEAD/OPTIONS
   `/api/**` requests where Origin does not match Host). `validateCsrfOrigin` (`lib/utils/csrf.ts`)
@@ -88,7 +88,7 @@ Domain areas that deserve extra scrutiny:
 - **Pools and teams**: Pool A/B assignment from qualification scores or PFA, and
   team pairing.
 - **Transactions and locking**: writes in ported flows must happen inside the service's
-  transaction, under the documented lock order (event → match → lane).
+  transaction, under the documented lock order (event → event row → match → lane).
 
 ## Error handling
 

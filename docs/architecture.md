@@ -91,8 +91,9 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - **Repository convention (`.db.ts`)**: New Drizzle repositories live next to the old ones with a `.db.ts` suffix during the transition (e.g. `lib/repositories/bracket-repository.db.ts`). Every function takes `ex: Executor` as its first parameter.
 - **Lock order (prevents deadlocks)**:
   1. Event advisory lock (`lockEvent(tx, eventId)`)
-  2. Match rows (`lockMatch(tx, matchId, eventId)`, ordered by ascending id)
-  3. Lane rows (ordered by ascending id)
+  2. Event row (`getEventBracketConfig(tx, eventId, { lock: 'share' })`; `'update'` when changing the event). Holding it means the event can't be completed under a write that already checked its status.
+  3. Match rows (`lockMatch(tx, matchId, eventId)`, ordered by ascending id)
+  4. Lane rows (ordered by ascending id)
   - Any operation mutating bracket structure/progression or lanes takes the event lock first.
   - Score submission locks only the match row.
 - **Bracket storage**: `brackets-manager` runs on `DrizzleBracketStorage` (`lib/repositories/bracket-storage.db.ts`), constructed per transaction with `(tx, eventId)`. Every read/update/delete is scoped to that event's bracket; throws on DB errors (rollback) instead of returning false; `position` in opponent JSON is structural and never changed by callers.
@@ -187,7 +188,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - ❌ Business logic in API routes
 - ❌ Supabase queries in services
 - ❌ Opening a transaction in a repository
-- ❌ Taking locks out of order (event → match → lane)
+- ❌ Taking locks out of order (event → event row → match → lane)
 - ❌ Hand-editing `lib/db/schema.ts`
 - ❌ Client components performing mutations directly
 - ❌ Leaking database rows or sensitive columns (`events.access_code`, `players.email`) to the UI

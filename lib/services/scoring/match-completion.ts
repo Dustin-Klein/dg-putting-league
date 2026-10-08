@@ -33,7 +33,7 @@ export async function completeMatchTx(
   matchId: number,
   scores?: MatchScores
 ): Promise<void> {
-  const event = await getEventBracketConfig(tx, eventId);
+  const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
   if (!event) {
     throw new NotFoundError('Event not found');
   }
