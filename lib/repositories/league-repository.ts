@@ -376,7 +376,7 @@ export async function getAllLeagues(
 ): Promise<PublicLeague[]> {
   const { data: leagues, error } = await supabase
     .from('leagues')
-    .select('id, name, events(count)')
+    .select('id, name, events(id)')
     .order('name');
 
   if (error) {
@@ -393,7 +393,8 @@ export async function getAllLeagues(
     .map((league) => ({
       id: league.id,
       name: league.name,
-      event_count: league.events[0]?.count ?? 0,
+      // Embedded count() needs table-level SELECT on events, which clients don't have
+      event_count: league.events?.length ?? 0,
     }))
     .filter((league) => league.event_count > 0);
 }
