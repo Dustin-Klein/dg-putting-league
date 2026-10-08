@@ -21,6 +21,40 @@ const HEADER =
   // drizzle-kit emits references to auth.users (outside schemaFilter) without defining it.
   "import { authUsers as users } from 'drizzle-orm/supabase';\n";
 
+/**
+ * Make the output independent of the database's history. drizzle-kit emits tables and
+ * their constraints in catalog order (which differs between a long-lived and a fresh
+ * database), and with two policies on one table it can attach a USING clause to the
+ * wrong one. RLS policies are owned by the Supabase migrations and tested by pgTAP, so
+ * they are dropped here; tables, table constraints and imports are sorted.
+ */
+function normalize(source) {
+  const sortItems = (block) =>
+    block.replace(/\(table\) => \[\n([\s\S]*)\n\]\);$/, (_, body) => {
+      const items = body
+        .split(/\n(?=\t\S)/)
+        .filter((item) => !item.startsWith('\tpgPolicy('))
+        .sort();
+      return `(table) => [\n${items.join('\n')}\n]);`;
+    });
+
+  const isTable = (block) => /^export const \w+ = pgTable\(/.test(block);
+  const blocks = source.trim().split(/\n(?=export const )/).map((b) => b.trim());
+  const head = blocks.filter((b) => !isTable(b));
+  const tables = blocks.filter(isTable).map(sortItems).sort();
+
+  const text = [...head, ...tables].join('\n\n') + '\n';
+  const usesPolicy = text.includes('pgPolicy(');
+  return text.replace(/import \{([^}]*)\} from "drizzle-orm\/pg-core"/, (_, names) => {
+    const sorted = names
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n && (usesPolicy || n !== 'pgPolicy'))
+      .sort();
+    return `import { ${sorted.join(', ')} } from "drizzle-orm/pg-core"`;
+  });
+}
+
 const out = mkdtempSync(join(tmpdir(), 'drizzle-pull-'));
 try {
   execFileSync('npx', ['drizzle-kit', 'pull'], {
@@ -29,11 +63,18 @@ try {
     stdio: check ? 'pipe' : 'inherit',
   });
 
-  const generated = HEADER + readFileSync(join(out, 'schema.ts'), 'utf8');
+  const generated = HEADER + normalize(readFileSync(join(out, 'schema.ts'), 'utf8'));
 
   if (check) {
     const current = existsSync(target) ? readFileSync(target, 'utf8') : '';
     if (current !== generated) {
+      const fresh = join(out, 'expected-schema.ts');
+      writeFileSync(fresh, generated);
+      try {
+        execFileSync('git', ['diff', '--no-index', '--no-color', target, fresh], { stdio: 'inherit' });
+      } catch {
+        // git diff exits 1 when the files differ
+      }
       console.error('lib/db/schema.ts is out of date with the database. Run `npm run db:pull` and commit the result.');
       process.exit(1);
     }
