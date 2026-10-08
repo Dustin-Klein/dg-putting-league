@@ -23,20 +23,35 @@ const strictConfig: RateLimitConfig = {
   maxRequests: 10, // 10 requests per minute for sensitive operations
 };
 
+// Venue traffic shares IPs (venue Wi-Fi, carrier NAT), so limits on routes used
+// during an event are deliberately generous: they only need to stop runaway
+// clients and abuse, not normal use by a crowd.
+
 /**
- * Public scoring traffic. Scorers at a venue often share one IP (venue Wi-Fi),
- * and every scorer page load and frame save is a request, so this is generous.
+ * Public scoring traffic: every scorer page load and frame save is a request.
  * Access-code guessing is limited separately by failed attempts.
  */
 const scoringConfig: RateLimitConfig = {
   windowMs: 60 * 1000,
-  maxRequests: 300,
+  maxRequests: 500,
 };
 
-/** Failed access-code attempts per IP. */
+/**
+ * Failed access-code attempts per IP. Leaves room for a check-in rush of typos;
+ * guessing a 6+ character code at this rate is still hopeless.
+ */
 const accessCodeFailureConfig: RateLimitConfig = {
   windowMs: 60 * 1000,
-  maxRequests: 10,
+  maxRequests: 30,
+};
+
+/**
+ * Public bracket views. The page refetches on every match update, so a handful of
+ * spectators (or a TV in presentation mode) on one IP easily make 100+ requests/min.
+ */
+const publicBracketConfig: RateLimitConfig = {
+  windowMs: 60 * 1000,
+  maxRequests: 1000,
 };
 
 function getClientIp(request: Request): string {
@@ -109,6 +124,12 @@ export async function withStrictRateLimit(
   routeKey: string
 ): Promise<NextResponse | null> {
   return withRateLimit(request, routeKey, strictConfig);
+}
+
+export async function withPublicBracketRateLimit(
+  request: Request
+): Promise<NextResponse | null> {
+  return withRateLimit(request, 'public:bracket', publicBracketConfig);
 }
 
 const ACCESS_CODE_FAILURE_KEY = 'score:access-code-failure';

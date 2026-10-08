@@ -19,6 +19,7 @@ import {
   withRateLimit,
   withStrictRateLimit,
   withScoringRateLimit,
+  withPublicBracketRateLimit,
   recordAccessCodeFailure,
 } from '../rate-limit';
 
@@ -64,9 +65,38 @@ describe('rate-limit middleware', () => {
     await expect(withRateLimit(makeRequest(), 'public:leagues')).resolves.toBeNull();
   });
 
+  describe('limits used during an event', () => {
+    it('allows 500 scoring requests per minute per IP', async () => {
+      (peekRateLimit as jest.Mock).mockResolvedValue({ count: 0, resetTime });
+      (consumeRateLimit as jest.Mock).mockResolvedValue({ count: 500, resetTime });
+      await expect(withScoringRateLimit(makeRequest())).resolves.toBeNull();
+
+      (consumeRateLimit as jest.Mock).mockResolvedValue({ count: 501, resetTime });
+      expect((await withScoringRateLimit(makeRequest()))?.status).toBe(429);
+    });
+
+    it('allows 29 failed access codes, blocks at 30', async () => {
+      (consumeRateLimit as jest.Mock).mockResolvedValue({ count: 1, resetTime });
+      (peekRateLimit as jest.Mock).mockResolvedValue({ count: 29, resetTime });
+      await expect(withScoringRateLimit(makeRequest())).resolves.toBeNull();
+
+      (peekRateLimit as jest.Mock).mockResolvedValue({ count: 30, resetTime });
+      expect((await withScoringRateLimit(makeRequest()))?.status).toBe(429);
+    });
+
+    it('allows 1000 public bracket requests per minute per IP', async () => {
+      (consumeRateLimit as jest.Mock).mockResolvedValue({ count: 1000, resetTime });
+      await expect(withPublicBracketRateLimit(makeRequest())).resolves.toBeNull();
+      expect(consumeRateLimit).toHaveBeenCalledWith('203.0.113.7:public:bracket', 60_000);
+
+      (consumeRateLimit as jest.Mock).mockResolvedValue({ count: 1001, resetTime });
+      expect((await withPublicBracketRateLimit(makeRequest()))?.status).toBe(429);
+    });
+  });
+
   describe('scoring routes', () => {
     it('blocks an IP with too many failed access codes', async () => {
-      (peekRateLimit as jest.Mock).mockResolvedValue({ count: 10, resetTime });
+      (peekRateLimit as jest.Mock).mockResolvedValue({ count: 30, resetTime });
 
       const response = await withScoringRateLimit(makeRequest());
 

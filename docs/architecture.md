@@ -107,7 +107,8 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - Rate limiting (`lib/middleware/rate-limit.ts`) is backed by Postgres (`public.rate_limits` table + `rate_limit_hit` function, service-role only) and shared across serverless instances.
 - Fails open if the database store is unavailable.
 - `withRateLimit` and `withStrictRateLimit` are async (`await`).
-- Public scoring routes (`app/api/score/**`) use `withScoringRateLimit` and call `recordAccessCodeFailure` in their catch blocks; failed access-code guesses are limited to 10/min per IP.
+- Public scoring routes (`app/api/score/**`) use `withScoringRateLimit` and call `recordAccessCodeFailure` in their catch blocks; failed access-code guesses are limited to 30/min per IP, and all scoring traffic to 500/min per IP.
+- Public bracket views (`withPublicBracketRateLimit`) allow 1000/min per IP. Limits on routes used during an event are deliberately generous because a venue's spectators and scorers often share one IP.
 
 ### Access Codes
 
