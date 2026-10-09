@@ -1,516 +1,308 @@
-/**
- * League Service Tests
- *
- * Tests for league management functions:
- * - getLeague()
- * - getUserAdminLeagues()
- * - createLeague()
- * - getLeagueAdminsForOwner()
- * - checkIsLeagueOwner()
- * - addLeagueAdmin()
- * - removeLeagueAdmin()
- */
+import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/errors';
+import { createMockLeague, createMockUser } from './test-utils';
 
-import { UnauthorizedError, BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
-import {
-  createMockSupabaseClient,
-  createMockUser,
-  createMockLeague,
-  createMockLeagueAdmin,
-  MockSupabaseClient,
-} from './test-utils';
+const mockUUID = '00000000-0000-4000-8000-000000000123';
+const mockPg = { kind: 'pg' };
+const mockTx = { kind: 'tx' };
 
-// Mock crypto.randomUUID
-const mockUUID = 'generated-uuid-123';
-const randomUuidSpy = jest
-  .spyOn(global.crypto, 'randomUUID')
-  .mockReturnValue(mockUUID);
-afterAll(() => {
-  randomUuidSpy.mockRestore();
-});
+jest.spyOn(global.crypto, 'randomUUID').mockReturnValue(mockUUID);
 
-// Mock dependencies
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn(),
+jest.mock('@/lib/services/auth', () => ({
+  authorizeAuthenticated: jest.fn(),
+  authorizeLeagueCreation: jest.fn(),
+  authorizeLeagueOwner: jest.fn(),
+  authorizePublicRead: jest.fn(),
+  getViewer: jest.fn(),
 }));
 
-jest.mock('@/lib/services/auth', () =>
-  jest.requireActual('./test-utils').createAuthServiceMock()
-);
+jest.mock('@/lib/db/tx', () => ({
+  withTransaction: jest.fn(),
+}));
 
-jest.mock('@/lib/repositories/league-repository', () => ({
+jest.mock('@/lib/repositories/league-repository.db', () => ({
+  getAllLeagues: jest.fn(),
+  getLeagueWithEvents: jest.fn(),
   getLeagueById: jest.fn(),
   getLeagueAdminsForUser: jest.fn(),
   getLeaguesByIds: jest.fn(),
-  getEventCountForLeague: jest.fn(),
-  getActiveEventCountForLeague: jest.fn(),
-  getLastEventDateForLeague: jest.fn(),
+  getLeagueEventStats: jest.fn(),
   insertLeague: jest.fn(),
   insertLeagueAdmin: jest.fn(),
   fetchLeague: jest.fn(),
-  isLeagueOwner: jest.fn(),
-  getLeagueAdmins: jest.fn(),
-  getUserEmailById: jest.fn(),
+  getLeagueAdminsWithEmails: jest.fn(),
+  getLeagueAdminRole: jest.fn(),
   getUserIdByEmail: jest.fn(),
   getLeagueAdminByUserAndLeague: jest.fn(),
   deleteLeagueAdmin: jest.fn(),
   deleteLeague: jest.fn(),
 }));
 
-// Import after mocking
-import { createClient } from '@/lib/supabase/server';
-import { requireAuthenticatedUser } from '@/lib/services/auth';
-import * as leagueRepo from '@/lib/repositories/league-repository';
+import { withTransaction } from '@/lib/db/tx';
 import {
-  getLeague,
-  getUserAdminLeagues,
-  createLeague,
-  getLeagueAdminsForOwner,
-  checkIsLeagueOwner,
-  deleteLeague,
+  authorizeAuthenticated,
+  authorizeLeagueCreation,
+  authorizeLeagueOwner,
+  authorizePublicRead,
+  getViewer,
+} from '@/lib/services/auth';
+import * as leagueRepo from '@/lib/repositories/league-repository.db';
+import {
   addLeagueAdmin,
+  checkIsLeagueOwner,
+  createLeague,
+  deleteLeague,
+  getLeague,
+  getLeagueAdminsForOwner,
+  getPublicLeagues,
+  getPublicLeagueWithEvents,
+  getUserAdminLeagues,
   removeLeagueAdmin,
 } from '../league/league-service';
 
-describe('League Service', () => {
-  let mockSupabase: MockSupabaseClient;
+const user = createMockUser({ id: '00000000-0000-4000-8000-000000000001' });
+const leagueId = '00000000-0000-4000-8000-000000000002';
+const targetUserId = '00000000-0000-4000-8000-000000000003';
 
+describe('League Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSupabase = createMockSupabaseClient();
-    (createClient as jest.Mock).mockResolvedValue(mockSupabase);
+    (authorizePublicRead as jest.Mock).mockReturnValue({ pg: mockPg });
+    (getViewer as jest.Mock).mockResolvedValue(null);
+    (authorizeAuthenticated as jest.Mock).mockResolvedValue({ user, pg: mockPg });
+    (authorizeLeagueCreation as jest.Mock).mockResolvedValue({ user, pg: mockPg });
+    (authorizeLeagueOwner as jest.Mock).mockResolvedValue({ user, pg: mockPg });
+    (withTransaction as jest.Mock).mockImplementation(
+      (_pg: unknown, fn: (tx: unknown) => Promise<unknown>) => fn(mockTx)
+    );
+  });
+
+  describe('public reads', () => {
+    it('lists visible leagues for an anonymous viewer', async () => {
+      const leagues = [{ id: leagueId, name: 'League', event_count: 1 }];
+      (leagueRepo.getAllLeagues as jest.Mock).mockResolvedValue(leagues);
+
+      await expect(getPublicLeagues()).resolves.toEqual(leagues);
+      expect(leagueRepo.getAllLeagues).toHaveBeenCalledWith(mockPg, null);
+    });
+
+    it('passes the signed-in viewer to public league visibility queries', async () => {
+      (getViewer as jest.Mock).mockResolvedValue(user);
+      (leagueRepo.getLeagueWithEvents as jest.Mock).mockResolvedValue({
+        id: leagueId,
+        name: 'League',
+        event_count: 0,
+        events: [],
+      });
+
+      await getPublicLeagueWithEvents(leagueId);
+      expect(leagueRepo.getLeagueWithEvents).toHaveBeenCalledWith(mockPg, leagueId, user.id);
+    });
+
+    it('throws not found for a hidden or missing public league detail', async () => {
+      (leagueRepo.getLeagueWithEvents as jest.Mock).mockResolvedValue(null);
+      await expect(getPublicLeagueWithEvents(leagueId)).rejects.toThrow(NotFoundError);
+    });
+
+    it('does not query league detail for a malformed id', async () => {
+      await expect(getPublicLeagueWithEvents('bad-id')).rejects.toThrow(NotFoundError);
+      expect(leagueRepo.getLeagueWithEvents).not.toHaveBeenCalled();
+    });
   });
 
   describe('getLeague', () => {
-    it('should return a league by ID', async () => {
-      const mockLeague = createMockLeague({ id: 'league-123', name: 'Test League' });
-      (leagueRepo.getLeagueById as jest.Mock).mockResolvedValue(mockLeague);
+    it('uses the public database authorization', async () => {
+      const league = createMockLeague({ id: leagueId });
+      (leagueRepo.getLeagueById as jest.Mock).mockResolvedValue(league);
 
-      const result = await getLeague('league-123');
-
-      expect(result).toEqual(mockLeague);
-      expect(leagueRepo.getLeagueById).toHaveBeenCalledWith(mockSupabase, 'league-123');
+      await expect(getLeague(leagueId)).resolves.toEqual(league);
+      expect(authorizePublicRead).toHaveBeenCalled();
+      expect(leagueRepo.getLeagueById).toHaveBeenCalledWith(mockPg, leagueId);
     });
 
-    it('should return null when league not found', async () => {
-      (leagueRepo.getLeagueById as jest.Mock).mockResolvedValue(null);
-
-      const result = await getLeague('non-existent-league');
-
-      expect(result).toBeNull();
+    it('returns null without querying Postgres for a malformed id', async () => {
+      await expect(getLeague('bad-id')).resolves.toBeNull();
+      expect(leagueRepo.getLeagueById).not.toHaveBeenCalled();
     });
   });
 
   describe('getUserAdminLeagues', () => {
-    const userId = 'user-123';
+    it('uses the authenticated user and grouped event stats', async () => {
+      (leagueRepo.getLeagueAdminsForUser as jest.Mock).mockResolvedValue([
+        { league_id: leagueId, role: 'owner' },
+      ]);
+      (leagueRepo.getLeaguesByIds as jest.Mock).mockResolvedValue([
+        createMockLeague({ id: leagueId }),
+      ]);
+      (leagueRepo.getLeagueEventStats as jest.Mock).mockResolvedValue([
+        {
+          league_id: leagueId,
+          event_count: 4,
+          active_event_count: 2,
+          last_event_date: '2026-10-09',
+        },
+      ]);
 
-    it('should return empty array when user has no admin records', async () => {
+      await expect(getUserAdminLeagues()).resolves.toEqual([
+        expect.objectContaining({
+          id: leagueId,
+          role: 'owner',
+          eventCount: 4,
+          activeEventCount: 2,
+          lastEventDate: '2026-10-09',
+        }),
+      ]);
+      expect(leagueRepo.getLeagueAdminsForUser).toHaveBeenCalledWith(mockPg, user.id);
+      expect(leagueRepo.getLeagueEventStats).toHaveBeenCalledWith(mockPg, [leagueId]);
+    });
+
+    it('returns early when the user administers no leagues', async () => {
       (leagueRepo.getLeagueAdminsForUser as jest.Mock).mockResolvedValue([]);
-
-      const result = await getUserAdminLeagues(userId);
-
-      expect(result).toEqual([]);
-      expect(leagueRepo.getLeaguesByIds).not.toHaveBeenCalled();
+      await expect(getUserAdminLeagues()).resolves.toEqual([]);
+      expect(leagueRepo.getLeagueEventStats).not.toHaveBeenCalled();
     });
 
-    it('should return leagues with enriched data', async () => {
-      const adminRecords = [
-        createMockLeagueAdmin({ league_id: 'league-1', user_id: userId, role: 'owner' }),
-        createMockLeagueAdmin({ league_id: 'league-2', user_id: userId, role: 'admin' }),
-      ];
-      const leagues = [
-        createMockLeague({ id: 'league-1', name: 'League One' }),
-        createMockLeague({ id: 'league-2', name: 'League Two' }),
-      ];
-
-      (leagueRepo.getLeagueAdminsForUser as jest.Mock).mockResolvedValue(adminRecords);
-      (leagueRepo.getLeaguesByIds as jest.Mock).mockResolvedValue(leagues);
-      (leagueRepo.getEventCountForLeague as jest.Mock)
-        .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(3);
-      (leagueRepo.getActiveEventCountForLeague as jest.Mock)
-        .mockResolvedValueOnce(2)
-        .mockResolvedValueOnce(1);
-      (leagueRepo.getLastEventDateForLeague as jest.Mock)
-        .mockResolvedValueOnce('2024-06-01')
-        .mockResolvedValueOnce('2024-05-15');
-
-      const result = await getUserAdminLeagues(userId);
-
-      expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject({
-        id: 'league-1',
-        name: 'League One',
-        role: 'owner',
-        eventCount: 5,
-        activeEventCount: 2,
-        lastEventDate: '2024-06-01',
-      });
-      expect(result[1]).toMatchObject({
-        id: 'league-2',
-        name: 'League Two',
-        role: 'admin',
-        eventCount: 3,
-        activeEventCount: 1,
-        lastEventDate: '2024-05-15',
-      });
-    });
-
-    it('should use default admin role when role is not found', async () => {
-      const adminRecords = [
-        { ...createMockLeagueAdmin({ league_id: 'league-1' }), role: undefined },
-      ];
-      const leagues = [createMockLeague({ id: 'league-1' })];
-
-      (leagueRepo.getLeagueAdminsForUser as jest.Mock).mockResolvedValue(adminRecords);
-      (leagueRepo.getLeaguesByIds as jest.Mock).mockResolvedValue(leagues);
-      (leagueRepo.getEventCountForLeague as jest.Mock).mockResolvedValue(0);
-      (leagueRepo.getActiveEventCountForLeague as jest.Mock).mockResolvedValue(0);
-      (leagueRepo.getLastEventDateForLeague as jest.Mock).mockResolvedValue(null);
-
-      const result = await getUserAdminLeagues(userId);
-
-      expect(result[0].role).toBe('admin');
-    });
-
-    it('should handle null lastEventDate', async () => {
-      const adminRecords = [createMockLeagueAdmin({ league_id: 'league-1' })];
-      const leagues = [createMockLeague({ id: 'league-1' })];
-
-      (leagueRepo.getLeagueAdminsForUser as jest.Mock).mockResolvedValue(adminRecords);
-      (leagueRepo.getLeaguesByIds as jest.Mock).mockResolvedValue(leagues);
-      (leagueRepo.getEventCountForLeague as jest.Mock).mockResolvedValue(0);
-      (leagueRepo.getActiveEventCountForLeague as jest.Mock).mockResolvedValue(0);
-      (leagueRepo.getLastEventDateForLeague as jest.Mock).mockResolvedValue(null);
-
-      const result = await getUserAdminLeagues(userId);
-
-      expect(result[0].lastEventDate).toBeNull();
+    it('rejects anonymous users before querying', async () => {
+      (authorizeAuthenticated as jest.Mock).mockRejectedValue(new UnauthorizedError());
+      await expect(getUserAdminLeagues()).rejects.toThrow(UnauthorizedError);
+      expect(leagueRepo.getLeagueAdminsForUser).not.toHaveBeenCalled();
     });
   });
 
   describe('createLeague', () => {
-    beforeEach(() => {
-      const mockUser = createMockUser({ id: 'user-123' });
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(mockUser);
-    });
+    it('inserts the league, owner, and read-back in one transaction', async () => {
+      const league = createMockLeague({ id: mockUUID, name: 'New League', city: 'Madison' });
+      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(league);
 
-    it('should create a league with name and city', async () => {
-      const expectedLeague = createMockLeague({
-        id: mockUUID,
-        name: 'New League',
-        city: 'New York',
-      });
-
-      (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(expectedLeague);
-
-      const result = await createLeague({ name: 'New League', city: 'New York' });
-
-      expect(result).toEqual(expectedLeague);
-      expect(requireAuthenticatedUser).toHaveBeenCalled();
+      await expect(createLeague({ name: 'New League', city: 'Madison' })).resolves.toEqual(league);
+      expect(withTransaction).toHaveBeenCalledWith(mockPg, expect.any(Function));
       expect(leagueRepo.insertLeague).toHaveBeenCalledWith(
-        mockSupabase,
+        mockTx,
         mockUUID,
         'New League',
-        'New York'
+        'Madison'
       );
       expect(leagueRepo.insertLeagueAdmin).toHaveBeenCalledWith(
-        mockSupabase,
+        mockTx,
         mockUUID,
-        'user-123',
+        user.id,
         'owner'
       );
-      expect(leagueRepo.fetchLeague).toHaveBeenCalledWith(mockSupabase, mockUUID);
+      expect(leagueRepo.fetchLeague).toHaveBeenCalledWith(mockTx, mockUUID);
     });
 
-    it('should create a league without city', async () => {
-      const expectedLeague = createMockLeague({
-        id: mockUUID,
-        name: 'League No City',
-        city: null,
-      });
-
-      (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(expectedLeague);
-
-      const result = await createLeague({ name: 'League No City' });
-
-      expect(result).toEqual(expectedLeague);
-      expect(leagueRepo.insertLeague).toHaveBeenCalledWith(
-        mockSupabase,
-        mockUUID,
-        'League No City',
-        null
-      );
-    });
-
-    it('should handle null city explicitly', async () => {
-      (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(createMockLeague());
-
-      await createLeague({ name: 'Test', city: null });
-
-      expect(leagueRepo.insertLeague).toHaveBeenCalledWith(
-        mockSupabase,
-        mockUUID,
-        'Test',
-        null
-      );
-    });
-
-    it('should throw UnauthorizedError when not authenticated', async () => {
-      (requireAuthenticatedUser as jest.Mock).mockRejectedValue(
-        new UnauthorizedError('Authentication required')
-      );
-
-      await expect(createLeague({ name: 'Test League' })).rejects.toThrow(UnauthorizedError);
-      await expect(createLeague({ name: 'Test League' })).rejects.toThrow('Authentication required');
-    });
-
-    it('should throw BadRequestError when name is missing', async () => {
+    it('rejects an invalid name before opening a transaction', async () => {
       await expect(createLeague({ name: '' })).rejects.toThrow(BadRequestError);
-      await expect(createLeague({ name: '' })).rejects.toThrow('League name is required');
+      expect(withTransaction).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestError when name is not a string', async () => {
-      await expect(createLeague({ name: 123 as unknown as string })).rejects.toThrow(
-        BadRequestError
-      );
-    });
-
-    it('should generate a unique UUID for each league', async () => {
-      (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(createMockLeague());
-
-      await createLeague({ name: 'League 1' });
-
-      expect(crypto.randomUUID).toHaveBeenCalled();
-      expect(leagueRepo.insertLeague).toHaveBeenCalledWith(
-        mockSupabase,
-        mockUUID,
-        'League 1',
-        null
-      );
-    });
-
-    it('should set the creating user as owner', async () => {
-      const ownerId = 'owner-user-456';
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: ownerId }));
-
-      (leagueRepo.insertLeague as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.insertLeagueAdmin as jest.Mock).mockResolvedValue(undefined);
-      (leagueRepo.fetchLeague as jest.Mock).mockResolvedValue(createMockLeague());
-
-      await createLeague({ name: 'Test' });
-
-      expect(leagueRepo.insertLeagueAdmin).toHaveBeenCalledWith(
-        mockSupabase,
-        mockUUID,
-        ownerId,
-        'owner'
-      );
+    it('rejects anonymous users before writing', async () => {
+      (authorizeLeagueCreation as jest.Mock).mockRejectedValue(new UnauthorizedError());
+      await expect(createLeague({ name: 'League' })).rejects.toThrow(UnauthorizedError);
+      expect(leagueRepo.insertLeague).not.toHaveBeenCalled();
     });
   });
 
   describe('getLeagueAdminsForOwner', () => {
-    const leagueId = 'league-123';
-    const userId = 'user-123';
+    it('returns joined admin emails and preserves the Unknown fallback', async () => {
+      (leagueRepo.getLeagueAdminsWithEmails as jest.Mock).mockResolvedValue([
+        { user_id: user.id, role: 'owner', email: 'owner@example.test' },
+        { user_id: targetUserId, role: 'admin', email: null },
+      ]);
 
-    beforeEach(() => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+      await expect(getLeagueAdminsForOwner(leagueId)).resolves.toEqual([
+        { userId: user.id, role: 'owner', email: 'owner@example.test' },
+        { userId: targetUserId, role: 'admin', email: 'Unknown' },
+      ]);
+      expect(leagueRepo.getLeagueAdminsWithEmails).toHaveBeenCalledWith(mockPg, leagueId);
     });
 
-    it('should return admins with emails for owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-      
-      const mockAdmins = [
-        createMockLeagueAdmin({ user_id: 'admin-1', role: 'owner' }),
-        createMockLeagueAdmin({ user_id: 'admin-2', role: 'admin' }),
-      ];
-      (leagueRepo.getLeagueAdmins as jest.Mock).mockResolvedValue(mockAdmins);
-      
-      (leagueRepo.getUserEmailById as jest.Mock)
-        .mockResolvedValueOnce('admin1@test.com')
-        .mockResolvedValueOnce('admin2@test.com');
-
-      const result = await getLeagueAdminsForOwner(leagueId);
-
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
-        userId: 'admin-1',
-        email: 'admin1@test.com',
-        role: 'owner',
-      });
-      expect(result[1]).toEqual({
-        userId: 'admin-2',
-        email: 'admin2@test.com',
-        role: 'admin',
-      });
-    });
-
-    it('should handle missing emails', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-      
-      const mockAdmins = [createMockLeagueAdmin({ user_id: 'admin-1' })];
-      (leagueRepo.getLeagueAdmins as jest.Mock).mockResolvedValue(mockAdmins);
-      (leagueRepo.getUserEmailById as jest.Mock).mockResolvedValue(null);
-
-      const result = await getLeagueAdminsForOwner(leagueId);
-
-      expect(result[0].email).toBe('Unknown');
-    });
-
-    it('should throw ForbiddenError if not owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
-
+    it('rejects a non-owner before querying admins', async () => {
+      (authorizeLeagueOwner as jest.Mock).mockRejectedValue(new ForbiddenError());
       await expect(getLeagueAdminsForOwner(leagueId)).rejects.toThrow(ForbiddenError);
+      expect(leagueRepo.getLeagueAdminsWithEmails).not.toHaveBeenCalled();
     });
   });
 
   describe('checkIsLeagueOwner', () => {
-    const leagueId = 'league-123';
-    const userId = 'user-123';
-
-    it('should return true if user is owner', async () => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-
-      const result = await checkIsLeagueOwner(leagueId);
-
-      expect(result).toBe(true);
-      expect(leagueRepo.isLeagueOwner).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
+    it('checks the authenticated user role', async () => {
+      (leagueRepo.getLeagueAdminRole as jest.Mock).mockResolvedValue('owner');
+      await expect(checkIsLeagueOwner(leagueId)).resolves.toBe(true);
+      expect(leagueRepo.getLeagueAdminRole).toHaveBeenCalledWith(mockPg, leagueId, user.id);
     });
 
-    it('should return false if user is not owner', async () => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
+    it('returns false for a malformed id without querying', async () => {
+      await expect(checkIsLeagueOwner('bad-id')).resolves.toBe(false);
+      expect(leagueRepo.getLeagueAdminRole).not.toHaveBeenCalled();
+    });
 
-      const result = await checkIsLeagueOwner(leagueId);
-
-      expect(result).toBe(false);
+    it('rejects anonymous users before querying', async () => {
+      (authorizeAuthenticated as jest.Mock).mockRejectedValue(new UnauthorizedError());
+      await expect(checkIsLeagueOwner(leagueId)).rejects.toThrow(UnauthorizedError);
+      expect(leagueRepo.getLeagueAdminRole).not.toHaveBeenCalled();
     });
   });
 
-  describe('addLeagueAdmin', () => {
-    const leagueId = 'league-123';
-    const userId = 'user-123';
-    const newAdminEmail = 'newadmin@test.com';
-    const newAdminId = 'user-456';
-
-    beforeEach(() => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-      (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(newAdminId);
+  describe('owner writes', () => {
+    it('adds a normalized email after checking existence inside one transaction', async () => {
+      (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(targetUserId);
       (leagueRepo.getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
-    });
 
-    it('should add a new admin', async () => {
-      await addLeagueAdmin(leagueId, newAdminEmail);
-
-      expect(leagueRepo.insertLeagueAdmin).toHaveBeenCalledWith(
-        mockSupabase,
+      await addLeagueAdmin(leagueId, '  NewAdmin@Example.TEST ');
+      expect(leagueRepo.getUserIdByEmail).toHaveBeenCalledWith(mockTx, 'newadmin@example.test');
+      expect(leagueRepo.getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(
+        mockTx,
         leagueId,
-        newAdminId,
+        targetUserId
+      );
+      expect(leagueRepo.insertLeagueAdmin).toHaveBeenCalledWith(
+        mockTx,
+        leagueId,
+        targetUserId,
         'admin'
       );
     });
 
-    it('should normalize the email (trim and lowercase)', async () => {
-      const emailWithSpacesAndCaps = '  NewAdmin@Test.Com  ';
-      const expectedNormalizedEmail = 'newadmin@test.com';
-      
-      await addLeagueAdmin(leagueId, emailWithSpacesAndCaps);
-
-      expect(leagueRepo.getUserIdByEmail).toHaveBeenCalledWith(
-        mockSupabase,
-        leagueId,
-        expectedNormalizedEmail
-      );
+    it('rejects invalid admin emails', async () => {
+      await expect(addLeagueAdmin(leagueId, 'invalid')).rejects.toThrow(BadRequestError);
+      expect(withTransaction).not.toHaveBeenCalled();
     });
 
-    it('should throw ForbiddenError if not owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
-
-      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(ForbiddenError);
-    });
-
-    it('should throw BadRequestError for invalid email', async () => {
-      await expect(addLeagueAdmin(leagueId, 'invalid-email')).rejects.toThrow(BadRequestError);
-    });
-
-    it('should throw NotFoundError if user not found', async () => {
+    it('rejects unknown accounts', async () => {
       (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(null);
-
-      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(NotFoundError);
+      await expect(addLeagueAdmin(leagueId, 'missing@example.test')).rejects.toThrow(NotFoundError);
     });
 
-    it('should throw BadRequestError if user is already admin', async () => {
-      (leagueRepo.getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(
-        createMockLeagueAdmin()
-      );
-
-      await expect(addLeagueAdmin(leagueId, newAdminEmail)).rejects.toThrow(BadRequestError);
-    });
-  });
-
-  describe('deleteLeague', () => {
-    const leagueId = 'league-123';
-    const userId = 'user-123';
-
-    beforeEach(() => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
+    it('rejects an existing admin', async () => {
+      (leagueRepo.getUserIdByEmail as jest.Mock).mockResolvedValue(targetUserId);
+      (leagueRepo.getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue({ id: 'admin-id' });
+      await expect(addLeagueAdmin(leagueId, 'admin@example.test')).rejects.toThrow(BadRequestError);
     });
 
-    it('should delete a league when user is owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-
+    it('uses owner-authorized pg for deletion', async () => {
       await deleteLeague(leagueId);
-
-      expect(leagueRepo.isLeagueOwner).toHaveBeenCalledWith(mockSupabase, leagueId, userId);
-      expect(leagueRepo.deleteLeague).toHaveBeenCalledWith(mockSupabase, leagueId);
+      expect(leagueRepo.deleteLeague).toHaveBeenCalledWith(mockPg, leagueId);
     });
 
-    it('should throw ForbiddenError when user is not owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
-
-      await expect(deleteLeague(leagueId)).rejects.toThrow(ForbiddenError);
-      expect(leagueRepo.deleteLeague).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('removeLeagueAdmin', () => {
-    const leagueId = 'league-123';
-    const userId = 'user-123';
-    const targetUserId = 'user-456';
-
-    beforeEach(() => {
-      (requireAuthenticatedUser as jest.Mock).mockResolvedValue(createMockUser({ id: userId }));
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(true);
-    });
-
-    it('should remove an admin', async () => {
+    it('removes another admin with owner-authorized pg', async () => {
       await removeLeagueAdmin(leagueId, targetUserId);
-
-      expect(leagueRepo.deleteLeagueAdmin).toHaveBeenCalledWith(
-        mockSupabase,
-        leagueId,
-        targetUserId
-      );
+      expect(leagueRepo.deleteLeagueAdmin).toHaveBeenCalledWith(mockPg, leagueId, targetUserId);
     });
 
-    it('should throw ForbiddenError if not owner', async () => {
-      (leagueRepo.isLeagueOwner as jest.Mock).mockResolvedValue(false);
-
-      await expect(removeLeagueAdmin(leagueId, targetUserId)).rejects.toThrow(ForbiddenError);
+    it('does not let the owner remove themselves', async () => {
+      await expect(removeLeagueAdmin(leagueId, user.id)).rejects.toThrow(BadRequestError);
+      expect(leagueRepo.deleteLeagueAdmin).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestError if removing self', async () => {
-      await expect(removeLeagueAdmin(leagueId, userId)).rejects.toThrow(BadRequestError);
+    it.each([
+      ['add', () => addLeagueAdmin(leagueId, 'admin@example.test')],
+      ['remove', () => removeLeagueAdmin(leagueId, targetUserId)],
+      ['delete', () => deleteLeague(leagueId)],
+    ])('rejects a non-owner before the %s write', async (_name, action) => {
+      (authorizeLeagueOwner as jest.Mock).mockRejectedValue(new ForbiddenError());
+      await expect(action()).rejects.toThrow(ForbiddenError);
+      expect(leagueRepo.insertLeagueAdmin).not.toHaveBeenCalled();
+      expect(leagueRepo.deleteLeagueAdmin).not.toHaveBeenCalled();
+      expect(leagueRepo.deleteLeague).not.toHaveBeenCalled();
     });
   });
 });

@@ -616,11 +616,11 @@ export function createAuthServiceMock() {
       async (leagueId: string, message = 'Only the league owner can perform this action') => {
         const user = await requireAuthenticatedUser();
         const db = await server.createClient();
-        const leagueRepo = jest.requireMock('@/lib/repositories/league-repository');
-        if (!(await leagueRepo.isLeagueOwner(db, leagueId, user.id))) {
+        const leagueRepo = jest.requireMock('@/lib/repositories/league-repository.db');
+        if ((await leagueRepo.getLeagueAdminRole(db, leagueId, user.id)) !== 'owner') {
           throw new ForbiddenError(message);
         }
-        return { user, db };
+        return { user, db, pg: db };
       }
     ),
     authorizeAnyLeagueAdmin: jest.fn(async () => {
