@@ -3,7 +3,7 @@ export * from './event-repository';
 export * from './event-player-repository';
 export * from './frame-repository';
 export * from './lane-repository';
-export * from './league-repository';
+export * from './league-repository.db';
 export * from './player-repository.db';
 export * from './player-statistics-repository';
 export * from './qualification-repository';

@@ -1,14 +1,17 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import { LeagueWithRole, LeagueAdminRole } from '@/lib/types/league';
 import type { PublicLeague, PublicLeagueDetail } from '@/lib/types/public';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
+import { BadRequestError, NotFoundError } from '@/lib/errors';
 import {
-  requireAuthenticatedUser,
+  authorizeAuthenticated,
   authorizeLeagueCreation,
   authorizeLeagueOwner,
+  authorizePublicRead,
+  getViewer,
 } from '@/lib/services/auth';
-import * as leagueRepo from '@/lib/repositories/league-repository';
+import { withTransaction } from '@/lib/db/tx';
+import { isUuid } from '@/lib/utils/uuid';
+import * as leagueRepo from '@/lib/repositories/league-repository.db';
 
 export interface LeagueAdminWithEmail {
   userId: string;
@@ -17,13 +20,17 @@ export interface LeagueAdminWithEmail {
 }
 
 export async function getPublicLeagues(): Promise<PublicLeague[]> {
-  const supabase = await createClient();
-  return leagueRepo.getAllLeagues(supabase);
+  const { pg } = authorizePublicRead();
+  const viewer = await getViewer();
+  return leagueRepo.getAllLeagues(pg, viewer?.id ?? null);
 }
 
 export async function getPublicLeagueWithEvents(leagueId: string): Promise<PublicLeagueDetail> {
-  const supabase = await createClient();
-  const league = await leagueRepo.getLeagueWithEvents(supabase, leagueId);
+  const { pg } = authorizePublicRead();
+  const viewer = await getViewer();
+  const league = isUuid(leagueId)
+    ? await leagueRepo.getLeagueWithEvents(pg, leagueId, viewer?.id ?? null)
+    : null;
 
   if (!league) {
     throw new NotFoundError('League not found');
@@ -36,18 +43,19 @@ export async function getPublicLeagueWithEvents(leagueId: string): Promise<Publi
  * Get league by ID
  */
 export async function getLeague(leagueId: string) {
-  const supabase = await createClient();
-  return leagueRepo.getLeagueById(supabase, leagueId);
+  const { pg } = authorizePublicRead();
+  if (!isUuid(leagueId)) return null;
+  return leagueRepo.getLeagueById(pg, leagueId);
 }
 
 /**
  * Get all leagues where user is an admin with enriched data
  */
-export async function getUserAdminLeagues(userId: string): Promise<LeagueWithRole[]> {
-  const supabase = await createClient();
+export async function getUserAdminLeagues(): Promise<LeagueWithRole[]> {
+  const { user, pg } = await authorizeAuthenticated();
 
   // Admin records
-  const adminRecords = await leagueRepo.getLeagueAdminsForUser(supabase, userId);
+  const adminRecords = await leagueRepo.getLeagueAdminsForUser(pg, user.id);
 
   if (adminRecords.length === 0) {
     return [];
@@ -56,28 +64,25 @@ export async function getUserAdminLeagues(userId: string): Promise<LeagueWithRol
   const leagueIds = adminRecords.map(a => a.league_id);
 
   // League details
-  const leagues = await leagueRepo.getLeaguesByIds(supabase, leagueIds);
+  const [leagues, stats] = await Promise.all([
+    leagueRepo.getLeaguesByIds(pg, leagueIds),
+    leagueRepo.getLeagueEventStats(pg, leagueIds),
+  ]);
+  const statsByLeague = new Map(stats.map((row) => [row.league_id, row]));
 
   // Enrich leagues
-  return Promise.all(
-    leagues.map(async (league) => {
-      const admin = adminRecords.find(a => a.league_id === league.id);
+  return leagues.map((league) => {
+    const admin = adminRecords.find(a => a.league_id === league.id);
+    const leagueStats = statsByLeague.get(league.id);
 
-      const [eventCount, activeEventCount, lastEventDate] = await Promise.all([
-        leagueRepo.getEventCountForLeague(supabase, league.id),
-        leagueRepo.getActiveEventCountForLeague(supabase, league.id),
-        leagueRepo.getLastEventDateForLeague(supabase, league.id),
-      ]);
-
-      return {
-        ...league,
-        role: (admin?.role ?? 'admin') as LeagueAdminRole,
-        eventCount,
-        activeEventCount,
-        lastEventDate,
-      };
-    })
-  );
+    return {
+      ...league,
+      role: (admin?.role ?? 'admin') as LeagueAdminRole,
+      eventCount: leagueStats?.event_count ?? 0,
+      activeEventCount: leagueStats?.active_event_count ?? 0,
+      lastEventDate: leagueStats?.last_event_date ?? null,
+    };
+  });
 }
 
 type CreateLeagueInput = {
@@ -89,7 +94,7 @@ type CreateLeagueInput = {
  * Create a new league with the current user as owner
  */
 export async function createLeague(input: CreateLeagueInput) {
-  const { user, db } = await authorizeLeagueCreation();
+  const { user, pg } = await authorizeLeagueCreation();
 
   const { name, city } = input;
 
@@ -99,73 +104,52 @@ export async function createLeague(input: CreateLeagueInput) {
 
   const leagueId = crypto.randomUUID();
 
-  // Create the league
-  await leagueRepo.insertLeague(db, leagueId, name, city ?? null);
-
-  // Create the admin record for the owner; don't leave an ownerless league behind
-  try {
-    await leagueRepo.insertLeagueAdmin(db, leagueId, user.id, 'owner');
-  } catch (error) {
-    await leagueRepo.deleteLeague(db, leagueId).catch(() => undefined);
-    throw error;
-  }
-
-  return leagueRepo.fetchLeague(db, leagueId);
+  return withTransaction(pg, async (tx) => {
+    await leagueRepo.insertLeague(tx, leagueId, name, city ?? null);
+    await leagueRepo.insertLeagueAdmin(tx, leagueId, user.id, 'owner');
+    return leagueRepo.fetchLeague(tx, leagueId);
+  });
 }
 
 /**
  * Get all league admins with emails (owner-only)
  */
 export async function getLeagueAdminsForOwner(leagueId: string): Promise<LeagueAdminWithEmail[]> {
-  const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
-
-  const isOwner = await leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
-  if (!isOwner) {
-    throw new ForbiddenError('Only the league owner can view admins');
-  }
-
-  const admins = await leagueRepo.getLeagueAdmins(supabase, leagueId);
-
-  const adminsWithEmails = await Promise.all(
-    admins.map(async (admin) => {
-      const email = await leagueRepo.getUserEmailById(supabase, leagueId, admin.user_id);
-      return {
-        userId: admin.user_id,
-        email: email ?? 'Unknown',
-        role: admin.role,
-      };
-    })
+  const { pg } = await authorizeLeagueOwner(
+    leagueId,
+    'Only the league owner can view admins'
   );
-
-  return adminsWithEmails;
+  const admins = await leagueRepo.getLeagueAdminsWithEmails(pg, leagueId);
+  return admins.map((admin) => ({
+    userId: admin.user_id,
+    email: admin.email ?? 'Unknown',
+    role: admin.role,
+  }));
 }
 
 /**
  * Check if current user is the league owner
  */
 export async function checkIsLeagueOwner(leagueId: string): Promise<boolean> {
-  const supabase = await createClient();
-  const user = await requireAuthenticatedUser();
-  return leagueRepo.isLeagueOwner(supabase, leagueId, user.id);
+  const { user, pg } = await authorizeAuthenticated();
+  if (!isUuid(leagueId)) return false;
+  return (await leagueRepo.getLeagueAdminRole(pg, leagueId, user.id)) === 'owner';
 }
 
 /**
  * Delete a league (owner-only)
  */
 export async function deleteLeague(leagueId: string): Promise<void> {
-  const { db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can delete the league');
+  const { pg } = await authorizeLeagueOwner(leagueId, 'Only the league owner can delete the league');
 
-  await leagueRepo.deleteLeague(db, leagueId);
+  await leagueRepo.deleteLeague(pg, leagueId);
 }
 
 /**
  * Add a league admin by email (owner-only)
  */
 export async function addLeagueAdmin(leagueId: string, email: string): Promise<void> {
-  const { db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can add admins');
-  // get_user_id_by_email checks auth.uid() itself, so it runs with the user's client
-  const supabase = await createClient();
+  const { pg } = await authorizeLeagueOwner(leagueId, 'Only the league owner can add admins');
 
   const normalizedEmail = (email || '').trim().toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -173,28 +157,30 @@ export async function addLeagueAdmin(leagueId: string, email: string): Promise<v
     throw new BadRequestError('Invalid email format');
   }
 
-  const targetUserId = await leagueRepo.getUserIdByEmail(supabase, leagueId, normalizedEmail);
-  if (!targetUserId) {
-    throw new NotFoundError('No account found with that email');
-  }
+  await withTransaction(pg, async (tx) => {
+    const targetUserId = await leagueRepo.getUserIdByEmail(tx, normalizedEmail);
+    if (!targetUserId) {
+      throw new NotFoundError('No account found with that email');
+    }
 
-  const existingAdmin = await leagueRepo.getLeagueAdminByUserAndLeague(db, leagueId, targetUserId);
-  if (existingAdmin) {
-    throw new BadRequestError('User is already an admin');
-  }
+    const existingAdmin = await leagueRepo.getLeagueAdminByUserAndLeague(tx, leagueId, targetUserId);
+    if (existingAdmin) {
+      throw new BadRequestError('User is already an admin');
+    }
 
-  await leagueRepo.insertLeagueAdmin(db, leagueId, targetUserId, 'admin');
+    await leagueRepo.insertLeagueAdmin(tx, leagueId, targetUserId, 'admin');
+  });
 }
 
 /**
  * Remove a league admin (owner-only, can't remove self)
  */
 export async function removeLeagueAdmin(leagueId: string, targetUserId: string): Promise<void> {
-  const { user, db } = await authorizeLeagueOwner(leagueId, 'Only the league owner can remove admins');
+  const { user, pg } = await authorizeLeagueOwner(leagueId, 'Only the league owner can remove admins');
 
   if (targetUserId === user.id) {
     throw new BadRequestError('Cannot remove yourself as owner');
   }
 
-  await leagueRepo.deleteLeagueAdmin(db, leagueId, targetUserId);
+  await leagueRepo.deleteLeagueAdmin(pg, leagueId, targetUserId);
 }
