@@ -41,8 +41,9 @@ jest.mock('@/lib/services/lane', () => ({
   releaseLaneAndAutoAssignTx: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/team-repository', () => ({
-  getPublicTeamFromParticipant: jest.fn(),
+jest.mock('@/lib/repositories/team-repository.db', () => ({
+  getPublicTeamsByParticipantIds: jest.fn(),
+  getTeamsByParticipantIds: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/event-repository.db', () => ({
@@ -52,12 +53,12 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventScoringConfig: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/lane-repository', () => ({
+jest.mock('@/lib/repositories/lane-repository.db', () => ({
   getLaneLabelsForEvent: jest.fn(),
   getLanesForEvent: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/bracket-repository', () => ({
+jest.mock('@/lib/repositories/bracket-repository.db', () => ({
   getMatchesForScoringByEvent: jest.fn(),
   getMatchForScoringById: jest.fn(),
 }));
@@ -71,18 +72,18 @@ jest.mock('@/lib/services/qualification', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb } from '@/lib/db/client';
-import { getPublicTeamFromParticipant } from '@/lib/repositories/team-repository';
+import { getPublicTeamsByParticipantIds } from '@/lib/repositories/team-repository.db';
 import {
   getEventAccess,
   getEventByAccessCode,
   getEventBracketFrameCount,
   getEventScoringConfig,
 } from '@/lib/repositories/event-repository.db';
-import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository.db';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
-} from '@/lib/repositories/bracket-repository';
+} from '@/lib/repositories/bracket-repository.db';
 import {
   validateQualificationAccessCode,
   getPlayersForQualification,
@@ -179,7 +180,7 @@ describe('Scoring Service', () => {
       (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
-      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
+      (getPublicTeamsByParticipantIds as jest.Mock).mockResolvedValue(new Map());
 
       const result = await getEventScoringContext(accessCode);
 
@@ -218,7 +219,7 @@ describe('Scoring Service', () => {
       (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
-      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
+      (getPublicTeamsByParticipantIds as jest.Mock).mockResolvedValue(new Map());
 
       // Codes are normalized to lower case and matched exactly
       await getEventScoringContext('ABC123');
@@ -237,7 +238,7 @@ describe('Scoring Service', () => {
       (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
       (getLanesForEvent as jest.Mock).mockResolvedValue([]);
       (getMatchesForScoringByEvent as jest.Mock).mockResolvedValue([]);
-      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue({});
+      (getPublicTeamsByParticipantIds as jest.Mock).mockResolvedValue(new Map());
 
       // Pass code with spaces
       await getEventScoringContext('  ABC123  ');
@@ -328,9 +329,7 @@ describe('Scoring Service', () => {
       const mockTeam1 = { id: 'team-1', pool_combo: 'Team 1', players: [] };
       const mockTeam2 = { id: 'team-2', pool_combo: 'Team 2', players: [] };
 
-      (getPublicTeamFromParticipant as jest.Mock)
-        .mockResolvedValueOnce(mockTeam1)
-        .mockResolvedValueOnce(mockTeam2);
+      (getPublicTeamsByParticipantIds as jest.Mock).mockResolvedValue(new Map([[1, mockTeam1], [2, mockTeam2]]));
 
       const result = await getMatchesForScoring(accessCode);
 
@@ -377,9 +376,7 @@ describe('Scoring Service', () => {
       const mockTeam1 = { id: 'team-1', pool_combo: 'Team 1', players: [] };
       const mockTeam2 = { id: 'team-2', pool_combo: 'Team 2', players: [] };
 
-      (getPublicTeamFromParticipant as jest.Mock)
-        .mockResolvedValueOnce(mockTeam1)
-        .mockResolvedValueOnce(mockTeam2);
+      (getPublicTeamsByParticipantIds as jest.Mock).mockResolvedValue(new Map([[1, mockTeam1], [2, mockTeam2]]));
 
       const result = await getMatchForScoring(accessCode, bracketMatchId);
 

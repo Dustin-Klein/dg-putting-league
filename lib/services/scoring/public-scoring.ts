@@ -1,6 +1,5 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
-import { authorizeAccessCode, authorizeEventView, type AccessCodeEvent, type Db, type PrivilegedClient } from '@/lib/services/auth';
+import { authorizeAccessCode, authorizeEventView, type AccessCodeEvent, type Db } from '@/lib/services/auth';
 import {
   BadRequestError,
   NotFoundError,
@@ -8,15 +7,15 @@ import {
 } from '@/lib/errors';
 import { completeMatch } from './match-completion';
 import { recordFrameScores, type FrameScore } from './score-submission';
-import { getPublicTeamFromParticipant, getTeamFromParticipant } from '@/lib/repositories/team-repository';
+import { getPublicTeamsByParticipantIds, getTeamsByParticipantIds } from '@/lib/repositories/team-repository.db';
 import { getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository.db';
-import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository.db';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
-  updateMatchStatus,
-  getMatchByIdAndEvent,
-} from '@/lib/repositories/bracket-repository';
+  startReadyMatch,
+} from '@/lib/repositories/bracket-repository.db';
+import { lockMatch, withTransaction } from '@/lib/db/tx';
 import type { PublicMatchDetails, OpponentData } from '@/lib/types/scoring';
 import { InternalError } from '@/lib/errors';
 import {
@@ -59,9 +58,9 @@ function toPublicEventInfo(event: AccessCodeEvent): PublicEventInfo {
  */
 async function authorizeBracketScorer(
   accessCode: string
-): Promise<{ event: PublicEventInfo; db: PrivilegedClient; pg: Db }> {
-  const { event, db, pg } = await authorizeAccessCode(accessCode, { mode: 'bracket' });
-  return { event: toPublicEventInfo(event), db, pg };
+): Promise<{ event: PublicEventInfo; pg: Db }> {
+  const { event, pg } = await authorizeAccessCode(accessCode, { mode: 'bracket' });
+  return { event: toPublicEventInfo(event), pg };
 }
 
 /**
@@ -69,7 +68,7 @@ async function authorizeBracketScorer(
  * Determines if event is in qualification or bracket mode
  */
 export async function getEventScoringContext(accessCode: string) {
-  const { event: eventCheck, db } = await authorizeAccessCode(accessCode);
+  const { event: eventCheck, pg } = await authorizeAccessCode(accessCode);
 
   // Handle qualification mode
   if (eventCheck.status === 'pre-bracket' && eventCheck.qualification_round_enabled) {
@@ -87,8 +86,8 @@ export async function getEventScoringContext(accessCode: string) {
   if (eventCheck.status === 'bracket') {
     const event = toPublicEventInfo(eventCheck);
     const [matches, allLanes] = await Promise.all([
-      getMatchesForScoringInternal(db, event),
-      getLanesForEvent(db, event.id),
+      getMatchesForScoringInternal(pg, event),
+      getLanesForEvent(pg, event.id),
     ]);
 
     const lanes: ScoringLane[] = allLanes.map(l => ({ id: l.id, label: l.label }));
@@ -119,49 +118,41 @@ export async function validateAccessCode(accessCode: string): Promise<PublicEven
  * Get matches ready for scoring (status = ready or in_progress)
  */
 export async function getMatchesForScoring(accessCode: string): Promise<PublicMatchInfo[]> {
-  const { event, db } = await authorizeBracketScorer(accessCode);
-  return getMatchesForScoringInternal(db, event);
+  const { event, pg } = await authorizeBracketScorer(accessCode);
+  return getMatchesForScoringInternal(pg, event);
 }
 
 async function getMatchesForScoringInternal(
-  supabase: PrivilegedClient,
+  pg: Db,
   event: PublicEventInfo
 ): Promise<PublicMatchInfo[]> {
   // Parallel: Get lanes and bracket matches simultaneously
   const [laneMap, bracketMatches] = await Promise.all([
-    getLaneLabelsForEvent(supabase, event.id),
-    getMatchesForScoringByEvent(supabase, event.id),
+    getLaneLabelsForEvent(pg, event.id),
+    getMatchesForScoringByEvent(pg, event.id),
   ]);
 
   if (bracketMatches.length === 0) {
     return [];
   }
 
-  // Parallel: Fetch all teams for all matches simultaneously
-  const teamPromises = bracketMatches.flatMap((bm) => {
+  const participantIds = bracketMatches.flatMap((bm) => {
     const opponent1 = bm.opponent1 as { id?: number; score?: number } | null;
     const opponent2 = bm.opponent2 as { id?: number; score?: number } | null;
-    return [
-      getPublicTeamFromParticipant(supabase, opponent1?.id ?? null),
-      getPublicTeamFromParticipant(supabase, opponent2?.id ?? null),
-    ];
+    return [opponent1?.id, opponent2?.id].filter((id): id is number => id !== undefined);
   });
-
-  const teams = await Promise.all(teamPromises);
+  const teams = await getPublicTeamsByParticipantIds(pg, event.id, participantIds);
 
   // Build matches from results
   const matches: PublicMatchInfo[] = [];
 
   for (let i = 0; i < bracketMatches.length; i++) {
     const bm = bracketMatches[i];
-    const team_one = teams[i * 2];
-    const team_two = teams[i * 2 + 1];
-
-    // Skip matches without both teams
-    if (!team_one || !team_two) continue;
-
     const opponent1 = bm.opponent1 as { id?: number; score?: number } | null;
     const opponent2 = bm.opponent2 as { id?: number; score?: number } | null;
+    const team_one = opponent1?.id === undefined ? null : teams.get(opponent1.id) ?? null;
+    const team_two = opponent2?.id === undefined ? null : teams.get(opponent2.id) ?? null;
+    if (!team_one || !team_two) continue;
 
     matches.push({
       id: bm.id,
@@ -189,19 +180,19 @@ export async function getMatchForScoring(
   accessCode: string,
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
-  const { event, db } = await authorizeBracketScorer(accessCode);
-  return getMatchForScoringInternal(db, event, bracketMatchId);
+  const { event, pg } = await authorizeBracketScorer(accessCode);
+  return getMatchForScoringInternal(pg, event, bracketMatchId);
 }
 
 async function getMatchForScoringInternal(
-  supabase: PrivilegedClient,
+  pg: Db,
   event: PublicEventInfo,
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
   // Parallel: Get lanes and bracket match simultaneously
   const [laneMap, bracketMatch] = await Promise.all([
-    getLaneLabelsForEvent(supabase, event.id),
-    getMatchForScoringById(supabase, bracketMatchId),
+    getLaneLabelsForEvent(pg, event.id),
+    getMatchForScoringById(pg, bracketMatchId),
   ]);
 
   if (!bracketMatch) {
@@ -215,10 +206,13 @@ async function getMatchForScoringInternal(
   const opponent1 = bracketMatch.opponent1 as { id?: number; score?: number } | null;
   const opponent2 = bracketMatch.opponent2 as { id?: number; score?: number } | null;
 
-  const [team_one, team_two] = await Promise.all([
-    getPublicTeamFromParticipant(supabase, opponent1?.id ?? null),
-    getPublicTeamFromParticipant(supabase, opponent2?.id ?? null),
-  ]);
+  const teams = await getPublicTeamsByParticipantIds(
+    pg,
+    event.id,
+    [opponent1?.id, opponent2?.id].filter((id): id is number => id !== undefined)
+  );
+  const team_one = opponent1?.id === undefined ? null : teams.get(opponent1.id) ?? null;
+  const team_two = opponent2?.id === undefined ? null : teams.get(opponent2.id) ?? null;
 
   if (!team_one || !team_two) {
     throw new NotFoundError('Match teams not found');
@@ -291,7 +285,7 @@ export async function batchRecordScoresAndGetMatch(
   frameNumber: number,
   scores: BatchScoreInput[]
 ): Promise<PublicMatchInfo> {
-  const { event, db, pg } = await authorizeBracketScorer(accessCode);
+  const { event, pg } = await authorizeBracketScorer(accessCode);
 
   const { status } = await recordFrameScores(pg, {
     eventId: event.id,
@@ -302,25 +296,22 @@ export async function batchRecordScoresAndGetMatch(
   });
 
   // Read back after commit (outside the transaction, so the match lock is short).
-  const match = await getMatchForScoringInternal(db, event, bracketMatchId);
+  const match = await getMatchForScoringInternal(pg, event, bracketMatchId);
   return { ...match, status };
 }
 
 /**
  * Get bracket match with full details for public (anon) access.
- * Mirrors getBracketMatchWithDetails but uses the anon client (respects RLS).
- * The get_frame_results_for_match RPC is gated to events in 'bracket' status,
- * so frame data is only visible while bracket play is active.
+ * Mirrors getBracketMatchWithDetails after an explicit bracket visibility check.
+ * Bracket authorization preserves the old RPC's visibility gate for frame data.
  */
 export async function getPublicMatchDetails(
   eventId: string,
   matchId: number
 ): Promise<PublicMatchDetails> {
   const { pg } = await authorizeEventView(eventId, 'bracket');
-  const supabase = await createClient();
-
   const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
-    getMatchForScoringById(supabase, matchId),
+    getMatchForScoringById(pg, matchId),
     getEventBracketFrameCount(pg, eventId),
     getEventScoringConfig(pg, eventId),
   ]);
@@ -336,10 +327,13 @@ export async function getPublicMatchDetails(
   const opponent1 = bracketMatch.opponent1 as OpponentData | null;
   const opponent2 = bracketMatch.opponent2 as OpponentData | null;
 
-  const [team_one, team_two] = await Promise.all([
-    getTeamFromParticipant(supabase, opponent1?.id ?? null),
-    getTeamFromParticipant(supabase, opponent2?.id ?? null),
-  ]);
+  const teams = await getTeamsByParticipantIds(
+    pg,
+    eventId,
+    [opponent1?.id, opponent2?.id].filter((id): id is number => id !== null && id !== undefined)
+  );
+  const team_one = opponent1?.id == null ? null : teams.get(opponent1.id) ?? null;
+  const team_two = opponent2?.id == null ? null : teams.get(opponent2.id) ?? null;
 
   return {
     id: bracketMatch.id,
@@ -366,20 +360,14 @@ export async function startMatchPublic(
   accessCode: string,
   bracketMatchId: number
 ): Promise<void> {
-  const { event, db: supabase } = await authorizeBracketScorer(accessCode);
-
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, event.id);
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Match not found');
-  }
-
-  if (bracketMatch.status === MatchStatus.Ready) {
-    if (bracketMatch.lane_id === null) {
-      throw new BadRequestError('Match has no lane assigned');
-    }
-    await updateMatchStatus(supabase, bracketMatchId, MatchStatus.Running);
-  }
+  const { event, pg } = await authorizeBracketScorer(accessCode);
+  await withTransaction(pg, async (tx) => {
+    const match = await lockMatch(tx, bracketMatchId, event.id);
+    if (!match) throw new NotFoundError('Match not found');
+    if (match.status !== MatchStatus.Ready) return;
+    if (match.lane_id === null) throw new BadRequestError('Match has no lane assigned');
+    await startReadyMatch(tx, bracketMatchId, event.id);
+  });
 }
 
 /**
@@ -389,10 +377,10 @@ export async function completeMatchPublic(
   accessCode: string,
   bracketMatchId: number
 ): Promise<PublicMatchInfo> {
-  const { event, db: supabase, pg } = await authorizeBracketScorer(accessCode);
+  const { event, pg } = await authorizeBracketScorer(accessCode);
 
   // Pre-fetch for the response fallback below (and to 404 on a foreign match early).
-  const match = await getMatchForScoringInternal(supabase, event, bracketMatchId);
+  const match = await getMatchForScoringInternal(pg, event, bracketMatchId);
 
   // Result (from the match's frames), bracket progression and lane release commit together.
   await completeMatch(pg, event.id, bracketMatchId, undefined, { requireRegulationFrames: true });
@@ -401,7 +389,7 @@ export async function completeMatchPublic(
   // data with updated status if the query times out (the client redirects
   // immediately anyway and doesn't use the response body)
   try {
-    return await getMatchForScoringInternal(supabase, event, bracketMatchId);
+    return await getMatchForScoringInternal(pg, event, bracketMatchId);
   } catch (fetchError) {
     console.error('Failed to fetch updated match after completion:', fetchError);
     return {

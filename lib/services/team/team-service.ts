@@ -6,8 +6,10 @@ import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import type { Team } from '@/lib/types/team';
 import type { EventPlayer } from '@/lib/types/player';
 import type { PoolAssignment } from '@/lib/services/event-player';
-import * as teamRepo from '@/lib/repositories/team-repository';
+import * as teamRepo from '@/lib/repositories/team-repository.db';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
+import { lockEvent, withTransaction } from '@/lib/db/tx';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 
 // Re-export types for consumers
 export type { Team, TeamMember } from '@/lib/types/team';
@@ -82,7 +84,7 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
   }
 
   // Check if teams already exist
-  const existingTeams = await teamRepo.getTeamsForEvent(supabase, eventId);
+  const existingTeams = await teamRepo.getTeamsForEvent(pg, eventId);
   if (existingTeams.length > 0) {
     throw new BadRequestError('Teams have already been generated for this event');
   }
@@ -136,63 +138,49 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
     });
   }
 
-  // Prepare all teams data for bulk insert
-  const teamsData = teamsToCreate.map((t, i) => ({
-    eventId,
-    seed: i + 1,
-    poolCombo: `${t.poolAPlayer.player.full_name} & ${t.poolBPlayer.player.full_name}`,
-  }));
+  const scoreByPlayer = new Map(playersWithScores.map((player) => [player.id, player.qualificationScore]));
 
-  // Bulk insert teams (1 query)
-  const teamIds = await teamRepo.insertTeamsBulk(supabase, teamsData);
+  return withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    if ((await teamRepo.getTeamsForEvent(tx, eventId)).length > 0) {
+      throw new BadRequestError('Teams have already been generated for this event');
+    }
 
-  // Prepare all team members data for bulk insert
-  const membersData: Array<{ teamId: string; eventPlayerId: string; role: 'A_pool' | 'B_pool' }> = [];
-  teamsToCreate.forEach((t, i) => {
-    membersData.push({ teamId: teamIds[i], eventPlayerId: t.poolAPlayer.id, role: 'A_pool' });
-    membersData.push({ teamId: teamIds[i], eventPlayerId: t.poolBPlayer.id, role: 'B_pool' });
+    const inserted = await teamRepo.insertTeamsWithMembers(
+      tx,
+      eventId,
+      teamsToCreate.map((team, index) => ({
+        seed: index + 1,
+        pool_combo: `${team.poolAPlayer.player.full_name} & ${team.poolBPlayer.player.full_name}`,
+        members: [
+          { event_player_id: team.poolAPlayer.id, role: 'A_pool' },
+          { event_player_id: team.poolBPlayer.id, role: 'B_pool' },
+        ],
+      }))
+    );
+
+    const ranked = inserted.map((team, index) => ({
+      id: team.id,
+      combinedScore:
+        (scoreByPlayer.get(teamsToCreate[index].poolAPlayer.id) ?? 0) +
+        (scoreByPlayer.get(teamsToCreate[index].poolBPlayer.id) ?? 0),
+    }));
+    ranked.sort((a, b) => b.combinedScore - a.combinedScore);
+    for (const [index, team] of ranked.entries()) {
+      await teamRepo.updateTeamSeed(tx, team.id, index + 1);
+    }
+
+    return teamRepo.getFullTeamsForEvent(tx, eventId);
   });
-
-  // Bulk insert team members (1 query)
-  await teamRepo.insertTeamMembersBulk(supabase, membersData);
-
-  // Fetch teams with members for seed calculation
-  const teamsWithMembers = await teamRepo.getTeamsWithMembersForEvent(supabase, eventId);
-
-  // Sort teams by combined qualification score and update seeds
-  const teamsWithScores = teamsWithMembers.map(team => {
-    const memberScores = team.team_members.map(member => {
-      return playersWithScores.find(p => p.id === member.event_player_id)?.qualificationScore || 0;
-    });
-    const combinedScore = memberScores.reduce((sum, score) => sum + score, 0);
-
-    return {
-      ...team,
-      combinedScore,
-    };
-  });
-
-  teamsWithScores.sort((a, b) => b.combinedScore - a.combinedScore);
-
-  // Update team seeds based on combined scores (in parallel)
-  const seedUpdates = teamsWithScores.map((team, i) =>
-    teamRepo.updateTeamSeed(supabase, team.id, i + 1)
-  );
-
-  await Promise.all(seedUpdates);
-
-  // Fetch complete teams with members for return
-  const finalTeams = await teamRepo.getFullTeamsForEvent(supabase, eventId);
-
-  return finalTeams as unknown as Team[];
 }
 
 /**
  * Get teams for an event
  */
 export async function getEventTeams(eventId: string): Promise<Team[]> {
-  const { supabase } = await requireEventAdmin(eventId);
-  const teams = await teamRepo.getFullTeamsForEvent(supabase, eventId);
+  const { pg } = await requireEventAdmin(eventId);
+  const teams = await teamRepo.getFullTeamsForEvent(pg, eventId);
   return teams as unknown as Team[];
 }
 

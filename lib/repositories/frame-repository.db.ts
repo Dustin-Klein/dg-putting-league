@@ -1,7 +1,98 @@
 import 'server-only';
-import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, lte, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { frame_results, match_frames } from '@/lib/db/schema';
+import { bracket_match, frame_results, match_frames } from '@/lib/db/schema';
+import { InternalError } from '@/lib/errors';
+import type { MatchFrame } from '@/lib/types/scoring';
+
+export interface FrameResultForMatch {
+  id: string;
+  match_frame_id: string;
+  event_player_id: string;
+  putts_made: number;
+  points_earned: number;
+}
+
+/** Direct equivalent of get_frame_results_for_match; authorization belongs to the service. */
+export async function getFrameResultsForMatch(
+  ex: Executor,
+  bracketMatchId: number
+): Promise<FrameResultForMatch[]> {
+  return ex
+    .select({
+      id: frame_results.id,
+      match_frame_id: frame_results.match_frame_id,
+      event_player_id: frame_results.event_player_id,
+      putts_made: frame_results.putts_made,
+      points_earned: frame_results.points_earned,
+    })
+    .from(frame_results)
+    .innerJoin(bracket_match, eq(bracket_match.id, frame_results.bracket_match_id))
+    .where(eq(frame_results.bracket_match_id, bracketMatchId));
+}
+
+/** Direct equivalent of get_frame_counts_for_matches. */
+export async function getFrameCountsForMatches(
+  ex: Executor,
+  matchIds: number[]
+): Promise<Record<number, number>> {
+  if (matchIds.length === 0) return {};
+  const rows = await ex
+    .select({ bracket_match_id: match_frames.bracket_match_id, frame_count: count() })
+    .from(match_frames)
+    .where(inArray(match_frames.bracket_match_id, matchIds))
+    .groupBy(match_frames.bracket_match_id);
+  return Object.fromEntries(
+    rows.flatMap((row) => row.bracket_match_id === null ? [] : [[row.bracket_match_id, Number(row.frame_count)]])
+  );
+}
+
+export async function getMatchFrame(ex: Executor, frameId: string): Promise<MatchFrame> {
+  const [frame] = await ex
+    .select({
+      id: match_frames.id,
+      bracket_match_id: match_frames.bracket_match_id,
+      frame_number: match_frames.frame_number,
+      is_overtime: match_frames.is_overtime,
+    })
+    .from(match_frames)
+    .where(eq(match_frames.id, frameId));
+  if (!frame) throw new InternalError('Failed to fetch frame: not found');
+
+  const results = await ex
+    .select({
+      id: frame_results.id,
+      match_frame_id: frame_results.match_frame_id,
+      event_player_id: frame_results.event_player_id,
+      bracket_match_id: frame_results.bracket_match_id,
+      putts_made: frame_results.putts_made,
+      points_earned: frame_results.points_earned,
+      order_in_frame: frame_results.order_in_frame,
+    })
+    .from(frame_results)
+    .where(eq(frame_results.match_frame_id, frameId))
+    .orderBy(asc(frame_results.order_in_frame));
+  return { ...frame, bracket_match_id: frame.bracket_match_id ?? undefined, results };
+}
+
+/** Race-safe when called inside the service-owned transaction. */
+export async function getOrCreateFrameWithResults(
+  ex: Executor,
+  bracketMatchId: number,
+  frameNumber: number,
+  isOvertime: boolean
+): Promise<MatchFrame> {
+  await ex
+    .insert(match_frames)
+    .values({ bracket_match_id: bracketMatchId, frame_number: frameNumber, is_overtime: isOvertime })
+    .onConflictDoNothing({ target: [match_frames.bracket_match_id, match_frames.frame_number] });
+  const [frame] = await ex
+    .select({ id: match_frames.id })
+    .from(match_frames)
+    .where(and(eq(match_frames.bracket_match_id, bracketMatchId), eq(match_frames.frame_number, frameNumber)));
+  if (!frame) throw new InternalError('Failed to create frame');
+  return getMatchFrame(ex, frame.id);
+}
 
 /**
  * Distinct frame numbers that have at least one result, ascending. Empty frames (e.g.

@@ -8,17 +8,13 @@ import {
 import { completeMatch, handleGrandFinalCompletionTx } from './match-completion';
 import { recordFrameScores } from './score-submission';
 import { lockEvent, lockMatch, withTransaction } from '@/lib/db/tx';
-import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
+import { getTeamsByParticipantIds } from '@/lib/repositories/team-repository.db';
 import {
+  getMatchFrame,
   getOrCreateFrameWithResults,
-} from '@/lib/repositories/frame-repository';
-import { getMatchFrame } from '@/lib/repositories/frame-repository';
+} from '@/lib/repositories/frame-repository.db';
 import { getEventScoringConfig, getEventBracketFrameCount, getEventBracketConfig } from '@/lib/repositories/event-repository.db';
-import {
-  getMatchByIdAndEvent,
-  updateMatchStatus,
-  getMatchForScoringById,
-} from '@/lib/repositories/bracket-repository';
+import { getMatchForScoringById, startReadyMatch } from '@/lib/repositories/bracket-repository.db';
 import { MatchStatus } from '@/lib/types/bracket';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { clearScoreOverrides, setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
@@ -73,10 +69,10 @@ export async function getBracketMatchWithDetails(
   eventId: string,
   bracketMatchId: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
-    getMatchForScoringById(supabase, bracketMatchId),
+    getMatchForScoringById(pg, bracketMatchId),
     getEventBracketFrameCount(pg, eventId),
     getEventScoringConfig(pg, eventId),
   ]);
@@ -92,10 +88,13 @@ export async function getBracketMatchWithDetails(
   const opponent1 = bracketMatch.opponent1 as OpponentData | null;
   const opponent2 = bracketMatch.opponent2 as OpponentData | null;
 
-  const [team_one, team_two] = await Promise.all([
-    getTeamFromParticipant(supabase, opponent1?.id ?? null),
-    getTeamFromParticipant(supabase, opponent2?.id ?? null),
-  ]);
+  const teams = await getTeamsByParticipantIds(
+    pg,
+    eventId,
+    [opponent1?.id, opponent2?.id].filter((id): id is number => id !== null && id !== undefined)
+  );
+  const team_one = opponent1?.id == null ? null : teams.get(opponent1.id) ?? null;
+  const team_two = opponent2?.id == null ? null : teams.get(opponent2.id) ?? null;
 
   return {
     ...bracketMatch,
@@ -121,15 +120,12 @@ export async function getOrCreateFrame(
   frameNumber: number,
   isOvertime: boolean
 ): Promise<MatchFrame> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Bracket match not found');
-  }
-
-  return getOrCreateFrameWithResults(supabase, bracketMatchId, frameNumber, isOvertime);
+  const { pg } = await requireEventAdmin(eventId);
+  return withTransaction(pg, async (tx) => {
+    const bracketMatch = await lockMatch(tx, bracketMatchId, eventId);
+    if (!bracketMatch) throw new NotFoundError('Bracket match not found');
+    return getOrCreateFrameWithResults(tx, bracketMatchId, frameNumber, isOvertime);
+  });
 }
 
 /**
@@ -142,7 +138,7 @@ export async function recordFullFrame(
   results: RecordFrameResultInput[],
   isOvertime: boolean
 ): Promise<MatchFrame> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
   await recordFrameScores(pg, {
     eventId,
     matchId: bracketMatchId,
@@ -153,8 +149,12 @@ export async function recordFullFrame(
     })),
     scorer: 'admin',
   });
-  const frame = await getOrCreateFrameWithResults(supabase, bracketMatchId, frameNumber, isOvertime);
-  return getMatchFrame(supabase, frame.id);
+  return withTransaction(pg, async (tx) => {
+    const match = await lockMatch(tx, bracketMatchId, eventId);
+    if (!match) throw new NotFoundError('Bracket match not found');
+    const frame = await getOrCreateFrameWithResults(tx, bracketMatchId, frameNumber, isOvertime);
+    return getMatchFrame(tx, frame.id);
+  });
 }
 
 /**
@@ -200,15 +200,14 @@ export async function startBracketMatch(
   eventId: string,
   bracketMatchId: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const bracketMatch = await getMatchByIdAndEvent(supabase, bracketMatchId, eventId);
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Bracket match not found');
-  }
-
-  await updateMatchStatus(supabase, bracketMatchId, 3); // Running status
+  const { pg } = await requireEventAdmin(eventId);
+  await withTransaction(pg, async (tx) => {
+    const bracketMatch = await lockMatch(tx, bracketMatchId, eventId);
+    if (!bracketMatch) throw new NotFoundError('Bracket match not found');
+    if (bracketMatch.status === MatchStatus.Ready) {
+      await startReadyMatch(tx, bracketMatchId, eventId);
+    }
+  });
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }

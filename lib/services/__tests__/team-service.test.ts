@@ -26,17 +26,21 @@ jest.mock('@/lib/services/auth', () => ({
   requireAuthenticatedUser: jest.fn(),
 }));
 
+jest.mock('@/lib/db/tx', () => ({
+  lockEvent: jest.fn(),
+  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
+}));
+
 jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
   getEventWithPlayers: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/team-repository', () => ({
+jest.mock('@/lib/repositories/team-repository.db', () => ({
   getTeamsForEvent: jest.fn(),
   insertTeam: jest.fn(),
   insertTeamMember: jest.fn(),
-  insertTeamsBulk: jest.fn(),
-  insertTeamMembersBulk: jest.fn(),
+  insertTeamsWithMembers: jest.fn(),
   getTeamsWithMembersForEvent: jest.fn(),
   updateTeamSeed: jest.fn(),
   getFullTeamsForEvent: jest.fn(),
@@ -48,12 +52,13 @@ jest.mock('@/lib/repositories/event-player-repository.db', () => ({
 
 jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventLeagueId: jest.fn(),
+  getEventBracketConfig: jest.fn().mockResolvedValue({ status: 'pre-bracket' }),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import * as teamRepo from '@/lib/repositories/team-repository';
+import * as teamRepo from '@/lib/repositories/team-repository.db';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import { generateTeams, getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
 
@@ -85,8 +90,7 @@ describe('Team Service', () => {
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
       (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
       (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
-      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',
@@ -114,8 +118,7 @@ describe('Team Service', () => {
       const result = await generateTeams(eventId);
 
       expect(result).toHaveLength(2);
-      expect(teamRepo.insertTeamsBulk).toHaveBeenCalledTimes(1);
-      expect(teamRepo.insertTeamMembersBulk).toHaveBeenCalledTimes(1);
+      expect(teamRepo.insertTeamsWithMembers).toHaveBeenCalledTimes(1);
     });
 
     it('should generate teams for event in bracket status', async () => {
@@ -131,8 +134,7 @@ describe('Team Service', () => {
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
       (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
       (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1']);
-      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }]);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',
@@ -239,8 +241,7 @@ describe('Team Service', () => {
         .mockResolvedValueOnce(20) // Player 2
         .mockResolvedValueOnce(25) // Player 3
         .mockResolvedValueOnce(15); // Player 4
-      (teamRepo.insertTeamsBulk as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
-      (teamRepo.insertTeamMembersBulk as jest.Mock).mockResolvedValue(undefined);
+      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
       (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
         {
           id: 'team-1',

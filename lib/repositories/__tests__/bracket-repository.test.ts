@@ -13,20 +13,15 @@ import {
   createMockQueryBuilder,
   MockSupabaseClient,
 } from '@/lib/services/__tests__/test-utils';
-import { InternalError } from '@/lib/errors';
 import { Status } from 'brackets-model';
 
 // Mock server-only before importing repository
 jest.mock('server-only', () => ({}));
 
 import {
-  getMatchesForScoringByEvent,
-  getMatchForScoringById,
-  updateMatchStatus,
   bracketStageExists,
   getBracketStage,
   fetchBracketStructure,
-  getMatchByIdAndEvent,
   getParticipantsWithTeamIds,
   getReadyMatchesByStageId,
 } from '../bracket-repository';
@@ -37,129 +32,6 @@ describe('Bracket Repository', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
-  });
-
-  describe('getMatchesForScoringByEvent', () => {
-    it('should return matches for scoring with frames and results', async () => {
-      const mockMatches = [
-        {
-          id: 1,
-          status: 2,
-          round_id: 1,
-          number: 1,
-          lane_id: 'lane-1',
-          opponent1: { id: 1, score: 0 },
-          opponent2: { id: 2, score: 0 },
-          frames: [
-            {
-              id: 'frame-1',
-              frame_number: 1,
-              is_overtime: false,
-              results: [],
-            },
-          ],
-        },
-      ];
-
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.in.mockReturnThis();
-      mockQuery.not.mockResolvedValue({ data: mockMatches, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getMatchesForScoringByEvent(mockSupabase as any, 'event-123');
-
-      expect(result).toEqual(mockMatches);
-      expect(mockQuery.eq).toHaveBeenCalledWith('event_id', 'event-123');
-      expect(mockQuery.in).toHaveBeenCalledWith('status', [2, 3]);
-    });
-
-    it('should throw InternalError on query failure', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.in.mockReturnThis();
-      mockQuery.not.mockResolvedValue({ data: null, error: { message: 'Query failed' } });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      await expect(
-        getMatchesForScoringByEvent(mockSupabase as any, 'event-123')
-      ).rejects.toThrow(InternalError);
-    });
-  });
-
-  describe('getMatchForScoringById', () => {
-    it('should return match with frames and results combined', async () => {
-      const mockMatchData = {
-        id: 1,
-        status: 3,
-        round_id: 1,
-        number: 1,
-        lane_id: 'lane-1',
-        opponent1: { id: 1 },
-        opponent2: { id: 2 },
-        event_id: 'event-123',
-        frames: [{ id: 'frame-1', frame_number: 1, is_overtime: false }],
-      };
-      const mockFrameResults = [
-        { match_frame_id: 'frame-1', id: 'r1', event_player_id: 'ep1', putts_made: 2, points_earned: 2 },
-      ];
-
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.order.mockReturnThis();
-      mockQuery.maybeSingle.mockResolvedValue({ data: mockMatchData, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-      mockSupabase.rpc.mockResolvedValue({ data: mockFrameResults, error: null });
-
-      const result = await getMatchForScoringById(mockSupabase as any, 1);
-
-      expect(result).not.toBeNull();
-      expect(result?.id).toBe(1);
-      expect(result?.frames[0].results).toHaveLength(1);
-    });
-
-    it('should return null when match not found', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.order.mockReturnThis();
-      mockQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-      mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
-
-      const result = await getMatchForScoringById(mockSupabase as any, 999);
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('updateMatchStatus', () => {
-    it('should update match status successfully', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.update.mockReturnThis();
-      mockQuery.eq.mockResolvedValue({ error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      await updateMatchStatus(mockSupabase as any, 1, Status.Running);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('bracket_match');
-      expect(mockQuery.update).toHaveBeenCalledWith({ status: Status.Running });
-      expect(mockQuery.eq).toHaveBeenCalledWith('id', 1);
-    });
-
-    it('should throw InternalError on failure', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.update.mockReturnThis();
-      mockQuery.eq.mockResolvedValue({ error: { message: 'Update failed' } });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      await expect(
-        updateMatchStatus(mockSupabase as any, 1, Status.Running)
-      ).rejects.toThrow(InternalError);
-    });
   });
 
   describe('bracketStageExists', () => {
@@ -283,40 +155,6 @@ describe('Bracket Repository', () => {
       mockSupabase.from.mockReturnValue(mockQuery);
 
       const result = await fetchBracketStructure(mockSupabase as any, 'event-123');
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('getMatchByIdAndEvent', () => {
-    it('should return match when found', async () => {
-      const mockMatch = {
-        id: 1,
-        status: 2,
-        event_id: 'event-123',
-        lane_id: 5,
-        opponent1: { id: 1 },
-        opponent2: { id: 2 },
-      };
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.single.mockResolvedValue({ data: mockMatch, error: null });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getMatchByIdAndEvent(mockSupabase as any, 1, 'event-123');
-
-      expect(result).toEqual(mockMatch);
-    });
-
-    it('should return null when not found (PGRST116)', async () => {
-      const mockQuery = createMockQueryBuilder();
-      mockQuery.select.mockReturnThis();
-      mockQuery.eq.mockReturnThis();
-      mockQuery.single.mockResolvedValue({ data: null, error: { code: 'PGRST116' } });
-      mockSupabase.from.mockReturnValue(mockQuery);
-
-      const result = await getMatchByIdAndEvent(mockSupabase as any, 999, 'event-123');
 
       expect(result).toBeNull();
     });

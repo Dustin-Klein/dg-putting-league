@@ -28,11 +28,26 @@ jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/lane-repository', () => ({
+jest.mock('@/lib/services/auth', () => ({
+  authorizeEventView: jest.fn(),
+}));
+
+jest.mock('@/lib/db/tx', () => ({
+  lockEvent: jest.fn(),
+  lockMatch: jest.fn(),
+  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
+}));
+
+jest.mock('@/lib/repositories/event-repository.db', () => ({
+  getEventBracketConfig: jest.fn().mockResolvedValue({ status: 'bracket' }),
+}));
+
+jest.mock('@/lib/repositories/lane-repository.db', () => ({
   hasLanes: jest.fn(),
   getLanesForEvent: jest.fn(),
   insertLanes: jest.fn(),
   getMatchLaneAssignments: jest.fn(),
+  lockEventLanes: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
@@ -43,7 +58,8 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
-import * as laneRepo from '@/lib/repositories/lane-repository';
+import { authorizeEventView } from '@/lib/services/auth';
+import * as laneRepo from '@/lib/repositories/lane-repository.db';
 import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import {
   createEventLanes,
@@ -58,7 +74,8 @@ describe('Lane Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (authorizeEventView as jest.Mock).mockResolvedValue({ pg: mockSupabase });
   });
 
   describe('createEventLanes', () => {
@@ -127,6 +144,13 @@ describe('Lane Service', () => {
       const result = await getEventLanes(eventId);
 
       expect(result).toEqual([]);
+    });
+
+    it('does not query lanes when the event is not visible', async () => {
+      (authorizeEventView as jest.Mock).mockRejectedValue(new Error('Event not found'));
+
+      await expect(getEventLanes(eventId)).rejects.toThrow('Event not found');
+      expect(laneRepo.getLanesForEvent).not.toHaveBeenCalled();
     });
   });
 

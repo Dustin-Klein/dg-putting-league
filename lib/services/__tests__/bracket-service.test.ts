@@ -42,8 +42,14 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
   fetchBracketStructure: jest.fn(),
   getParticipantsWithTeamIds: jest.fn(),
   getReadyMatchesByStageId: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/bracket-repository.db', () => ({
   getMatchForScoringById: jest.fn(),
-  getFrameCountsForMatchIds: jest.fn().mockResolvedValue({}),
+}));
+
+jest.mock('@/lib/repositories/frame-repository.db', () => ({
+  getFrameCountsForMatches: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('@/lib/repositories/event-repository.db', () => ({
@@ -51,12 +57,12 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventAccessCode: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/team-repository', () => ({
+jest.mock('@/lib/repositories/team-repository.db', () => ({
   getFullTeamsForEvent: jest.fn(),
   getPublicTeamsForEvent: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/lane-repository', () => ({
+jest.mock('@/lib/repositories/lane-repository.db', () => ({
   getLanesForEvent: jest.fn(),
 }));
 
@@ -101,8 +107,8 @@ import {
   buildProgressionSourceMap,
   buildTaintedSlotPlan,
 } from '../bracket/bracket-service';
-import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
+import { getLanesForEvent } from '@/lib/repositories/lane-repository.db';
 
 describe('Bracket Service', () => {
   let mockSupabase: MockSupabaseClient;
