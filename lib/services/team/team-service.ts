@@ -74,7 +74,7 @@ export function shuffle<T>(
  * Generate teams of 2 players (1 from Pool A, 1 from Pool B) when event status changes to 'bracket'
  */
 export async function generateTeams(eventId: string): Promise<Team[]> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
   const event = await getEventWithPlayers(eventId);
 
   // Allow team generation for events transitioning to bracket status (pre-bracket)
