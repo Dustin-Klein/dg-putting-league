@@ -241,13 +241,9 @@ SELECT throws_ok(
      VALUES (gen_random_uuid(), gen_random_uuid(), 3, 4) $$,
   '42501', NULL, 'anon cannot insert frame_results'
 );
-SELECT throws_ok(
-  $$ SELECT public.rollback_bracket_transition('00000000-0000-0000-0000-00000000c001') $$,
-  '42501', NULL, 'anon cannot roll back a bracket'
-);
 SELECT lives_ok(
-  $$ SELECT * FROM public.get_frame_counts_for_matches(ARRAY[1, 2]) $$,
-  'anon can call the frame count read helper'
+  $$ SELECT id FROM public.frame_results LIMIT 1 $$,
+  'anon can still read frame results'
 );
 RESET ROLE;
 
@@ -274,10 +270,6 @@ SELECT throws_ok(
   '42501', NULL, 'even a league admin cannot read access codes directly'
 );
 SELECT throws_ok(
-  $$ SELECT public.transition_event_to_bracket('00000000-0000-0000-0000-00000000c001', '[]'::jsonb, '[]'::jsonb, 0) $$,
-  '42501', NULL, 'authenticated cannot call transition_event_to_bracket (F3)'
-);
-SELECT throws_ok(
   $$ INSERT INTO public.leagues (name) VALUES ('Sneaky') $$,
   '42501', NULL, 'authenticated cannot insert leagues directly'
 );
@@ -285,35 +277,19 @@ SELECT ok(
   (SELECT count(*) FROM public.league_admins WHERE league_id = '00000000-0000-0000-0000-00000000b001') = 2,
   'admins can still read their league admins through RLS'
 );
-SELECT is(
-  public.get_user_email_by_id('00000000-0000-0000-0000-00000000b001', '00000000-0000-0000-0000-00000000a001'),
-  'owner@lockdown.test',
-  'get_user_email_by_id still works for a league admin'
+SELECT throws_ok(
+  $$ SELECT email FROM app_private.user_emails $$,
+  '42501', NULL, 'even a league admin cannot read account emails'
 );
 RESET ROLE;
 
--- service role: the server's writer
-SET LOCAL ROLE service_role;
-SELECT lives_ok(
-  $$ UPDATE public.events SET location = 'Server write' WHERE id = '00000000-0000-0000-0000-00000000c001' $$,
-  'service_role can write'
+-- app_server: the server's reader and writer (plan 02/04). The test runner can't
+-- SET ROLE app_server, so check its privileges directly.
+SELECT ok(
+  has_table_privilege('app_server', 'public.events', 'UPDATE')
+  AND has_table_privilege('app_server', 'public.rate_limits', 'INSERT'),
+  'app_server can write public tables'
 );
-SELECT is(
-  (SELECT count FROM public.rate_limit_hit('lockdown-test', 60000)),
-  1,
-  'rate_limit_hit starts a window at 1'
-);
-SELECT is(
-  (SELECT count FROM public.rate_limit_hit('lockdown-test', 60000)),
-  2,
-  'rate_limit_hit increments within the window'
-);
-SELECT is(
-  (SELECT count FROM public.rate_limit_hit('lockdown-test', 60000, false)),
-  2,
-  'rate_limit_hit can read without counting'
-);
-RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;

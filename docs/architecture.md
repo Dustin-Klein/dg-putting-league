@@ -9,7 +9,7 @@ HTTP Request
   → API Route
     → Service
       → Repository
-        → Supabase / Postgres (Drizzle)
+        → Postgres (Drizzle)
 ```
 
 Dependencies flow **downward only**. No upward or sideways dependencies.
@@ -37,8 +37,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 ### Environment Variables
 
 - `NEXT_PUBLIC_*` → browser-safe only
-- `SUPABASE_SECRET_KEY` → server-only secret key (never `NEXT_PUBLIC_`); required in production (startup fails via `instrumentation.ts` if missing)
-- `DATABASE_URL` → server-only direct Postgres connection (never `NEXT_PUBLIC_`); required in production (startup fails via `instrumentation.ts` if missing). In production, connects via Supabase Supavisor transaction pooler (port 6543, user `app_server.<project-ref>`, `?sslmode=require`). Local: `postgresql://app_server:app_server@127.0.0.1:54322/postgres`.
+- `DATABASE_URL` → server-only direct Postgres connection used for all server data access (never `NEXT_PUBLIC_`); required in production (startup fails via `instrumentation.ts` if missing). In production, connects via Supabase Supavisor transaction pooler (port 6543, user `app_server.<project-ref>`, `?sslmode=require`). Local: `postgresql://app_server:app_server@127.0.0.1:54322/postgres`.
 - `DATABASE_POOL_MAX` → optional maximum pool size for Drizzle connection (default: 3)
 - Routes touching the DB must use the Node.js runtime (never Edge) due to TCP sockets
 - Supabase service role keys → server-only
@@ -52,15 +51,17 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 
 - The browser only authenticates (Supabase Auth) and subscribes to Realtime.
 - Database roles `anon` and `authenticated` can only `SELECT` (governed by RLS policies). They cannot write to any table or execute business functions.
-- Server reads and writes use the direct Drizzle connection after explicit service-layer authorization. Browser access remains SELECT-only and protected by RLS.
+- Supabase is used only for **Auth** (sessions, sign-up, password reset) and **Realtime** (`postgres_changes` in client pages). Every server read and write goes through Drizzle as role `app_server` after an explicit service-layer authorization check. No secret-key Supabase client exists.
+- `app_server` bypasses RLS, so RLS no longer filters server reads: each service read calls one of the authorization functions below. The read-only SELECT policies stay because Realtime and any direct browser read still go through them.
 - The Drizzle connection (`lib/db/client.ts`) uses the `postgres` driver, is lazily created and cached on `globalThis`, and is type-branded as `Db`.
-- The sole secret-key Supabase client is private to the rate-limit service for its atomic RPC.
 - Direct imports of `lib/db/client` are restricted by ESLint to `lib/services/auth/**`, `lib/db/**`, `integration/**`, and tests.
 - Services obtain clients exclusively through authorization functions in `lib/services/auth/auth-service.ts`:
-  - `authorizeEventAdmin`, `authorizeLeagueAdmin`, `authorizeLeagueOwner`, `authorizeAnyLeagueAdmin`, and `authorizeLeagueCreation` return the authorized identity/context and `pg`.
-  - `authorizeAccessCode` returns `{ event, pg }` (looks up the event with Drizzle).
-  - `requireEventAdmin` returns `{ pg, user }`.
-  - Each performs its check before returning clients.
+  - Admin: `authorizeEventAdmin` (loads the event and the user's league role in one query), `authorizeLeagueAdmin`, `authorizeLeagueOwner`, `authorizeAnyLeagueAdmin`, `authorizeLeagueCreation` return `{ user, pg }` (event admin also returns `event`). `requireEventAdmin` (event service) returns `{ pg, user }`.
+  - Admin-or-public reads: `authorizeEventView(eventId, scope)` returns `{ user | null, event, isAdmin, pg }`. League admins may read their events; everyone else only when the scope is publicly visible, otherwise `NotFoundError` (private events don't reveal they exist). Scopes and rules live in `lib/services/auth/visibility.ts` and mirror the SELECT policies: `event` (bracket/completed, or pre-bracket with qualification), `bracket` (bracket/completed), `lanes` (bracket), `qualification` (pre-bracket with qualification).
+  - Public reads of data that is public for every row (leagues, players without email, placements): `authorizePublicRead()` returns `{ pg }`; anything event-scoped must still pass a visibility check (in SQL, commented as mirroring `visibility.ts`, when filtering lists).
+  - The user's own records: `authorizeAuthenticated()` returns `{ user, pg }`; query only by `user.id`. `getViewer()` returns the user or null.
+  - Access codes: `authorizeAccessCode` returns `{ event, pg }`; reads and writes stay scoped to `event.id`.
+  - Each performs its check before returning `pg`. Every service read has a unit test for the unauthorized case.
 
 ### Auth
 
@@ -70,12 +71,11 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 
 ### Database Access
 
-- All Supabase queries live in `/lib/repositories`
-- Repositories receive explicit IDs and parameters
-- Do not pass Supabase client through API layers unnecessarily
-- Drizzle repository functions take an `Executor`; only rate limiting retains a Supabase RPC repository.
-- Column restrictions: clients cannot read `events.access_code`, `players.email`, or (for anon) `event_players.payment_type`
-- Never use `select('*')` on `events`; use `EVENT_COLUMNS` from `lib/repositories/event-repository.ts`. Admins access the access code via `getEventForViewer` / `getEventAccessCode` (privileged)
+- All queries live in `lib/repositories/*.db.ts` (Drizzle); there are no `supabase.from(...)` or `.rpc(...)` calls in `lib/`
+- Repositories receive explicit IDs and parameters and take `ex: Executor` first
+- Repositories return the JSON shapes PostgREST used to: convert `numeric` with `toNumber` and `timestamptz` with `toIsoTimestamp` (`lib/db/mappers.ts`)
+- Column restrictions: never select `events.access_code` except in `getEventAccessCode`/`getEventByAccessCode`, never return `players.email`, and include `event_players.payment_type` only for admins
+- Account emails come from `app_private.user_emails` (`lib/db/auth-schema.ts`), a view over `auth.users` (id, email) that only `app_server` can read
 
 ---
 
@@ -100,7 +100,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - Match completion incl. progression, grand final, and lane release/reassign (`lib/services/scoring/match-completion.ts`)
   - Start bracket (`startBracket` in `event-service`)
   - Reset match result, manual advance/remove, lane assign/release/maintenance/idle, clear placements, grand-final toggles
-  - Everything else still uses the Supabase client until plan 04 ports it.
+  - Lane add/delete (event lock → event row → match → lanes), league + owner creation, event creation with copied players, adding a player, qualification frames (the round row is locked before the max-frames check), team generation
 - **Score writer**: `syncMatchScores` is the sole application score writer. Inside the caller's transaction it writes manual override totals when present, otherwise sums `frame_results` by the opponent teams; matches without either source have no `score` key. Manual final scores live in the `score_override_*` columns, frame edits are blocked until an admin clears the override, and clearing it restores frame-derived totals without changing the recorded winner.
 
 ---
@@ -112,7 +112,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - Example: `createLeague`, not `insertLeagueRow`
 - Services may:
   - Call multiple repositories
-  - Enforce authorization rules (obtaining `pg` via `authorize*`)
+  - Enforce authorization rules (obtaining `pg` via `authorize*` / `authorizeEventView`)
   - Perform transactional logic
 - **Verify event ownership**: Because direct Postgres bypasses RLS, services must verify that every ID they receive (match, lane, frame, player) belongs to the authorized event before writing
 
@@ -124,7 +124,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - Keep queries simple and predictable
 - Do not leak database-specific shapes upward
 - Drizzle repositories receive `Executor` as their first argument and never authorize or open transactions.
-- Respect column restrictions: never `select('*')` on `events` (use `EVENT_COLUMNS`) or expose `players.email`
+- Respect column restrictions: never return `events.access_code` or `players.email` to the UI
 
 ---
 
@@ -159,7 +159,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - CI runs `npm run db:check`, which fails if `schema.ts` drifted.
   - The output is normalized (tables, constraints and imports sorted; RLS policies omitted, since migrations own them and pgTAP tests them) so it doesn't depend on a database's history.
   - Known quirk: numeric columns with a `NULL` default are generated as `.default('NULL')`; pass those columns explicitly (e.g. `null`) when inserting `events` through Drizzle.
-- Database role `app_server`: Migration `supabase/migrations/202610080000000_app_server_role.sql` creates role `app_server` (`LOGIN`, `BYPASSRLS`, DML on public tables, sequence usage, `EXECUTE` on functions while old plpgsql functions exist) WITHOUT a password.
+- Database role `app_server`: Migration `supabase/migrations/202610080000000_app_server_role.sql` creates role `app_server` (`LOGIN`, `BYPASSRLS`, DML on public tables, sequence usage) WITHOUT a password. Since `202610120000000_retire_rpc_functions.sql` it can execute no public functions; the only functions left are the three RLS helper predicates (`is_league_admin`, `is_league_admin_for_event`, `is_tournament_admin`). Business logic lives in the services, not plpgsql.
   - Production: set password out-of-band (`ALTER ROLE app_server WITH PASSWORD '…'`), never in git.
   - Local development: `supabase/seed.sql` sets throwaway password `app_server`.
   - Rollback script: `supabase/rollbacks/202610080000000_app_server_role.down.sql`.
@@ -185,7 +185,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 ## Common Pitfalls
 
 - ❌ Business logic in API routes
-- ❌ Supabase queries in services
+- ❌ Queries in services, or Supabase data queries anywhere (Supabase is Auth + Realtime only)
 - ❌ Opening a transaction in a repository
 - ❌ Taking locks out of order (event → event row → match → lane)
 - ❌ Hand-editing `lib/db/schema.ts`
@@ -193,7 +193,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - ❌ Leaking database rows or sensitive columns (`events.access_code`, `players.email`) to the UI
 - ❌ Writing to the database without verifying entity IDs belong to the authorized event
 - ❌ Importing `lib/db/client.ts` outside the authorized locations enforced by ESLint
-- ❌ Using `select('*')` on `events` instead of `EVENT_COLUMNS`
+- ❌ A service read without an `authorize*` / `authorizeEventView` / visibility check (RLS doesn't protect server reads)
 - ❌ Editing old `init_*` migration files instead of adding timestamped migrations
 
 ---
