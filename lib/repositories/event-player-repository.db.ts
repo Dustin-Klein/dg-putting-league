@@ -107,30 +107,6 @@ export async function updateEventPlayerPayment(
   return row ? { id: row.id, payment_type: row.payment_type as PaymentType | null } : null;
 }
 
-export async function getEventPlayersWithPools(ex: Executor, eventId: string): Promise<EventPlayer[]> {
-  const rows = await ex.select({ eventPlayer: event_players, player: joinedPlayerColumns })
-    .from(event_players)
-    .innerJoin(players, eq(players.id, event_players.player_id))
-    .where(eq(event_players.event_id, eventId))
-    .orderBy(event_players.created_at);
-  return rows.map(mapJoinedEventPlayer);
-}
-
-export async function updateEventPlayerPool(
-  ex: Executor,
-  eventId: string,
-  eventPlayerId: string,
-  pool: 'A' | 'B',
-  pfaScore: number,
-  scoringMethod: 'qualification' | 'pfa' | 'default'
-): Promise<void> {
-  const updated = await ex.update(event_players)
-    .set({ pool, pfa_score: String(pfaScore), scoring_method: scoringMethod })
-    .where(and(eq(event_players.id, eventPlayerId), eq(event_players.event_id, eventId)))
-    .returning({ id: event_players.id });
-  if (updated.length === 0) throw new NotFoundError(`Event player not found: ${eventPlayerId}`);
-}
-
 export async function getQualificationScore(ex: Executor, eventId: string, eventPlayerId: string): Promise<number> {
   const [row] = await ex.select({ total: sum(qualification_frames.points_earned) })
     .from(qualification_frames)

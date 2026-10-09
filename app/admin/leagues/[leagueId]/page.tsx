@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { EventsContent } from './events-content';
+import { EventsContent } from './components/events-content';
 import { getEventsByLeagueId } from '@/lib/services/event';
 import { getLeague, checkIsLeagueOwner } from '@/lib/services/league';
 import { requireLeagueAdmin } from '@/lib/services/auth';

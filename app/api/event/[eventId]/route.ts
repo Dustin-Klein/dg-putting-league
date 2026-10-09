@@ -27,7 +27,7 @@ export async function GET(
   { params }: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const event = await getEventForViewer(resolvedParams.eventId);
     return NextResponse.json(event);
   } catch (error) {
@@ -37,14 +37,14 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { eventId: string } | Promise<{ eventId: string }> }
+  { params }: { params: Promise<{ eventId: string }> }
 ) {
   const rateLimitResponse = await withStrictRateLimit(request, 'event:delete');
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
     validateCsrfOrigin(request);
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     await deleteEvent(resolvedParams.eventId);
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -69,7 +69,7 @@ export async function PATCH(
     }
 
     validateCsrfOrigin(req);
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const updatedEvent = await updateEventSettings(
       resolvedParams.eventId,
       parsed.data

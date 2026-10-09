@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const eventId = resolvedParams.eventId;
 
     await requireEventAdmin(eventId);

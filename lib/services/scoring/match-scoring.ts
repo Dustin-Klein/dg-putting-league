@@ -310,10 +310,3 @@ export async function clearScoreOverride(
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
-
-// Legacy aliases for backwards compatibility during migration
-// These can be removed once all callers are updated
-export const getMatchWithDetails = getBracketMatchWithDetails;
-export { completeBracketMatch as completeMatchAdmin };
-export const startMatch = startBracketMatch;
-export type MatchWithDetails = BracketMatchWithDetails;

@@ -1,5 +1,5 @@
 import { getUserAdminLeagues } from '@/lib/services/league';
-import LeaguesList from './LeaguesList';
+import LeaguesList from './components/leagues-list';
 
 export const dynamic = 'force-dynamic';
 
