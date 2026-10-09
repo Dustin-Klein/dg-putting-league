@@ -143,6 +143,7 @@ export async function getLanesWithMatches(
       ...lane,
       current_match_id: match?.id ?? null,
       current_match_number: match ? (idToDisplay.get(match.id) ?? null) : null,
+      current_match_status: match?.status ?? null,
     };
   });
 }
@@ -255,11 +256,18 @@ export async function deleteLane(
 export async function releaseLane(
   eventId: string,
   laneId: string,
-  matchId: number
+  matchId: number,
+  force = false
 ): Promise<boolean> {
   const { pg, user } = await requireEventAdmin(eventId);
   const result = await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    const match = await lockMatch(tx, matchId, eventId);
+    if (!match || match.lane_id !== laneId) return false;
+    if (match.status === Status.Running && !force) {
+      throw new ConflictError('This match is being scored. Use "Maintenance now" to force it off the lane.');
+    }
     await laneDb.lockEventLanes(tx, eventId);
     return laneDb.releaseMatchLane(tx, eventId, matchId, laneId);
   });
@@ -281,7 +289,7 @@ async function setLaneStatus(
   eventId: string,
   laneId: string,
   status: 'idle' | 'maintenance',
-  confirm = false
+  mode: 'after_match' | 'now' = 'after_match'
 ): Promise<void> {
   const found = await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
@@ -289,22 +297,40 @@ async function setLaneStatus(
 
     const assigned = await laneDb.getMatchAssignedToLane(tx, eventId, laneId);
     const lockedMatch = assigned ? await lockMatch(tx, assigned.id, eventId) : null;
-    if (status === 'maintenance' && lockedMatch?.status === Status.Running && !confirm) {
-      throw new ConflictError('This lane has a match in progress. Confirm to move it off the lane.');
-    }
-
     const lockedLanes = await laneDb.lockEventLanes(tx, eventId);
-    const updated = await laneDb.setLaneStatusAndClearMatch(tx, eventId, laneId, status);
-    if (!updated) return false;
+    if (!lockedLanes.some((lane) => lane.id === laneId)) return false;
 
-    if (lockedMatch) {
-      const replacement = lockedLanes
-        .filter((lane) => lane.id !== laneId && lane.status === 'idle')
-        .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0))[0];
-      if (replacement) {
-        await laneDb.assignLane(tx, eventId, replacement.id, lockedMatch.id);
+    if (status === 'maintenance') {
+      if (lockedMatch?.status === Status.Running && mode === 'after_match') {
+        await laneDb.setLaneState(tx, eventId, laneId, {
+          status: 'occupied',
+          maintenance_pending: true,
+        });
+        return true;
       }
+
+      if (lockedMatch) await laneDb.clearLaneMatches(tx, eventId, laneId);
+      await laneDb.setLaneState(tx, eventId, laneId, {
+        status: 'maintenance',
+        maintenance_pending: false,
+      });
+      await autoAssignLanesTx(tx, eventId);
+      return true;
     }
+
+    if (lockedMatch?.status === Status.Running) {
+      await laneDb.setLaneState(tx, eventId, laneId, {
+        status: 'occupied',
+        maintenance_pending: false,
+      });
+      return true;
+    }
+
+    if (lockedMatch) await laneDb.clearLaneMatches(tx, eventId, laneId);
+    await laneDb.setLaneState(tx, eventId, laneId, {
+      status: 'idle',
+      maintenance_pending: false,
+    });
     await autoAssignLanesTx(tx, eventId);
     return true;
   });
@@ -319,11 +345,11 @@ async function setLaneStatus(
 export async function setLaneMaintenance(
   eventId: string,
   laneId: string,
-  confirm = false
+  mode: 'after_match' | 'now' = 'after_match'
 ): Promise<Lane> {
   const { supabase, pg } = await requireEventAdmin(eventId);
 
-  await setLaneStatus(pg, eventId, laneId, 'maintenance', confirm);
+  await setLaneStatus(pg, eventId, laneId, 'maintenance', mode);
 
   // Fetch and return the updated lane
   return laneRepo.getLaneById(supabase, eventId, laneId);

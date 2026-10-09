@@ -9,6 +9,7 @@ export interface Lane {
   id: string;
   event_id: string;
   label: string;
+  maintenance_pending: boolean;
   status: 'idle' | 'occupied' | 'maintenance';
 }
 
@@ -18,6 +19,7 @@ export interface Lane {
 export interface LaneWithMatch extends Lane {
   current_match_id: number | null;
   current_match_number: number | null;
+  current_match_status: number | null;
 }
 
 /**

@@ -3,6 +3,8 @@ import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 import type { Lane } from '@/lib/types/bracket';
 
+const LANE_COLUMNS = 'id, event_id, label, maintenance_pending, status';
+
 /**
  * Check if lanes exist for an event
  */
@@ -12,7 +14,7 @@ export async function getLanesForEvent(
 ): Promise<Lane[]> {
   const { data: lanes, error } = await supabase
     .from('lanes')
-    .select('*')
+    .select(LANE_COLUMNS)
     .eq('event_id', eventId)
     .order('label');
 
@@ -60,7 +62,7 @@ export async function insertLanes(
   const { data: lanes, error } = await supabase
     .from('lanes')
     .insert(lanesToInsert)
-    .select();
+    .select(LANE_COLUMNS);
 
   if (error) {
     throw new InternalError(`Failed to create lanes: ${error.message}`);
@@ -75,10 +77,10 @@ export async function insertLanes(
 export async function getMatchLaneAssignments(
   supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
-): Promise<Record<string, { id: number; number: number }>> {
+): Promise<Record<string, { id: number; number: number; status: number }>> {
   const { data: matches, error } = await supabase
     .from('bracket_match')
-    .select('id, number, lane_id')
+    .select('id, number, status, lane_id')
     .eq('event_id', eventId)
     .not('lane_id', 'is', null);
 
@@ -86,10 +88,10 @@ export async function getMatchLaneAssignments(
     throw new InternalError(`Failed to fetch match assignments: ${error.message}`);
   }
 
-  const laneMatchMap: Record<string, { id: number; number: number }> = {};
+  const laneMatchMap: Record<string, { id: number; number: number; status: number }> = {};
   matches?.forEach((match) => {
     if (match.lane_id) {
-      laneMatchMap[match.lane_id] = { id: match.id, number: match.number };
+      laneMatchMap[match.lane_id] = { id: match.id, number: match.number, status: match.status };
     }
   });
 
@@ -106,7 +108,7 @@ export async function getLaneById(
 ): Promise<Lane> {
   const { data: lane, error } = await supabase
     .from('lanes')
-    .select()
+    .select(LANE_COLUMNS)
     .eq('id', laneId)
     .eq('event_id', eventId)
     .single();
@@ -145,7 +147,7 @@ export async function addLanesToEvent(
   const { data: lanes, error } = await supabase
     .from('lanes')
     .insert(lanesToInsert)
-    .select();
+    .select(LANE_COLUMNS);
 
   if (error) {
     throw new InternalError(`Failed to add lanes: ${error.message}`);
@@ -200,4 +202,3 @@ export async function getLaneLabelsForEvent(
 
   return laneMap;
 }
-

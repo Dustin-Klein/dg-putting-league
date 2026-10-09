@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { RefreshCw, Plus, Trash2, Wrench, Play, Unlock, Link } from 'lucide-react';
-import type { LaneWithMatch } from '@/lib/types/bracket';
+import { MatchStatus, type LaneWithMatch } from '@/lib/types/bracket';
 
 interface LaneManagementProps {
   eventId: string;
@@ -99,25 +99,26 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
     }
   };
 
-  const handleSetMaintenance = async (laneId: string, confirmMove = false) => {
+  const handleSetMaintenance = async (
+    laneId: string,
+    mode: 'after_match' | 'now' = 'after_match'
+  ) => {
+    if (
+      mode === 'now' &&
+      !window.confirm('Stop scoring on this lane now? The running match will be left without a lane.')
+    ) {
+      return;
+    }
+
     try {
       setActionLoading(laneId);
       const res = await fetch(`/api/event/${eventId}/lanes/${laneId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'maintenance', confirm: confirmMove }),
+        body: JSON.stringify({ status: 'maintenance', mode }),
       });
       if (!res.ok) {
         const data = await res.json();
-        if (
-          res.status === 409 &&
-          data.error === 'This lane has a match in progress. Confirm to move it off the lane.' &&
-          window.confirm(`${data.error}\n\nContinue?`)
-        ) {
-          setActionLoading(null);
-          await handleSetMaintenance(laneId, true);
-          return;
-        }
         throw new Error(data.error || 'Failed to set maintenance');
       }
       await fetchLanes();
@@ -148,16 +149,21 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
     }
   };
 
-  const handleReleaseLane = async (laneId: string, matchId: number) => {
+  const handleReleaseLane = async (laneId: string, matchId: number, force = false) => {
     try {
       setActionLoading(laneId);
       const res = await fetch(`/api/event/${eventId}/lanes/${laneId}/release`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId }),
+        body: JSON.stringify({ matchId, force }),
       });
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 409 && !force && window.confirm(`${data.error}\n\nForce release?`)) {
+          setActionLoading(null);
+          await handleReleaseLane(laneId, matchId, true);
+          return;
+        }
         throw new Error(data.error || 'Failed to release lane');
       }
       await fetchLanes();
@@ -307,6 +313,11 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
             >
               <span className="font-medium text-sm w-16 shrink-0">{lane.label}</span>
               {statusBadge(lane.status)}
+              {lane.maintenance_pending && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                  Maintenance pending
+                </Badge>
+              )}
 
               {lane.status === 'occupied' && lane.current_match_id && (
                 <span className="text-sm text-muted-foreground">
@@ -350,15 +361,49 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       <Unlock className="mr-1 h-3 w-3" />
                       Release
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSetMaintenance(lane.id)}
-                      disabled={actionLoading === lane.id}
-                    >
-                      <Wrench className="mr-1 h-3 w-3" />
-                      Maintenance
-                    </Button>
+                    {lane.current_match_status === MatchStatus.Running ? (
+                      <>
+                        {lane.maintenance_pending ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetIdle(lane.id)}
+                            disabled={actionLoading === lane.id}
+                          >
+                            Cancel
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetMaintenance(lane.id, 'after_match')}
+                            disabled={actionLoading === lane.id}
+                          >
+                            <Wrench className="mr-1 h-3 w-3" />
+                            After this match
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSetMaintenance(lane.id, 'now')}
+                          disabled={actionLoading === lane.id}
+                        >
+                          <Wrench className="mr-1 h-3 w-3" />
+                          Now (stops scoring on this lane)
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSetMaintenance(lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Wrench className="mr-1 h-3 w-3" />
+                        Maintenance
+                      </Button>
+                    )}
                   </>
                 )}
 
