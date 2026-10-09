@@ -3,7 +3,7 @@ import { bracket_match, match_frames } from '@/lib/db/schema';
 import { completeMatch } from '@/lib/services/scoring/match-completion';
 import { clearScoreOverride, correctMatchScores } from '@/lib/services/scoring/match-scoring';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
-import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
+import { resetMatchResult, updateMatchResult } from '@/lib/services/bracket/bracket-service';
 import { MatchStatus } from '@/lib/types/bracket';
 import type { Executor } from '@/lib/db/tx';
 import { closeDb, createTestDb, withRollback } from './db/harness';
@@ -222,6 +222,25 @@ describe('completed score corrections', () => {
       await expect(correctMatchScores(event.eventId, match.id, 2, 1)).rejects.toThrow(
         'This match has no recorded winner to correct. Use "Reset match" to replay it.'
       );
+    });
+  });
+
+  it('rejects the generic match update on a completed match', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await playMatch(tx, event.eventId, match.id, 'opponent1');
+      const before = await getMatch(tx, match.id);
+
+      await expect(updateMatchResult(event.eventId, match.id, 1, 50)).rejects.toThrow(
+        'This match is already completed'
+      );
+      expect(await getMatch(tx, match.id)).toMatchObject({
+        opponent1: before.opponent1,
+        opponent2: before.opponent2,
+        score_override_1: null,
+      });
     });
   });
 

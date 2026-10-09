@@ -3,10 +3,15 @@ import { and, asc, eq, inArray, lte, max, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { frame_results, match_frames } from '@/lib/db/schema';
 
+/**
+ * Highest frame number that has at least one result. Empty frames (e.g. pre-created
+ * by the create-only frame route) don't count, so they can't open a gap.
+ */
 export async function getHighestFrameNumber(ex: Executor, bracketMatchId: number): Promise<number> {
   const [row] = await ex
     .select({ frame_number: max(match_frames.frame_number) })
     .from(match_frames)
+    .innerJoin(frame_results, eq(frame_results.match_frame_id, match_frames.id))
     .where(eq(match_frames.bracket_match_id, bracketMatchId));
   return row?.frame_number ?? 0;
 }
