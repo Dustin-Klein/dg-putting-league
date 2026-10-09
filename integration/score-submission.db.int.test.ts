@@ -149,6 +149,39 @@ describe('recordFrameScores', () => {
     });
   });
 
+  it('rejects filling past a historical gap but allows re-scoring frames beyond it', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4 });
+      const { match, team1 } = await firstReadyMatch(tx, event.eventId);
+      const input = {
+        eventId: event.eventId,
+        matchId: match.id,
+        scorer: 'admin' as const,
+        scores: [{ event_player_id: team1[0], putts_made: 1 }],
+      };
+      await recordFrameScores(tx, { ...input, frameNumber: 1 });
+      // Legacy data: frame 10 scored while 2–9 are missing.
+      const [frame10] = await tx
+        .insert(match_frames)
+        .values({ bracket_match_id: match.id, frame_number: 10, is_overtime: true })
+        .returning({ id: match_frames.id });
+      await tx.insert(frame_results).values({
+        match_frame_id: frame10.id,
+        event_player_id: team1[0],
+        bracket_match_id: match.id,
+        putts_made: 1,
+        points_earned: 1,
+        order_in_frame: 1,
+      });
+
+      await expect(recordFrameScores(tx, { ...input, frameNumber: 9 })).rejects.toThrow(
+        'Frames must be scored in order; frame 2 has not been started'
+      );
+      await recordFrameScores(tx, { ...input, frameNumber: 10, scores: [{ ...input.scores[0], putts_made: 2 }] });
+      await recordFrameScores(tx, { ...input, frameNumber: 2 });
+    });
+  });
+
   it('ignores empty pre-created frames when enforcing frame order', async () => {
     await withRollback(db, async (tx) => {
       const event = await seedBracket(tx, { teams: 4 });

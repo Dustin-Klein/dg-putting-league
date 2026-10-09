@@ -8,7 +8,7 @@ import {
   type MatchOpponent,
 } from '@/lib/repositories/bracket-repository.db';
 import {
-  getHighestFrameNumber,
+  getScoredFrameNumbers,
   getOrCreateFrameId,
   upsertFrameResults,
 } from '@/lib/repositories/frame-repository.db';
@@ -104,10 +104,14 @@ export async function recordFrameScores(
       }
     }
 
-    const highestExistingFrame = await getHighestFrameNumber(tx, matchId);
-    if (frameNumber > highestExistingFrame + 1) {
+    // A new frame must be the first unscored one, so a gap can't open, even next to
+    // historical data that already has one. Re-scoring a scored frame is always allowed.
+    const scoredFrames = new Set(await getScoredFrameNumbers(tx, matchId));
+    let firstUnscored = 1;
+    while (scoredFrames.has(firstUnscored)) firstUnscored++;
+    if (!scoredFrames.has(frameNumber) && frameNumber > firstUnscored) {
       throw new BadRequestError(
-        `Frames must be scored in order; frame ${highestExistingFrame + 1} has not been started`
+        `Frames must be scored in order; frame ${firstUnscored} has not been started`
       );
     }
 
