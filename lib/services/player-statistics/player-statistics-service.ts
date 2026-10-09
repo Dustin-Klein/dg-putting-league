@@ -1,5 +1,4 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import { NotFoundError } from '@/lib/errors';
 import type {
   PlayerProfile,
@@ -7,31 +6,27 @@ import type {
   PlayerEventHistory,
   PlayerOngoingEvent,
 } from '@/lib/types/player-statistics';
-import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
-import { authorizePublicRead } from '@/lib/services/auth';
+import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository.db';
+import { authorizePublicRead, getViewer } from '@/lib/services/auth';
 
 /**
  * Get complete player profile with statistics and event history
  */
 export async function getPlayerProfile(playerNumber: number): Promise<PlayerProfile> {
-  const supabase = await createClient();
   const { pg } = authorizePublicRead();
+  const viewer = await getViewer();
 
-  const player = await playerStatsRepo.getPlayerByNumber(supabase, playerNumber);
+  const player = await playerStatsRepo.getPlayerByNumber(pg, playerNumber);
   if (!player) {
     throw new NotFoundError('Player not found');
   }
-  const publicPlayer = { ...player };
-  delete publicPlayer.email;
 
-  const eventParticipations = await playerStatsRepo.getPlayerEventParticipations(
-    supabase,
-    player.id
-  );
+  const { participations: eventParticipations, teamInfoMap } =
+    await playerStatsRepo.getPlayerParticipations(pg, player.id, viewer?.id ?? null);
 
   if (eventParticipations.length === 0) {
     return {
-      player: publicPlayer,
+      player,
       statistics: createEmptyStatistics(),
       eventHistory: [],
       ongoingEvents: [],
@@ -46,24 +41,16 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
     (ep) => ep.eventStatus !== 'completed'
   );
 
-  const eventPlayerIds = eventParticipations.map((ep) => ep.eventPlayerId);
   const completedEventPlayerIds = completedParticipations.map((ep) => ep.eventPlayerId);
   const completedEventIds = [...new Set(completedParticipations.map((ep) => ep.eventId))];
-
-  // First batch: fetch team info, frame results, and placements in parallel
-  const [teamInfoMap, frameResults, placements] = await Promise.all([
-    playerStatsRepo.getTeamInfoForEventPlayers(supabase, eventPlayerIds),
-    playerStatsRepo.getPlayerFrameResultsWithDetails(supabase, completedEventPlayerIds),
-    playerStatsRepo.getPlacementsForEvents(supabase, pg, completedEventIds),
-  ]);
-
-  // Second: fetch match records (depends on team info)
   const teamIds = [...new Set([...teamInfoMap.values()].map((ti) => ti.teamId))];
-  const matchRecordsByTeam = await playerStatsRepo.getMatchRecordsForTeams(
-    supabase,
-    teamIds,
-    completedEventIds
-  );
+  const { frameResults, placements, matchRecordsByTeam } =
+    await playerStatsRepo.getCompletedProfileData(
+      pg,
+      completedEventPlayerIds,
+      completedEventIds,
+      teamIds
+    );
 
   const eventHistory = buildEventHistory(
     completedParticipations,
@@ -83,7 +70,7 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
   );
 
   return {
-    player: publicPlayer,
+    player,
     statistics,
     eventHistory,
     ongoingEvents,

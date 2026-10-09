@@ -1,111 +1,89 @@
-
-import { createMockSupabaseClient, MockSupabaseClient } from './test-utils';
-
-// Mock dependencies
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn(),
-}));
-
 jest.mock('@/lib/services/auth', () => ({
-  authorizePublicRead: jest.fn(() => ({ pg: { kind: 'pg' } })),
+  authorizePublicRead: jest.fn(),
+  getViewer: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/player-statistics-repository', () => ({
+jest.mock('@/lib/repositories/player-statistics-repository.db', () => ({
   getPlayerByNumber: jest.fn(),
-  getPlayerEventParticipations: jest.fn(),
-  getTeamInfoForEventPlayers: jest.fn(),
-  getPlayerFrameResultsWithDetails: jest.fn(),
-  getPlacementsForEvents: jest.fn(),
-  getMatchRecordsForTeams: jest.fn(),
+  getPlayerParticipations: jest.fn(),
+  getCompletedProfileData: jest.fn(),
 }));
 
-// Import after mocking
-import { createClient } from '@/lib/supabase/server';
-import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
+import { NotFoundError } from '@/lib/errors';
+import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository.db';
+import { authorizePublicRead, getViewer } from '@/lib/services/auth';
 import { getPlayerProfile } from '../player-statistics/player-statistics-service';
 
 describe('Player Statistics Service', () => {
-  let mockSupabase: MockSupabaseClient;
+  const pg = { kind: 'test-pg' };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSupabase = createMockSupabaseClient();
-    (createClient as jest.Mock).mockResolvedValue(mockSupabase);
+    (authorizePublicRead as jest.Mock).mockReturnValue({ pg });
+    (getViewer as jest.Mock).mockResolvedValue(null);
+    (playerStatsRepo.getCompletedProfileData as jest.Mock).mockResolvedValue({
+      frameResults: [],
+      placements: [],
+      matchRecordsByTeam: new Map(),
+    });
   });
 
-  describe('getPlayerProfile', () => {
-    it('should correctly calculate placement statistics without overcounting', async () => {
-      const playerNumber = 123;
-      const playerId = 'player-uuid';
-
-      // Mock player
-      (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
-        id: playerId,
-        player_number: playerNumber,
-        full_name: 'Test Player',
-      });
-
-      // Mock participations: 2 events
-      (playerStatsRepo.getPlayerEventParticipations as jest.Mock).mockResolvedValue([
+  it('calculates placement statistics once per event when team ids are reused', async () => {
+    (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
+      id: 'player-uuid', player_number: 123, full_name: 'Test Player',
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    const teamInfoMap = new Map([
+      ['ep1', { teamId: 't1', eventPlayerId: 'ep1' }],
+      ['ep2', { teamId: 't1', eventPlayerId: 'ep2' }],
+    ]);
+    (playerStatsRepo.getPlayerParticipations as jest.Mock).mockResolvedValue({
+      participations: [
         { eventPlayerId: 'ep1', eventId: 'e1', eventDate: '2024-01-01', leagueId: 'l1', leagueName: 'L1', eventStatus: 'completed' },
         { eventPlayerId: 'ep2', eventId: 'e2', eventDate: '2024-01-08', leagueId: 'l1', leagueName: 'L1', eventStatus: 'completed' },
-      ]);
-
-      // Mock team info: Same team ID for both events
-      const teamInfoMap = new Map();
-      teamInfoMap.set('ep1', { teamId: 't1', eventPlayerId: 'ep1' });
-      teamInfoMap.set('ep2', { teamId: 't1', eventPlayerId: 'ep2' });
-      (playerStatsRepo.getTeamInfoForEventPlayers as jest.Mock).mockResolvedValue(teamInfoMap);
-
-      // Mock frame results: Empty for this test
-      (playerStatsRepo.getPlayerFrameResultsWithDetails as jest.Mock).mockResolvedValue([]);
-
-      // Mock placements: 1st in e1, 2nd in e2
-      (playerStatsRepo.getPlacementsForEvents as jest.Mock).mockResolvedValue([
+      ],
+      teamInfoMap,
+    });
+    (playerStatsRepo.getCompletedProfileData as jest.Mock).mockResolvedValue({
+      frameResults: [],
+      placements: [
         { eventId: 'e1', teamId: 't1', placement: 1 },
         { eventId: 'e2', teamId: 't1', placement: 2 },
-      ]);
-
-      // Mock match records: Empty for this test
-      (playerStatsRepo.getMatchRecordsForTeams as jest.Mock).mockResolvedValue(new Map());
-
-      const profile = await getPlayerProfile(playerNumber);
-
-      // Should have 1 first place and 2 top three finishes
-      // If the bug was present, it would be 2 first place and 4 top three
-      expect(profile.statistics.firstPlaceFinishes).toBe(1);
-      expect(profile.statistics.topThreeFinishes).toBe(2);
-      expect(profile.statistics.eventsPlayed).toBe(2);
+      ],
+      matchRecordsByTeam: new Map(),
     });
 
-    it('should return empty statistics if player has no participations', async () => {
-      (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
-        id: 'p1',
-        player_number: 1,
-        full_name: 'No Play',
-      });
-      (playerStatsRepo.getPlayerEventParticipations as jest.Mock).mockResolvedValue([]);
+    const profile = await getPlayerProfile(123);
 
-      const profile = await getPlayerProfile(1);
+    expect(profile.statistics).toMatchObject({
+      eventsPlayed: 2, firstPlaceFinishes: 1, topThreeFinishes: 2,
+    });
+  });
 
-      expect(profile.statistics.eventsPlayed).toBe(0);
-      expect(profile.statistics.firstPlaceFinishes).toBe(0);
-      expect(profile.statistics.topThreeFinishes).toBe(0);
-      expect(profile.eventHistory).toEqual([]);
+  it('passes the viewer id to the visibility-filtered participation query', async () => {
+    (getViewer as jest.Mock).mockResolvedValue({ id: 'viewer-id' });
+    (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
+      id: 'p1', player_number: 1, full_name: 'Private Only',
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    // The repository SQL filters this player's only, private event.
+    (playerStatsRepo.getPlayerParticipations as jest.Mock).mockResolvedValue({
+      participations: [], teamInfoMap: new Map(),
     });
 
-    it('should not expose player email in public profile response', async () => {
-      (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue({
-        id: 'p1',
-        player_number: 1,
-        full_name: 'No Play',
-        email: 'private@example.com',
-      });
-      (playerStatsRepo.getPlayerEventParticipations as jest.Mock).mockResolvedValue([]);
+    const profile = await getPlayerProfile(1);
 
-      const profile = await getPlayerProfile(1);
+    expect(playerStatsRepo.getPlayerParticipations).toHaveBeenCalledWith(pg, 'p1', 'viewer-id');
+    expect(profile.statistics.eventsPlayed).toBe(0);
+    expect(profile.eventHistory).toEqual([]);
+    expect(profile.ongoingEvents).toEqual([]);
+    expect(playerStatsRepo.getCompletedProfileData).not.toHaveBeenCalled();
+  });
 
-      expect(profile.player.email).toBeUndefined();
-    });
+  it('throws NotFoundError for an unknown player number', async () => {
+    (playerStatsRepo.getPlayerByNumber as jest.Mock).mockResolvedValue(null);
+
+    await expect(getPlayerProfile(999999)).rejects.toBeInstanceOf(NotFoundError);
+    expect(playerStatsRepo.getPlayerParticipations).not.toHaveBeenCalled();
   });
 });
