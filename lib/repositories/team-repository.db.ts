@@ -35,6 +35,15 @@ export async function getMembersOfTeams(
   return new Set(rows.map((r) => r.event_player_id));
 }
 
+export async function getTeamMemberIds(ex: Executor, teamIds: string[]): Promise<string[]> {
+  if (teamIds.length === 0) return [];
+  const rows = await ex
+    .select({ event_player_id: team_members.event_player_id })
+    .from(team_members)
+    .where(inArray(team_members.team_id, teamIds));
+  return rows.map((row) => row.event_player_id);
+}
+
 export interface NewTeam {
   seed: number;
   pool_combo: string;

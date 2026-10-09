@@ -1,10 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { frame_results, match_frames } from '@/lib/db/schema';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
+import { completeMatch } from '@/lib/services/scoring/match-completion';
 import { MatchStatus } from '@/lib/types/bracket';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, getParticipantPlayers, seedBracket } from './db/seed';
-import { expectScoresMatchFrames, getMatch, opponentId, playMatch, playableMatches } from './db/play';
+import { expectScoresMatchFrames, getMatch, opponentId, playMatch, playableMatches, scoreMatch } from './db/play';
 import type { Executor } from '@/lib/db/tx';
 
 const db = createTestDb();
@@ -73,15 +74,38 @@ describe('recordFrameScores', () => {
     await withRollback(db, async (tx) => {
       const event = await seedBracket(tx, { teams: 4, bracketFrameCount: 5 });
       const { match, team1 } = await firstReadyMatch(tx, event.eventId);
-      await recordFrameScores(tx, {
+      for (let frameNumber = 1; frameNumber <= 6; frameNumber++) {
+        await recordFrameScores(tx, {
+          eventId: event.eventId,
+          matchId: match.id,
+          frameNumber,
+          scorer: 'public',
+          scores: [{ event_player_id: team1[0], putts_made: 2 }],
+        });
+      }
+      const frames = await tx.select().from(match_frames).where(eq(match_frames.bracket_match_id, match.id));
+      const frame = frames.find((row) => row.frame_number === 6);
+      expect(frame).toMatchObject({ frame_number: 6, is_overtime: true });
+    });
+  });
+
+  it('rejects a frame gap but allows re-scoring an existing frame', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4 });
+      const { match, team1 } = await firstReadyMatch(tx, event.eventId);
+      const input = {
         eventId: event.eventId,
         matchId: match.id,
-        frameNumber: 6,
-        scorer: 'public',
-        scores: [{ event_player_id: team1[0], putts_made: 2 }],
-      });
-      const [frame] = await tx.select().from(match_frames).where(eq(match_frames.bracket_match_id, match.id));
-      expect(frame).toMatchObject({ frame_number: 6, is_overtime: true });
+        scorer: 'public' as const,
+        scores: [{ event_player_id: team1[0], putts_made: 1 }],
+      };
+
+      await expect(recordFrameScores(tx, { ...input, frameNumber: 2 })).rejects.toThrow(
+        'Frames must be scored in order; frame 1 has not been started'
+      );
+      await recordFrameScores(tx, { ...input, frameNumber: 1 });
+      await recordFrameScores(tx, { ...input, frameNumber: 1, scores: [{ ...input.scores[0], putts_made: 2 }] });
+      expect(await tx.select().from(match_frames).where(eq(match_frames.bracket_match_id, match.id))).toHaveLength(1);
     });
   });
 
@@ -161,6 +185,42 @@ describe('recordFrameScores', () => {
       const result = await recordFrameScores(tx, { ...input, scorer: 'admin' });
       expect(result.status).toBe(MatchStatus.Completed);
       await expectScoresMatchFrames(tx, event.eventId, match.id);
+    });
+  });
+
+  it('rolls back an admin frame edit that would flip a completed match winner', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4, bracketFrameCount: 1, bonusPointEnabled: false });
+      const { match, team1, team2 } = await firstReadyMatch(tx, event.eventId);
+      await scoreMatch(tx, event.eventId, match.id, 'opponent1', 1);
+      await completeMatch(tx, event.eventId, match.id);
+
+      const input = {
+        eventId: event.eventId,
+        matchId: match.id,
+        frameNumber: 1,
+        scorer: 'admin' as const,
+      };
+      await recordFrameScores(tx, {
+        ...input,
+        scores: [{ event_player_id: team1[0], putts_made: 2 }],
+      });
+      await recordFrameScores(tx, {
+        ...input,
+        scores: [{ event_player_id: team2[0], putts_made: 3 }],
+      });
+      await expect(
+        recordFrameScores(tx, {
+          ...input,
+          scores: [{ event_player_id: team2[1], putts_made: 3 }],
+        })
+      ).rejects.toThrow('This correction changes the winner');
+
+      const stored = await getMatch(tx, match.id);
+      expect(stored.opponent1).toMatchObject({ score: 5, result: 'win' });
+      expect(stored.opponent2).toMatchObject({ score: 4, result: 'loss' });
+      const rows = await tx.select().from(frame_results).where(eq(frame_results.bracket_match_id, match.id));
+      expect(rows.find((row) => row.event_player_id === team2[1])?.putts_made).toBe(1);
     });
   });
 

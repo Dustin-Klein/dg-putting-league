@@ -394,7 +394,7 @@ export async function completeMatchPublic(
   const match = await getMatchForScoringInternal(supabase, event, bracketMatchId);
 
   // Result (from the match's frames), bracket progression and lane release commit together.
-  await completeMatch(pg, event.id, bracketMatchId);
+  await completeMatch(pg, event.id, bracketMatchId, undefined, { requireRegulationFrames: true });
 
   // Try to re-fetch the match for accurate data, but fall back to pre-fetched
   // data with updated status if the query times out (the client redirects

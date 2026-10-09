@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { batchRecordScoresAndGetMatch } from '@/lib/services/scoring/public-scoring';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
+import { MAX_FRAME_NUMBER } from '@/lib/services/scoring/score-submission';
 
 const batchRecordScoreSchema = z.object({
   access_code: z.string().min(1),
-  frame_number: z.number().min(1),
+  frame_number: z.number().int().min(1).max(MAX_FRAME_NUMBER),
   scores: z.array(z.object({
     event_player_id: z.string().uuid(),
-    putts_made: z.number().min(0).max(3),
+    putts_made: z.number().int().min(0).max(3),
   })).max(4),
 });
 

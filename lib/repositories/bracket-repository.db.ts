@@ -19,6 +19,22 @@ import type {
 
 export type MatchOpponent = { id?: number | null; position?: number; score?: number; result?: string } | null;
 
+export async function getMatchOpponentScores(
+  ex: Executor,
+  matchId: number
+): Promise<{ opponent1: MatchOpponent; opponent2: MatchOpponent } | null> {
+  const rows = await ex
+    .select({ opponent1: bracket_match.opponent1, opponent2: bracket_match.opponent2 })
+    .from(bracket_match)
+    .where(eq(bracket_match.id, matchId))
+    .limit(1);
+  if (!rows[0]) return null;
+  return {
+    opponent1: rows[0].opponent1 as MatchOpponent,
+    opponent2: rows[0].opponent2 as MatchOpponent,
+  };
+}
+
 export async function getStageForEvent(
   ex: Executor,
   eventId: string

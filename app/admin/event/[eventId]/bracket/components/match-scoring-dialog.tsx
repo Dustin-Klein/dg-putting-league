@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketMatchWithDetails, PlayerInTeam } from '@/lib/types/scoring';
+import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { createClient } from '@/lib/supabase/client';
 import {
   Dialog,
@@ -31,6 +32,7 @@ interface MatchScoringDialogProps {
   onOpenChange: (open: boolean) => void;
   onScoreSubmit: () => void;
   isCorrectionMode?: boolean;
+  onRequestReset?: () => void;
 }
 
 export function MatchScoringDialog({
@@ -40,6 +42,7 @@ export function MatchScoringDialog({
   onOpenChange,
   onScoreSubmit,
   isCorrectionMode = false,
+  onRequestReset,
 }: MatchScoringDialogProps) {
   const [matchDetails, setMatchDetails] = useState<BracketMatchWithDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -146,6 +149,7 @@ export function MatchScoringDialog({
 
     const saveKey = `${eventPlayerId}-${frameNumber}`;
     setIsSaving(saveKey);
+    setError(null);
     isSavingRef.current = true;
 
     try {
@@ -216,7 +220,7 @@ export function MatchScoringDialog({
   };
 
   const handleFinalScoreSubmit = async () => {
-    if (!match || !eventId) return;
+    if (!match || !eventId || !matchDetails) return;
 
     const score1 = parseInt(finalScore1, 10);
     const score2 = parseInt(finalScore2, 10);
@@ -233,6 +237,17 @@ export function MatchScoringDialog({
 
     if (score1 === score2) {
       setError('Scores cannot be tied - there must be a winner');
+      return;
+    }
+
+    const storedTeam1Won =
+      matchDetails.opponent1?.result === 'win' && matchDetails.opponent2?.result === 'loss'
+        ? true
+        : matchDetails.opponent1?.result === 'loss' && matchDetails.opponent2?.result === 'win'
+          ? false
+          : null;
+    if (isCorrectionMode && storedTeam1Won !== null && (score1 > score2) !== storedTeam1Won) {
+      setError(WINNER_CHANGE_MESSAGE);
       return;
     }
 
@@ -290,6 +305,23 @@ export function MatchScoringDialog({
   const team2Score = matchDetails?.opponent2?.score ?? 0;
   const isCompleted = matchDetails?.status === 4 || matchDetails?.status === 5;
   const isEditingLocked = isCompleted && !isCorrectionMode;
+  const errorMessage = error ? (
+    <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm text-center space-y-2">
+      <p>{error}</p>
+      {error === WINNER_CHANGE_MESSAGE && onRequestReset && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            onOpenChange(false);
+            onRequestReset();
+          }}
+        >
+          Reset match…
+        </Button>
+      )}
+    </div>
+  ) : null;
 
   // Get the standard frame count from event settings
   const standardFrames = matchDetails?.bracket_frame_count;
@@ -506,11 +538,7 @@ export function MatchScoringDialog({
                 </CardContent>
               </Card>
 
-              {error && (
-                <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm text-center">
-                  {error}
-                </div>
-              )}
+              {errorMessage}
 
               {/* Action area */}
               {isViewMode && !isEditingLocked ? (
@@ -607,11 +635,7 @@ export function MatchScoringDialog({
                 />
               </div>
 
-              {error && (
-                <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm text-center">
-                  {error}
-                </div>
-              )}
+              {errorMessage}
 
               {/* Save/Edit Button */}
               {isViewMode && !isEditingLocked ? (
@@ -722,4 +746,3 @@ function PlayerRow({
     </tr>
   );
 }
-

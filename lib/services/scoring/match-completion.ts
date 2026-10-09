@@ -7,6 +7,8 @@ import {
   getSecondGrandFinalMatch,
   updateMatchStatus,
 } from '@/lib/repositories/bracket-repository.db';
+import { getRegulationFrameResults } from '@/lib/repositories/frame-repository.db';
+import { getTeamIdsForParticipants, getTeamMemberIds } from '@/lib/repositories/team-repository.db';
 import { releaseMatchLane } from '@/lib/repositories/lane-repository.db';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import { releaseLaneAndAutoAssignTx } from '@/lib/services/lane';
@@ -17,6 +19,10 @@ import type { MatchScores } from '@/lib/types/scoring';
 export type { MatchScores } from '@/lib/types/scoring';
 
 type OpponentJson = { id?: number | null; score?: number } | null;
+
+export interface CompleteMatchOptions {
+  requireRegulationFrames?: boolean;
+}
 
 /**
  * Complete a bracket match inside the caller's transaction, which must hold the event
@@ -31,7 +37,8 @@ export async function completeMatchTx(
   tx: Tx,
   eventId: string,
   matchId: number,
-  scores?: MatchScores
+  scores?: MatchScores,
+  options: CompleteMatchOptions = {}
 ): Promise<void> {
   const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
   if (!event) {
@@ -53,6 +60,27 @@ export async function completeMatchTx(
   const opponent2 = match.opponent2 as OpponentJson;
   if (opponent1?.id == null || opponent2?.id == null) {
     throw new BadRequestError('Match has no participants yet');
+  }
+
+  if (options.requireRegulationFrames) {
+    const teamIds = await getTeamIdsForParticipants(tx, eventId, [opponent1.id, opponent2.id]);
+    const playerIds = await getTeamMemberIds(tx, teamIds);
+    const results = await getRegulationFrameResults(tx, matchId, event.bracket_frame_count, playerIds);
+    const scored = new Set(results.map((result) => `${result.frame_number}:${result.event_player_id}`));
+    const allRegulationFramesScored =
+      teamIds.length === 2 &&
+      new Set(teamIds).size === 2 &&
+      playerIds.length > 0 &&
+      playerIds.every((playerId) =>
+        Array.from({ length: event.bracket_frame_count }, (_, index) => index + 1).every((frameNumber) =>
+          scored.has(`${frameNumber}:${playerId}`)
+        )
+      );
+    if (!allRegulationFramesScored) {
+      throw new BadRequestError(
+        `All players must be scored for frames 1–${event.bracket_frame_count} before completing the match`
+      );
+    }
   }
 
   const team1Score = scores?.team1Score ?? opponent1.score ?? 0;
@@ -90,11 +118,12 @@ export async function completeMatch(
   ex: Executor,
   eventId: string,
   matchId: number,
-  scores?: MatchScores
+  scores?: MatchScores,
+  options: CompleteMatchOptions = {}
 ): Promise<void> {
   await withTransaction(ex, async (tx) => {
     await lockEvent(tx, eventId);
-    await completeMatchTx(tx, eventId, matchId, scores);
+    await completeMatchTx(tx, eventId, matchId, scores, options);
   });
 }
 

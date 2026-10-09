@@ -1,11 +1,13 @@
-import { inArray } from 'drizzle-orm';
-import { match_frames } from '@/lib/db/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { bracket_match, match_frames } from '@/lib/db/schema';
 import { completeMatch } from '@/lib/services/scoring/match-completion';
+import { correctMatchScores } from '@/lib/services/scoring/match-scoring';
+import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
 import { MatchStatus } from '@/lib/types/bracket';
 import type { Executor } from '@/lib/db/tx';
 import { closeDb, createTestDb, withRollback } from './db/harness';
-import { getBracketSnapshot, seedBracket, type BracketSnapshot } from './db/seed';
+import { getBracketSnapshot, getParticipantPlayers, seedBracket, type BracketSnapshot } from './db/seed';
 import {
   expectLaneInvariants,
   expectScoresMatchFrames,
@@ -24,6 +26,37 @@ jest.mock('@/lib/services/event/event-service', () => {
   return {
     ...actual,
     requireEventAdmin: async () => ({ pg: mockAdmin.tx, supabase: null, user: { id: 'test-admin' } }),
+  };
+});
+jest.mock('@/lib/repositories/bracket-repository', () => {
+  const actual = jest.requireActual<typeof import('@/lib/repositories/bracket-repository')>(
+    '@/lib/repositories/bracket-repository'
+  );
+  return {
+    ...actual,
+    getMatchForScoringById: async (_client: unknown, matchId: number) => ({
+      ...(await getMatch(mockAdmin.tx!, matchId)),
+      frames: [],
+    }),
+  };
+});
+jest.mock('@/lib/repositories/event-repository', () => {
+  const actual = jest.requireActual<typeof import('@/lib/repositories/event-repository')>(
+    '@/lib/repositories/event-repository'
+  );
+  return {
+    ...actual,
+    getEventBracketFrameCount: jest.fn().mockResolvedValue(5),
+    getEventScoringConfig: jest.fn().mockResolvedValue({ bonus_point_enabled: true }),
+  };
+});
+jest.mock('@/lib/repositories/team-repository', () => {
+  const actual = jest.requireActual<typeof import('@/lib/repositories/team-repository')>(
+    '@/lib/repositories/team-repository'
+  );
+  return {
+    ...actual,
+    getTeamFromParticipant: jest.fn().mockResolvedValue(null),
   };
 });
 
@@ -174,6 +207,150 @@ describe('completeMatch', () => {
       expect(next).toBeDefined();
       expect(next.id).not.toBe(onLane.id);
       expectLaneInvariants(snap);
+    });
+  });
+});
+
+describe('completed score corrections', () => {
+  it('rejects a completed match without a recorded winner', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await tx.update(bracket_match).set({ status: MatchStatus.Completed }).where(eq(bracket_match.id, match.id));
+
+      await expect(correctMatchScores(event.eventId, match.id, 2, 1)).rejects.toThrow(
+        'This match has no recorded winner to correct. Use "Reset match" to replay it.'
+      );
+    });
+  });
+
+  it('allows a same-winner correction and rejects a winner flip without changing the match', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await playMatch(tx, event.eventId, match.id, 'opponent1');
+
+      await correctMatchScores(event.eventId, match.id, 20, 15);
+      expect(await getMatch(tx, match.id)).toMatchObject({
+        opponent1: expect.objectContaining({ score: 20, result: 'win' }),
+        opponent2: expect.objectContaining({ score: 15, result: 'loss' }),
+      });
+
+      await expect(correctMatchScores(event.eventId, match.id, 10, 25)).rejects.toThrow(
+        'This correction changes the winner'
+      );
+      expect(await getMatch(tx, match.id)).toMatchObject({
+        opponent1: expect.objectContaining({ score: 20, result: 'win' }),
+        opponent2: expect.objectContaining({ score: 15, result: 'loss' }),
+      });
+    });
+  });
+
+  it.each([
+    { winner: 'opponent1' as const, disturbedStatus: MatchStatus.Ready, expectedStatus: MatchStatus.Archived },
+    { winner: 'opponent2' as const, disturbedStatus: MatchStatus.Archived, expectedStatus: MatchStatus.Ready },
+  ])('reconciles the grand-final reset match when $winner remains the winner', async ({
+    winner,
+    disturbedStatus,
+    expectedStatus,
+  }) => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4, laneCount: 2 });
+
+      let snap = await getBracketSnapshot(tx, event.eventId);
+      for (;;) {
+        const gf1 = gfMatches(snap).find((match) => match.round_number === 1);
+        if (gf1 && playableMatches(snap).some((match) => match.id === gf1.id)) {
+          await playMatch(tx, event.eventId, gf1.id, winner);
+          break;
+        }
+        const next = playableMatches(snap).find((match) => match.group_number !== GRAND_FINAL_GROUP);
+        if (!next) throw new Error('Grand final did not become playable');
+        await playMatch(tx, event.eventId, next.id, 'opponent1');
+        snap = await getBracketSnapshot(tx, event.eventId);
+      }
+
+      snap = await getBracketSnapshot(tx, event.eventId);
+      const [gf1, gf2] = gfMatches(snap);
+      await tx.update(bracket_match).set({ status: disturbedStatus }).where(eq(bracket_match.id, gf2.id));
+      const opponent1 = gf1.opponent1 as { score?: number };
+      const opponent2 = gf1.opponent2 as { score?: number };
+      await correctMatchScores(
+        event.eventId,
+        gf1.id,
+        opponent1.score ?? (winner === 'opponent1' ? 2 : 1),
+        opponent2.score ?? (winner === 'opponent2' ? 2 : 1)
+      );
+      expect((await getMatch(tx, gf2.id)).status).toBe(expectedStatus);
+    });
+  });
+});
+
+describe('public completion regulation-frame guard', () => {
+  it('rejects completion at 3/5 and allows it once all players have 5/5', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4, bracketFrameCount: 5 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await scoreMatch(tx, event.eventId, match.id, 'opponent1', 3);
+      await expect(
+        completeMatch(tx, event.eventId, match.id, undefined, { requireRegulationFrames: true })
+      ).rejects.toThrow('All players must be scored for frames 1–5 before completing the match');
+
+      await scoreMatch(tx, event.eventId, match.id, 'opponent1', 5);
+      await completeMatch(tx, event.eventId, match.id, undefined, { requireRegulationFrames: true });
+      expect((await getMatch(tx, match.id)).status).toBe(MatchStatus.Completed);
+    });
+  });
+
+  it('allows a partial overtime frame after complete regulation scoring when it breaks the tie', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4, bracketFrameCount: 5, bonusPointEnabled: false });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      const team1 = await getParticipantPlayers(tx, event.eventId, opponentId(match.opponent1)!);
+      const team2 = await getParticipantPlayers(tx, event.eventId, opponentId(match.opponent2)!);
+      for (let frameNumber = 1; frameNumber <= 5; frameNumber++) {
+        await recordFrameScores(tx, {
+          eventId: event.eventId,
+          matchId: match.id,
+          frameNumber,
+          scorer: 'public',
+          scores: [...team1, ...team2].map((event_player_id) => ({ event_player_id, putts_made: 1 })),
+        });
+      }
+      await recordFrameScores(tx, {
+        eventId: event.eventId,
+        matchId: match.id,
+        frameNumber: 6,
+        scorer: 'public',
+        scores: [{ event_player_id: team1[0], putts_made: 1 }],
+      });
+
+      await completeMatch(tx, event.eventId, match.id, undefined, { requireRegulationFrames: true });
+      expect((await getMatch(tx, match.id)).status).toBe(MatchStatus.Completed);
+    });
+  });
+
+  it('still rejects a tie after every regulation frame is complete', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4, bracketFrameCount: 5, bonusPointEnabled: false });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      const team1 = await getParticipantPlayers(tx, event.eventId, opponentId(match.opponent1)!);
+      const team2 = await getParticipantPlayers(tx, event.eventId, opponentId(match.opponent2)!);
+      for (let frameNumber = 1; frameNumber <= 5; frameNumber++) {
+        await recordFrameScores(tx, {
+          eventId: event.eventId,
+          matchId: match.id,
+          frameNumber,
+          scorer: 'public',
+          scores: [...team1, ...team2].map((event_player_id) => ({ event_player_id, putts_made: 1 })),
+        });
+      }
+      await expect(
+        completeMatch(tx, event.eventId, match.id, undefined, { requireRegulationFrames: true })
+      ).rejects.toThrow('Match cannot be completed with a tied score');
     });
   });
 });

@@ -1,7 +1,39 @@
 import 'server-only';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte, max, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { frame_results, match_frames } from '@/lib/db/schema';
+
+export async function getHighestFrameNumber(ex: Executor, bracketMatchId: number): Promise<number> {
+  const [row] = await ex
+    .select({ frame_number: max(match_frames.frame_number) })
+    .from(match_frames)
+    .where(eq(match_frames.bracket_match_id, bracketMatchId));
+  return row?.frame_number ?? 0;
+}
+
+export async function getRegulationFrameResults(
+  ex: Executor,
+  bracketMatchId: number,
+  throughFrame: number,
+  eventPlayerIds: string[]
+): Promise<Array<{ frame_number: number; event_player_id: string }>> {
+  if (eventPlayerIds.length === 0) return [];
+  return ex
+    .select({
+      frame_number: match_frames.frame_number,
+      event_player_id: frame_results.event_player_id,
+    })
+    .from(match_frames)
+    .innerJoin(frame_results, eq(frame_results.match_frame_id, match_frames.id))
+    .where(
+      and(
+        eq(match_frames.bracket_match_id, bracketMatchId),
+        lte(match_frames.frame_number, throughFrame),
+        inArray(frame_results.event_player_id, eventPlayerIds)
+      )
+    )
+    .orderBy(asc(match_frames.frame_number), asc(frame_results.event_player_id));
+}
 
 /**
  * Get the frame for (match, frame number), creating it if needed. Callers hold the

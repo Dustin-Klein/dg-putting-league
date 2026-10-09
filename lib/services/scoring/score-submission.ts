@@ -2,13 +2,28 @@ import 'server-only';
 import { BadRequestError, NotFoundError } from '@/lib/errors';
 import { lockMatch, withTransaction, type Executor } from '@/lib/db/tx';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
-import { updateMatchStatus } from '@/lib/repositories/bracket-repository.db';
-import { getOrCreateFrameId, upsertFrameResults } from '@/lib/repositories/frame-repository.db';
+import {
+  getMatchOpponentScores,
+  updateMatchStatus,
+  type MatchOpponent,
+} from '@/lib/repositories/bracket-repository.db';
+import {
+  getHighestFrameNumber,
+  getOrCreateFrameId,
+  upsertFrameResults,
+} from '@/lib/repositories/frame-repository.db';
 import { getMembersOfTeams, getTeamIdsForParticipants } from '@/lib/repositories/team-repository.db';
 import { MatchStatus } from '@/lib/types/bracket';
+import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { calculatePoints } from './points-calculator';
 
 export const MAX_FRAME_NUMBER = 50;
+
+function recordedTeam1Winner(opponent1: MatchOpponent, opponent2: MatchOpponent): boolean | null {
+  if (opponent1?.result === 'win' && opponent2?.result === 'loss') return true;
+  if (opponent1?.result === 'loss' && opponent2?.result === 'win') return false;
+  return null;
+}
 
 export interface FrameScore {
   event_player_id: string;
@@ -85,6 +100,13 @@ export async function recordFrameScores(
       }
     }
 
+    const highestExistingFrame = await getHighestFrameNumber(tx, matchId);
+    if (frameNumber > highestExistingFrame + 1) {
+      throw new BadRequestError(
+        `Frames must be scored in order; frame ${highestExistingFrame + 1} has not been started`
+      );
+    }
+
     const participantIds = [match.opponent1, match.opponent2]
       .map((o) => (o as { id?: number | null } | null)?.id)
       .filter((id): id is number => id != null);
@@ -116,6 +138,24 @@ export async function recordFrameScores(
         points_earned: calculatePoints(s.putts_made, event.bonus_point_enabled),
       }))
     );
+
+    if (match.status === MatchStatus.Completed || match.status === MatchStatus.Archived) {
+      const originalTeam1Winner = recordedTeam1Winner(
+        match.opponent1 as MatchOpponent,
+        match.opponent2 as MatchOpponent
+      );
+      if (originalTeam1Winner !== null) {
+        const updatedMatch = await getMatchOpponentScores(tx, matchId);
+        if (!updatedMatch) {
+          throw new NotFoundError('Match not found');
+        }
+        const team1Score = updatedMatch.opponent1?.score ?? 0;
+        const team2Score = updatedMatch.opponent2?.score ?? 0;
+        if (team1Score === team2Score || (team1Score > team2Score) !== originalTeam1Winner) {
+          throw new BadRequestError(WINNER_CHANGE_MESSAGE);
+        }
+      }
+    }
 
     if (match.status === MatchStatus.Ready && scores.length > 0) {
       await updateMatchStatus(tx, matchId, MatchStatus.Running);

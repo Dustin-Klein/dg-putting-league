@@ -2,6 +2,9 @@
  * Types for public scoring interface
  */
 
+export const WINNER_CHANGE_MESSAGE =
+  'This correction changes the winner. Use "Reset match" to replay it, then enter the corrected result.';
+
 export interface PublicEventInfo {
   id: string;
   event_date: string;
