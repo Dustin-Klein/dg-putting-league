@@ -11,7 +11,8 @@ import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
 import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
-import { assignLane, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
+import { assignLane, getLanesForEvent, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
+import { getFrameCountsForMatches } from '@/lib/repositories/frame-repository.db';
 import { getEventAccessCode, getEventBracketConfig, getEventById } from '@/lib/repositories/event-repository.db';
 import { clearScoreOverrides } from '@/lib/repositories/match-scores-repository.db';
 import { setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
@@ -28,12 +29,9 @@ import {
   fetchBracketStructure,
   getParticipantsWithTeamIds,
   getReadyMatchesByStageId,
-  getMatchForScoringById,
-  getFrameCountsForMatchIds,
 } from '@/lib/repositories/bracket-repository';
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
-import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
-import { getLanesForEvent } from '@/lib/repositories/lane-repository';
+import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
 import type { EventStatus } from '@/lib/types/event';
 import type {
   BracketWithTeams,
@@ -470,7 +468,7 @@ export async function createBracket(eventId: string): Promise<BracketData> {
  * Get public bracket data with teams and lanes
  */
 export async function getPublicBracket(eventId: string): Promise<BracketWithTeams> {
-  const { pg } = await authorizeEventView(eventId, 'bracket');
+  const { pg, isAdmin } = await authorizeEventView(eventId, 'bracket');
   const supabase = await createClient();
 
   const event = await getEventById(pg, eventId);
@@ -487,8 +485,9 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
   // Fetch all data in parallel
   const [bracketStructure, teams, lanes] = await Promise.all([
     fetchBracketStructure(supabase, eventId),
-    getPublicTeamsForEvent(supabase, eventId),
-    getLanesForEvent(supabase, eventId),
+    getPublicTeamsForEvent(pg, eventId),
+    // Anonymous lane RLS hid lanes after completion; league admins could still see them.
+    event.status === 'bracket' || isAdmin ? getLanesForEvent(pg, eventId) : Promise.resolve([]),
   ]);
 
   if (!bracketStructure) {
@@ -517,7 +516,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
   const runningMatchIds = (effectiveMatches as Array<{ id: number; status: number }>)
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id);
-  const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
+  const frameCountMap = await getFrameCountsForMatches(pg, runningMatchIds);
 
   // Build participant to team mapping
   const participantTeamMap: Record<number, Team> = {};
@@ -626,7 +625,7 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   const runningMatchIds = effectiveBracket.matches
     .filter((m) => m.status === Status.Running)
     .map((m) => m.id as number);
-  const frameCountMap = await getFrameCountsForMatchIds(supabase, runningMatchIds);
+  const frameCountMap = await getFrameCountsForMatches(pg, runningMatchIds);
   const progressionSourceMap = await buildProgressionSourceMap(
     {
       stage: effectiveBracket.stage,
@@ -667,7 +666,7 @@ export async function updateMatchResult(
   opponent2Score: number,
   winnerId?: number | null
 ): Promise<Match> {
-  const { supabase, pg, user } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
@@ -730,7 +729,7 @@ export async function updateMatchResult(
     await syncMatchScores(tx, matchId);
   });
 
-  const updatedMatch = await getMatchForScoringById(supabase, matchId);
+  const updatedMatch = await bracketDb.getMatchForScoringById(pg, matchId);
 
   if (!updatedMatch) {
     throw new InternalError('Failed to fetch updated match');

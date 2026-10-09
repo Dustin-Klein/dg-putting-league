@@ -1,9 +1,8 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
-import type { Db } from '@/lib/services/auth';
+import { authorizeEventView, type Db } from '@/lib/services/auth';
 import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
-import * as laneRepo from '@/lib/repositories/lane-repository';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import { getStageForEvent } from '@/lib/repositories/bracket-repository.db';
@@ -22,26 +21,22 @@ export async function createEventLanes(
   eventId: string,
   laneCount: number
 ): Promise<Lane[]> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  // Check if lanes already exist for this event
-  const hasExistingLanes = await laneRepo.hasLanes(supabase, eventId);
-
-  if (hasExistingLanes) {
-    // Lanes already exist, return them
-    return laneRepo.getLanesForEvent(supabase, eventId);
-  }
-
-  // Create new lanes
-  return laneRepo.insertLanes(supabase, eventId, laneCount);
+  const { pg } = await requireEventAdmin(eventId);
+  return withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    await laneDb.lockEventLanes(tx, eventId);
+    if (await laneDb.hasLanes(tx, eventId)) return laneDb.getLanesForEvent(tx, eventId);
+    return laneDb.insertLanes(tx, eventId, laneCount);
+  });
 }
 
 /**
  * Get all lanes for an event
  */
 export async function getEventLanes(eventId: string): Promise<Lane[]> {
-  const supabase = await createClient();
-  return laneRepo.getLanesForEvent(supabase, eventId);
+  const { pg } = await authorizeEventView(eventId, 'lanes');
+  return laneDb.getLanesForEvent(pg, eventId);
 }
 
 interface BracketMatch {
@@ -118,6 +113,7 @@ export async function resolveMatchDisplayNumber(
   eventId: string,
   displayNumber: number
 ): Promise<number | null> {
+  await authorizeEventView(eventId, 'bracket');
   const supabase = await createClient();
   const { displayToId } = await buildMatchDisplayMap(supabase, eventId);
   return displayToId.get(displayNumber) ?? null;
@@ -129,11 +125,12 @@ export async function resolveMatchDisplayNumber(
 export async function getLanesWithMatches(
   eventId: string
 ): Promise<LaneWithMatch[]> {
+  const { pg } = await authorizeEventView(eventId, 'lanes');
   const supabase = await createClient();
 
   const [lanes, laneMatchMap, { idToDisplay }] = await Promise.all([
-    laneRepo.getLanesForEvent(supabase, eventId),
-    laneRepo.getMatchLaneAssignments(supabase, eventId),
+    laneDb.getLanesForEvent(pg, eventId),
+    laneDb.getMatchLaneAssignments(pg, eventId),
     buildMatchDisplayMap(supabase, eventId),
   ]);
 
@@ -210,13 +207,18 @@ export async function addLanes(
   eventId: string,
   count: number
 ): Promise<Lane[]> {
-  const { supabase, user } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
   if (count < 1 || count > 20) {
     throw new BadRequestError('Lane count must be between 1 and 20');
   }
 
-  const lanes = await laneRepo.addLanesToEvent(supabase, eventId, count);
+  const lanes = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    await laneDb.lockEventLanes(tx, eventId);
+    return laneDb.addLanesToEvent(tx, eventId, count);
+  });
 
   logger.info('Lanes added to event', {
     userId: user.id,
@@ -236,8 +238,14 @@ export async function deleteLane(
   eventId: string,
   laneId: string
 ): Promise<boolean> {
-  const { supabase, user } = await requireEventAdmin(eventId);
-  const result = await laneRepo.deleteIdleLane(supabase, eventId, laneId);
+  const { pg, user } = await requireEventAdmin(eventId);
+  const result = await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    await laneDb.lockMatchesAssignedToLane(tx, eventId, laneId);
+    await laneDb.lockEventLanes(tx, eventId);
+    return laneDb.deleteIdleLane(tx, eventId, laneId);
+  });
 
   logger.info('Lane deleted from event', {
     userId: user.id,
@@ -290,15 +298,15 @@ async function setLaneStatus(
   laneId: string,
   status: 'idle' | 'maintenance',
   mode: 'after_match' | 'now' = 'after_match'
-): Promise<void> {
-  const found = await withTransaction(pg, async (tx) => {
+): Promise<Lane> {
+  const updatedLane = await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
     await getEventBracketConfig(tx, eventId, { lock: 'share' });
 
     const assigned = await laneDb.getMatchAssignedToLane(tx, eventId, laneId);
     const lockedMatch = assigned ? await lockMatch(tx, assigned.id, eventId) : null;
     const lockedLanes = await laneDb.lockEventLanes(tx, eventId);
-    if (!lockedLanes.some((lane) => lane.id === laneId)) return false;
+    if (!lockedLanes.some((lane) => lane.id === laneId)) return null;
 
     if (status === 'maintenance') {
       if (lockedMatch?.status === Status.Running && mode === 'after_match') {
@@ -306,7 +314,7 @@ async function setLaneStatus(
           status: 'occupied',
           maintenance_pending: true,
         });
-        return true;
+        return laneDb.getLaneById(tx, eventId, laneId);
       }
 
       if (lockedMatch) await laneDb.clearLaneMatches(tx, eventId, laneId);
@@ -315,7 +323,7 @@ async function setLaneStatus(
         maintenance_pending: false,
       });
       await autoAssignLanesTx(tx, eventId);
-      return true;
+      return laneDb.getLaneById(tx, eventId, laneId);
     }
 
     if (lockedMatch?.status === Status.Running) {
@@ -323,7 +331,7 @@ async function setLaneStatus(
         status: 'occupied',
         maintenance_pending: false,
       });
-      return true;
+      return laneDb.getLaneById(tx, eventId, laneId);
     }
 
     if (lockedMatch) await laneDb.clearLaneMatches(tx, eventId, laneId);
@@ -332,11 +340,12 @@ async function setLaneStatus(
       maintenance_pending: false,
     });
     await autoAssignLanesTx(tx, eventId);
-    return true;
+    return laneDb.getLaneById(tx, eventId, laneId);
   });
-  if (!found) {
+  if (!updatedLane) {
     throw new NotFoundError('Lane not found');
   }
+  return updatedLane;
 }
 
 /**
@@ -347,12 +356,9 @@ export async function setLaneMaintenance(
   laneId: string,
   mode: 'after_match' | 'now' = 'after_match'
 ): Promise<Lane> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  await setLaneStatus(pg, eventId, laneId, 'maintenance', mode);
-
-  // Fetch and return the updated lane
-  return laneRepo.getLaneById(supabase, eventId, laneId);
+  return setLaneStatus(pg, eventId, laneId, 'maintenance', mode);
 }
 
 /**
@@ -362,10 +368,7 @@ export async function setLaneIdle(
   eventId: string,
   laneId: string
 ): Promise<Lane> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  await setLaneStatus(pg, eventId, laneId, 'idle');
-
-  // Fetch and return the updated lane
-  return laneRepo.getLaneById(supabase, eventId, laneId);
+  return setLaneStatus(pg, eventId, laneId, 'idle');
 }

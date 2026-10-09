@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Status } from 'brackets-model';
 import type { Executor, Tx } from '@/lib/db/tx';
 import { bracket_match, bracket_round, lanes } from '@/lib/db/schema';
@@ -23,6 +23,36 @@ export async function hasLanes(ex: Executor, eventId: string): Promise<boolean> 
   return rows.length > 0;
 }
 
+export async function getLanesForEvent(ex: Executor, eventId: string): Promise<Lane[]> {
+  return ex.select().from(lanes).where(eq(lanes.event_id, eventId)).orderBy(asc(lanes.label)) as Promise<Lane[]>;
+}
+
+export async function getLaneById(ex: Executor, eventId: string, laneId: string): Promise<Lane | null> {
+  const [lane] = await ex
+    .select()
+    .from(lanes)
+    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId)));
+  return (lane as Lane | undefined) ?? null;
+}
+
+export async function getLaneLabelsForEvent(ex: Executor, eventId: string): Promise<Record<string, string>> {
+  const rows = await ex.select({ id: lanes.id, label: lanes.label }).from(lanes).where(eq(lanes.event_id, eventId));
+  return Object.fromEntries(rows.map((lane) => [lane.id, lane.label]));
+}
+
+export async function getMatchLaneAssignments(
+  ex: Executor,
+  eventId: string
+): Promise<Record<string, { id: number; number: number; status: number }>> {
+  const rows = await ex
+    .select({ id: bracket_match.id, number: bracket_match.number, status: bracket_match.status, lane_id: bracket_match.lane_id })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.event_id, eventId), isNotNull(bracket_match.lane_id)));
+  return Object.fromEntries(
+    rows.flatMap((match) => match.lane_id ? [[match.lane_id, { id: match.id, number: match.number, status: match.status }]] : [])
+  );
+}
+
 export async function getMatchAssignedToLane(
   ex: Executor,
   eventId: string,
@@ -36,11 +66,49 @@ export async function getMatchAssignedToLane(
   return match ?? null;
 }
 
-export async function insertLanes(ex: Executor, eventId: string, count: number): Promise<void> {
-  if (count <= 0) return;
-  await ex.insert(lanes).values(
+export async function insertLanes(ex: Executor, eventId: string, count: number): Promise<Lane[]> {
+  if (count <= 0) return [];
+  return ex.insert(lanes).values(
     Array.from({ length: count }, (_, i) => ({ event_id: eventId, label: `Lane ${i + 1}`, status: 'idle' as const }))
-  );
+  ).returning() as Promise<Lane[]>;
+}
+
+export async function addLanesToEvent(ex: Executor, eventId: string, count: number): Promise<Lane[]> {
+  const existing = await getLanesForEvent(ex, eventId);
+  let maxNumber = 0;
+  for (const lane of existing) {
+    const match = /^Lane (\d+)$/.exec(lane.label);
+    if (match) maxNumber = Math.max(maxNumber, Number(match[1]));
+  }
+  if (count <= 0) return [];
+  return ex.insert(lanes).values(
+    Array.from({ length: count }, (_, index) => ({
+      event_id: eventId,
+      label: `Lane ${maxNumber + index + 1}`,
+      status: 'idle' as const,
+    }))
+  ).returning() as Promise<Lane[]>;
+}
+
+/** Lock assigned matches before lane rows, in documented order. */
+export async function lockMatchesAssignedToLane(tx: Tx, eventId: string, laneId: string): Promise<Array<{ id: number }>> {
+  return tx
+    .select({ id: bracket_match.id })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.event_id, eventId), eq(bracket_match.lane_id, laneId)))
+    .orderBy(asc(bracket_match.id))
+    .for('update');
+}
+
+/** Caller holds event, relevant match, and lane locks. */
+export async function deleteIdleLane(ex: Executor, eventId: string, laneId: string): Promise<boolean> {
+  const assigned = await getMatchAssignedToLane(ex, eventId, laneId);
+  if (assigned) return false;
+  const deleted = await ex
+    .delete(lanes)
+    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId), eq(lanes.status, 'idle')))
+    .returning({ id: lanes.id });
+  return deleted.length > 0;
 }
 
 export interface UnassignedMatch {

@@ -29,18 +29,6 @@ jest.mock('@/lib/services/event/event-service', () => {
     requireEventAdmin: async () => ({ pg: mockAdmin.tx, supabase: null, user: { id: null } }),
   };
 });
-jest.mock('@/lib/repositories/bracket-repository', () => {
-  const actual = jest.requireActual<typeof import('@/lib/repositories/bracket-repository')>(
-    '@/lib/repositories/bracket-repository'
-  );
-  return {
-    ...actual,
-    getMatchForScoringById: async (_client: unknown, matchId: number) => ({
-      ...(await getMatch(mockAdmin.tx!, matchId)),
-      frames: [],
-    }),
-  };
-});
 jest.mock('@/lib/repositories/event-repository.db', () => {
   const actual = jest.requireActual<typeof import('@/lib/repositories/event-repository.db')>(
     '@/lib/repositories/event-repository.db'
@@ -49,15 +37,6 @@ jest.mock('@/lib/repositories/event-repository.db', () => {
     ...actual,
     getEventBracketFrameCount: jest.fn().mockResolvedValue(5),
     getEventScoringConfig: jest.fn().mockResolvedValue({ bonus_point_enabled: true }),
-  };
-});
-jest.mock('@/lib/repositories/team-repository', () => {
-  const actual = jest.requireActual<typeof import('@/lib/repositories/team-repository')>(
-    '@/lib/repositories/team-repository'
-  );
-  return {
-    ...actual,
-    getTeamFromParticipant: jest.fn().mockResolvedValue(null),
   };
 });
 

@@ -16,20 +16,6 @@ const mockAdmin: { tx?: Executor } = {};
 jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: async () => ({ pg: mockAdmin.tx, supabase: null, user: { id: null } }),
 }));
-jest.mock('@/lib/repositories/lane-repository', () => {
-  const actual = jest.requireActual<typeof import('@/lib/repositories/lane-repository')>(
-    '@/lib/repositories/lane-repository'
-  );
-  return {
-    ...actual,
-    getLaneById: jest.fn().mockResolvedValue({
-      id: 'unused',
-      label: 'unused',
-      maintenance_pending: false,
-      status: 'maintenance',
-    }),
-  };
-});
 
 const db = createTestDb();
 afterAll(() => closeDb(db));

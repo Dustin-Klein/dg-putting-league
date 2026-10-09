@@ -8,9 +8,11 @@ import {
   bracket_participant,
   bracket_round,
   bracket_stage,
+  frame_results,
   match_frames,
 } from '@/lib/db/schema';
 import { applyMatchWriteRules } from './bracket-storage.db';
+import { getFrameResultsForMatch } from './frame-repository.db';
 import type {
   BracketResetContext,
   BracketResetContextMatch,
@@ -18,6 +20,186 @@ import type {
 } from './bracket-repository';
 
 export type MatchOpponent = { id?: number | null; position?: number; score?: number; result?: string } | null;
+
+export interface BracketMatchForScoring {
+  id: number;
+  stage_id: number;
+  group_id: number;
+  status: number;
+  round_id: number;
+  number: number;
+  lane_id: string | null;
+  score_override_1: number | null;
+  score_override_2: number | null;
+  opponent1: { id?: number; score?: number } | null;
+  opponent2: { id?: number; score?: number } | null;
+  frames: Array<{
+    id: string;
+    frame_number: number;
+    is_overtime: boolean;
+    results: Array<{ id: string; event_player_id: string; putts_made: number; points_earned: number }>;
+  }>;
+}
+
+export interface SingleBracketMatchForScoring extends BracketMatchForScoring {
+  event_id: string;
+}
+
+export async function getMatchesForScoringByEvent(
+  ex: Executor,
+  eventId: string
+): Promise<BracketMatchForScoring[]> {
+  const matches = await ex
+    .select({
+      id: bracket_match.id,
+      stage_id: bracket_match.stage_id,
+      group_id: bracket_match.group_id,
+      status: bracket_match.status,
+      round_id: bracket_match.round_id,
+      number: bracket_match.number,
+      lane_id: bracket_match.lane_id,
+      score_override_1: bracket_match.score_override_1,
+      score_override_2: bracket_match.score_override_2,
+      opponent1: bracket_match.opponent1,
+      opponent2: bracket_match.opponent2,
+    })
+    .from(bracket_match)
+    .where(
+      and(
+        eq(bracket_match.event_id, eventId),
+        inArray(bracket_match.status, [Status.Ready, Status.Running]),
+        isNotNull(bracket_match.lane_id)
+      )
+    );
+  if (matches.length === 0) return [];
+
+  const matchIds = matches.map((match) => match.id);
+  const frames = await ex
+    .select({
+      id: match_frames.id,
+      bracket_match_id: match_frames.bracket_match_id,
+      frame_number: match_frames.frame_number,
+      is_overtime: match_frames.is_overtime,
+    })
+    .from(match_frames)
+    .where(inArray(match_frames.bracket_match_id, matchIds))
+    .orderBy(asc(match_frames.frame_number));
+  const results = await ex
+    .select({
+      id: frame_results.id,
+      match_frame_id: frame_results.match_frame_id,
+      event_player_id: frame_results.event_player_id,
+      putts_made: frame_results.putts_made,
+      points_earned: frame_results.points_earned,
+    })
+    .from(frame_results)
+    .where(inArray(frame_results.bracket_match_id, matchIds));
+  const resultsByFrame = new Map<string, typeof results>();
+  for (const result of results) {
+    const grouped = resultsByFrame.get(result.match_frame_id) ?? [];
+    grouped.push(result);
+    resultsByFrame.set(result.match_frame_id, grouped);
+  }
+  const framesByMatch = new Map<number, BracketMatchForScoring['frames']>();
+  for (const frame of frames) {
+    if (frame.bracket_match_id === null) continue;
+    const grouped = framesByMatch.get(frame.bracket_match_id) ?? [];
+    grouped.push({ ...frame, results: resultsByFrame.get(frame.id) ?? [] });
+    framesByMatch.set(frame.bracket_match_id, grouped);
+  }
+  return matches.map((match) => ({
+    ...match,
+    opponent1: match.opponent1 as BracketMatchForScoring['opponent1'],
+    opponent2: match.opponent2 as BracketMatchForScoring['opponent2'],
+    frames: framesByMatch.get(match.id) ?? [],
+  }));
+}
+
+export async function getMatchForScoringById(
+  ex: Executor,
+  bracketMatchId: number
+): Promise<SingleBracketMatchForScoring | null> {
+  const [match] = await ex
+    .select({
+      id: bracket_match.id,
+      stage_id: bracket_match.stage_id,
+      group_id: bracket_match.group_id,
+      status: bracket_match.status,
+      round_id: bracket_match.round_id,
+      number: bracket_match.number,
+      lane_id: bracket_match.lane_id,
+      score_override_1: bracket_match.score_override_1,
+      score_override_2: bracket_match.score_override_2,
+      opponent1: bracket_match.opponent1,
+      opponent2: bracket_match.opponent2,
+      event_id: bracket_match.event_id,
+    })
+    .from(bracket_match)
+    .where(eq(bracket_match.id, bracketMatchId));
+  if (!match || !match.event_id) return null;
+  const frames = await ex
+    .select({ id: match_frames.id, frame_number: match_frames.frame_number, is_overtime: match_frames.is_overtime })
+    .from(match_frames)
+    .where(eq(match_frames.bracket_match_id, bracketMatchId))
+    .orderBy(asc(match_frames.frame_number));
+  const results = await getFrameResultsForMatch(ex, bracketMatchId);
+  const byFrame = new Map<string, typeof results>();
+  for (const result of results) {
+    const grouped = byFrame.get(result.match_frame_id) ?? [];
+    grouped.push(result);
+    byFrame.set(result.match_frame_id, grouped);
+  }
+  return {
+    ...match,
+    event_id: match.event_id,
+    opponent1: match.opponent1 as SingleBracketMatchForScoring['opponent1'],
+    opponent2: match.opponent2 as SingleBracketMatchForScoring['opponent2'],
+    frames: frames.map((frame) => ({ ...frame, results: byFrame.get(frame.id) ?? [] })),
+  };
+}
+
+export interface MatchByIdAndEvent {
+  id: number;
+  status: number;
+  event_id: string;
+  lane_id: string | null;
+  opponent1: { id: number | null } | null;
+  opponent2: { id: number | null } | null;
+}
+
+export async function getMatchByIdAndEvent(
+  ex: Executor,
+  matchId: number,
+  eventId: string
+): Promise<MatchByIdAndEvent | null> {
+  const [match] = await ex
+    .select({
+      id: bracket_match.id,
+      status: bracket_match.status,
+      event_id: bracket_match.event_id,
+      lane_id: bracket_match.lane_id,
+      opponent1: bracket_match.opponent1,
+      opponent2: bracket_match.opponent2,
+    })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.id, matchId), eq(bracket_match.event_id, eventId)));
+  if (!match || !match.event_id) return null;
+  return {
+    ...match,
+    event_id: match.event_id,
+    opponent1: match.opponent1 as MatchByIdAndEvent['opponent1'],
+    opponent2: match.opponent2 as MatchByIdAndEvent['opponent2'],
+  };
+}
+
+export async function startReadyMatch(ex: Executor, matchId: number, eventId: string): Promise<boolean> {
+  const updated = await ex
+    .update(bracket_match)
+    .set({ status: Status.Running })
+    .where(and(eq(bracket_match.id, matchId), eq(bracket_match.event_id, eventId), eq(bracket_match.status, Status.Ready)))
+    .returning({ id: bracket_match.id });
+  return updated.length > 0;
+}
 
 export async function getMatchOpponentScores(
   ex: Executor,
