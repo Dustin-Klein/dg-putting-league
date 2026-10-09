@@ -1,5 +1,7 @@
 import { getUserAdminLeagues } from '@/lib/services/league';
 import LeaguesList from './components/leagues-list';
+import { describeError, logger } from '@/lib/utils/logger';
+import { getRequestId } from '@/lib/utils/request-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +18,7 @@ export default async function LeaguePage() {
       </div>
     );
   } catch (error) {
-    console.error('Error loading leagues:', error);
+    logger.error('Error loading leagues', { requestId: await getRequestId(), ...describeError(error) });
 
     return (
       <div className="container mx-auto p-4">
