@@ -69,4 +69,4 @@ supabase/snippets/
 # no agent-rules block exists; AGENTS.md is committed with that block, so this
 # should no longer be generated, but keep it ignored in case it is.
 CLAUDE.md
-.codex/
+.codex/drizzle/

@@ -21,7 +21,6 @@ import {
   createMockSupabaseClient,
   createMockEvent,
   createMockBracketMatch,
-  createMockMatchFrame,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -34,24 +33,19 @@ jest.mock('@/lib/supabase/privileged', () => ({
   _createPrivilegedClient: jest.fn(),
 }));
 
-jest.mock('@/lib/services/lane', () => ({
-  releaseAndReassignLanePublic: jest.fn(),
+jest.mock('@/lib/db/client', () => ({
+  _getDb: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/frame-repository', () => ({
-  getOrCreateFrame: jest.fn(),
-  upsertFrameResultAtomic: jest.fn(),
-  bulkUpsertFrameResults: jest.fn(),
+jest.mock('@/lib/services/lane', () => ({
+  releaseLaneAndAutoAssignTx: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/team-repository', () => ({
   getPublicTeamFromParticipant: jest.fn(),
-  getTeamIdsFromParticipants: jest.fn(),
-  verifyPlayerInTeams: jest.fn(),
-  verifyPlayersInTeams: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-repository', () => ({
+jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventByAccessCode: jest.fn(),
 }));
 
@@ -63,12 +57,6 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
 jest.mock('@/lib/repositories/bracket-repository', () => ({
   getMatchesForScoringByEvent: jest.fn(),
   getMatchForScoringById: jest.fn(),
-  updateMatchStatus: jest.fn(),
-  getMatchByIdAndEvent: jest.fn(),
-}));
-
-jest.mock('@/lib/services/scoring/match-completion', () => ({
-  completeMatch: jest.fn(),
 }));
 
 jest.mock('@/lib/services/qualification', () => ({
@@ -79,24 +67,13 @@ jest.mock('@/lib/services/qualification', () => ({
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient } from '@/lib/supabase/privileged';
-import {
-  getOrCreateFrame,
-  upsertFrameResultAtomic,
-  bulkUpsertFrameResults,
-} from '@/lib/repositories/frame-repository';
-import {
-  getPublicTeamFromParticipant,
-  getTeamIdsFromParticipants,
-  verifyPlayerInTeams,
-  verifyPlayersInTeams,
-} from '@/lib/repositories/team-repository';
-import { getEventByAccessCode } from '@/lib/repositories/event-repository';
+import { _getDb } from '@/lib/db/client';
+import { getPublicTeamFromParticipant } from '@/lib/repositories/team-repository';
+import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
   getMatchForScoringById,
-  updateMatchStatus,
-  getMatchByIdAndEvent,
 } from '@/lib/repositories/bracket-repository';
 import {
   validateQualificationAccessCode,
@@ -107,9 +84,6 @@ import {
   validateAccessCode,
   getMatchesForScoring,
   getMatchForScoring,
-  recordScore,
-  batchRecordScoresAndGetMatch,
-  completeMatchPublic,
   getEventScoringContext,
 } from '../scoring/public-scoring';
 
@@ -140,12 +114,14 @@ describe('Points Calculator', () => {
 
 describe('Scoring Service', () => {
   let mockSupabase: MockSupabaseClient;
+  const mockPg = {};
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
     (_createPrivilegedClient as jest.Mock).mockReturnValue(mockSupabase);
+    (_getDb as jest.Mock).mockReturnValue(mockPg);
   });
 
   describe('getEventScoringContext', () => {
@@ -170,7 +146,7 @@ describe('Scoring Service', () => {
         event: mockEvent,
         players: mockPlayers,
       });
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, accessCode.toLowerCase());
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, accessCode.toLowerCase());
     });
 
     it('should return bracket context when event is in bracket status', async () => {
@@ -228,7 +204,7 @@ describe('Scoring Service', () => {
       // Codes are normalized to lower case and matched exactly
       await getEventScoringContext('ABC123');
 
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
     });
 
     it('should trim whitespace from access code', async () => {
@@ -248,7 +224,7 @@ describe('Scoring Service', () => {
       await getEventScoringContext('  ABC123  ');
 
       // Verify repo was called with trimmed code
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
     });
   });
 
@@ -265,7 +241,7 @@ describe('Scoring Service', () => {
 
       expect(result).toMatchObject({ id: mockEvent.id, status: 'bracket' });
       expect(result).not.toHaveProperty('access_code');
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
     });
 
     it('should throw NotFoundError for invalid access code', async () => {
@@ -294,7 +270,7 @@ describe('Scoring Service', () => {
 
       await validateAccessCode('  ABC123  ');
 
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockSupabase, 'abc123');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
     });
   });
 
@@ -435,323 +411,5 @@ describe('Scoring Service', () => {
     });
   });
 
-  describe('recordScore', () => {
-    const accessCode = 'ABC123';
-    const bracketMatchId = 1;
-    const frameNumber = 1;
-    const eventPlayerId = 'ep-123';
-    const puttsMade = 2;
 
-    beforeEach(() => {
-      // Mock event validation
-      const mockEvent = createMockEvent({
-        id: 'event-123',
-        status: 'bracket',
-        bonus_point_enabled: true,
-        bracket_frame_count: 10,
-      });
-      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
-
-      // Mock bracket match query via repository
-      const mockMatch = createMockBracketMatch({
-        id: bracketMatchId,
-        event_id: 'event-123',
-        status: 2,
-      });
-      (getMatchByIdAndEvent as jest.Mock).mockResolvedValue(mockMatch);
-
-      // Mock team verification
-      (getTeamIdsFromParticipants as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
-      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(true);
-
-      // Mock frame creation
-      (getOrCreateFrame as jest.Mock).mockResolvedValue(
-        createMockMatchFrame({ id: 'frame-123' })
-      );
-
-      // Mock upsertFrameResultAtomic
-      (upsertFrameResultAtomic as jest.Mock).mockResolvedValue(undefined);
-    });
-
-    it('should record score successfully', async () => {
-      await recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade);
-
-      expect(upsertFrameResultAtomic).toHaveBeenCalledWith(mockSupabase, {
-        matchFrameId: 'frame-123',
-        eventPlayerId: eventPlayerId,
-        bracketMatchId: bracketMatchId,
-        puttsMade: puttsMade,
-        pointsEarned: 2, // Standard scoring
-      });
-    });
-
-    it('should throw BadRequestError for invalid putts (negative)', async () => {
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, -1)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, -1)
-      ).rejects.toThrow('Putts must be between 0 and 3');
-    });
-
-    it('should throw BadRequestError for invalid putts (> 3)', async () => {
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, 4)
-      ).rejects.toThrow(BadRequestError);
-    });
-
-    it('should throw BadRequestError when match is already completed', async () => {
-      const mockMatch = createMockBracketMatch({
-        id: bracketMatchId,
-        event_id: 'event-123',
-        status: 4, // Completed
-      });
-      (getMatchByIdAndEvent as jest.Mock).mockResolvedValue(mockMatch);
-
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow('Match is already completed');
-    });
-
-    it('should throw BadRequestError when player is not in match', async () => {
-      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(false);
-
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow('Player is not in this match');
-    });
-
-    it('should throw InternalError when upsert fails', async () => {
-      (upsertFrameResultAtomic as jest.Mock).mockRejectedValue(
-        new InternalError('Failed to record score: RPC failed')
-      );
-
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow(InternalError);
-    });
-
-    it('should update match status from Ready to Running', async () => {
-      // Using the mocks already set up in beforeEach (status: 2 = Ready)
-      await recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade);
-
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, bracketMatchId, 3);
-    });
-
-    it('should throw NotFoundError when match not found', async () => {
-      (getMatchByIdAndEvent as jest.Mock).mockResolvedValue(null);
-
-      await expect(
-        recordScore(accessCode, bracketMatchId, frameNumber, eventPlayerId, puttsMade)
-      ).rejects.toThrow(NotFoundError);
-    });
-  });
-
-  describe('completeMatchPublic', () => {
-    const accessCode = 'ABC123';
-    const bracketMatchId = 1;
-
-    it('should throw BadRequestError when scores are tied', async () => {
-      const mockEvent = createMockEvent({ id: 'event-123', status: 'bracket' });
-      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
-      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
-
-      const mockMatch = {
-        id: bracketMatchId,
-        event_id: 'event-123',
-        status: 3,
-        round_id: 1,
-        number: 1,
-        lane_id: null,
-        opponent1: { id: 1, score: 5 },
-        opponent2: { id: 2, score: 5 }, // Tied
-        frames: [],
-      };
-      (getMatchForScoringById as jest.Mock).mockResolvedValue(mockMatch);
-
-      const mockTeam = { id: 'team-1', pool_combo: 'Team', players: [] };
-      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue(mockTeam);
-
-      await expect(completeMatchPublic(accessCode, bracketMatchId)).rejects.toThrow(
-        BadRequestError
-      );
-      await expect(completeMatchPublic(accessCode, bracketMatchId)).rejects.toThrow(
-        'Match cannot be completed with a tied score'
-      );
-    });
-  });
-
-  describe('batchRecordScoresAndGetMatch', () => {
-    const accessCode = 'ABC123';
-    const bracketMatchId = 1;
-    const frameNumber = 1;
-
-    beforeEach(() => {
-      const mockEvent = createMockEvent({
-        id: 'event-123',
-        status: 'bracket',
-        bonus_point_enabled: true,
-        bracket_frame_count: 10,
-      });
-      (getEventByAccessCode as jest.Mock).mockResolvedValue(mockEvent);
-
-      const mockMatch = createMockBracketMatch({
-        id: bracketMatchId,
-        event_id: 'event-123',
-        status: 2,
-      });
-      (getMatchByIdAndEvent as jest.Mock).mockResolvedValue(mockMatch);
-
-      const mockMatchData = {
-        id: bracketMatchId,
-        event_id: 'event-123',
-        opponent1: { id: 1, score: 5 },
-        opponent2: { id: 2, score: 3 },
-        round_id: 1,
-        number: 1,
-        lane_id: null,
-        status: 2,
-        frames: [],
-      };
-      (getMatchForScoringById as jest.Mock).mockResolvedValue(mockMatchData);
-
-      (getTeamIdsFromParticipants as jest.Mock).mockResolvedValue(['team-1', 'team-2']);
-      (verifyPlayerInTeams as jest.Mock).mockResolvedValue(true);
-      (verifyPlayersInTeams as jest.Mock).mockResolvedValue(true);
-      (getOrCreateFrame as jest.Mock).mockResolvedValue(
-        createMockMatchFrame({ id: 'frame-123' })
-      );
-      (getLaneLabelsForEvent as jest.Mock).mockResolvedValue({});
-
-      const mockTeam = { id: 'team-1', pool_combo: 'Team 1', players: [] };
-      (getPublicTeamFromParticipant as jest.Mock).mockResolvedValue(mockTeam);
-
-      (bulkUpsertFrameResults as jest.Mock).mockResolvedValue(undefined);
-    });
-
-    it('should record multiple scores for a frame in one call', async () => {
-      const scores = [
-        { event_player_id: 'ep-1', putts_made: 2 },
-        { event_player_id: 'ep-2', putts_made: 3 },
-      ];
-
-      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
-
-      expect(bulkUpsertFrameResults).toHaveBeenCalledTimes(1);
-      expect(bulkUpsertFrameResults).toHaveBeenCalledWith(mockSupabase, [
-        {
-          match_frame_id: 'frame-123',
-          event_player_id: 'ep-1',
-          bracket_match_id: bracketMatchId,
-          putts_made: 2,
-          points_earned: 2,
-        },
-        {
-          match_frame_id: 'frame-123',
-          event_player_id: 'ep-2',
-          bracket_match_id: bracketMatchId,
-          putts_made: 3,
-          points_earned: 4, // bonus point enabled
-        },
-      ]);
-    });
-
-    it('should throw BadRequestError for invalid putts values', async () => {
-      const scores = [
-        { event_player_id: 'ep-1', putts_made: 5 }, // Invalid
-      ];
-
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow('Putts must be between 0 and 3');
-    });
-
-    it('should throw BadRequestError when match is already completed', async () => {
-      const mockMatch = createMockBracketMatch({
-        id: bracketMatchId,
-        event_id: 'event-123',
-        status: 4, // Completed
-      });
-      (getMatchByIdAndEvent as jest.Mock).mockResolvedValue(mockMatch);
-
-      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
-
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow('Match is already completed');
-    });
-
-    it('should throw BadRequestError when any player is not in match', async () => {
-      (verifyPlayersInTeams as jest.Mock).mockResolvedValue(false);
-
-      const scores = [{ event_player_id: 'ep-invalid', putts_made: 2 }];
-
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow(BadRequestError);
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow('One or more players are not in this match');
-    });
-
-    it('should update match status from Ready to Running', async () => {
-      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
-
-      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
-
-      expect(updateMatchStatus).toHaveBeenCalledWith(mockSupabase, bracketMatchId, 3);
-    });
-
-    it('should handle empty scores array gracefully', async () => {
-      const scores: Array<{ event_player_id: string; putts_made: number }> = [];
-
-      const result = await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
-
-      expect(bulkUpsertFrameResults).not.toHaveBeenCalled();
-      expect(result).toBeDefined();
-    });
-
-    it('should calculate points using event bonus_point_enabled setting', async () => {
-      // Already tested in the first test - 3 putts with bonus enabled = 4 points
-      const scores = [
-        { event_player_id: 'ep-1', putts_made: 3 },
-      ];
-
-      await batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores);
-
-      expect(bulkUpsertFrameResults).toHaveBeenCalledWith(mockSupabase, [
-        {
-          match_frame_id: 'frame-123',
-          event_player_id: 'ep-1',
-          bracket_match_id: bracketMatchId,
-          putts_made: 3,
-          points_earned: 4, // bonus enabled
-        },
-      ]);
-    });
-
-    it('should throw InternalError when bulk upsert fails', async () => {
-      (bulkUpsertFrameResults as jest.Mock).mockRejectedValue(
-        new InternalError('Failed to record scores: RPC failed')
-      );
-
-      const scores = [{ event_player_id: 'ep-1', putts_made: 2 }];
-
-      await expect(
-        batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, scores)
-      ).rejects.toThrow(InternalError);
-    });
-  });
 });

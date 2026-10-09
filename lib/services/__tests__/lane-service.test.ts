@@ -15,7 +15,6 @@
 import {
   createMockSupabaseClient,
   createMockLane,
-  createMockBracketMatch,
   createMockUser,
   MockSupabaseClient,
 } from './test-utils';
@@ -34,15 +33,6 @@ jest.mock('@/lib/repositories/lane-repository', () => ({
   getLanesForEvent: jest.fn(),
   insertLanes: jest.fn(),
   getMatchLaneAssignments: jest.fn(),
-  getEventStatus: jest.fn(),
-  getAvailableLanes: jest.fn(),
-  getUnassignedReadyMatches: jest.fn(),
-  assignLaneToMatch: jest.fn(),
-  bulkAssignLanesToMatches: jest.fn(),
-  releaseMatchLane: jest.fn(),
-  setLaneMaintenanceRPC: jest.fn(),
-  setLaneIdleRPC: jest.fn(),
-  getLaneById: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/bracket-repository', () => ({
@@ -54,16 +44,11 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import * as laneRepo from '@/lib/repositories/lane-repository';
-import { getBracketStage, fetchBracketStructure } from '@/lib/repositories/bracket-repository';
+import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import {
   createEventLanes,
   getEventLanes,
   getLanesWithMatches,
-  autoAssignLanes,
-  releaseMatchLaneAndReassign,
-  releaseAndReassignLanePublic,
-  setLaneMaintenance,
-  setLaneIdle,
 } from '../lane/lane-service';
 
 describe('Lane Service', () => {
@@ -197,237 +182,5 @@ describe('Lane Service', () => {
     });
   });
 
-  describe('autoAssignLanes', () => {
-    const eventId = 'event-123';
 
-    it('should assign available lanes to ready matches', async () => {
-      const availableLanes = [
-        createMockLane({ id: 'lane-1', status: 'idle' }),
-        createMockLane({ id: 'lane-2', status: 'idle' }),
-      ];
-
-      const unassignedMatches = [
-        createMockBracketMatch({ id: 1 }),
-        createMockBracketMatch({ id: 2 }),
-      ];
-
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
-      (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(2);
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(2);
-      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledTimes(1);
-      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledWith(
-        mockSupabase,
-        eventId,
-        [
-          { laneId: 'lane-1', matchId: 1 },
-          { laneId: 'lane-2', matchId: 2 },
-        ]
-      );
-    });
-
-    it('should return 0 when event is not in bracket status', async () => {
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('pre-bracket');
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(0);
-      expect(laneRepo.getAvailableLanes).not.toHaveBeenCalled();
-    });
-
-    it('should return 0 when no available lanes', async () => {
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([]);
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 when no bracket stage exists', async () => {
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
-      (getBracketStage as jest.Mock).mockResolvedValue(null);
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 when no unassigned matches', async () => {
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane()]);
-      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
-      (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue([]);
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(0);
-    });
-
-    it('should assign minimum of available lanes and matches', async () => {
-      const availableLanes = [createMockLane({ id: 'lane-1' })]; // 1 lane
-      const unassignedMatches = [
-        createMockBracketMatch({ id: 1 }),
-        createMockBracketMatch({ id: 2 }),
-        createMockBracketMatch({ id: 3 }),
-      ]; // 3 matches
-
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
-      (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1);
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(1);
-      expect(laneRepo.bulkAssignLanesToMatches).toHaveBeenCalledWith(
-        mockSupabase,
-        eventId,
-        [{ laneId: 'lane-1', matchId: 1 }]
-      );
-    });
-
-    it('should return count from bulk assignment', async () => {
-      const availableLanes = [
-        createMockLane({ id: 'lane-1' }),
-        createMockLane({ id: 'lane-2' }),
-      ];
-      const unassignedMatches = [
-        createMockBracketMatch({ id: 1 }),
-        createMockBracketMatch({ id: 2 }),
-      ];
-
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue(availableLanes);
-      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
-      (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue(unassignedMatches);
-      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1); // Only 1 succeeded
-
-      const result = await autoAssignLanes(eventId);
-
-      expect(result).toBe(1);
-    });
-  });
-
-  describe('releaseMatchLaneAndReassign', () => {
-    const eventId = 'event-123';
-    const matchId = 1;
-
-    it('should release lane and trigger auto-assign', async () => {
-      (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([createMockLane({ id: 'lane-1' })]);
-      (getBracketStage as jest.Mock).mockResolvedValue({ id: 'stage-1' });
-      (laneRepo.getUnassignedReadyMatches as jest.Mock).mockResolvedValue([
-        createMockBracketMatch({ id: 2 }),
-      ]);
-      (laneRepo.bulkAssignLanesToMatches as jest.Mock).mockResolvedValue(1);
-
-      const result = await releaseMatchLaneAndReassign(eventId, matchId);
-
-      expect(laneRepo.releaseMatchLane).toHaveBeenCalledWith(mockSupabase, eventId, matchId);
-      expect(result).toBe(1);
-    });
-
-    it('should require admin permission', async () => {
-      (requireEventAdmin as jest.Mock).mockRejectedValue(new Error('Not authorized'));
-
-      await expect(releaseMatchLaneAndReassign(eventId, matchId)).rejects.toThrow(
-        'Not authorized'
-      );
-    });
-  });
-
-  describe('releaseAndReassignLanePublic', () => {
-    const eventId = 'event-123';
-    const matchId = 1;
-
-    it('should release lane using the caller-provided privileged client', async () => {
-      const privilegedClient = createMockSupabaseClient();
-      (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([]);
-
-      const result = await releaseAndReassignLanePublic(
-        privilegedClient as unknown as Parameters<typeof releaseAndReassignLanePublic>[0],
-        eventId,
-        matchId
-      );
-
-      expect(laneRepo.releaseMatchLane).toHaveBeenCalledWith(privilegedClient, eventId, matchId);
-      expect(createClient).not.toHaveBeenCalled();
-      expect(result).toBe(0);
-    });
-
-    it('should not require admin permission', async () => {
-      (laneRepo.releaseMatchLane as jest.Mock).mockResolvedValue(undefined);
-      (laneRepo.getEventStatus as jest.Mock).mockResolvedValue('bracket');
-      (laneRepo.getAvailableLanes as jest.Mock).mockResolvedValue([]);
-
-      await releaseAndReassignLanePublic(
-        mockSupabase as unknown as Parameters<typeof releaseAndReassignLanePublic>[0],
-        eventId,
-        matchId
-      );
-
-      expect(requireEventAdmin).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('setLaneMaintenance', () => {
-    const eventId = 'event-123';
-    const laneId = 'lane-123';
-
-    it('should set lane to maintenance status', async () => {
-      const updatedLane = createMockLane({ id: laneId, status: 'maintenance' });
-
-      (laneRepo.setLaneMaintenanceRPC as jest.Mock).mockResolvedValue(undefined);
-      (laneRepo.getLaneById as jest.Mock).mockResolvedValue(updatedLane);
-
-      const result = await setLaneMaintenance(eventId, laneId);
-
-      expect(result).toEqual(updatedLane);
-      expect(laneRepo.setLaneMaintenanceRPC).toHaveBeenCalledWith(
-        mockSupabase,
-        eventId,
-        laneId
-      );
-    });
-
-    it('should require admin permission', async () => {
-      (requireEventAdmin as jest.Mock).mockRejectedValue(new Error('Not authorized'));
-
-      await expect(setLaneMaintenance(eventId, laneId)).rejects.toThrow('Not authorized');
-    });
-  });
-
-  describe('setLaneIdle', () => {
-    const eventId = 'event-123';
-    const laneId = 'lane-123';
-
-    it('should set lane to idle status', async () => {
-      const updatedLane = createMockLane({ id: laneId, status: 'idle' });
-
-      (laneRepo.setLaneIdleRPC as jest.Mock).mockResolvedValue(undefined);
-      (laneRepo.getLaneById as jest.Mock).mockResolvedValue(updatedLane);
-
-      const result = await setLaneIdle(eventId, laneId);
-
-      expect(result).toEqual(updatedLane);
-      expect(laneRepo.setLaneIdleRPC).toHaveBeenCalledWith(mockSupabase, eventId, laneId);
-    });
-
-    it('should require admin permission', async () => {
-      (requireEventAdmin as jest.Mock).mockRejectedValue(new Error('Not authorized'));
-
-      await expect(setLaneIdle(eventId, laneId)).rejects.toThrow('Not authorized');
-    });
-  });
 });

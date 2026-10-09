@@ -334,27 +334,6 @@ export interface AccessCodeEvent {
 }
 
 /**
- * Get the event an access code belongs to.
- * `accessCode` must already be normalized; it is matched exactly (never with LIKE).
- */
-export async function getEventByAccessCode(
-  supabase: PrivilegedClient,
-  accessCode: string
-): Promise<AccessCodeEvent | null> {
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('id, event_date, location, lane_count, bonus_point_enabled, bracket_frame_count, qualification_round_enabled, qualification_frame_count, status')
-    .eq('access_code', accessCode)
-    .maybeSingle();
-
-  if (error) {
-    throw new InternalError(`Failed to fetch event by access code: ${error.message}`);
-  }
-
-  return event as AccessCodeEvent | null;
-}
-
-/**
  * Get an event's access code (admin display only)
  */
 export async function getEventAccessCode(

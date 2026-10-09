@@ -30,6 +30,10 @@ jest.mock('@/lib/supabase/privileged', () => ({
   _createPrivilegedClient: jest.fn(),
 }));
 
+jest.mock('@/lib/db/client', () => ({
+  _getDb: jest.fn(),
+}));
+
 jest.mock('@/lib/repositories/league-repository', () => ({
   getLeagueAdminByUserAndLeague: jest.fn(),
   isLeagueOwner: jest.fn(),
@@ -38,18 +42,23 @@ jest.mock('@/lib/repositories/league-repository', () => ({
 
 jest.mock('@/lib/repositories/event-repository', () => ({
   getEventLeagueId: jest.fn(),
+}));
+
+jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventByAccessCode: jest.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient } from '@/lib/supabase/privileged';
+import { _getDb } from '@/lib/db/client';
 import {
   getLeagueAdminByUserAndLeague,
   isLeagueOwner,
   isAnyLeagueAdmin,
 } from '@/lib/repositories/league-repository';
-import { getEventLeagueId, getEventByAccessCode } from '@/lib/repositories/event-repository';
+import { getEventLeagueId } from '@/lib/repositories/event-repository';
+import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
 import {
   requireAuthenticatedUser,
   requireLeagueAdmin,
@@ -64,6 +73,7 @@ import {
 describe('Auth Service', () => {
   let mockSupabase: MockSupabaseClient;
   let mockDb: MockSupabaseClient;
+  const mockPg = {};
 
   const signIn = (userId = 'user-123') => {
     mockSupabase.auth.getUser.mockResolvedValue({
@@ -85,6 +95,7 @@ describe('Auth Service', () => {
     mockDb = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
     (_createPrivilegedClient as jest.Mock).mockReturnValue(mockDb);
+    (_getDb as jest.Mock).mockReturnValue(mockPg);
   });
 
   describe('requireAuthenticatedUser', () => {
@@ -177,6 +188,7 @@ describe('Auth Service', () => {
       const result = await authorizeLeagueAdmin('league-1');
 
       expect(result.db).toBe(mockDb);
+      expect(result.pg).toBe(mockPg);
       expect(result.user.id).toBe('user-123');
     });
 
@@ -286,8 +298,8 @@ describe('Auth Service', () => {
 
       const result = await authorizeAccessCode('  AbC123 ');
 
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, 'abc123');
-      expect(result).toEqual({ event: bracketEvent, db: mockDb });
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
+      expect(result).toEqual({ event: bracketEvent, db: mockDb, pg: mockPg });
     });
 
     it('does not treat LIKE wildcards specially', async () => {
@@ -295,8 +307,8 @@ describe('Auth Service', () => {
 
       await expect(authorizeAccessCode('%')).rejects.toThrow(InvalidAccessCodeError);
       await expect(authorizeAccessCode('______')).rejects.toThrow(InvalidAccessCodeError);
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, '%');
-      expect(getEventByAccessCode).toHaveBeenCalledWith(mockDb, '______');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, '%');
+      expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, '______');
     });
 
     it('rejects an empty code without a lookup', async () => {

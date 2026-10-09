@@ -66,11 +66,12 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    NEXT_PUBLIC_SUPABASE_URL=[YOUR_SUPABASE_PROJECT_URL]
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[YOUR_SUPABASE_ANON_KEY]
    SUPABASE_SECRET_KEY=[YOUR_SUPABASE_SECRET_KEY]
+   DATABASE_URL=postgresql://app_server:app_server@127.0.0.1:54322/postgres
    ```
 
-   `SUPABASE_SECRET_KEY` is server-only (never prefix with `NEXT_PUBLIC_`). For local development, find it under `SECRET_KEY` in `npx supabase status`.
+   `SUPABASE_SECRET_KEY` and `DATABASE_URL` are server-only (never prefix with `NEXT_PUBLIC_`). For local development, find the secret key under `SECRET_KEY` in `npx supabase status`. In production, `DATABASE_URL` connects via the Supabase Supavisor transaction pooler (port 6543, role `app_server.<project-ref>`, `?sslmode=require`).
 
-4. Run database migrations and tests:
+4. Run database migrations, schema generation, and tests:
 
    Pin the Postgres image version to `17.6.1.063` (matching production; image `17.6.1.106` has a known supautils bug) before starting the local stack:
 
@@ -80,10 +81,17 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    npx supabase db reset
    ```
 
-   Run the database security tests (pgTAP):
+   Generate Drizzle schema from the local database (verified in CI via `npm run db:check`):
+
+   ```bash
+   npm run db:pull
+   ```
+
+   Run database security tests (pgTAP) and integration tests:
 
    ```bash
    npx supabase test db
+   npm run test:int
    ```
 
 5. Start the development server:

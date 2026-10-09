@@ -29,7 +29,7 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-repository', () => ({
+jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventByAccessCode: jest.fn(),
 }));
 
@@ -37,7 +37,7 @@ jest.mock('@/lib/repositories/event-repository', () => ({
 // whatever event the repository mock returns, with the mock client as `db`.
 jest.mock('@/lib/services/auth', () => {
   const { NotFoundError: MockNotFoundError } = jest.requireActual('@/lib/errors');
-  const repo = jest.requireMock('@/lib/repositories/event-repository');
+  const repo = jest.requireMock('@/lib/repositories/event-repository.db');
   const server = jest.requireMock('@/lib/supabase/server');
   return {
     authorizeAccessCode: jest.fn(async (code: string) => {
@@ -70,7 +70,7 @@ jest.mock('@/lib/repositories/event-player-repository', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import * as eventRepo from '@/lib/repositories/event-repository';
+import * as eventRepo from '@/lib/repositories/event-repository.db';
 import * as qualificationRepo from '@/lib/repositories/qualification-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import {

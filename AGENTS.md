@@ -13,9 +13,16 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
   Supabase queries do not belong in services.
 - Trust model: browser/client roles (`anon`, `authenticated`) can only SELECT via RLS.
   All writes and business RPCs require a type-branded `PrivilegedClient` (`lib/supabase/types.ts`)
-  obtained via authorization functions in `lib/services/auth/auth-service.ts` (`authorize*`)
-  or `requireEventAdmin`. Because `PrivilegedClient` bypasses RLS, services must verify that
+  or Drizzle `Db` (`lib/db/tx.ts`) obtained via authorization functions in `lib/services/auth/auth-service.ts`
+  (`authorize*`) or `requireEventAdmin`. Because privileged clients bypass RLS, services must verify that
   all entity IDs belong to the authorized event before writing.
+- Drizzle layer: server writes for transactional flows use Drizzle ORM (`lib/db/`, direct Postgres
+  connection as role `app_server`). Authorization functions return `{ db, pg }` (`pg` is `Db`).
+- Services own transactions (`withTransaction`); repositories never open transactions. Repositories
+  using Drizzle use `.db.ts` suffix and take `ex: Executor` (`Db | Tx`) as their first parameter.
+- Lock order (prevents deadlocks): event advisory lock (`lockEvent`) → event row (`FOR SHARE`, or
+  `FOR UPDATE` when changing it) → match rows (`lockMatch`, ascending id) → lane rows (ascending id). Mutating bracket structure/progression or lanes takes the
+  event lock first; score submission locks only the match row.
 - CSRF protection is enforced centrally in `lib/supabase/proxy.ts` (rejects non-GET/HEAD/OPTIONS
   `/api/**` requests where Origin does not match Host). `validateCsrfOrigin` (`lib/utils/csrf.ts`)
   remains available for explicit checks. Many routes use `lib/middleware/rate-limit.ts`.
@@ -24,7 +31,7 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
 - Schema changes are additive migrations (new timestamped files in `supabase/migrations/`,
   starting with `202610070000000_security_lockdown.sql`). Do not edit existing `init_*`
   migration files (flag any edits to them). Emergency rollback SQL lives in `supabase/rollbacks/`.
-- Checks: `npm run lint`, `npm run type-check`, `npm test` (Jest), `npm run build`.
+- Checks: `npm run lint`, `npm run type-check`, `npm test` (Jest), `npm run test:int` (integration tests, needs `supabase start`), `npm run db:check`, `npm run build`.
 
 # Code Review Instructions
 
@@ -80,6 +87,8 @@ Domain areas that deserve extra scrutiny:
   one lane or a lane stuck as occupied.
 - **Pools and teams**: Pool A/B assignment from qualification scores or PFA, and
   team pairing.
+- **Transactions and locking**: writes in ported flows must happen inside the service's
+  transaction, under the documented lock order (event → event row → match → lane).
 
 ## Error handling
 

@@ -1,30 +1,29 @@
 import 'server-only';
 import { requireEventAdmin } from '@/lib/services/event';
-import { releaseMatchLaneAndReassign } from '@/lib/services/lane';
 import {
   BadRequestError,
   InternalError,
   NotFoundError,
 } from '@/lib/errors';
-import { completeMatch, handleGrandFinalCompletion } from './match-completion';
-import { calculatePoints } from './points-calculator';
-import { getTeamFromParticipant, getTeamIdsFromParticipants, verifyPlayerInTeams } from '@/lib/repositories/team-repository';
+import { completeMatch, handleGrandFinalCompletionTx } from './match-completion';
+import { recordFrameScores } from './score-submission';
+import { lockEvent, lockMatch, withTransaction } from '@/lib/db/tx';
+import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import {
-  getOrCreateFrame as getOrCreateFrameRepo,
   getOrCreateFrameWithResults,
   getFrameWithBracketMatch,
   upsertFrameResult,
-  upsertFrameResultAtomic,
 } from '@/lib/repositories/frame-repository';
 import { getMatchFrame } from '@/lib/repositories/frame-repository';
-import { getEventScoringConfig, getEventBracketFrameCount, getEventById } from '@/lib/repositories/event-repository';
+import { getEventScoringConfig, getEventBracketFrameCount } from '@/lib/repositories/event-repository';
+import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { updateMatchOpponents } from '@/lib/repositories/bracket-repository.db';
 import {
   getMatchByIdAndEvent,
-  getMatchWithOpponents,
-  updateMatchOpponentScores,
   updateMatchStatus,
   getMatchForScoringById,
 } from '@/lib/repositories/bracket-repository';
+import { MatchStatus } from '@/lib/types/bracket';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -55,74 +54,15 @@ export async function recordScoreAdmin(
   eventPlayerId: string,
   puttsMade: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  if (puttsMade < 0 || puttsMade > 3) {
-    throw new BadRequestError('Putts must be between 0 and 3');
-  }
-
-  if (!Number.isInteger(frameNumber) || frameNumber < 1) {
-    throw new BadRequestError('Frame number must be a positive integer');
-  }
-
-  if (frameNumber > 50) {
-    throw new BadRequestError('Frame number exceeds maximum allowed limit');
-  }
-
-  const [eventConfig, bracketFrameCount, bracketMatch] = await Promise.all([
-    getEventScoringConfig(supabase, eventId),
-    getEventBracketFrameCount(supabase, eventId),
-    getMatchByIdAndEvent(supabase, bracketMatchId, eventId),
-  ]);
-
-  if (!eventConfig) {
-    throw new NotFoundError('Event not found');
-  }
-
-  if (!bracketMatch) {
-    throw new NotFoundError('Bracket match not found');
-  }
-
-  // Verify player belongs to one of the teams in this match
-  const participantIds = [bracketMatch.opponent1?.id, bracketMatch.opponent2?.id].filter((id): id is number => id != null);
-  if (participantIds.length === 0) {
-    throw new BadRequestError('Match has no participants yet');
-  }
-  const teamIds = await getTeamIdsFromParticipants(supabase, participantIds);
-  const playerInMatch = await verifyPlayerInTeams(supabase, eventPlayerId, teamIds);
-  if (!playerInMatch) {
-    throw new BadRequestError('Player is not in this match');
-  }
-
-  const isCompletedOrArchived = bracketMatch.status === 4 || bracketMatch.status === 5;
-  if (isCompletedOrArchived) {
-    if (eventConfig.status !== 'bracket') {
-      throw new BadRequestError('Score corrections for completed matches are only allowed during the bracket phase');
-    }
-  } else {
-    if (eventConfig.status !== 'bracket') {
-      throw new BadRequestError('Scoring is only allowed during the bracket phase');
-    }
-  }
-
-  if (bracketFrameCount === undefined || bracketFrameCount === null) {
-    throw new InternalError('Event bracket frame count is missing');
-  }
-  const pointsEarned = calculatePoints(puttsMade, eventConfig.bonus_point_enabled);
-  const isOvertime = frameNumber > bracketFrameCount;
-  const frame = await getOrCreateFrameRepo(supabase, bracketMatchId, frameNumber, isOvertime);
-
-  await upsertFrameResultAtomic(supabase, {
-    matchFrameId: frame.id,
-    eventPlayerId,
-    bracketMatchId,
-    puttsMade,
-    pointsEarned,
+  await recordFrameScores(pg, {
+    eventId,
+    matchId: bracketMatchId,
+    frameNumber,
+    scores: [{ event_player_id: eventPlayerId, putts_made: puttsMade }],
+    scorer: 'admin',
   });
-
-  if (bracketMatch.status === 2) { // Ready status
-    await updateMatchStatus(supabase, bracketMatchId, 3); // Running status
-  }
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
@@ -253,22 +193,10 @@ export async function completeBracketMatch(
   eventId: string,
   bracketMatchId: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const match = await getBracketMatchWithDetails(eventId, bracketMatchId);
-  const score1 = match.opponent1?.score ?? 0;
-  const score2 = match.opponent2?.score ?? 0;
-
-  await completeMatch(supabase, eventId, bracketMatchId, {
-    team1Score: score1,
-    team2Score: score2,
-  });
-
-  try {
-    await releaseMatchLaneAndReassign(eventId, bracketMatchId);
-  } catch (laneError) {
-    console.error('Failed to release lane and reassign:', laneError);
-  }
+  // Result, bracket progression and lane release commit together.
+  await completeMatch(pg, eventId, bracketMatchId);
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
@@ -283,22 +211,13 @@ export async function completeMatchWithFinalScores(
   team1Score: number,
   team2Score: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   if (team1Score === team2Score) {
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
   }
 
-  await completeMatch(supabase, eventId, bracketMatchId, {
-    team1Score,
-    team2Score,
-  });
-
-  try {
-    await releaseMatchLaneAndReassign(eventId, bracketMatchId);
-  } catch (laneError) {
-    console.error('Failed to release lane and reassign:', laneError);
-  }
+  await completeMatch(pg, eventId, bracketMatchId, { team1Score, team2Score });
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
@@ -333,45 +252,40 @@ export async function correctMatchScores(
   team1Score: number,
   team2Score: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   if (team1Score === team2Score) {
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
   }
 
-  const match = await getMatchWithOpponents(supabase, bracketMatchId, eventId);
-
-  if (!match) {
-    throw new NotFoundError('Bracket match not found');
-  }
-
-  const isCompleted = match.status === 4 || match.status === 5;
-  if (!isCompleted) {
-    throw new BadRequestError('Score correction is only valid for completed matches');
-  }
-
   const team1Won = team1Score > team2Score;
 
-  const event = await getEventById(supabase, eventId);
-  const doubleGrandFinal = event?.double_grand_final ?? true;
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
 
-  await updateMatchOpponentScores(
-    supabase,
-    bracketMatchId,
-    {
-      ...match.opponent1,
-      score: team1Score,
-      result: team1Won ? 'win' : 'loss',
-    },
-    {
-      ...match.opponent2,
-      score: team2Score,
-      result: team1Won ? 'loss' : 'win',
+    const match = await lockMatch(tx, bracketMatchId, eventId);
+    if (!match) {
+      throw new NotFoundError('Bracket match not found');
     }
-  );
 
-  // Handle grand final reset match archiving/un-archiving if winner changed
-  await handleGrandFinalCompletion(supabase, bracketMatchId, team1Won, doubleGrandFinal);
+    const isCompleted = match.status === MatchStatus.Completed || match.status === MatchStatus.Archived;
+    if (!isCompleted) {
+      throw new BadRequestError('Score correction is only valid for completed matches');
+    }
+
+    const doubleGrandFinal = event?.double_grand_final ?? true;
+
+    await updateMatchOpponents(
+      tx,
+      match,
+      { ...(match.opponent1 as object), score: team1Score, result: team1Won ? 'win' : 'loss' },
+      { ...(match.opponent2 as object), score: team2Score, result: team1Won ? 'loss' : 'win' }
+    );
+
+    // Handle grand final reset match archiving/un-archiving if winner changed
+    await handleGrandFinalCompletionTx(tx, eventId, bracketMatchId, team1Won, doubleGrandFinal);
+  });
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }

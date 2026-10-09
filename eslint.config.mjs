@@ -15,7 +15,7 @@ import nextTypeScript from "eslint-config-next/typescript";
 
 const eslintConfig = [
   {
-    ignores: ["node_modules/**", ".next/**", "jest.config.js", "jest.integration.config.js"],
+    ignores: ["node_modules/**", ".next/**", "jest.config.js", "jest.integration.config.js", "lib/db/schema.ts"],
   },
   ...nextCoreWebVitals,
   ...nextTypeScript,
@@ -40,6 +40,31 @@ const eslintConfig = [
               group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
               message:
                 "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The direct Postgres connection (lib/db/client) also bypasses RLS. Services get
+    // it from the authorize* functions as `pg`; repositories receive an Executor.
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
+    ignores: ["lib/services/auth/**", "lib/db/**", "integration/**", "**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
+              message:
+                "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
+            },
+            {
+              group: ["@/lib/db/client", "**/db/client"],
+              message:
+                "Use the authorize* functions in lib/services/auth to obtain a Db (`pg`); import types from lib/db/tx.",
             },
           ],
         },
