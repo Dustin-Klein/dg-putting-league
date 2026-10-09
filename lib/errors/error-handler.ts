@@ -5,6 +5,7 @@ import {
   BadRequestError,
   NotFoundError,
   ForbiddenError,
+  ConflictError,
 } from "./custom-errors";
 import { logger } from "../utils/logger";
 
@@ -33,6 +34,9 @@ export function handleError(error: unknown) {
   }
   if (error instanceof BadRequestError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (error instanceof ConflictError) {
+    return NextResponse.json({ error: error.message }, { status: 409 });
   }
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });

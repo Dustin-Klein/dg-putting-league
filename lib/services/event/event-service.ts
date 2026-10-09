@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
 import {
   BadRequestError,
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
@@ -11,20 +12,36 @@ import {
 import { requireLeagueAdmin, authorizeEventAdmin, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
 import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
-import { computeTeamPairings, TeamPairing } from '@/lib/services/team';
-import { createBracketTx } from '@/lib/services/bracket';
+import { computeTeamPairings } from '@/lib/services/team';
+import {
+  archiveGrandFinalResetMatchTx,
+  createBracketTx,
+  restoreGrandFinalResetMatchTx,
+} from '@/lib/services/bracket';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { lockEvent, withTransaction, type Executor } from '@/lib/db/tx';
+import { lockEvent, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
 import * as teamDb from '@/lib/repositories/team-repository.db';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
+import * as bracketDb from '@/lib/repositories/bracket-repository.db';
+import * as eventPlacementDb from '@/lib/repositories/event-placement-repository.db';
 import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
 import * as eventRepo from '@/lib/repositories/event-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
-import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
-import * as eventPlacementRepo from '@/lib/repositories/event-placement-repository';
 import { logger } from '@/lib/utils/logger';
+import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
+import {
+  computeEventPlacements,
+  isBracketDecided,
+  type PlacementMatch,
+  type PlacementOpponent,
+} from './placements';
+import {
+  validatePreviewPayload,
+  type ProvidedPoolAssignment,
+  type ProvidedTeamPairing,
+} from './preview';
 
 /**
  * Ensure the current user is an admin of the event's league.
@@ -198,17 +215,7 @@ export async function validateEventStatusTransition(
 ) {
   const currentStatus = currentEvent.status;
 
-  // Validate status flow
-  const statusFlow: Record<string, string[]> = {
-    'created': ['pre-bracket'],
-    'pre-bracket': ['bracket'],
-    'bracket': ['completed'],
-    'completed': []
-  };
-
-  if (!statusFlow[currentStatus]?.includes(newStatus)) {
-    throw new BadRequestError(`Invalid status transition from ${currentStatus} to ${newStatus}`);
-  }
+  validateStatusFlow(currentStatus, newStatus);
 
   // Validation for pre-bracket to bracket transition
   if (currentStatus === 'pre-bracket' && newStatus === 'bracket') {
@@ -253,6 +260,113 @@ export async function validateEventStatusTransition(
   }
 }
 
+function validateStatusFlow(currentStatus: string, newStatus: string): void {
+  const statusFlow: Record<string, string[]> = {
+    'created': ['pre-bracket'],
+    'pre-bracket': ['bracket'],
+    'bracket': ['completed'],
+    'completed': []
+  };
+
+  if (!statusFlow[currentStatus]?.includes(newStatus)) {
+    throw new BadRequestError(`Invalid status transition from ${currentStatus} to ${newStatus}`);
+  }
+}
+
+export interface UpdateEventSettingsPatch {
+  status?: 'created' | 'pre-bracket' | 'completed';
+  double_grand_final?: boolean;
+  force?: boolean;
+}
+
+/**
+ * Authorize first, then atomically reconcile bracket settings, placements and status.
+ */
+export async function updateEventSettings(
+  eventId: string,
+  patch: UpdateEventSettingsPatch
+) {
+  const { supabase, pg } = await requireEventAdmin(eventId);
+  const before = await eventRepo.getEventWithPlayers(supabase, eventId, { includePaymentType: true }) as EventWithDetails;
+
+  if (patch.status) {
+    await validateEventStatusTransition(eventId, patch.status, before);
+  }
+
+  await withTransaction(pg, (tx) => updateEventSettingsTx(tx, eventId, patch));
+
+  const updated = await eventRepo.getEventById(supabase, eventId);
+  if (!updated) throw new NotFoundError('Event not found');
+  return updated;
+}
+
+export async function updateEventSettingsTx(
+  tx: Tx,
+  eventId: string,
+  patch: UpdateEventSettingsPatch
+): Promise<void> {
+  await lockEvent(tx, eventId);
+  const current = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
+  if (!current) throw new NotFoundError('Event not found');
+
+  if (patch.status) {
+    validateStatusFlow(current.status, patch.status);
+  }
+
+  if (current.status === 'bracket' && patch.status === 'completed') {
+    const context = await bracketDb.getBracketResetContext(tx, eventId);
+    const participants = await bracketDb.getParticipantsForEvent(tx, eventId);
+    const grandFinalGroup = context?.groups.find((group) => group.number === 3);
+    const grandFinalRounds = new Map(
+      (context?.rounds ?? [])
+        .filter((round) => round.group_id === grandFinalGroup?.id)
+        .map((round) => [round.id, round.number])
+    );
+    const grandFinalMatches = (context?.matches ?? [])
+      .filter((match) => grandFinalRounds.has(match.round_id) && match.number === 1)
+      .map((match) => ({
+        roundNumber: grandFinalRounds.get(match.round_id) as number,
+        status: match.status,
+        opponent1: match.opponent1 as PlacementOpponent | null,
+        opponent2: match.opponent2 as PlacementOpponent | null,
+      }));
+
+    const effectiveDoubleGrandFinal = patch.double_grand_final ?? current.double_grand_final;
+    if (!patch.force && !isBracketDecided(grandFinalMatches, effectiveDoubleGrandFinal)) {
+      throw new ConflictError(BRACKET_NOT_DECIDED_MESSAGE);
+    }
+
+    const matches: PlacementMatch[] = (context?.matches ?? []).map((match) => ({
+      id: match.id,
+      round_id: match.round_id,
+      status: match.status,
+      opponent1: match.opponent1 as PlacementOpponent | null,
+      opponent2: match.opponent2 as PlacementOpponent | null,
+    }));
+    const placements = computeEventPlacements({
+      eventId,
+      groups: context?.groups ?? [],
+      rounds: context?.rounds ?? [],
+      matches,
+      participants,
+    });
+    await eventPlacementDb.upsertEventPlacements(tx, placements);
+  }
+
+  if (patch.double_grand_final === false && current.double_grand_final) {
+    await archiveGrandFinalResetMatchTx(tx, eventId);
+  } else if (patch.double_grand_final === true && !current.double_grand_final) {
+    await restoreGrandFinalResetMatchTx(tx, eventId);
+  }
+
+  await eventDb.updateEventSettings(tx, eventId, {
+    ...(patch.status ? { status: patch.status } : {}),
+    ...(patch.double_grand_final !== undefined
+      ? { double_grand_final: patch.double_grand_final }
+      : {}),
+  });
+}
+
 /**
  * Update an event
  */
@@ -277,18 +391,23 @@ export async function updateEvent(
 export async function transitionEventToBracket(
   eventId: string,
   event: EventWithDetails,
-  providedPoolAssignments?: PoolAssignment[],
-  providedTeamPairings?: TeamPairing[]
+  providedPoolAssignments?: ProvidedPoolAssignment[],
+  providedTeamPairings?: ProvidedTeamPairing[]
 ) {
   const { pg } = await requireEventAdmin(eventId);
 
   await validateEventStatusTransition(eventId, 'bracket', event);
 
-  // Use provided pairings if available, otherwise compute new ones
-  const poolAssignments = providedPoolAssignments ?? await computePoolAssignments(eventId, event);
-  const teamPairings = providedTeamPairings ?? computeTeamPairings(poolAssignments);
+  if ((providedPoolAssignments === undefined) !== (providedTeamPairings === undefined)) {
+    throw new BadRequestError('Pool assignments and team pairings must be provided together');
+  }
 
-  await startBracket(pg, eventId, poolAssignments, teamPairings);
+  // Use provided pairings if available, otherwise compute new ones
+  const recomputedPoolAssignments = await computePoolAssignments(eventId, event);
+  const poolAssignments = providedPoolAssignments ?? recomputedPoolAssignments;
+  const teamPairings = providedTeamPairings ?? computeTeamPairings(recomputedPoolAssignments);
+
+  await startBracket(pg, eventId, poolAssignments, teamPairings, recomputedPoolAssignments);
 }
 
 /**
@@ -298,9 +417,31 @@ export async function transitionEventToBracket(
 export async function startBracket(
   pg: Executor,
   eventId: string,
-  poolAssignments: PoolAssignment[],
-  teamPairings: TeamPairing[]
+  poolAssignments: ProvidedPoolAssignment[],
+  teamPairings: ProvidedTeamPairing[],
+  recomputedPoolAssignments?: PoolAssignment[]
 ): Promise<void> {
+  const authoritativeAssignments = recomputedPoolAssignments ?? poolAssignments.map((assignment) => {
+    if (
+      assignment.playerId === undefined ||
+      assignment.playerName === undefined ||
+      assignment.pfaScore === undefined ||
+      assignment.scoringMethod === undefined ||
+      assignment.defaultPool === undefined
+    ) {
+      throw new BadRequestError('Server-computed player scores are required');
+    }
+    return {
+      eventPlayerId: assignment.eventPlayerId,
+      playerId: assignment.playerId,
+      playerName: assignment.playerName,
+      pool: assignment.pool,
+      pfaScore: assignment.pfaScore,
+      scoringMethod: assignment.scoringMethod,
+      defaultPool: assignment.defaultPool,
+    };
+  });
+
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
 
@@ -312,16 +453,18 @@ export async function startBracket(
       throw new BadRequestError(`Event must be in pre-bracket status to start bracket play (current status: ${current.status})`);
     }
 
-    const eventPlayerIds = new Set(await eventPlayerDb.getEventPlayerIds(tx, eventId));
-    const memberIds = teamPairings.flatMap((tp) => tp.members.map((m) => m.eventPlayerId));
-    if (memberIds.some((id) => !eventPlayerIds.has(id)) || new Set(memberIds).size !== memberIds.length) {
-      throw new BadRequestError('Teams must be made of distinct players registered for this event');
-    }
+    const eventPlayerIds = await eventPlayerDb.getEventPlayerIds(tx, eventId);
+    const validated = validatePreviewPayload({
+      currentEventPlayerIds: eventPlayerIds,
+      recomputedPoolAssignments: authoritativeAssignments,
+      providedPoolAssignments: poolAssignments,
+      providedTeamPairings: teamPairings,
+    });
 
     await eventPlayerDb.applyPoolAssignments(
       tx,
       eventId,
-      poolAssignments.map((pa) => ({
+      validated.poolAssignments.map((pa) => ({
         event_player_id: pa.eventPlayerId,
         pool: pa.pool,
         pfa_score: pa.pfaScore,
@@ -332,7 +475,7 @@ export async function startBracket(
     await teamDb.insertTeamsWithMembers(
       tx,
       eventId,
-      teamPairings.map((tp) => ({
+      validated.teamPairings.map((tp) => ({
         seed: tp.seed,
         pool_combo: tp.poolCombo,
         members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role })),
@@ -347,20 +490,6 @@ export async function startBracket(
     await createBracketTx(tx, eventId, current.double_grand_final);
     await autoAssignLanesTx(tx, eventId);
   });
-}
-
-/**
- * Finalize event placements when transitioning to completed status.
- * Calculates final placements from bracket results and stores them for fast retrieval.
- */
-export async function finalizeEventPlacements(eventId: string): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const placements = await playerStatsRepo.calculateEventPlacements(supabase, eventId);
-
-  if (placements.length > 0) {
-    await eventPlacementRepo.storeEventPlacements(supabase, placements);
-  }
 }
 
 export interface EventPayoutInfo {

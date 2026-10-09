@@ -66,6 +66,7 @@ import {
   deleteEvent,
   validateEventStatusTransition,
   updateEvent,
+  updateEventSettings,
 } from '../event/event-service';
 
 describe('Event Service', () => {
@@ -580,6 +581,18 @@ describe('Event Service', () => {
 
       expect(result).toEqual(updatedEvent);
       expect(eventRepo.updateEvent).toHaveBeenCalledWith(mockSupabase, eventId, updateData);
+    });
+  });
+
+  describe('updateEventSettings', () => {
+    it('does not read event details or write when authorization fails', async () => {
+      (eventRepo.getEventLeagueId as jest.Mock).mockResolvedValue('league-123');
+      (requireLeagueAdmin as jest.Mock).mockRejectedValue(new ForbiddenError('Insufficient permissions'));
+
+      await expect(updateEventSettings('event-123', { status: 'completed', force: true }))
+        .rejects.toThrow(ForbiddenError);
+      expect(eventRepo.getEventWithPlayers).not.toHaveBeenCalled();
+      expect(eventRepo.updateEvent).not.toHaveBeenCalled();
     });
   });
 

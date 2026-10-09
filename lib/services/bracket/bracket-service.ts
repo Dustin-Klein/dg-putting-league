@@ -1277,18 +1277,20 @@ export async function archiveGrandFinalResetMatch(eventId: string): Promise<void
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-
-    const gfGroupId = await bracketDb.getGrandFinalGroupId(tx, eventId, GRAND_FINAL_GROUP_NUMBER);
-    if (gfGroupId == null) return;
-
-    const resetMatch = await bracketDb.getSecondGrandFinalMatch(tx, gfGroupId);
-    if (!resetMatch) return;
-
-    if (resetMatch.status !== Status.Archived) {
-      await releaseMatchLane(tx, eventId, resetMatch.id);
-      await bracketDb.updateMatchStatus(tx, resetMatch.id, Status.Archived);
-    }
+    await archiveGrandFinalResetMatchTx(tx, eventId);
   });
+}
+
+/** Transactional core. Caller must hold the event advisory lock. */
+export async function archiveGrandFinalResetMatchTx(tx: Tx, eventId: string): Promise<void> {
+  const gfGroupId = await bracketDb.getGrandFinalGroupId(tx, eventId, GRAND_FINAL_GROUP_NUMBER);
+  if (gfGroupId == null) return;
+
+  const resetMatch = await bracketDb.getSecondGrandFinalMatch(tx, gfGroupId);
+  if (!resetMatch || resetMatch.status === Status.Archived) return;
+
+  await releaseMatchLane(tx, eventId, resetMatch.id);
+  await bracketDb.updateMatchStatus(tx, resetMatch.id, Status.Archived);
 }
 
 function hasParticipantInSlot(opponent: unknown): boolean {
@@ -1331,30 +1333,34 @@ export async function restoreGrandFinalResetMatch(eventId: string): Promise<void
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-
-    const context = await bracketDb.getBracketResetContext(tx, eventId);
-    if (!context) return;
-
-    const gfGroup = context.groups.find((g) => g.number === GRAND_FINAL_GROUP_NUMBER);
-    if (!gfGroup) return;
-
-    const gfRoundOne = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 1);
-    const gfRoundTwo = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 2);
-    if (!gfRoundTwo) return;
-
-    const firstGrandFinalMatch = context.matches.find(
-      (m) => m.round_id === gfRoundOne?.id && m.number === 1
-    ) as unknown as Match | undefined;
-    const resetMatch = context.matches.find(
-      (m) => m.round_id === gfRoundTwo.id && m.number === 1
-    ) as unknown as Match | undefined;
-    if (!resetMatch) return;
-
-    const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
-    if (resetMatch.status !== desiredStatus) {
-      await bracketDb.updateMatchStatus(tx, Number(resetMatch.id), desiredStatus);
-    }
+    await restoreGrandFinalResetMatchTx(tx, eventId);
   });
+}
+
+/** Transactional core. Caller must hold the event advisory lock. */
+export async function restoreGrandFinalResetMatchTx(tx: Tx, eventId: string): Promise<void> {
+  const context = await bracketDb.getBracketResetContext(tx, eventId);
+  if (!context) return;
+
+  const gfGroup = context.groups.find((g) => g.number === GRAND_FINAL_GROUP_NUMBER);
+  if (!gfGroup) return;
+
+  const gfRoundOne = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 1);
+  const gfRoundTwo = context.rounds.find((r) => r.group_id === gfGroup.id && r.number === 2);
+  if (!gfRoundTwo) return;
+
+  const firstGrandFinalMatch = context.matches.find(
+    (m) => m.round_id === gfRoundOne?.id && m.number === 1
+  ) as unknown as Match | undefined;
+  const resetMatch = context.matches.find(
+    (m) => m.round_id === gfRoundTwo.id && m.number === 1
+  ) as unknown as Match | undefined;
+  if (!resetMatch) return;
+
+  const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
+  if (resetMatch.status !== desiredStatus) {
+    await bracketDb.updateMatchStatus(tx, Number(resetMatch.id), desiredStatus);
+  }
 }
 
 export { Status } from 'brackets-model';

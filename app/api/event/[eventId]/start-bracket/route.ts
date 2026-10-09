@@ -16,23 +16,26 @@ const startBracketSchema = z.object({
   poolAssignments: z.array(
     z.object({
       eventPlayerId: z.string(),
-      playerId: z.string(),
-      playerName: z.string(),
       pool: z.enum(['A', 'B']),
-      pfaScore: z.number(),
-      scoringMethod: z.enum(['qualification', 'pfa', 'default']),
-      defaultPool: z.enum(['A', 'B']),
+      playerId: z.string().optional(),
+      playerName: z.string().optional(),
+      pfaScore: z.number().optional(),
+      scoringMethod: z.enum(['qualification', 'pfa', 'default']).optional(),
+      defaultPool: z.enum(['A', 'B']).optional(),
     })
-  ),
+  ).optional(),
   teamPairings: z.array(
     z.object({
-      seed: z.number(),
-      poolCombo: z.string(),
-      combinedScore: z.number(),
+      seed: z.number().optional(),
+      poolCombo: z.string().optional(),
+      combinedScore: z.number().optional(),
       members: z.array(teamMemberSchema),
     })
-  ),
-});
+  ).optional(),
+}).refine(
+  (data) => (data.poolAssignments === undefined) === (data.teamPairings === undefined),
+  { message: 'Pool assignments and team pairings must be provided together' }
+);
 
 export async function POST(
   req: NextRequest,

@@ -15,6 +15,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
 import { TeamPreviewDialog } from '@/components/team-preview-dialog';
+import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
 
 const nextStatusMap = {
   'created': 'pre-bracket',
@@ -58,13 +59,14 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
+  const [completionWarning, setCompletionWarning] = useState<string | null>(null);
 
   const currentStatus = event.status;
   const nextStatus = nextStatusMap[currentStatus];
   const isDisabled = currentStatus === 'completed' || !nextStatus;
   const buttonText = nextStatusLabels[currentStatus];
 
-  const handleStatusChange = async () => {
+  const handleStatusChange = async (force = false) => {
     if (!nextStatus) return;
 
     try {
@@ -75,7 +77,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: nextStatus, ...(force ? { force: true } : {}) }),
       });
 
       if (!response.ok) {
@@ -86,10 +88,15 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         } catch {
           message = response.statusText || message;
         }
+        if (message === BRACKET_NOT_DECIDED_MESSAGE) {
+          setCompletionWarning(message);
+          return;
+        }
         throw new Error(message);
       }
 
       onStatusUpdate?.();
+      setCompletionWarning(null);
       setIsDialogOpen(false);
     } catch (error) {
       console.error('Error updating status:', error);
@@ -163,6 +170,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
     if (currentStatus === 'pre-bracket') {
       setIsPreviewDialogOpen(true);
     } else {
+      setCompletionWarning(null);
       setIsDialogOpen(true);
     }
   };
@@ -187,7 +195,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
           <DialogHeader>
             <DialogTitle>Confirm Status Change</DialogTitle>
             <DialogDescription>
-              {getConfirmationMessage()}
+              {completionWarning ?? getConfirmationMessage()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -199,11 +207,11 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
               Cancel
             </Button>
             <Button
-              onClick={() => handleStatusChange()}
+              onClick={() => handleStatusChange(completionWarning !== null)}
               disabled={isUpdating}
             >
               {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {buttonText}
+              {completionWarning ? 'Complete anyway' : buttonText}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4,6 +4,7 @@ export {
   NotFoundError,
   InternalError,
   BadRequestError,
+  ConflictError,
   InvalidAccessCodeError,
 } from "./custom-errors";
 

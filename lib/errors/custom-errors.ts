@@ -53,6 +53,14 @@ export class BadRequestError extends Error {
   }
 }
 
+/** Maps a valid request that conflicts with current server state to HTTP 409. */
+export class ConflictError extends Error {
+  constructor(message = 'Conflict') {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}
+
 /**
  * Error thrown when an event access code does not match any event.
  * A NotFoundError (HTTP 404), distinguished so routes can rate-limit failed attempts.

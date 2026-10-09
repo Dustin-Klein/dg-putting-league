@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server';
-import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -8,27 +7,6 @@ export interface EventPlacement {
   eventId: string;
   teamId: string;
   placement: number;
-}
-
-export async function storeEventPlacements(
-  supabase: PrivilegedClient,
-  placements: EventPlacement[]
-): Promise<void> {
-  if (placements.length === 0) return;
-
-  const rows = placements.map((p) => ({
-    event_id: p.eventId,
-    team_id: p.teamId,
-    placement: p.placement,
-  }));
-
-  const { error } = await supabase
-    .from('event_placements')
-    .upsert(rows, { onConflict: 'event_id,team_id' });
-
-  if (error) {
-    throw new InternalError(`Failed to store event placements: ${error.message}`);
-  }
 }
 
 export async function getStoredPlacementsForEvents(

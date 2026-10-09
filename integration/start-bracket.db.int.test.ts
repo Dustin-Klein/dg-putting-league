@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { event_players, events, lanes, teams } from '@/lib/db/schema';
+import { event_players, events, lanes, players, team_members, teams } from '@/lib/db/schema';
 import { MatchStatus } from '@/lib/types/bracket';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { buildDeterministicPairings, getBracketSnapshot, seedBracket, seedEvent } from './db/seed';
@@ -63,8 +63,74 @@ describe('startBracket', () => {
       const foreign = '00000000-0000-0000-0000-000000000000';
       teamPairings[1].members[1] = { eventPlayerId: foreign, role: 'B_pool' };
       await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toThrow(
-        'Teams must be made of distinct players registered for this event'
+        'Teams must contain only players registered for this event'
       );
+    });
+  });
+
+  it('rejects a stale preview after a player is added', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedEvent(tx, { players: 4 });
+      const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
+      const [player] = await tx.insert(players).values({ full_name: 'Late Player' }).returning({ id: players.id });
+      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash' });
+
+      await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toMatchObject({
+        name: 'ConflictError',
+      });
+    });
+  });
+
+  it('rejects a duplicate team member', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedEvent(tx, { players: 4 });
+      const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
+      teamPairings[1].members[0] = { ...teamPairings[0].members[0] };
+      await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toThrow(
+        'more than one team'
+      );
+    });
+  });
+
+  it('accepts a manual swap and ignores client-supplied score fields', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedEvent(tx, { players: 4 });
+      const canonical = buildDeterministicPairings(event);
+      const suppliedPools = canonical.poolAssignments.map((assignment) => ({
+        ...assignment,
+        pfaScore: 999,
+        scoringMethod: 'default' as const,
+      }));
+      const suppliedTeams = structuredClone(canonical.teamPairings);
+      [suppliedTeams[0].members[1], suppliedTeams[1].members[1]] = [
+        suppliedTeams[1].members[1],
+        suppliedTeams[0].members[1],
+      ];
+
+      await startBracket(
+        tx,
+        event.eventId,
+        suppliedPools,
+        suppliedTeams,
+        canonical.poolAssignments
+      );
+
+      const storedPlayers = await tx.select().from(event_players).where(eq(event_players.event_id, event.eventId));
+      expect(storedPlayers.every((playerRow) => playerRow.pfa_score !== '999.00')).toBe(true);
+      const storedMembers = await tx
+        .select({ teamId: team_members.team_id, eventPlayerId: team_members.event_player_id })
+        .from(team_members)
+        .innerJoin(teams, eq(teams.id, team_members.team_id))
+        .where(eq(teams.event_id, event.eventId));
+      expect(storedMembers).toHaveLength(4);
+      // The swapped pairs were stored as submitted.
+      const partnerOf = (id: string) => {
+        const teamId = storedMembers.find((m) => m.eventPlayerId === id)!.teamId;
+        return storedMembers.find((m) => m.teamId === teamId && m.eventPlayerId !== id)!.eventPlayerId;
+      };
+      for (const team of suppliedTeams) {
+        expect(partnerOf(team.members[0].eventPlayerId)).toBe(team.members[1].eventPlayerId);
+      }
     });
   });
 
