@@ -103,7 +103,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - Start bracket (`startBracket` in `event-service`)
   - Reset match result, manual advance/remove, lane assign/release/maintenance/idle, clear placements, grand-final toggles
   - Everything else still uses the Supabase client until plan 04 ports it.
-- **Score triggers**: Score totals are still recomputed by the `frame_results` database trigger (runs inside the same transaction).
+- **Score writer**: `syncMatchScores` is the sole application score writer. Inside the caller's transaction it writes manual override totals when present, otherwise sums `frame_results` by the opponent teams; matches without either source have no `score` key. Manual final scores live in the `score_override_*` columns, frame edits are blocked until an admin clears the override, and clearing it restores frame-derived totals without changing the recorded winner.
 
 ---
 
@@ -208,4 +208,3 @@ The system should be:
 - Testable without HTTP
 - Safe by default
 - Boring in the best way
-

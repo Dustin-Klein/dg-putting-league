@@ -15,6 +15,8 @@ import { releaseLaneAndAutoAssignTx } from '@/lib/services/lane';
 import { MatchStatus } from '@/lib/types/bracket';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import type { MatchScores } from '@/lib/types/scoring';
+import { setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
+import { computeMatchScores, syncMatchScores } from './match-scores';
 
 export type { MatchScores } from '@/lib/types/scoring';
 
@@ -22,6 +24,7 @@ type OpponentJson = { id?: number | null; score?: number } | null;
 
 export interface CompleteMatchOptions {
   requireRegulationFrames?: boolean;
+  scoreOverrideBy?: string;
 }
 
 /**
@@ -30,8 +33,7 @@ export interface CompleteMatchOptions {
  * grand-final reset match, release the match's lane and hand free lanes to the next
  * matches. Either all of it commits or none of it does.
  *
- * Without `scores`, the match's stored scores (kept in sync with its frames by the
- * frame_results trigger) decide the result.
+ * Without `scores`, frame-derived scores decide the result.
  */
 export async function completeMatchTx(
   tx: Tx,
@@ -83,8 +85,13 @@ export async function completeMatchTx(
     }
   }
 
-  const team1Score = scores?.team1Score ?? opponent1.score ?? 0;
-  const team2Score = scores?.team2Score ?? opponent2.score ?? 0;
+  if (scores) {
+    await setScoreOverride(tx, matchId, scores, 'final score entered', options.scoreOverrideBy ?? null);
+    await syncMatchScores(tx, matchId);
+  }
+  const computedScores = await computeMatchScores(tx, matchId);
+  const team1Score = computedScores?.team1Score ?? 0;
+  const team2Score = computedScores?.team2Score ?? 0;
   if (team1Score === team2Score) {
     throw new BadRequestError(
       scores
@@ -105,6 +112,7 @@ export async function completeMatchTx(
     if (error instanceof InternalError) throw error;
     throw new InternalError(`Failed to complete match: ${error instanceof Error ? error.message : String(error)}`);
   }
+  await syncMatchScores(tx, matchId);
 
   await handleGrandFinalCompletionTx(tx, eventId, matchId, team1Won, event.double_grand_final);
   await releaseLaneAndAutoAssignTx(tx, eventId, matchId);

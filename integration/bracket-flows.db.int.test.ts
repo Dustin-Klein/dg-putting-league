@@ -1,7 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import { bracket_match, match_frames } from '@/lib/db/schema';
 import { completeMatch } from '@/lib/services/scoring/match-completion';
-import { correctMatchScores } from '@/lib/services/scoring/match-scoring';
+import { clearScoreOverride, correctMatchScores } from '@/lib/services/scoring/match-scoring';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
 import { MatchStatus } from '@/lib/types/bracket';
@@ -25,7 +25,7 @@ jest.mock('@/lib/services/event/event-service', () => {
   const actual = jest.requireActual('@/lib/services/event/event-service');
   return {
     ...actual,
-    requireEventAdmin: async () => ({ pg: mockAdmin.tx, supabase: null, user: { id: 'test-admin' } }),
+    requireEventAdmin: async () => ({ pg: mockAdmin.tx, supabase: null, user: { id: null } }),
   };
 });
 jest.mock('@/lib/repositories/bracket-repository', () => {
@@ -248,6 +248,40 @@ describe('completed score corrections', () => {
     });
   });
 
+  it('clears an override and restores frame-derived scores without changing the winner', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await playMatch(tx, event.eventId, match.id, 'opponent1');
+      const frameScores = await getMatch(tx, match.id);
+
+      await correctMatchScores(event.eventId, match.id, 20, 15);
+      expect(await getMatch(tx, match.id)).toMatchObject({ score_override_1: 20, score_override_2: 15 });
+
+      await clearScoreOverride(event.eventId, match.id);
+      const restored = await getMatch(tx, match.id);
+      expect(restored).toMatchObject({ score_override_1: null, score_override_2: null });
+      expect(restored.opponent1).toEqual(frameScores.opponent1);
+      expect(restored.opponent2).toEqual(frameScores.opponent2);
+    });
+  });
+
+  it('rejects clearing an override when frame totals would change the recorded winner', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await scoreMatch(tx, event.eventId, match.id, 'opponent1');
+      await completeMatch(tx, event.eventId, match.id, { team1Score: 5, team2Score: 10 });
+
+      await expect(clearScoreOverride(event.eventId, match.id)).rejects.toThrow(
+        'This correction changes the winner'
+      );
+      expect(await getMatch(tx, match.id)).toMatchObject({ score_override_1: 5, score_override_2: 10 });
+    });
+  });
+
   it.each([
     { winner: 'opponent1' as const, disturbedStatus: MatchStatus.Ready, expectedStatus: MatchStatus.Archived },
     { winner: 'opponent2' as const, disturbedStatus: MatchStatus.Archived, expectedStatus: MatchStatus.Ready },
@@ -394,6 +428,8 @@ describe('resetMatchResult', () => {
       const { r1 } = await completedWithDownstream(tx, event.eventId);
       const target = r1[0];
       expect(target.status).toBe(MatchStatus.Completed);
+      await correctMatchScores(event.eventId, target.id, 20, 10);
+      expect(await getMatch(tx, target.id)).toMatchObject({ score_override_1: 20, score_override_2: 10 });
       const before = await getBracketSnapshot(tx, event.eventId);
 
       const { resetMatchIds } = await resetMatchResult(event.eventId, target.id);
@@ -405,6 +441,7 @@ describe('resetMatchResult', () => {
       expect(reset.status).toBe(MatchStatus.Ready);
       expect(reset.opponent1).toEqual(expect.objectContaining({ id: opponentId(target.opponent1) }));
       expect((reset.opponent1 as { result?: string }).result).toBeUndefined();
+      expect(reset).toMatchObject({ score_override_1: null, score_override_2: null });
       const frames = await tx.select().from(match_frames).where(inArray(match_frames.bracket_match_id, resetMatchIds));
       expect(frames).toHaveLength(0);
       expectLaneInvariants(snap);

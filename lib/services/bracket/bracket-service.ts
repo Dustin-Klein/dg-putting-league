@@ -12,6 +12,9 @@ import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
 import { assignLane, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { clearScoreOverrides } from '@/lib/repositories/match-scores-repository.db';
+import { setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
+import { syncMatchScores } from '@/lib/services/scoring/match-scores';
 import {
   BadRequestError,
   InternalError,
@@ -664,7 +667,7 @@ export async function updateMatchResult(
   opponent2Score: number,
   winnerId?: number | null
 ): Promise<Match> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { supabase, pg, user } = await requireEventAdmin(eventId);
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
@@ -706,11 +709,20 @@ export async function updateMatchResult(
     }
 
     const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
+    await setScoreOverride(
+      tx,
+      matchId,
+      { team1Score: opponent1Score, team2Score: opponent2Score },
+      'manual match update',
+      user.id
+    );
+    await syncMatchScores(tx, matchId);
     await manager.update.match({
       id: matchId,
       opponent1: { score: opponent1Score, result: result1 },
       opponent2: { score: opponent2Score, result: result2 },
     });
+    await syncMatchScores(tx, matchId);
   });
 
   const updatedMatch = await getMatchForScoringById(supabase, matchId);
@@ -1222,6 +1234,7 @@ export async function resetMatchResult(
     }
 
     await bracketDb.deleteMatchFrames(tx, resetMatchIds);
+    await clearScoreOverrides(tx, resetMatchIds);
 
     // Handle grand final: if the target is the first GF match, keep the reset
     // match archived until the replayed first GF determines whether it is needed.

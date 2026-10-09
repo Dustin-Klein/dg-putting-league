@@ -11,10 +11,14 @@ import { InternalError } from '@/lib/errors';
 
 export interface BracketMatchForScoring {
   id: number;
+  stage_id: number;
+  group_id: number;
   status: number;
   round_id: number;
   number: number;
   lane_id: string | null;
+  score_override_1: number | null;
+  score_override_2: number | null;
   opponent1: { id?: number; score?: number } | null;
   opponent2: { id?: number; score?: number } | null;
   frames: Array<{
@@ -41,10 +45,14 @@ export async function getMatchesForScoringByEvent(
     .from('bracket_match')
     .select(`
       id,
+      stage_id,
+      group_id,
       status,
       round_id,
       number,
       lane_id,
+      score_override_1,
+      score_override_2,
       opponent1,
       opponent2,
       frames:match_frames(
@@ -87,10 +95,14 @@ export async function getMatchForScoringById(
       .from('bracket_match')
       .select(`
         id,
+        stage_id,
+        group_id,
         status,
         round_id,
         number,
         lane_id,
+        score_override_1,
+        score_override_2,
         opponent1,
         opponent2,
         event_id,
@@ -425,4 +437,3 @@ export async function getFrameCountsForMatchIds(
   }
   return counts;
 }
-

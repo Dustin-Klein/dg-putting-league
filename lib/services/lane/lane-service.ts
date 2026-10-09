@@ -2,13 +2,13 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import type { Db } from '@/lib/services/auth';
-import { lockEvent, withTransaction, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
 import * as laneRepo from '@/lib/repositories/lane-repository';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
 import { getStageForEvent } from '@/lib/repositories/bracket-repository.db';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
-import { BadRequestError, NotFoundError } from '@/lib/errors';
+import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { Status } from 'brackets-model';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
@@ -280,12 +280,33 @@ async function setLaneStatus(
   pg: Db,
   eventId: string,
   laneId: string,
-  status: 'idle' | 'maintenance'
+  status: 'idle' | 'maintenance',
+  confirm = false
 ): Promise<void> {
   const found = await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-    await laneDb.lockEventLanes(tx, eventId);
-    return laneDb.setLaneStatusAndClearMatch(tx, eventId, laneId, status);
+    await getEventBracketConfig(tx, eventId, { lock: 'share' });
+
+    const assigned = await laneDb.getMatchAssignedToLane(tx, eventId, laneId);
+    const lockedMatch = assigned ? await lockMatch(tx, assigned.id, eventId) : null;
+    if (status === 'maintenance' && lockedMatch?.status === Status.Running && !confirm) {
+      throw new ConflictError('This lane has a match in progress. Confirm to move it off the lane.');
+    }
+
+    const lockedLanes = await laneDb.lockEventLanes(tx, eventId);
+    const updated = await laneDb.setLaneStatusAndClearMatch(tx, eventId, laneId, status);
+    if (!updated) return false;
+
+    if (lockedMatch) {
+      const replacement = lockedLanes
+        .filter((lane) => lane.id !== laneId && lane.status === 'idle')
+        .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0))[0];
+      if (replacement) {
+        await laneDb.assignLane(tx, eventId, replacement.id, lockedMatch.id);
+      }
+    }
+    await autoAssignLanesTx(tx, eventId);
+    return true;
   });
   if (!found) {
     throw new NotFoundError('Lane not found');
@@ -297,11 +318,12 @@ async function setLaneStatus(
  */
 export async function setLaneMaintenance(
   eventId: string,
-  laneId: string
+  laneId: string,
+  confirm = false
 ): Promise<Lane> {
   const { supabase, pg } = await requireEventAdmin(eventId);
 
-  await setLaneStatus(pg, eventId, laneId, 'maintenance');
+  await setLaneStatus(pg, eventId, laneId, 'maintenance', confirm);
 
   // Fetch and return the updated lane
   return laneRepo.getLaneById(supabase, eventId, laneId);

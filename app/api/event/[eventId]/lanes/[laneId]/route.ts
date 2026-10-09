@@ -3,14 +3,14 @@ import { z } from 'zod';
 import {
   setLaneMaintenance,
   setLaneIdle,
-  autoAssignLanes,
   deleteLane,
 } from '@/lib/services/lane';
 import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 
-const updateLaneSchema = z.object({
+export const updateLaneSchema = z.object({
   status: z.enum(['idle', 'maintenance']),
+  confirm: z.boolean().optional().default(false),
 });
 
 /**
@@ -35,16 +35,9 @@ export async function PATCH(
 
     let lane;
     if (parsed.data.status === 'maintenance') {
-      lane = await setLaneMaintenance(eventId, laneId);
+      lane = await setLaneMaintenance(eventId, laneId, parsed.data.confirm);
     } else {
       lane = await setLaneIdle(eventId, laneId);
-      // After setting to idle, try to auto-assign if there are waiting matches
-      // Wrap in try/catch so auto-assign failure doesn't fail the main operation
-      try {
-        await autoAssignLanes(eventId);
-      } catch (assignError) {
-        console.error('Failed to auto-assign lanes after setting idle:', assignError);
-      }
     }
 
     return NextResponse.json(lane);

@@ -20,6 +20,7 @@ jest.mock('@/lib/services/scoring/match-scoring', () => ({
   completeBracketMatch: jest.fn(),
   completeMatchWithFinalScores: jest.fn(),
   correctMatchScores: jest.fn(),
+  clearScoreOverride: jest.fn(),
 }));
 jest.mock('@/lib/services/event', () => ({ requireEventAdmin: jest.fn().mockResolvedValue({}) }));
 jest.mock('@/lib/middleware/rate-limit', () => ({

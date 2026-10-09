@@ -16,6 +16,7 @@ import { getMembersOfTeams, getTeamIdsForParticipants } from '@/lib/repositories
 import { MatchStatus } from '@/lib/types/bracket';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { calculatePoints } from './points-calculator';
+import { syncMatchScores } from './match-scores';
 
 export const MAX_FRAME_NUMBER = 50;
 
@@ -64,8 +65,8 @@ function validateInput({ frameNumber, scores }: RecordFrameScoresInput): void {
  *
  * The match row is locked (`FOR UPDATE`) for the whole write, so a score can't land
  * after another device completed the match, and concurrent scorers of the same frame
- * get consistent `order_in_frame` values. The frame_results trigger recomputes the
- * match score inside the same transaction.
+ * get consistent `order_in_frame` values. The service recomputes the match score
+ * inside the same transaction.
  *
  * Callers authorize first (access code or event admin). Returns the match status
  * after the write.
@@ -89,6 +90,9 @@ export async function recordFrameScores(
     const match = await lockMatch(tx, matchId, eventId);
     if (!match) {
       throw new NotFoundError('Match not found');
+    }
+    if (match.score_override_1 !== null || match.score_override_2 !== null) {
+      throw new BadRequestError('This match has a manually entered final score. Clear it first.');
     }
 
     if (scorer === 'public') {
@@ -138,6 +142,7 @@ export async function recordFrameScores(
         points_earned: calculatePoints(s.putts_made, event.bonus_point_enabled),
       }))
     );
+    await syncMatchScores(tx, matchId);
 
     if (match.status === MatchStatus.Completed || match.status === MatchStatus.Archived) {
       const originalTeam1Winner = recordedTeam1Winner(
