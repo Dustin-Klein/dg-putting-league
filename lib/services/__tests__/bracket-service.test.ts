@@ -29,6 +29,7 @@ jest.mock('@/lib/supabase/server', () => ({
 
 jest.mock('@/lib/services/auth', () => ({
   requireAuthenticatedUser: jest.fn(),
+  authorizeEventView: jest.fn(),
 }));
 
 jest.mock('@/lib/services/event', () => ({
@@ -45,8 +46,9 @@ jest.mock('@/lib/repositories/bracket-repository', () => ({
   getFrameCountsForMatchIds: jest.fn().mockResolvedValue({}),
 }));
 
-jest.mock('@/lib/repositories/event-repository', () => ({
+jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventById: jest.fn(),
+  getEventAccessCode: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/team-repository', () => ({
@@ -89,7 +91,8 @@ import {
   getBracketStage,
   getReadyMatchesByStageId,
 } from '@/lib/repositories/bracket-repository';
-import { getEventById } from '@/lib/repositories/event-repository';
+import { getEventById } from '@/lib/repositories/event-repository.db';
+import { authorizeEventView } from '@/lib/services/auth';
 import {
   getBracket,
   getPublicBracket,
@@ -108,7 +111,8 @@ describe('Bracket Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (authorizeEventView as jest.Mock).mockResolvedValue({ pg: mockSupabase, isAdmin: false });
     mockFindNextMatches.mockResolvedValue([]);
     mockFindPreviousMatches.mockResolvedValue([]);
   });
@@ -145,6 +149,13 @@ describe('Bracket Service', () => {
 
   describe('getPublicBracket', () => {
     const eventId = 'event-123';
+
+    it('does not query bracket data when visibility authorization fails', async () => {
+      (authorizeEventView as jest.Mock).mockRejectedValueOnce(new NotFoundError('Event not found'));
+      await expect(getPublicBracket(eventId)).rejects.toThrow(NotFoundError);
+      expect(getEventById).not.toHaveBeenCalled();
+      expect(fetchBracketStructure).not.toHaveBeenCalled();
+    });
 
     it('should throw NotFoundError when event does not exist', async () => {
       (getEventById as jest.Mock).mockResolvedValue(null);

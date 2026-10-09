@@ -4,7 +4,7 @@ import { EventsList } from './events-list';
 import { AdminManagement } from './admin-management';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { EventData } from '@/lib/repositories/event-repository';
+import type { EventData } from '@/lib/repositories/event-repository.db';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
 

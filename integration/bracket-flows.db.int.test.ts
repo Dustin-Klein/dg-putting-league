@@ -41,9 +41,9 @@ jest.mock('@/lib/repositories/bracket-repository', () => {
     }),
   };
 });
-jest.mock('@/lib/repositories/event-repository', () => {
-  const actual = jest.requireActual<typeof import('@/lib/repositories/event-repository')>(
-    '@/lib/repositories/event-repository'
+jest.mock('@/lib/repositories/event-repository.db', () => {
+  const actual = jest.requireActual<typeof import('@/lib/repositories/event-repository.db')>(
+    '@/lib/repositories/event-repository.db'
   );
   return {
     ...actual,

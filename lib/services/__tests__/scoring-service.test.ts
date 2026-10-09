@@ -47,6 +47,9 @@ jest.mock('@/lib/repositories/team-repository', () => ({
 
 jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventByAccessCode: jest.fn(),
+  getEventAccess: jest.fn(),
+  getEventBracketFrameCount: jest.fn(),
+  getEventScoringConfig: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/lane-repository', () => ({
@@ -69,7 +72,12 @@ import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb } from '@/lib/db/client';
 import { getPublicTeamFromParticipant } from '@/lib/repositories/team-repository';
-import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
+import {
+  getEventAccess,
+  getEventByAccessCode,
+  getEventBracketFrameCount,
+  getEventScoringConfig,
+} from '@/lib/repositories/event-repository.db';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
@@ -85,6 +93,7 @@ import {
   getMatchesForScoring,
   getMatchForScoring,
   getEventScoringContext,
+  getPublicMatchDetails,
 } from '../scoring/public-scoring';
 
 describe('Points Calculator', () => {
@@ -119,9 +128,19 @@ describe('Scoring Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
+    mockSupabase.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
     (_createPrivilegedClient as jest.Mock).mockReturnValue(mockSupabase);
     (_getDb as jest.Mock).mockReturnValue(mockPg);
+  });
+
+  it('does not query public match details when bracket visibility authorization fails', async () => {
+    const eventId = '00000000-0000-4000-8000-000000000001';
+    (getEventAccess as jest.Mock).mockResolvedValue(null);
+    await expect(getPublicMatchDetails(eventId, 1)).rejects.toThrow(NotFoundError);
+    expect(getMatchForScoringById).not.toHaveBeenCalled();
+    expect(getEventBracketFrameCount).not.toHaveBeenCalled();
+    expect(getEventScoringConfig).not.toHaveBeenCalled();
   });
 
   describe('getEventScoringContext', () => {

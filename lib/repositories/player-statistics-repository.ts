@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { InternalError } from '@/lib/errors';
 import type { Player } from '@/lib/types/player';
-import * as eventPlacementRepo from './event-placement-repository';
+import type { Executor } from '@/lib/db/tx';
+import * as eventPlacementRepo from './event-placement-repository.db';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -361,11 +362,12 @@ export interface EventPlacementData {
  */
 export async function getPlacementsForEvents(
   supabase: SupabaseClient,
+  pg: Executor,
   eventIds: string[]
 ): Promise<EventPlacementData[]> {
   if (eventIds.length === 0) return [];
 
-  const storedPlacements = await eventPlacementRepo.getStoredPlacementsForEvents(supabase, eventIds);
+  const storedPlacements = await eventPlacementRepo.getStoredPlacementsForEvents(pg, eventIds);
   const eventsWithStoredPlacements = new Set(storedPlacements.map((p) => p.eventId));
 
   const eventsNeedingCalculation = eventIds.filter((id) => !eventsWithStoredPlacements.has(id));

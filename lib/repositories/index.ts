@@ -1,5 +1,5 @@
 export * from './bracket-repository';
-export * from './event-repository';
+export * from './event-repository.db';
 export * from './event-player-repository';
 export * from './frame-repository';
 export * from './lane-repository';

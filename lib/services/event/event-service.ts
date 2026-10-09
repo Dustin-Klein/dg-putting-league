@@ -1,15 +1,12 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
 import {
   BadRequestError,
   ConflictError,
-  ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
 } from '@/lib/errors';
-import { requireLeagueAdmin, authorizeEventAdmin, authorizeLeagueAdmin } from '@/lib/services/auth';
+import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
 import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
 import { computeTeamPairings } from '@/lib/services/team';
@@ -27,8 +24,6 @@ import * as laneDb from '@/lib/repositories/lane-repository.db';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import * as eventPlacementDb from '@/lib/repositories/event-placement-repository.db';
 import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
-import * as eventRepo from '@/lib/repositories/event-repository';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
 import { logger } from '@/lib/utils/logger';
 import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
 import {
@@ -54,23 +49,9 @@ export async function requireEventAdmin(eventId: string) {
 }
 
 /**
- * Authorize the current user as an event admin, or return null if they aren't one.
- */
-async function tryAuthorizeEventAdmin(eventId: string) {
-  try {
-    return await authorizeEventAdmin(eventId);
-  } catch (error) {
-    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-/**
  * Get event with players (with redirect on missing eventId).
- * Admins of the event's league get admin-only fields (payment_type); others get
- * what RLS and column privileges allow.
+ * Admins of the event's league get admin-only fields (payment_type); public
+ * viewers get the same fields the event SELECT policy exposed before this port.
  */
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
@@ -78,13 +59,8 @@ export async function getEventWithPlayers(eventId: string) {
     redirect('/admin/leagues');
   }
 
-  const admin = await tryAuthorizeEventAdmin(eventId);
-  if (admin) {
-    return eventRepo.getEventWithPlayers(admin.db, eventId, { includePaymentType: true }) as Promise<EventWithDetails>;
-  }
-
-  const supabase = await createClient();
-  return eventRepo.getEventWithPlayers(supabase, eventId) as Promise<EventWithDetails>;
+  const { pg, isAdmin } = await authorizeEventView(eventId, 'event');
+  return eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: isAdmin }) as Promise<EventWithDetails>;
 }
 
 /**
@@ -92,10 +68,9 @@ export async function getEventWithPlayers(eventId: string) {
  * current user is an admin of the event's league; otherwise it is null.
  */
 export async function getEventForViewer(eventId: string): Promise<EventWithDetails> {
-  const event = await getEventWithPlayers(eventId);
-
-  const admin = await tryAuthorizeEventAdmin(eventId);
-  const accessCode = admin ? await eventRepo.getEventAccessCode(admin.db, eventId) : null;
+  const { pg, isAdmin } = await authorizeEventView(eventId, 'event');
+  const event = await eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: isAdmin }) as EventWithDetails;
+  const accessCode = isAdmin ? await eventDb.getEventAccessCode(pg, eventId) : null;
 
   return { ...event, access_code: accessCode };
 }
@@ -104,11 +79,8 @@ export async function getEventForViewer(eventId: string): Promise<EventWithDetai
  * Get events by league ID (with auth check)
  */
 export async function getEventsByLeagueId(leagueId: string) {
-  const supabase = await createClient();
-
-  await requireLeagueAdmin(leagueId);
-
-  return eventRepo.getEventsByLeagueId(supabase, leagueId);
+  const { pg } = await authorizeLeagueAdmin(leagueId);
+  return eventDb.getEventsByLeagueId(pg, leagueId);
 }
 
 /**
@@ -131,14 +103,14 @@ export async function createEvent(data: {
   copy_players_from_event_id?: string;
 }) {
   // 1. Auth check
-  const { user, db: supabase } = await authorizeLeagueAdmin(data.league_id);
+  const { user, pg } = await authorizeLeagueAdmin(data.league_id);
 
   // 2. Normalize and check access code uniqueness (across all leagues)
   const accessCode = normalizeAccessCode(data.access_code);
   if (accessCode.length < ACCESS_CODE_MIN_LENGTH) {
     throw new BadRequestError(`Access code must be at least ${ACCESS_CODE_MIN_LENGTH} characters`);
   }
-  const isUnique = await eventRepo.isAccessCodeUnique(supabase, accessCode);
+  const isUnique = await eventDb.isAccessCodeUnique(pg, accessCode);
   if (!isUnique) {
     throw new BadRequestError('An event with this access code already exists');
   }
@@ -148,40 +120,44 @@ export async function createEvent(data: {
 
   const { copy_players_from_event_id, entry_fee_per_player, admin_fees, admin_fee_per_player, ...eventData } = data;
 
-  // 4. Create event via repo
-  const newEvent = await eventRepo.createEvent(supabase, {
-    ...eventData,
-    access_code: accessCode,
-    event_date: formattedDate,
-    entry_fee_per_player: entry_fee_per_player ?? null,
-    admin_fees: admin_fees ?? null,
-    admin_fee_per_player: admin_fee_per_player ?? null,
-    status: 'created',
-  });
-
-  // 5. Copy players from source event if specified
-  if (copy_players_from_event_id) {
-    try {
-      const sourceLeagueId = await eventRepo.getEventLeagueId(supabase, copy_players_from_event_id);
-      if (sourceLeagueId !== data.league_id) {
-        throw new BadRequestError('Source event must belong to the same league');
+  let attemptedEventId: string | undefined;
+  let newEvent: eventDb.EventData;
+  try {
+    newEvent = await withTransaction(pg, async (tx) => {
+      if (copy_players_from_event_id) {
+        const sourceLeagueId = await eventDb.getEventLeagueId(tx, copy_players_from_event_id);
+        if (sourceLeagueId !== data.league_id) {
+          throw new BadRequestError('Source event must belong to the same league');
+        }
       }
-      const playerIds = await eventPlayerRepo.getPlayerIdsByEvent(supabase, copy_players_from_event_id);
-      await eventPlayerRepo.insertEventPlayersBulk(supabase, newEvent.id, playerIds);
-    } catch (err) {
-      logger.error('Event creation failed during player copy', {
-        userId: user.id,
-        action: 'create_event',
-        eventId: newEvent.id,
-        leagueId: data.league_id,
-        adminFees: admin_fees ?? null,
-        entryFee: entry_fee_per_player ?? null,
-        outcome: 'failure',
-        error: err instanceof Error ? err.message : String(err),
+
+      const created = await eventDb.createEvent(tx, {
+        ...eventData,
+        access_code: accessCode,
+        event_date: formattedDate,
+        entry_fee_per_player: entry_fee_per_player ?? null,
+        admin_fees: admin_fees ?? null,
+        admin_fee_per_player: admin_fee_per_player ?? null,
+        status: 'created',
       });
-      await eventRepo.deleteEvent(supabase, newEvent.id);
-      throw err;
-    }
+      attemptedEventId = created.id;
+      if (copy_players_from_event_id) {
+        await eventDb.copyEventPlayers(tx, copy_players_from_event_id, created.id);
+      }
+      return created;
+    });
+  } catch (error) {
+    logger.error('Event creation failed', {
+      userId: user.id,
+      action: 'create_event',
+      eventId: attemptedEventId,
+      leagueId: data.league_id,
+      adminFees: admin_fees ?? null,
+      entryFee: entry_fee_per_player ?? null,
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 
   logger.info('Event created successfully', {
@@ -201,8 +177,8 @@ export async function createEvent(data: {
  * Delete an event and all related records
  */
 export async function deleteEvent(eventId: string) {
-  const { supabase } = await requireEventAdmin(eventId);
-  await eventRepo.deleteEvent(supabase, eventId);
+  const { pg } = await requireEventAdmin(eventId);
+  await eventDb.deleteEvent(pg, eventId);
 }
 
 /**
@@ -211,7 +187,8 @@ export async function deleteEvent(eventId: string) {
 export async function validateEventStatusTransition(
   eventId: string,
   newStatus: string,
-  currentEvent: EventWithDetails
+  currentEvent: EventWithDetails,
+  pg: Executor
 ) {
   const currentStatus = currentEvent.status;
 
@@ -237,15 +214,13 @@ export async function validateEventStatusTransition(
 
     // Additionally check qualification if enabled
     if (currentEvent.qualification_round_enabled) {
-      const supabase = await createClient();
-
-      const qualificationRound = await eventRepo.getQualificationRound(supabase, eventId);
+      const qualificationRound = await eventDb.getQualificationRound(pg, eventId);
 
       if (!qualificationRound) {
         throw new BadRequestError('No qualification round found for this event');
       }
 
-      const frameCounts = await eventRepo.getQualificationFrameCounts(supabase, eventId);
+      const frameCounts = await eventDb.getQualificationFrameCounts(pg, eventId);
 
       const incompletePlayers = currentEvent.players.filter(
         (player) => (frameCounts[player.id] || 0) < qualificationRound.frame_count
@@ -286,16 +261,16 @@ export async function updateEventSettings(
   eventId: string,
   patch: UpdateEventSettingsPatch
 ) {
-  const { supabase, pg } = await requireEventAdmin(eventId);
-  const before = await eventRepo.getEventWithPlayers(supabase, eventId, { includePaymentType: true }) as EventWithDetails;
+  const { pg } = await requireEventAdmin(eventId);
+  const before = await eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: true }) as EventWithDetails;
 
   if (patch.status) {
-    await validateEventStatusTransition(eventId, patch.status, before);
+    await validateEventStatusTransition(eventId, patch.status, before, pg);
   }
 
   await withTransaction(pg, (tx) => updateEventSettingsTx(tx, eventId, patch));
 
-  const updated = await eventRepo.getEventById(supabase, eventId);
+  const updated = await eventDb.getEventById(pg, eventId);
   if (!updated) throw new NotFoundError('Event not found');
   return updated;
 }
@@ -374,8 +349,8 @@ export async function updateEvent(
   eventId: string,
   data: Record<string, unknown>
 ) {
-  const { supabase } = await requireEventAdmin(eventId);
-  return eventRepo.updateEvent(supabase, eventId, data);
+  const { pg } = await requireEventAdmin(eventId);
+  return eventDb.updateEvent(pg, eventId, data);
 }
 
 /**
@@ -396,7 +371,7 @@ export async function transitionEventToBracket(
 ) {
   const { pg } = await requireEventAdmin(eventId);
 
-  await validateEventStatusTransition(eventId, 'bracket', event);
+  await validateEventStatusTransition(eventId, 'bracket', event, pg);
 
   if ((providedPoolAssignments === undefined) !== (providedTeamPairings === undefined)) {
     throw new BadRequestError('Pool assignments and team pairings must be provided together');
@@ -552,9 +527,9 @@ export async function updateEventPayouts(
   payoutStructure: PayoutPlace[] | null,
   payoutPoolOverride?: number | null
 ): Promise<void> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const event = await eventRepo.getEventById(supabase, eventId);
+  const event = await eventDb.getEventById(pg, eventId);
   if (!event) {
     throw new BadRequestError('Event not found');
   }
@@ -576,5 +551,5 @@ export async function updateEventPayouts(
     }
   }
 
-  await eventRepo.updateEventPayouts(supabase, eventId, payoutStructure, payoutPoolOverride);
+  await eventDb.updateEventPayouts(pg, eventId, payoutStructure, payoutPoolOverride);
 }
