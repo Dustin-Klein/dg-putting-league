@@ -149,6 +149,25 @@ describe('recordFrameScores', () => {
     });
   });
 
+  it('ignores empty pre-created frames when enforcing frame order', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4 });
+      const { match, team1 } = await firstReadyMatch(tx, event.eventId);
+      // An empty future frame, as the create-only frame route can make.
+      await tx.insert(match_frames).values({ bracket_match_id: match.id, frame_number: 10, is_overtime: true });
+
+      await expect(
+        recordFrameScores(tx, {
+          eventId: event.eventId,
+          matchId: match.id,
+          frameNumber: 9,
+          scorer: 'admin',
+          scores: [{ event_player_id: team1[0], putts_made: 1 }],
+        })
+      ).rejects.toThrow('Frames must be scored in order; frame 1 has not been started');
+    });
+  });
+
   it('rejects a player who is not in the match', async () => {
     await withRollback(db, async (tx) => {
       const event = await seedBracket(tx, { teams: 4 });

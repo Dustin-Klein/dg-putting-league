@@ -677,6 +677,11 @@ export async function updateMatchResult(
     if (!match) {
       throw new NotFoundError('Match not found');
     }
+    // Completed results change only through score correction (same winner) or reset,
+    // which keep downstream progression consistent.
+    if (match.status === Status.Completed || match.status === Status.Archived) {
+      throw new BadRequestError('This match is already completed. Use score correction or "Reset match" instead.');
+    }
 
     let result1: 'win' | 'loss' | 'draw' | undefined;
     let result2: 'win' | 'loss' | 'draw' | undefined;
