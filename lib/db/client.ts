@@ -8,7 +8,7 @@ declare const dbBrand: unique symbol;
 /**
  * Direct Postgres connection for the Next.js server (role `app_server`, bypasses RLS).
  *
- * Branded like `PrivilegedClient`: obtain it only through the `authorize*` functions
+ * Branded so services obtain it only through the `authorize*` functions
  * in `lib/services/auth`, which perform the authorization check first.
  */
 export type Db = PostgresJsDatabase<typeof schema> & {

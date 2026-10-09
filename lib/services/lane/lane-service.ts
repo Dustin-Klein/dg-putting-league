@@ -1,11 +1,9 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import { authorizeEventView, type Db } from '@/lib/services/auth';
 import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
-import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
-import { getStageForEvent } from '@/lib/repositories/bracket-repository.db';
+import { fetchBracketStructure, getStageForEvent } from '@/lib/repositories/bracket-repository.db';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
@@ -71,13 +69,13 @@ function isByeMatch(match: BracketMatch): boolean {
  * Mirrors the sequential numbering in bracket-view.tsx.
  */
 async function buildMatchDisplayMap(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  pg: Db,
   eventId: string
 ): Promise<{ idToDisplay: Map<number, number>; displayToId: Map<number, number> }> {
   const idToDisplay = new Map<number, number>();
   const displayToId = new Map<number, number>();
 
-  const bracket = await fetchBracketStructure(supabase, eventId);
+  const bracket = await fetchBracketStructure(pg, eventId);
   if (!bracket) return { idToDisplay, displayToId };
 
   const { groups, rounds, matches } = bracket;
@@ -85,8 +83,8 @@ async function buildMatchDisplayMap(
   let displayNumber = 1;
   for (const group of groups) {
     const groupRounds = rounds
-      .filter((r: { group_id: number }) => r.group_id === group.id)
-      .sort((a: { number: number }, b: { number: number }) => a.number - b.number);
+      .filter((r) => Number(r.group_id) === Number(group.id))
+      .sort((a, b) => a.number - b.number);
 
     for (const round of groupRounds) {
       const roundMatches = (matches as BracketMatch[])
@@ -113,9 +111,8 @@ export async function resolveMatchDisplayNumber(
   eventId: string,
   displayNumber: number
 ): Promise<number | null> {
-  await authorizeEventView(eventId, 'bracket');
-  const supabase = await createClient();
-  const { displayToId } = await buildMatchDisplayMap(supabase, eventId);
+  const { pg } = await authorizeEventView(eventId, 'bracket');
+  const { displayToId } = await buildMatchDisplayMap(pg, eventId);
   return displayToId.get(displayNumber) ?? null;
 }
 
@@ -126,12 +123,11 @@ export async function getLanesWithMatches(
   eventId: string
 ): Promise<LaneWithMatch[]> {
   const { pg } = await authorizeEventView(eventId, 'lanes');
-  const supabase = await createClient();
 
   const [lanes, laneMatchMap, { idToDisplay }] = await Promise.all([
     laneDb.getLanesForEvent(pg, eventId),
     laneDb.getMatchLaneAssignments(pg, eventId),
-    buildMatchDisplayMap(supabase, eventId),
+    buildMatchDisplayMap(pg, eventId),
   ]);
 
   return lanes.map((lane) => {

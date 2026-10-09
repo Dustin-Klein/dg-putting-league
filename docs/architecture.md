@@ -52,16 +52,14 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 
 - The browser only authenticates (Supabase Auth) and subscribes to Realtime.
 - Database roles `anon` and `authenticated` can only `SELECT` (governed by RLS policies). They cannot write to any table or execute business functions.
-- Server reads for public pages and admin list views use the user-scoped server client (`lib/supabase/server.ts`), so RLS keeps filtering them.
-- All writes and business RPCs run on the Next.js server with either a privileged Supabase client or a direct Postgres connection via Drizzle:
-  - Privileged Supabase client created from `SUPABASE_SECRET_KEY` (`lib/supabase/privileged.ts`), type-branded as `PrivilegedClient` (`lib/supabase/types.ts`).
-  - Drizzle connection (`lib/db/client.ts`) using the `postgres` driver, lazily created and cached on `globalThis`, type-branded as `Db`.
-- Direct imports of `lib/supabase/privileged.ts` are strictly restricted to `lib/services/auth/**` (enforced by ESLint `no-restricted-imports`).
+- Server reads and writes use the direct Drizzle connection after explicit service-layer authorization. Browser access remains SELECT-only and protected by RLS.
+- The Drizzle connection (`lib/db/client.ts`) uses the `postgres` driver, is lazily created and cached on `globalThis`, and is type-branded as `Db`.
+- The sole secret-key Supabase client is private to the rate-limit service for its atomic RPC.
 - Direct imports of `lib/db/client` are restricted by ESLint to `lib/services/auth/**`, `lib/db/**`, `integration/**`, and tests.
 - Services obtain clients exclusively through authorization functions in `lib/services/auth/auth-service.ts`:
-  - `authorizeEventAdmin`, `authorizeLeagueAdmin`, `authorizeLeagueOwner`, `authorizeAnyLeagueAdmin`, `authorizeLeagueCreation` return `{ user|event, db, pg }` (`db` is `PrivilegedClient`, `pg` is Drizzle `Db`).
-  - `authorizeAccessCode` returns `{ event, db, pg }` (looks up the event with Drizzle).
-  - `requireEventAdmin` returns `{ supabase, pg, user }`.
+  - `authorizeEventAdmin`, `authorizeLeagueAdmin`, `authorizeLeagueOwner`, `authorizeAnyLeagueAdmin`, and `authorizeLeagueCreation` return the authorized identity/context and `pg`.
+  - `authorizeAccessCode` returns `{ event, pg }` (looks up the event with Drizzle).
+  - `requireEventAdmin` returns `{ pg, user }`.
   - Each performs its check before returning clients.
 
 ### Auth
@@ -75,7 +73,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - All Supabase queries live in `/lib/repositories`
 - Repositories receive explicit IDs and parameters
 - Do not pass Supabase client through API layers unnecessarily
-- Repository functions that write or call business RPCs take `PrivilegedClient`; read-only repository functions take the regular server client (`SupabaseClient`)
+- Drizzle repository functions take an `Executor`; only rate limiting retains a Supabase RPC repository.
 - Column restrictions: clients cannot read `events.access_code`, `players.email`, or (for anon) `event_players.payment_type`
 - Never use `select('*')` on `events`; use `EVENT_COLUMNS` from `lib/repositories/event-repository.ts`. Admins access the access code via `getEventForViewer` / `getEventAccessCode` (privileged)
 
@@ -114,9 +112,9 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - Example: `createLeague`, not `insertLeagueRow`
 - Services may:
   - Call multiple repositories
-  - Enforce authorization rules (obtaining `PrivilegedClient` via `authorize*`)
+  - Enforce authorization rules (obtaining `pg` via `authorize*`)
   - Perform transactional logic
-- **Verify event ownership**: Because `PrivilegedClient` bypasses RLS, services must verify that every ID they receive (match, lane, frame, player) belongs to the authorized event before writing
+- **Verify event ownership**: Because direct Postgres bypasses RLS, services must verify that every ID they receive (match, lane, frame, player) belongs to the authorized event before writing
 
 ---
 
@@ -125,7 +123,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - One repository per table or aggregate
 - Keep queries simple and predictable
 - Do not leak database-specific shapes upward
-- Repository functions performing writes or business RPCs require `PrivilegedClient`; read-only queries take the standard server client
+- Drizzle repositories receive `Executor` as their first argument and never authorize or open transactions.
 - Respect column restrictions: never `select('*')` on `events` (use `EVENT_COLUMNS`) or expose `players.email`
 
 ---
@@ -194,8 +192,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - ❌ Client components performing mutations directly
 - ❌ Leaking database rows or sensitive columns (`events.access_code`, `players.email`) to the UI
 - ❌ Writing to the database without verifying entity IDs belong to the authorized event
-- ❌ Importing `lib/supabase/privileged.ts` outside `lib/services/auth/**`
-- ❌ Typing write repository functions with the non-privileged client
+- ❌ Importing `lib/db/client.ts` outside the authorized locations enforced by ESLint
 - ❌ Using `select('*')` on `events` instead of `EVENT_COLUMNS`
 - ❌ Editing old `init_*` migration files instead of adding timestamped migrations
 

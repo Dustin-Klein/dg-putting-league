@@ -4,7 +4,7 @@
  * Tests for authentication and authorization functions:
  * - requireAuthenticatedUser()
  * - requireLeagueAdmin()
- * - authorize*() — the only way to obtain the privileged client
+ * - authorize*() — the only way to obtain the direct database client
  */
 
 import {
@@ -25,10 +25,6 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
-jest.mock('@/lib/supabase/privileged', () => ({
-  _createPrivilegedClient: jest.fn(),
-}));
-
 jest.mock('@/lib/db/client', () => ({
   _getDb: jest.fn(),
 }));
@@ -45,7 +41,6 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb } from '@/lib/db/client';
 import { getLeagueAdminRole, isAnyLeagueAdmin } from '@/lib/repositories/league-repository.db';
 import { getEventAccess, getEventByAccessCode } from '@/lib/repositories/event-repository.db';
@@ -78,7 +73,6 @@ function eventAccess(overrides: Record<string, unknown> = {}) {
 
 describe('Auth Service', () => {
   let mockSupabase: MockSupabaseClient;
-  let mockDb: MockSupabaseClient;
   const mockPg = {};
 
   const signIn = (userId = 'user-123') => {
@@ -98,9 +92,7 @@ describe('Auth Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
-    mockDb = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (_createPrivilegedClient as jest.Mock).mockReturnValue(mockDb);
     (_getDb as jest.Mock).mockReturnValue(mockPg);
   });
 
@@ -171,7 +163,7 @@ describe('Auth Service', () => {
       signOut();
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(UnauthorizedError);
-      expect(_createPrivilegedClient).not.toHaveBeenCalled();
+      expect(_getDb).not.toHaveBeenCalled();
       expect(getLeagueAdminRole).not.toHaveBeenCalled();
     });
 
@@ -194,7 +186,6 @@ describe('Auth Service', () => {
 
       const result = await authorizeLeagueAdmin(LEAGUE_ID);
 
-      expect(result.db).toBe(mockDb);
       expect(result.pg).toBe(mockPg);
       expect(result.user.id).toBe('user-123');
     });
@@ -214,7 +205,7 @@ describe('Auth Service', () => {
 
       const result = await authorizeLeagueOwner(LEAGUE_ID);
 
-      expect(result.db).toBe(mockDb);
+      expect(result.pg).toBe(mockPg);
       expect(getLeagueAdminRole).toHaveBeenCalledWith(mockPg, LEAGUE_ID, 'owner-1');
     });
 
@@ -229,7 +220,7 @@ describe('Auth Service', () => {
       signOut();
 
       await expect(authorizeLeagueOwner(LEAGUE_ID)).rejects.toThrow(UnauthorizedError);
-      expect(_createPrivilegedClient).not.toHaveBeenCalled();
+      expect(_getDb).not.toHaveBeenCalled();
     });
   });
 
@@ -240,7 +231,7 @@ describe('Auth Service', () => {
 
       const result = await authorizeEventAdmin(EVENT_ID);
 
-      expect(result.db).toBe(mockDb);
+      expect(result.pg).toBe(mockPg);
       expect(result.event.league_id).toBe(LEAGUE_ID);
       expect(getEventAccess).toHaveBeenCalledWith(mockPg, EVENT_ID, 'user-123');
     });
@@ -327,7 +318,7 @@ describe('Auth Service', () => {
       signIn();
       (isAnyLeagueAdmin as jest.Mock).mockResolvedValue(true);
 
-      await expect(authorizeAnyLeagueAdmin()).resolves.toMatchObject({ db: mockDb });
+      await expect(authorizeAnyLeagueAdmin()).resolves.toMatchObject({ pg: mockPg });
       expect(isAnyLeagueAdmin).toHaveBeenCalledWith(mockPg, 'user-123');
     });
 
@@ -344,7 +335,7 @@ describe('Auth Service', () => {
       signOut();
 
       await expect(authorizeLeagueCreation()).rejects.toThrow(UnauthorizedError);
-      expect(_createPrivilegedClient).not.toHaveBeenCalled();
+      expect(_getDb).not.toHaveBeenCalled();
     });
   });
 
@@ -367,7 +358,7 @@ describe('Auth Service', () => {
       const result = await authorizeAccessCode('  AbC123 ');
 
       expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, 'abc123');
-      expect(result).toEqual({ event: bracketEvent, db: mockDb, pg: mockPg });
+      expect(result).toEqual({ event: bracketEvent, pg: mockPg });
     });
 
     it('does not treat LIKE wildcards specially', async () => {
