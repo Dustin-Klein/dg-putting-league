@@ -7,17 +7,18 @@ running disc golf putting leagues: events, qualification rounds, pool/team
 assignment, live scoring, and double-elimination brackets (`brackets-manager`).
 
 - Layering is strict and flows downward only: `app/api/*/route.ts` → `lib/services/*`
-  → `lib/repositories/*` → Supabase. See `docs/architecture.md`.
+  → `lib/repositories/*.db.ts` → Postgres (Drizzle). Supabase is used only for Auth and Realtime.
+  See `docs/architecture.md`.
 - Routes parse input (zod), authenticate, call one service entry point, and return
   errors via `handleError` (`lib/errors`). Business logic does not belong in routes;
-  Supabase queries do not belong in services.
+  queries do not belong in services.
 - Trust model: browser/client roles (`anon`, `authenticated`) can only SELECT via RLS.
-  All writes and business RPCs require a type-branded `PrivilegedClient` (`lib/supabase/types.ts`)
-  or Drizzle `Db` (`lib/db/tx.ts`) obtained via authorization functions in `lib/services/auth/auth-service.ts`
-  (`authorize*`) or `requireEventAdmin`. Because privileged clients bypass RLS, services must verify that
-  all entity IDs belong to the authorized event before writing.
-- Drizzle layer: server writes for transactional flows use Drizzle ORM (`lib/db/`, direct Postgres
-  connection as role `app_server`). Authorization functions return `{ db, pg }` (`pg` is `Db`).
+  All server reads and writes use the Drizzle `Db` (`lib/db/`, direct Postgres connection as role
+  `app_server`, which bypasses RLS) obtained via authorization functions in
+  `lib/services/auth/auth-service.ts` (`authorize*`, `authorizeEventView`, `authorizePublicRead`) or
+  `requireEventAdmin`. Every service read needs an explicit authorization or visibility check
+  (`lib/services/auth/visibility.ts`), and services must verify that all entity IDs belong to the
+  authorized event before writing.
 - Services own transactions (`withTransaction`); repositories never open transactions. Repositories
   using Drizzle use `.db.ts` suffix and take `ex: Executor` (`Db | Tx`) as their first parameter.
 - Lock order (prevents deadlocks): event advisory lock (`lockEvent`) → event row (`FOR SHARE`, or
@@ -128,13 +129,15 @@ Pay particular attention to:
 - Authentication and authorization boundaries: API routes must derive the user
   from Supabase auth, never from client-provided user IDs, and admin-only
   operations must verify league/event admin rights.
-- Privileged client rules: flag any import of the privileged client (`lib/supabase/privileged.ts`)
-  outside `lib/services/auth/**`, and flag any write or business RPC repository function
-  typed with the non-privileged client instead of `PrivilegedClient`.
+- Server data access rules: flag any import of `lib/db/client` outside `lib/services/auth/**`,
+  `lib/db/**` and tests, any `supabase.from(...)`/`.rpc(...)` data access, and any service read
+  that returns event-scoped data without `authorizeEventView`, an admin `authorize*` call, or a
+  visibility check mirroring `lib/services/auth/visibility.ts`.
 - RLS policies and `SECURITY DEFINER` functions: check that policies are not
   loosened unintentionally, that definer functions set `search_path` and perform
   their own authorization checks, and that `GRANT EXECUTE` is not broader than
-  needed. Flag any new GRANT to `anon` or `authenticated`.
+  needed. Flag any new GRANT to `anon` or `authenticated`, and any new plpgsql business
+  function (business logic belongs in services).
 - Public access-code scoring endpoints (`app/api/score`, `app/api/public`): access
   codes must only grant access to their own event. New public routes should use
   the rate limiter like the existing ones in `app/api/public`.
@@ -143,8 +146,8 @@ Pay particular attention to:
 - Service-role keys or other secrets reaching client code or `NEXT_PUBLIC_*` vars.
 - Input validation (zod schemas on route inputs), injection, sensitive data
   exposure (e.g. returning player emails or full DB rows to the UI), path
-  traversal, and privilege escalation. Flag any `select('*')` on `events` (use
-  `EVENT_COLUMNS`) or `players` (email must not be exposed).
+  traversal, and privilege escalation. Flag any read that returns `events.access_code`
+  or `players.email`, or `event_players.payment_type` to non-admins.
 
 ## Review comments
 

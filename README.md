@@ -65,11 +65,10 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    ```env
    NEXT_PUBLIC_SUPABASE_URL=[YOUR_SUPABASE_PROJECT_URL]
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[YOUR_SUPABASE_ANON_KEY]
-   SUPABASE_SECRET_KEY=[YOUR_SUPABASE_SECRET_KEY]
    DATABASE_URL=postgresql://app_server:app_server@127.0.0.1:54322/postgres
    ```
 
-   `SUPABASE_SECRET_KEY` and `DATABASE_URL` are server-only (never prefix with `NEXT_PUBLIC_`). For local development, find the secret key under `SECRET_KEY` in `npx supabase status`. In production, `DATABASE_URL` connects via the Supabase Supavisor transaction pooler (port 6543, role `app_server.<project-ref>`, `?sslmode=require`).
+   `DATABASE_URL` is server-only (never prefix with `NEXT_PUBLIC_`). The server reads and writes through it after its own authorization checks; Supabase is used only for Auth and Realtime. In production, `DATABASE_URL` connects via the Supabase Supavisor transaction pooler (port 6543, role `app_server.<project-ref>`, `?sslmode=require`).
 
 4. Run database migrations, schema generation, and tests:
 
