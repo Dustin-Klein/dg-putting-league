@@ -1,5 +1,5 @@
-import { inArray } from 'drizzle-orm';
-import { frame_results } from '@/lib/db/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { bracket_match, frame_results } from '@/lib/db/schema';
 import type { Executor } from '@/lib/db/tx';
 import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
 import { updateEventSettingsTx } from '@/lib/services/event/event-service';
@@ -237,6 +237,16 @@ async function assertInvariants(ex: Executor, eventId: string): Promise<void> {
       lane: lane.label,
       referencedMatches: openReferences.map((match) => match.id),
     });
+    if (lane.maintenance_pending) {
+      expect({ lane: lane.label, status: lane.status }).toEqual({
+        lane: lane.label,
+        status: 'occupied',
+      });
+      expect({ lane: lane.label, pendingOpenMatchCount: openReferences.length }).toEqual({
+        lane: lane.label,
+        pendingOpenMatchCount: 1,
+      });
+    }
   }
 
   expect([...losses.entries()].filter(([, count]) => count > 2)).toEqual([]);
@@ -380,8 +390,16 @@ describe.each(scenarios)(
         let snapshot = await getBracketSnapshot(tx, event.eventId);
         const occupiedLane = snapshot.lanes.find((lane) => lane.status === 'occupied');
         if (!occupiedLane) throw new Error('Seeded bracket did not occupy a lane');
-        await setLaneMaintenance(event.eventId, occupiedLane.id);
+        const occupiedMatch = snapshot.matches.find((match) => match.lane_id === occupiedLane.id);
+        if (!occupiedMatch) throw new Error('Occupied lane did not have a match');
+        await tx.update(bracket_match)
+          .set({ status: MatchStatus.Running })
+          .where(eq(bracket_match.id, occupiedMatch.id));
+        await setLaneMaintenance(event.eventId, occupiedLane.id, 'after_match');
         await assertInvariants(tx, event.eventId);
+        snapshot = await getBracketSnapshot(tx, event.eventId);
+        expect(snapshot.matches.find((match) => match.id === occupiedMatch.id)?.lane_id)
+          .toBe(occupiedLane.id);
         await setLaneIdle(event.eventId, occupiedLane.id);
         await assertInvariants(tx, event.eventId);
 

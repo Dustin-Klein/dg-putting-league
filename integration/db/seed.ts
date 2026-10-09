@@ -188,7 +188,7 @@ export interface BracketSnapshot {
   stageId: number;
   matches: Array<MatchRow & { group_number: number; round_number: number }>;
   participants: Array<{ id: number; team_id: string | null; name: string }>;
-  lanes: Array<{ id: string; label: string; status: string }>;
+  lanes: Array<{ id: string; label: string; status: string; maintenance_pending: boolean }>;
 }
 
 export async function getBracketSnapshot(ex: Executor, eventId: string): Promise<BracketSnapshot> {
@@ -213,7 +213,12 @@ export async function getBracketSnapshot(ex: Executor, eventId: string): Promise
     .orderBy(asc(bracket_participant.id));
 
   const laneRows = await ex
-    .select({ id: lanes.id, label: lanes.label, status: lanes.status })
+    .select({
+      id: lanes.id,
+      label: lanes.label,
+      status: lanes.status,
+      maintenance_pending: lanes.maintenance_pending,
+    })
     .from(lanes)
     .where(eq(lanes.event_id, eventId))
     .orderBy(asc(lanes.label));

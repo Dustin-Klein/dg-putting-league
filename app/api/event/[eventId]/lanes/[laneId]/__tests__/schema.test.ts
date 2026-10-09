@@ -4,15 +4,15 @@ jest.mock('@/lib/services/lane', () => ({}));
 jest.mock('@/lib/services/event', () => ({}));
 
 describe('lane maintenance route schema', () => {
-  it('defaults confirm to false and accepts an explicit confirmation', () => {
+  it('defaults mode to undefined and accepts both maintenance modes', () => {
     expect(updateLaneSchema.parse({ status: 'maintenance' })).toEqual({
       status: 'maintenance',
-      confirm: false,
     });
-    expect(updateLaneSchema.parse({ status: 'maintenance', confirm: true }).confirm).toBe(true);
+    expect(updateLaneSchema.parse({ status: 'maintenance', mode: 'after_match' }).mode).toBe('after_match');
+    expect(updateLaneSchema.parse({ status: 'maintenance', mode: 'now' }).mode).toBe('now');
   });
 
-  it('rejects non-boolean confirmation values', () => {
-    expect(updateLaneSchema.safeParse({ status: 'maintenance', confirm: 'true' }).success).toBe(false);
+  it('rejects unknown maintenance modes', () => {
+    expect(updateLaneSchema.safeParse({ status: 'maintenance', mode: 'later' }).success).toBe(false);
   });
 });

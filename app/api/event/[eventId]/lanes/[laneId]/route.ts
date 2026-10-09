@@ -10,7 +10,7 @@ import { handleError, BadRequestError } from '@/lib/errors';
 
 export const updateLaneSchema = z.object({
   status: z.enum(['idle', 'maintenance']),
-  confirm: z.boolean().optional().default(false),
+  mode: z.enum(['after_match', 'now']).optional(),
 });
 
 /**
@@ -35,7 +35,7 @@ export async function PATCH(
 
     let lane;
     if (parsed.data.status === 'maintenance') {
-      lane = await setLaneMaintenance(eventId, laneId, parsed.data.confirm);
+      lane = await setLaneMaintenance(eventId, laneId, parsed.data.mode);
     } else {
       lane = await setLaneIdle(eventId, laneId);
     }

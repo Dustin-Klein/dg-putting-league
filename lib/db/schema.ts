@@ -320,6 +320,7 @@ export const lanes = pgTable("lanes", {
 	event_id: uuid().notNull(),
 	label: text().notNull(),
 	status: lane_status().default('idle').notNull(),
+	maintenance_pending: boolean().default(false).notNull(),
 }, (table) => [
 	foreignKey({
 			columns: [table.event_id],

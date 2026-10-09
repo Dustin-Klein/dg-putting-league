@@ -106,8 +106,9 @@ export async function assignLane(ex: Executor, eventId: string, laneId: string, 
 }
 
 /**
- * Take a match off its lane and set the lane idle. Returns false only when `laneId`
- * is given and the match is on a different lane; true when there was nothing to release.
+ * Take a match off its lane. A pending lane enters maintenance; otherwise it becomes
+ * idle. Returns false only when `laneId` is given and the match is on a different lane;
+ * true when there was nothing to release.
  */
 export async function releaseMatchLane(
   ex: Executor,
@@ -129,37 +130,49 @@ export async function releaseMatchLane(
     .where(and(eq(bracket_match.id, matchId), eq(bracket_match.event_id, eventId)));
   await ex
     .update(lanes)
-    .set({ status: 'idle' })
+    .set({
+      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::lane_status else 'idle'::lane_status end`,
+      maintenance_pending: false,
+    })
     .where(and(eq(lanes.id, match.lane_id), eq(lanes.event_id, eventId)));
   return true;
 }
 
 /**
- * Set a lane's status and take any match off it. Returns false if the lane isn't in the event.
+ * Set a lane's state. Returns false if the lane isn't in the event.
  */
-export async function setLaneStatusAndClearMatch(
+export async function setLaneState(
   ex: Executor,
   eventId: string,
   laneId: string,
-  status: 'idle' | 'maintenance'
+  state: { status: 'idle' | 'occupied' | 'maintenance'; maintenance_pending: boolean }
 ): Promise<boolean> {
   const updated = await ex
     .update(lanes)
-    .set({ status })
+    .set(state)
     .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId)))
     .returning({ id: lanes.id });
-  if (updated.length === 0) return false;
+  return updated.length > 0;
+}
 
+/** Take every match off a lane after the caller has locked the relevant match rows and lanes. */
+export async function clearLaneMatches(
+  ex: Executor,
+  eventId: string,
+  laneId: string
+): Promise<void> {
   await ex
     .update(bracket_match)
     .set({ lane_id: null, lane_assigned_at: null })
     .where(and(eq(bracket_match.lane_id, laneId), eq(bracket_match.event_id, eventId)));
-  return true;
 }
 
 export async function resetOccupiedLanesToIdle(ex: Executor, eventId: string): Promise<void> {
   await ex
     .update(lanes)
-    .set({ status: 'idle' })
+    .set({
+      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::lane_status else 'idle'::lane_status end`,
+      maintenance_pending: false,
+    })
     .where(and(eq(lanes.event_id, eventId), eq(lanes.status, 'occupied')));
 }
