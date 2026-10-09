@@ -4,7 +4,7 @@ import {
   BadRequestError,
 } from '@/lib/errors';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import { EventPlayer, PaymentType } from '@/lib/types/player';
+import { PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
 import { withTransaction } from '@/lib/db/tx';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
@@ -148,88 +148,8 @@ function assignPools(players: PoolInput[]): { pool: 'A' | 'B' }[] {
 }
 
 /**
- * Split all registered players into Pool A (top half) and Pool B (bottom half)
- * when an event's status changes from 'pre-bracket' to 'bracket'
- */
-export async function splitPlayersIntoPools(eventId: string): Promise<EventPlayer[]> {
-  const { pg } = await requireEventAdmin(eventId);
-  const event = await getEventWithPlayers(eventId);
-
-  if (!event.players || event.players.length === 0) {
-    throw new BadRequestError('No players registered for this event');
-  }
-
-  // Check if pools are already assigned
-  const playersWithPools = event.players.filter(player => player.pool);
-  if (playersWithPools.length > 0) {
-    throw new BadRequestError('Players have already been assigned to pools');
-  }
-
-  const pfaScores = event.qualification_round_enabled
-    ? new Map<string, { totalPoints: number; frameCount: number }>()
-    : await eventPlayerRepo.getPfaScoresBulk(
-        pg,
-        event.players.map((eventPlayer) => eventPlayer.player_id),
-        getPfaSinceDate()
-      );
-
-  const playersWithScores = await Promise.all(event.players.map(async (eventPlayer) => {
-      let score: number;
-      let scoringMethod: 'qualification' | 'pfa' | 'default';
-
-      if (event.qualification_round_enabled) {
-        // Calculate total qualification score
-        score = await eventPlayerRepo.getQualificationScore(pg, eventId, eventPlayer.id);
-        scoringMethod = 'qualification';
-      } else {
-        const pfa = pfaScores.get(eventPlayer.player_id);
-        if (pfa && pfa.frameCount > 0) {
-          score = pfa.totalPoints / pfa.frameCount;
-          scoringMethod = 'pfa';
-        } else {
-          // No frame history, use default_pool for scoring (0 for comparison)
-          score = 0;
-          scoringMethod = 'default';
-        }
-      }
-
-      return {
-        ...eventPlayer,
-        score,
-        scoringMethod,
-        default_pool: eventPlayer.player.default_pool || 'B'
-      };
-    }));
-
-  const computed = assignPools(playersWithScores.map(p => ({
-    score: p.score,
-    scoringMethod: p.scoringMethod,
-    defaultPool: p.default_pool,
-  })));
-
-  const poolAssignments = playersWithScores.map((player, i) => ({
-    id: player.id,
-    pool: computed[i].pool,
-    pfa_score: player.score,
-    scoring_method: player.scoringMethod,
-  }));
-
-  // Update all player pool assignments
-  await withTransaction(pg, async (tx) => {
-    for (const { id, pool, pfa_score, scoring_method } of poolAssignments) {
-      await eventPlayerRepo.updateEventPlayerPool(tx, eventId, id, pool, pfa_score, scoring_method);
-    }
-  });
-
-  // Return updated players with pool assignments
-  const finalPlayers = await eventPlayerRepo.getEventPlayersWithPools(pg, eventId);
-
-  return finalPlayers as unknown as EventPlayer[];
-}
-
-/**
  * Compute pool assignments for all players in an event without persisting.
- * This is used by the atomic transition RPC to pre-compute the data.
+ * Used by transitionEventToBracket, which persists the assignments when the bracket starts.
  *
  * Returns an array of pool assignments sorted by score (top half -> Pool A, bottom half -> Pool B)
  */

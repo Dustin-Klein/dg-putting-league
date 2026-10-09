@@ -40,7 +40,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - `DATABASE_URL` → server-only direct Postgres connection used for all server data access (never `NEXT_PUBLIC_`); required in production (startup fails via `instrumentation.ts` if missing). In production, connects via Supabase Supavisor transaction pooler (port 6543, user `app_server.<project-ref>`, `?sslmode=require`). Local: `postgresql://app_server:app_server@127.0.0.1:54322/postgres`.
 - `DATABASE_POOL_MAX` → optional maximum pool size for Drizzle connection (default: 3)
 - Routes touching the DB must use the Node.js runtime (never Edge) due to TCP sockets
-- Supabase service role keys → server-only
+- No Supabase secret/service-role key is used; never add one to client code or a `NEXT_PUBLIC_*` var
 - Fail fast if required env vars are missing
 
 ---
@@ -86,7 +86,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - `lib/db/tx.ts`: Provides `withTransaction(ex, fn)` (nested call → savepoint), `lockEvent(tx, eventId)` (`pg_advisory_xact_lock`, transaction-scoped and safe behind the transaction-mode pooler), `lockMatch(tx, matchId, eventId)` (`SELECT … FOR UPDATE`, scoped to event), and types `Db`, `Tx`, `Executor = Db | Tx`.
 - **Transaction ownership**: Services own transactions (like Spring `@Transactional`). Repositories never open transactions.
 - **Keep transactions short**: Keep transactions to DB work only; build response DTOs and read-backs after commit.
-- **Repository convention (`.db.ts`)**: New Drizzle repositories live next to the old ones with a `.db.ts` suffix during the transition (e.g. `lib/repositories/bracket-repository.db.ts`). Every function takes `ex: Executor` as its first parameter.
+- **Repository convention (`.db.ts`)**: Repositories live in `lib/repositories/` with a `.db.ts` suffix (e.g. `lib/repositories/bracket-repository.db.ts`). Every function takes `ex: Executor` as its first parameter.
 - **Lock order (prevents deadlocks)**:
   1. Event advisory lock (`lockEvent(tx, eventId)`)
   2. Event row (`getEventBracketConfig(tx, eventId, { lock: 'share' })`; `'update'` when changing the event). Holding it means the event can't be completed under a write that already checked its status.

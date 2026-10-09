@@ -14,7 +14,7 @@ jest.mock('@/components/ui/use-toast', () => ({
   useToast: () => ({ toast }),
 }));
 
-const getItemMock = jest.fn((key: string): string | null => null);
+const getItemMock = jest.fn<string | null, [string]>(() => null);
 
 const sessionStorageMock = (() => {
   let store: Record<string, string> = {};

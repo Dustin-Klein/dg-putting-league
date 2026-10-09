@@ -24,7 +24,7 @@ export async function POST(
 
   try {
     validateCsrfOrigin(req);
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const { eventId, laneId } = resolvedParams;
     await requireEventAdmin(eventId);
 

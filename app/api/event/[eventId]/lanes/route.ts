@@ -18,7 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     await requireEventAdmin(resolvedParams.eventId);
     const lanes = await getLanesWithMatches(resolvedParams.eventId);
     return NextResponse.json(lanes);
@@ -39,7 +39,7 @@ export async function POST(
   { params }: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     await requireEventAdmin(resolvedParams.eventId);
 
     const body = await req.json().catch(() => ({}));

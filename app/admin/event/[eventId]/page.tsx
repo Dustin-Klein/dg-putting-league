@@ -58,7 +58,7 @@ function EventContent({
 export default function EventPage({
   params,
 }: {
-  params: { eventId: string } | Promise<{ eventId: string }>;
+  params: Promise<{ eventId: string }>;
 }) {
   const [event, setEvent] = useState<EventWithDetails | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -75,7 +75,7 @@ export default function EventPage({
 
   useEffect(() => {
     const loadData = async () => {
-      const { eventId } = await Promise.resolve(params);
+      const { eventId } = await params;
       eventIdRef.current = eventId;
 
       try {

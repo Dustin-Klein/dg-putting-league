@@ -22,7 +22,7 @@ export async function PATCH(
   { params }: { params: Promise<{ eventId: string; laneId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const { eventId, laneId } = resolvedParams;
     await requireEventAdmin(eventId);
 
@@ -55,7 +55,7 @@ export async function DELETE(
   { params }: { params: Promise<{ eventId: string; laneId: string }> }
 ) {
   try {
-    const resolvedParams = await Promise.resolve(params);
+    const resolvedParams = await params;
     const { eventId, laneId } = resolvedParams;
     await requireEventAdmin(eventId);
 

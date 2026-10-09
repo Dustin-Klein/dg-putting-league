@@ -5,7 +5,6 @@
  * - addPlayerToEvent()
  * - removePlayerFromEvent()
  * - updatePlayerPayment()
- * - splitPlayersIntoPools()
  * - computePoolAssignments()
  */
 
@@ -47,8 +46,6 @@ jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   updateEventPlayerPayment: jest.fn(),
   getQualificationScore: jest.fn(),
   getPfaScoresBulk: jest.fn(),
-  updateEventPlayerPool: jest.fn(),
-  getEventPlayersWithPools: jest.fn(),
 }));
 
 // Import after mocking
@@ -59,7 +56,6 @@ import {
   addPlayerToEvent,
   removePlayerFromEvent,
   updatePlayerPayment,
-  splitPlayersIntoPools,
   computePoolAssignments,
   PFA_LOOKBACK_MONTHS,
   getPfaSinceDate,
@@ -244,102 +240,6 @@ describe('Event Player Service', () => {
     });
   });
 
-  describe('splitPlayersIntoPools', () => {
-    const eventId = 'event-123';
-
-    it('should split players into pools based on scores', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', qualification_round_enabled: false },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
-
-      (eventPlayerRepo.updateEventPlayerPool as jest.Mock).mockResolvedValue(undefined);
-      (eventPlayerRepo.getEventPlayersWithPools as jest.Mock).mockResolvedValue(
-        players.map((p, i) => ({
-          ...p,
-          pool: i < 2 ? 'A' : 'B',
-        }))
-      );
-
-      const result = await splitPlayersIntoPools(eventId);
-
-      expect(result).toHaveLength(4);
-      expect(eventPlayerRepo.updateEventPlayerPool).toHaveBeenCalledTimes(4);
-    });
-
-    it('should throw BadRequestError when no players registered', async () => {
-      const event = createMockEventWithDetails({ id: eventId }, []);
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      await expect(splitPlayersIntoPools(eventId)).rejects.toThrow(BadRequestError);
-      await expect(splitPlayersIntoPools(eventId)).rejects.toThrow(
-        'No players registered for this event'
-      );
-    });
-
-    it('should throw BadRequestError when pools already assigned', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      players[0].pool = 'A';
-      const event = createMockEventWithDetails({ id: eventId }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      await expect(splitPlayersIntoPools(eventId)).rejects.toThrow(BadRequestError);
-      await expect(splitPlayersIntoPools(eventId)).rejects.toThrow(
-        'Players have already been assigned to pools'
-      );
-    });
-
-    it('should use qualification scores when enabled', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      const event = createMockEventWithDetails(
-        { id: eventId, qualification_round_enabled: true },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      (eventPlayerRepo.getQualificationScore as jest.Mock)
-        .mockResolvedValueOnce(30)
-        .mockResolvedValueOnce(20)
-        .mockResolvedValueOnce(25)
-        .mockResolvedValueOnce(15);
-
-      (eventPlayerRepo.updateEventPlayerPool as jest.Mock).mockResolvedValue(undefined);
-      (eventPlayerRepo.getEventPlayersWithPools as jest.Mock).mockResolvedValue(players);
-
-      await splitPlayersIntoPools(eventId);
-
-      expect(eventPlayerRepo.getQualificationScore).toHaveBeenCalledTimes(4);
-    });
-
-    it('should use PFA from last 18 months when qualification not enabled', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      const event = createMockEventWithDetails(
-        { id: eventId, qualification_round_enabled: false },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map([
-        [players[0].player_id, { totalPoints: 5, frameCount: 2 }],
-      ]));
-
-      (eventPlayerRepo.updateEventPlayerPool as jest.Mock).mockResolvedValue(undefined);
-      (eventPlayerRepo.getEventPlayersWithPools as jest.Mock).mockResolvedValue(players);
-
-      await splitPlayersIntoPools(eventId);
-
-      expect(eventPlayerRepo.getPfaScoresBulk).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe('computePoolAssignments', () => {
     const eventId = 'event-123';
 
@@ -357,8 +257,6 @@ describe('Event Player Service', () => {
       expect(result).toHaveLength(4);
       expect(result.filter((pa) => pa.pool === 'A')).toHaveLength(2);
       expect(result.filter((pa) => pa.pool === 'B')).toHaveLength(2);
-      // Should not persist
-      expect(eventPlayerRepo.updateEventPlayerPool).not.toHaveBeenCalled();
     });
 
     it('should use 18-month PFA lookback window', async () => {

@@ -31,19 +31,19 @@ A web application for managing disc golf putting leagues, tracking scores, and r
 
 ## Tech Stack
 
-- **Framework**: [Next.js 15](https://nextjs.org) (App Router)
-- **Database**: [Supabase](https://supabase.com) (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **Styling**: [Tailwind CSS](https://tailwindcss.com)
+- **Framework**: [Next.js 16](https://nextjs.org) (App Router), React 19
+- **Database**: PostgreSQL on [Supabase](https://supabase.com), accessed from the server with [Drizzle ORM](https://orm.drizzle.team)
+- **Authentication & Realtime**: Supabase Auth and Supabase Realtime (the browser never writes to the database)
+- **Styling**: [Tailwind CSS 4](https://tailwindcss.com)
 - **UI Components**: [shadcn/ui](https://ui.shadcn.com)
-- **Bracket Management**: [brackets-model](https://www.npmjs.com/package/brackets-model)
+- **Bracket Management**: [brackets-manager](https://www.npmjs.com/package/brackets-manager) (with `brackets-model` types)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- A Supabase project ([create one here](https://database.new))
+- Node.js 22+
+- Docker and the [Supabase CLI](https://supabase.com/docs/guides/local-development) (`npx supabase`) for the local database
 
 ### Installation
 
@@ -60,11 +60,12 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    npm install
    ```
 
-3. Set up environment variables by creating a `.env.local` file:
+3. Set up environment variables by creating a `.env.local` file. For the local stack, the URL and
+   publishable key are printed by `npx supabase start` (step 4):
 
    ```env
-   NEXT_PUBLIC_SUPABASE_URL=[YOUR_SUPABASE_PROJECT_URL]
-   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[YOUR_SUPABASE_ANON_KEY]
+   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[PUBLISHABLE_KEY_FROM_SUPABASE_START]
    DATABASE_URL=postgresql://app_server:app_server@127.0.0.1:54322/postgres
    ```
 
@@ -79,6 +80,10 @@ A web application for managing disc golf putting leagues, tracking scores, and r
    npx supabase start
    npx supabase db reset
    ```
+
+   `supabase/config.toml` is committed, so no other local configuration is needed. `db reset` applies
+   every migration and `supabase/seed.sql` (which sets the local `app_server` password). To apply only
+   new migrations without wiping data, use `npx supabase migration up --local`.
 
    Generate Drizzle schema from the local database (verified in CI via `npm run db:check`):
 
@@ -105,17 +110,44 @@ A web application for managing disc golf putting leagues, tracking scores, and r
 
 ```
 app/
-├── api/                  # API routes
-├── auth/                 # Authentication pages
-├── event/[eventId]/      # Event pages (scoring, brackets, results)
-├── league/[leagueId]/    # League management pages
-├── leagues/              # User's leagues list
-├── score/                # Score entry page
+├── admin/                # League admin UI (leagues, events, players, brackets, lanes)
+├── api/                  # Route handlers: parse input, authenticate, call one service
+│   ├── public/           #   Public reads (rate limited)
+│   └── score/            #   Access-code scoring (rate limited)
+├── auth/                 # Login, sign-up, password reset
+├── event/[eventId]/      # Public event pages (bracket, results)
+├── leagues/              # Public league pages
+├── player/, players/     # Public player profiles and search
+├── score/                # Access-code scoring UI (matches, qualification)
+├── error.tsx             # Error boundary (global-error.tsx for the root layout)
 └── page.tsx              # Home page
 
-components/               # Reusable UI components
-lib/                      # Utility functions and database helpers
-supabase/migrations/      # Database schema migrations
+components/               # Shared UI components (shadcn/ui in components/ui)
+lib/
+├── services/             # Business logic, authorization, transactions
+├── repositories/         # Drizzle queries (*.db.ts), one per table or aggregate
+├── db/                   # Drizzle client, generated schema, transaction and lock helpers
+├── supabase/             # Supabase Auth clients and the request proxy (CSRF, sessions)
+├── errors/               # Domain errors and handleError
+└── types/                # API DTOs
+integration/              # Integration tests against the local database
+supabase/migrations/      # Schema migrations (additive; init_* files are the frozen baseline)
+supabase/rollbacks/       # Emergency rollback SQL (not run by the CLI)
+supabase/tests/           # pgTAP database security tests
+```
+
+See [docs/architecture.md](docs/architecture.md) for layering, the trust model and transaction conventions.
+
+## Checks
+
+```bash
+npm run lint
+npm run type-check
+npm test            # unit tests (Jest)
+npm run test:int    # integration tests (needs the local Supabase stack)
+npx supabase test db
+npm run db:check    # lib/db/schema.ts matches the migrations
+npm run build
 ```
 
 ## Event Workflow
