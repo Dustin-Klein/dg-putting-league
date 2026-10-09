@@ -44,29 +44,16 @@ describe.each([
     client = await makeClient();
   });
 
-  it('cannot roll back a bracket', async () => {
-    const { error } = await client.rpc('rollback_bracket_transition', { p_event_id: SOME_EVENT_ID });
-    expectDenied(error);
-  });
-
-  it('cannot call scoring RPCs', async () => {
-    const { error } = await client.rpc('update_bracket_match_score', {
-      p_match_id: 1,
-      p_status: 4,
-      p_opponent1: null,
-      p_opponent2: null,
-    });
-    expectDenied(error);
-  });
-
-  it('cannot start a bracket', async () => {
-    const { error } = await client.rpc('transition_event_to_bracket', {
-      p_event_id: SOME_EVENT_ID,
-      p_pool_assignments: [],
-      p_teams: [],
-      p_lane_count: 0,
-    });
-    expectDenied(error);
+  it.each([
+    ['rollback_bracket_transition', { p_event_id: SOME_EVENT_ID }],
+    ['update_bracket_match_score', { p_match_id: 1, p_status: 4, p_opponent1: null, p_opponent2: null }],
+    ['transition_event_to_bracket', { p_event_id: SOME_EVENT_ID, p_pool_assignments: [], p_teams: [], p_lane_count: 0 }],
+    ['get_user_id_by_email', { league_id_param: SOME_EVENT_ID, email_param: 'a@example.test' }],
+  ])('cannot call the retired %s RPC', async (fn, args) => {
+    const { error } = await client.rpc(fn, args);
+    expect(error).not.toBeNull();
+    // PGRST202 = function not found (retired in plan 04); 42501 = not executable
+    expect(['PGRST202', '42501']).toContain(error?.code);
   });
 
   it('cannot update bracket matches', async () => {
@@ -105,7 +92,7 @@ describe.each([
   });
 
   it('cannot touch the rate limit store', async () => {
-    const { error } = await client.rpc('rate_limit_hit', { p_key: 'x', p_window_ms: 1000 });
+    const { error } = await client.from('rate_limits').select('key').limit(1);
     expectDenied(error);
   });
 
@@ -121,7 +108,7 @@ describe.each([
     const events = await client.from('events').select('id, status').limit(1);
     expect(events.error).toBeNull();
 
-    const counts = await client.rpc('get_frame_counts_for_matches', { p_match_ids: [1] });
-    expect(counts.error).toBeNull();
+    const frames = await client.from('frame_results').select('id').limit(1);
+    expect(frames.error).toBeNull();
   });
 });

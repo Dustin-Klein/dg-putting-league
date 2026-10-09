@@ -18,11 +18,7 @@ CREATE TEMP TABLE client_callable (proname text, role text);
 INSERT INTO client_callable VALUES
   ('is_league_admin', 'anon'), ('is_league_admin', 'authenticated'),
   ('is_league_admin_for_event', 'anon'), ('is_league_admin_for_event', 'authenticated'),
-  ('is_tournament_admin', 'anon'), ('is_tournament_admin', 'authenticated'),
-  ('get_frame_results_for_match', 'anon'), ('get_frame_results_for_match', 'authenticated'),
-  ('get_frame_counts_for_matches', 'anon'), ('get_frame_counts_for_matches', 'authenticated'),
-  ('get_user_id_by_email', 'authenticated'),
-  ('get_user_email_by_id', 'authenticated');
+  ('is_tournament_admin', 'anon'), ('is_tournament_admin', 'authenticated');
 GRANT SELECT ON client_callable TO anon, authenticated;
 
 SELECT is_empty(
@@ -48,40 +44,66 @@ SELECT is_empty(
     JOIN client_callable c ON c.proname = p.proname
     WHERE n.nspname = 'public'
       AND p.prosecdef
-      AND c.proname NOT IN ('get_user_id_by_email', 'get_user_email_by_id',
-                            'is_league_admin', 'is_league_admin_for_event', 'is_tournament_admin')
+      AND c.proname NOT IN ('is_league_admin', 'is_league_admin_for_event', 'is_tournament_admin')
   $$,
   'client-callable read helpers are SECURITY INVOKER'
 );
 
--- Findings F1–F3, explicitly
-SELECT function_privs_are('public', 'rollback_bracket_transition', ARRAY['uuid'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'rollback_bracket_transition', ARRAY['uuid'], 'authenticated', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'transition_event_to_bracket', ARRAY['uuid', 'jsonb', 'jsonb', 'integer'], 'authenticated', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'update_bracket_match_score', ARRAY['integer', 'integer', 'jsonb', 'jsonb'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'assign_lane_to_match', ARRAY['uuid', 'uuid', 'integer'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'release_match_lane', ARRAY['uuid', 'uuid', 'integer'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'bulk_assign_lanes_to_matches', ARRAY['uuid', 'jsonb'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'bulk_upsert_frame_results', ARRAY['jsonb'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'upsert_frame_result_atomic', ARRAY['uuid', 'uuid', 'integer', 'integer', 'integer'], 'anon', ARRAY[]::text[]);
+-- Findings F1–F3: business logic moved to the server (plan 04); these functions are gone.
+SELECT hasnt_function('public', 'transition_event_to_bracket', ARRAY['uuid', 'jsonb', 'jsonb', 'integer']);
+SELECT hasnt_function('public', 'rollback_bracket_transition', ARRAY['uuid']);
+SELECT hasnt_function('public', 'update_bracket_match_score', ARRAY['integer', 'integer', 'jsonb', 'jsonb']);
+SELECT hasnt_function('public', 'assign_lane_to_match', ARRAY['uuid', 'uuid', 'integer']);
+SELECT hasnt_function('public', 'release_match_lane', ARRAY['uuid', 'uuid', 'integer']);
+SELECT hasnt_function('public', 'bulk_assign_lanes_to_matches', ARRAY['uuid', 'jsonb']);
+SELECT hasnt_function('public', 'set_lane_maintenance', ARRAY['uuid', 'uuid']);
+SELECT hasnt_function('public', 'set_lane_idle', ARRAY['uuid', 'uuid']);
+SELECT hasnt_function('public', 'upsert_frame_result_atomic', ARRAY['uuid', 'uuid', 'integer', 'integer', 'integer']);
+SELECT hasnt_function('public', 'bulk_upsert_frame_results', ARRAY['jsonb']);
+SELECT hasnt_function('public', 'get_scoring_bracket_matches', ARRAY['uuid']);
+SELECT hasnt_function('public', 'get_frame_results_for_match', ARRAY['integer']);
+SELECT hasnt_function('public', 'get_frame_counts_for_matches', ARRAY['integer[]']);
+SELECT hasnt_function('public', 'get_pfa_scores_bulk', ARRAY['uuid[]', 'timestamp with time zone']);
+SELECT hasnt_function('public', 'get_league_event_counts', ARRAY['uuid[]']);
+SELECT hasnt_function('public', 'get_league_active_event_counts', ARRAY['uuid[]', 'text']);
+SELECT hasnt_function('public', 'get_user_id_by_email', ARRAY['uuid', 'text']);
+SELECT hasnt_function('public', 'get_user_email_by_id', ARRAY['uuid', 'uuid']);
+SELECT hasnt_function('public', 'is_any_league_admin', ARRAY['uuid']);
+SELECT hasnt_function('public', 'is_league_admin_for_bracket_match', ARRAY['integer']);
+SELECT hasnt_function('public', 'is_league_admin_for_match_frame', ARRAY['uuid']);
+SELECT hasnt_function('public', 'is_league_owner', ARRAY['uuid', 'uuid']);
+SELECT hasnt_function('public', 'league_has_no_admins', ARRAY['uuid']);
+SELECT hasnt_function('public', 'rate_limit_hit', ARRAY['text', 'integer', 'boolean']);
 SELECT hasnt_function('public', 'trigger_sync_bracket_match_scores', ARRAY[]::text[], 'legacy score trigger function was removed');
 SELECT hasnt_function('public', 'sync_bracket_match_scores', ARRAY['integer'], 'legacy score sync function was removed');
 SELECT hasnt_function('public', 'calculate_bracket_match_scores', ARRAY['integer'], 'legacy score calculation function was removed');
-SELECT function_privs_are('public', 'get_pfa_scores_bulk', ARRAY['uuid[]', 'timestamp with time zone'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'get_scoring_bracket_matches', ARRAY['uuid'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'set_lane_idle', ARRAY['uuid', 'uuid'], 'authenticated', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'set_lane_maintenance', ARRAY['uuid', 'uuid'], 'authenticated', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'rate_limit_hit', ARRAY['text', 'integer', 'boolean'], 'anon', ARRAY[]::text[]);
 
--- RLS helpers must stay executable or every RLS-protected read fails
 SELECT function_privs_are('public', 'is_league_admin', ARRAY['uuid', 'uuid'], 'anon', ARRAY['EXECUTE']);
 SELECT function_privs_are('public', 'is_league_admin_for_event', ARRAY['uuid'], 'anon', ARRAY['EXECUTE']);
 SELECT function_privs_are('public', 'is_tournament_admin', ARRAY['uuid'], 'authenticated', ARRAY['EXECUTE']);
 
--- The server (service role) can still call business functions
+-- The server role calls no functions: it bypasses RLS and does its own authorization
+SELECT is_empty(
+  $$
+    SELECT p.oid::regprocedure::text
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND has_function_privilege('app_server', p.oid, 'EXECUTE')
+  $$,
+  'app_server can execute no public functions'
+);
+
+-- app_server reads account emails only through app_private.user_emails
 SELECT ok(
-  has_function_privilege('service_role', 'public.rollback_bracket_transition(uuid)', 'EXECUTE'),
-  'service_role can execute business functions'
+  has_table_privilege('app_server', 'app_private.user_emails', 'SELECT')
+  AND NOT has_table_privilege('anon', 'app_private.user_emails', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'app_private.user_emails', 'SELECT'),
+  'only app_server can read account emails'
+);
+SELECT ok(
+  NOT has_schema_privilege('anon', 'app_private', 'USAGE')
+  AND NOT has_schema_privilege('authenticated', 'app_private', 'USAGE'),
+  'clients cannot use the app_private schema'
 );
 
 -- New functions start revoked
