@@ -6,20 +6,22 @@ import {
   completeBracketMatch,
   completeMatchWithFinalScores,
   correctMatchScores,
+  clearScoreOverride,
 } from '@/lib/services/scoring/match-scoring';
 import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { MAX_FRAME_NUMBER } from '@/lib/services/scoring/score-submission';
+import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
-const recordScoreSchema = z.object({
+export const recordScoreSchema = z.object({
   frame_number: z.number().int().min(1).max(MAX_FRAME_NUMBER),
   event_player_id: z.string().uuid(),
   putts_made: z.number().int().min(0).max(3),
 });
 
-const finalScoreSchema = z.object({
-  team1_score: z.number().min(0),
-  team2_score: z.number().min(0),
+export const finalScoreSchema = z.object({
+  team1_score: z.number().int().min(0),
+  team2_score: z.number().int().min(0),
   is_correction: z.boolean().optional(),
 });
 
@@ -137,6 +139,26 @@ export async function PATCH(
     }
 
     const match = await completeBracketMatch(eventId, bracketMatchId);
+    return NextResponse.json(match);
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/** DELETE: Clear a manual score override and restore frame-derived totals. */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ eventId: string; matchId: string }> }
+) {
+  const rateLimitResponse = await withStrictRateLimit(req, 'event:clear-score-override');
+  if (rateLimitResponse) return rateLimitResponse;
+
+  try {
+    const { eventId, matchId } = await params;
+    const bracketMatchId = parseInt(matchId, 10);
+    if (isNaN(bracketMatchId)) throw new BadRequestError('Invalid bracket match ID');
+
+    const match = await clearScoreOverride(eventId, bracketMatchId);
     return NextResponse.json(match);
   } catch (error) {
     return handleError(error);

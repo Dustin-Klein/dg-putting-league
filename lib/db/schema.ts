@@ -52,7 +52,12 @@ export const bracket_match = pgTable("bracket_match", {
 	event_id: uuid(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updated_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow(),
+	score_override_1: integer(),
+	score_override_2: integer(),
+	score_override_reason: text(),
+	score_override_by: uuid(),
 }, (table) => [
+	check("bracket_match_score_override_pair_check", sql`((score_override_1 IS NULL) AND (score_override_2 IS NULL)) OR ((score_override_1 IS NOT NULL) AND (score_override_2 IS NOT NULL) AND (score_override_1 >= 0) AND (score_override_2 >= 0))`),
 	foreignKey({
 			columns: [table.event_id],
 			foreignColumns: [events.id],
@@ -73,6 +78,11 @@ export const bracket_match = pgTable("bracket_match", {
 			foreignColumns: [bracket_round.id],
 			name: "bracket_match_round_id_fkey"
 		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.score_override_by],
+			foreignColumns: [users.id],
+			name: "bracket_match_score_override_by_fkey"
+		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.stage_id],
 			foreignColumns: [bracket_stage.id],

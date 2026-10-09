@@ -9,9 +9,9 @@ import { handleError, BadRequestError } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
 
 const updateMatchSchema = z.object({
-  opponent1Score: z.number().min(0).optional(),
-  opponent2Score: z.number().min(0).optional(),
-  winnerId: z.number().nullable().optional(),
+  opponent1Score: z.number().int().min(0).optional(),
+  opponent2Score: z.number().int().min(0).optional(),
+  winnerId: z.number().int().nullable().optional(),
   laneId: z.string().uuid().optional(),
 });
 

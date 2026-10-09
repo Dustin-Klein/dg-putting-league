@@ -99,16 +99,25 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
     }
   };
 
-  const handleSetMaintenance = async (laneId: string) => {
+  const handleSetMaintenance = async (laneId: string, confirmMove = false) => {
     try {
       setActionLoading(laneId);
       const res = await fetch(`/api/event/${eventId}/lanes/${laneId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'maintenance' }),
+        body: JSON.stringify({ status: 'maintenance', confirm: confirmMove }),
       });
       if (!res.ok) {
         const data = await res.json();
+        if (
+          res.status === 409 &&
+          data.error === 'This lane has a match in progress. Confirm to move it off the lane.' &&
+          window.confirm(`${data.error}\n\nContinue?`)
+        ) {
+          setActionLoading(null);
+          await handleSetMaintenance(laneId, true);
+          return;
+        }
         throw new Error(data.error || 'Failed to set maintenance');
       }
       await fetchLanes();
@@ -331,15 +340,26 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                 )}
 
                 {lane.status === 'occupied' && lane.current_match_id && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleReleaseLane(lane.id, lane.current_match_id!)}
-                    disabled={actionLoading === lane.id}
-                  >
-                    <Unlock className="mr-1 h-3 w-3" />
-                    Release
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleReleaseLane(lane.id, lane.current_match_id!)}
+                      disabled={actionLoading === lane.id}
+                    >
+                      <Unlock className="mr-1 h-3 w-3" />
+                      Release
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSetMaintenance(lane.id)}
+                      disabled={actionLoading === lane.id}
+                    >
+                      <Wrench className="mr-1 h-3 w-3" />
+                      Maintenance
+                    </Button>
+                  </>
                 )}
 
                 {lane.status === 'idle' && (

@@ -64,8 +64,9 @@ SELECT function_privs_are('public', 'release_match_lane', ARRAY['uuid', 'uuid', 
 SELECT function_privs_are('public', 'bulk_assign_lanes_to_matches', ARRAY['uuid', 'jsonb'], 'anon', ARRAY[]::text[]);
 SELECT function_privs_are('public', 'bulk_upsert_frame_results', ARRAY['jsonb'], 'anon', ARRAY[]::text[]);
 SELECT function_privs_are('public', 'upsert_frame_result_atomic', ARRAY['uuid', 'uuid', 'integer', 'integer', 'integer'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'sync_bracket_match_scores', ARRAY['integer'], 'anon', ARRAY[]::text[]);
-SELECT function_privs_are('public', 'calculate_bracket_match_scores', ARRAY['integer'], 'anon', ARRAY[]::text[]);
+SELECT hasnt_function('public', 'trigger_sync_bracket_match_scores', ARRAY[]::text[], 'legacy score trigger function was removed');
+SELECT hasnt_function('public', 'sync_bracket_match_scores', ARRAY['integer'], 'legacy score sync function was removed');
+SELECT hasnt_function('public', 'calculate_bracket_match_scores', ARRAY['integer'], 'legacy score calculation function was removed');
 SELECT function_privs_are('public', 'get_pfa_scores_bulk', ARRAY['uuid[]', 'timestamp with time zone'], 'anon', ARRAY[]::text[]);
 SELECT function_privs_are('public', 'get_scoring_bracket_matches', ARRAY['uuid'], 'anon', ARRAY[]::text[]);
 SELECT function_privs_are('public', 'set_lane_idle', ARRAY['uuid', 'uuid'], 'authenticated', ARRAY[]::text[]);

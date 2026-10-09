@@ -140,22 +140,6 @@ export async function updateMatchStatus(ex: Executor, matchId: number, status: n
   await ex.update(bracket_match).set({ status }).where(eq(bracket_match.id, matchId));
 }
 
-/**
- * Overwrite both opponents (score correction). `position` is preserved.
- */
-export async function updateMatchOpponents(
-  ex: Executor,
-  match: { id: number; opponent1: unknown; opponent2: unknown },
-  opponent1: MatchOpponent,
-  opponent2: MatchOpponent
-): Promise<void> {
-  const next = applyMatchWriteRules(match, { opponent1, opponent2 });
-  await ex
-    .update(bracket_match)
-    .set({ opponent1: next.opponent1, opponent2: next.opponent2, updated_at: sql`clock_timestamp()` })
-    .where(eq(bracket_match.id, match.id));
-}
-
 function mergeOpponent(stored: MatchOpponent, incoming: MatchOpponent | undefined): MatchOpponent {
   if (incoming == null) return stored;
   if ('id' in incoming && incoming.id == null) return { id: null };

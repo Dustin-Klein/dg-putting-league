@@ -11,13 +11,10 @@ import { lockEvent, lockMatch, withTransaction } from '@/lib/db/tx';
 import { getTeamFromParticipant } from '@/lib/repositories/team-repository';
 import {
   getOrCreateFrameWithResults,
-  getFrameWithBracketMatch,
-  upsertFrameResult,
 } from '@/lib/repositories/frame-repository';
 import { getMatchFrame } from '@/lib/repositories/frame-repository';
 import { getEventScoringConfig, getEventBracketFrameCount } from '@/lib/repositories/event-repository';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
-import { updateMatchOpponents } from '@/lib/repositories/bracket-repository.db';
 import {
   getMatchByIdAndEvent,
   updateMatchStatus,
@@ -25,11 +22,12 @@ import {
 } from '@/lib/repositories/bracket-repository';
 import { MatchStatus } from '@/lib/types/bracket';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
+import { clearScoreOverrides, setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
+import { computeMatchScores, syncMatchScores } from './match-scores';
 import type {
   BracketMatchWithDetails,
   OpponentData,
   MatchFrame,
-  FrameResult,
   RecordFrameResultInput,
 } from '@/lib/types/scoring';
 
@@ -110,6 +108,8 @@ export async function getBracketMatchWithDetails(
     frames: bracketMatch.frames?.sort((a: any, b: any) => a.frame_number - b.frame_number) || [],
     bracket_frame_count: bracketFrameCount,
     bonus_point_enabled: eventConfig.bonus_point_enabled,
+    has_score_override:
+      bracketMatch.score_override_1 !== null && bracketMatch.score_override_2 !== null,
   } as BracketMatchWithDetails;
 }
 
@@ -134,39 +134,6 @@ export async function getOrCreateFrame(
 }
 
 /**
- * Record a player's result for a frame
- */
-export async function recordFrameResult(
-  eventId: string,
-  matchFrameId: string,
-  input: RecordFrameResultInput
-): Promise<FrameResult> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const frame = await getFrameWithBracketMatch(supabase, matchFrameId);
-
-  if (!frame || frame.bracket_match?.event_id !== eventId) {
-    throw new NotFoundError('Frame not found');
-  }
-
-  if (input.putts_made < 0 || input.putts_made > 3) {
-    throw new BadRequestError('Putts made must be between 0 and 3');
-  }
-  if (input.points_earned < 0 || input.points_earned > 4) {
-    throw new BadRequestError('Points earned must be between 0 and 4');
-  }
-
-  return upsertFrameResult(supabase, {
-    match_frame_id: matchFrameId,
-    event_player_id: input.event_player_id,
-    bracket_match_id: frame.bracket_match_id,
-    putts_made: input.putts_made,
-    points_earned: input.points_earned,
-    order_in_frame: input.order_in_frame,
-  });
-}
-
-/**
  * Record multiple frame results at once (for a full frame)
  */
 export async function recordFullFrame(
@@ -176,14 +143,18 @@ export async function recordFullFrame(
   results: RecordFrameResultInput[],
   isOvertime: boolean
 ): Promise<MatchFrame> {
-  const { supabase } = await requireEventAdmin(eventId);
-
-  const frame = await getOrCreateFrame(eventId, bracketMatchId, frameNumber, isOvertime);
-
-  for (const result of results) {
-    await recordFrameResult(eventId, frame.id, result);
-  }
-
+  const { supabase, pg } = await requireEventAdmin(eventId);
+  await recordFrameScores(pg, {
+    eventId,
+    matchId: bracketMatchId,
+    frameNumber,
+    scores: results.map((result) => ({
+      event_player_id: result.event_player_id,
+      putts_made: result.putts_made,
+    })),
+    scorer: 'admin',
+  });
+  const frame = await getOrCreateFrameWithResults(supabase, bracketMatchId, frameNumber, isOvertime);
   return getMatchFrame(supabase, frame.id);
 }
 
@@ -212,13 +183,13 @@ export async function completeMatchWithFinalScores(
   team1Score: number,
   team2Score: number
 ): Promise<BracketMatchWithDetails> {
-  const { pg } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
   if (team1Score === team2Score) {
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
   }
 
-  await completeMatch(pg, eventId, bracketMatchId, { team1Score, team2Score });
+  await completeMatch(pg, eventId, bracketMatchId, { team1Score, team2Score }, { scoreOverrideBy: user.id });
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);
 }
@@ -253,7 +224,7 @@ export async function correctMatchScores(
   team1Score: number,
   team2Score: number
 ): Promise<BracketMatchWithDetails> {
-  const { pg } = await requireEventAdmin(eventId);
+  const { pg, user } = await requireEventAdmin(eventId);
 
   if (team1Score === team2Score) {
     throw new BadRequestError('Scores cannot be tied - there must be a winner');
@@ -288,15 +259,55 @@ export async function correctMatchScores(
 
     const doubleGrandFinal = event?.double_grand_final ?? true;
 
-    await updateMatchOpponents(
+    await setScoreOverride(
       tx,
-      match,
-      { ...(match.opponent1 as object), score: team1Score, result: team1Won ? 'win' : 'loss' },
-      { ...(match.opponent2 as object), score: team2Score, result: team1Won ? 'loss' : 'win' }
+      bracketMatchId,
+      { team1Score, team2Score },
+      'correction',
+      user.id
     );
+    await syncMatchScores(tx, bracketMatchId);
 
     // Reconcile the grand-final reset match in case its state was corrected separately.
     await handleGrandFinalCompletionTx(tx, eventId, bracketMatchId, team1Won, doubleGrandFinal);
+  });
+
+  return getBracketMatchWithDetails(eventId, bracketMatchId);
+}
+
+/** Clear a manual score and restore the score derived from frame results. */
+export async function clearScoreOverride(
+  eventId: string,
+  bracketMatchId: number
+): Promise<BracketMatchWithDetails> {
+  const { pg } = await requireEventAdmin(eventId);
+
+  await withTransaction(pg, async (tx) => {
+    const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    if (!event) throw new NotFoundError('Event not found');
+
+    const match = await lockMatch(tx, bracketMatchId, eventId);
+    if (!match) throw new NotFoundError('Bracket match not found');
+
+    await clearScoreOverrides(tx, [bracketMatchId]);
+    const frameScores = await computeMatchScores(tx, bracketMatchId);
+    const opponent1 = match.opponent1 as OpponentData | null;
+    const opponent2 = match.opponent2 as OpponentData | null;
+    const recordedTeam1Winner =
+      opponent1?.result === 'win' && opponent2?.result === 'loss'
+        ? true
+        : opponent1?.result === 'loss' && opponent2?.result === 'win'
+          ? false
+          : null;
+    if (
+      recordedTeam1Winner !== null &&
+      (frameScores === null ||
+        frameScores.team1Score === frameScores.team2Score ||
+        (frameScores.team1Score > frameScores.team2Score) !== recordedTeam1Winner)
+    ) {
+      throw new BadRequestError(WINNER_CHANGE_MESSAGE);
+    }
+    await syncMatchScores(tx, bracketMatchId);
   });
 
   return getBracketMatchWithDetails(eventId, bracketMatchId);

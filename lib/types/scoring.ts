@@ -77,6 +77,7 @@ export interface BracketMatchWithDetails {
   frames?: MatchFrame[];
   bracket_frame_count: number;
   bonus_point_enabled: boolean;
+  has_score_override: boolean;
 }
 
 /** Represents the public-facing match details returned by getPublicMatchDetails. */
@@ -121,7 +122,7 @@ export interface PlayerInTeam {
 
 export interface MatchFrame {
   id: string;
-  bracket_match_id: number;
+  bracket_match_id?: number;
   frame_number: number;
   is_overtime: boolean;
   results: FrameResult[];
@@ -129,12 +130,12 @@ export interface MatchFrame {
 
 export interface FrameResult {
   id: string;
-  match_frame_id: string;
+  match_frame_id?: string;
   event_player_id: string;
   bracket_match_id?: number | null;
   putts_made: number;
   points_earned: number;
-  order_in_frame: number;
+  order_in_frame?: number;
 }
 
 export interface ScoringLane {

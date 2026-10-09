@@ -282,6 +282,29 @@ export function MatchScoringDialog({
     }
   };
 
+  const handleClearManualScore = async () => {
+    if (!match || !eventId) return;
+    setIsCompleting(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/event/${eventId}/bracket/match/${match.id}/scoring`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to clear manual score');
+      }
+      const updatedMatch = await response.json();
+      setMatchDetails(updatedMatch);
+      onScoreSubmit();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear manual score');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   const getPlayerScore = (eventPlayerId: string, frameNumber: number): number | null => {
     const frame = matchDetails?.frames?.find((f) => f.frame_number === frameNumber);
     const result = frame?.results?.find((r) => r.event_player_id === eventPlayerId);
@@ -381,6 +404,20 @@ export function MatchScoringDialog({
         {isCorrectionMode && (
           <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-md text-sm">
             Correcting completed match scores. Changes will not affect bracket progression.
+          </div>
+        )}
+
+        {matchDetails?.has_score_override && (
+          <div className="flex items-center justify-between gap-3 rounded-md bg-amber-100 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <span>This match uses a manually entered final score.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearManualScore}
+              disabled={isCompleting}
+            >
+              Clear manual score
+            </Button>
           </div>
         )}
 

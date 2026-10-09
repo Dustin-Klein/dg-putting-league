@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import type { PrivilegedClient } from '@/lib/supabase/types';
 import { InternalError } from '@/lib/errors';
-import type { MatchFrame, FrameResult } from '@/lib/types/scoring';
+import type { MatchFrame } from '@/lib/types/scoring';
 
 // Partial type for queries without results join
 export type FrameData = Omit<MatchFrame, 'results'>;
@@ -116,45 +116,3 @@ export async function getFrameWithBracketMatch(
 
   return frame as unknown as FrameWithBracketMatch | null;
 }
-
-export interface UpsertFrameResultInput {
-  match_frame_id: string;
-  event_player_id: string;
-  bracket_match_id: number;
-  putts_made: number;
-  points_earned: number;
-  order_in_frame?: number;
-}
-
-/**
- * Upsert a single frame result
- */
-export async function upsertFrameResult(
-  supabase: PrivilegedClient,
-  data: UpsertFrameResultInput
-): Promise<FrameResult> {
-  const { data: result, error } = await supabase
-    .from('frame_results')
-    .upsert(
-      {
-        match_frame_id: data.match_frame_id,
-        event_player_id: data.event_player_id,
-        bracket_match_id: data.bracket_match_id,
-        putts_made: data.putts_made,
-        points_earned: data.points_earned,
-        order_in_frame: data.order_in_frame,
-      },
-      {
-        onConflict: 'match_frame_id,event_player_id',
-      }
-    )
-    .select()
-    .single();
-
-  if (error || !result) {
-    throw new InternalError(`Failed to record frame result: ${error?.message}`);
-  }
-
-  return result as FrameResult;
-}
-

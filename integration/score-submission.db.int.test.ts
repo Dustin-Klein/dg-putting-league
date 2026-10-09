@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { frame_results, match_frames } from '@/lib/db/schema';
+import { bracket_match, frame_results, match_frames } from '@/lib/db/schema';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { completeMatch } from '@/lib/services/scoring/match-completion';
+import { syncMatchScores } from '@/lib/services/scoring/match-scores';
 import { MatchStatus } from '@/lib/types/bracket';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, getParticipantPlayers, seedBracket } from './db/seed';
@@ -49,6 +50,45 @@ describe('recordFrameScores', () => {
 
       const rows = await tx.select().from(frame_results).where(eq(frame_results.bracket_match_id, match.id));
       expect(rows.map((r) => r.order_in_frame).sort()).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  it('keeps a manual final score and blocks later frame edits while its override is set', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4 });
+      const { match, team1 } = await firstReadyMatch(tx, event.eventId);
+
+      await completeMatch(tx, event.eventId, match.id, { team1Score: 14, team2Score: 9 });
+      const stored = await getMatch(tx, match.id);
+      expect(stored).toMatchObject({ score_override_1: 14, score_override_2: 9 });
+      expect(stored.opponent1).toMatchObject({ score: 14, result: 'win' });
+      expect(stored.opponent2).toMatchObject({ score: 9, result: 'loss' });
+
+      await expect(recordFrameScores(tx, {
+        eventId: event.eventId,
+        matchId: match.id,
+        frameNumber: 1,
+        scorer: 'admin',
+        scores: [{ event_player_id: team1[0], putts_made: 3 }],
+      })).rejects.toThrow('This match has a manually entered final score. Clear it first.');
+
+      expect((await getMatch(tx, match.id)).opponent1).toMatchObject({ score: 14, result: 'win' });
+    });
+  });
+
+  it('removes stale score keys when a match has opponents but no frames or override', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedBracket(tx, { teams: 4 });
+      const { match } = await firstReadyMatch(tx, event.eventId);
+      await tx.update(bracket_match).set({
+        opponent1: { ...(match.opponent1 as object), score: 3 },
+        opponent2: { ...(match.opponent2 as object), score: 2 },
+      }).where(eq(bracket_match.id, match.id));
+
+      await syncMatchScores(tx, match.id);
+      const stored = await getMatch(tx, match.id);
+      expect(stored.opponent1).not.toHaveProperty('score');
+      expect(stored.opponent2).not.toHaveProperty('score');
     });
   });
 

@@ -23,6 +23,19 @@ export async function hasLanes(ex: Executor, eventId: string): Promise<boolean> 
   return rows.length > 0;
 }
 
+export async function getMatchAssignedToLane(
+  ex: Executor,
+  eventId: string,
+  laneId: string
+): Promise<{ id: number; status: number } | null> {
+  const [match] = await ex
+    .select({ id: bracket_match.id, status: bracket_match.status })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.event_id, eventId), eq(bracket_match.lane_id, laneId)))
+    .limit(1);
+  return match ?? null;
+}
+
 export async function insertLanes(ex: Executor, eventId: string, count: number): Promise<void> {
   if (count <= 0) return;
   await ex.insert(lanes).values(
@@ -139,7 +152,7 @@ export async function setLaneStatusAndClearMatch(
 
   await ex
     .update(bracket_match)
-    .set({ lane_id: null })
+    .set({ lane_id: null, lane_assigned_at: null })
     .where(and(eq(bracket_match.lane_id, laneId), eq(bracket_match.event_id, eventId)));
   return true;
 }
