@@ -74,3 +74,12 @@ export async function setEventStatus(
 ): Promise<void> {
   await ex.update(events).set({ status }).where(eq(events.id, eventId));
 }
+
+export async function updateEventSettings(
+  ex: Executor,
+  eventId: string,
+  patch: { status?: AccessCodeEvent['status']; double_grand_final?: boolean }
+): Promise<void> {
+  if (Object.keys(patch).length === 0) return;
+  await ex.update(events).set(patch).where(eq(events.id, eventId));
+}

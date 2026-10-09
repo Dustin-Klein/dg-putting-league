@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
-  getEventWithPlayers,
   getEventForViewer,
   deleteEvent,
-  updateEvent,
-  validateEventStatusTransition,
-  finalizeEventPlacements,
+  updateEventSettings,
 } from '@/lib/services/event';
-import { archiveGrandFinalResetMatch, restoreGrandFinalResetMatch } from '@/lib/services/bracket';
 import {
   handleError,
   BadRequestError,
@@ -23,6 +19,7 @@ const updateEventSchema = z.object({
     'completed',
   ]).optional(),
   double_grand_final: z.boolean().optional(),
+  force: z.boolean().optional(),
 });
 
 export async function GET(
@@ -57,9 +54,12 @@ export async function DELETE(
 
 
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
+  const rateLimitResponse = await withStrictRateLimit(req, 'event:update');
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await req.json();
     const parsed = updateEventSchema.safeParse(body);
@@ -68,38 +68,12 @@ export async function PATCH(
       throw new BadRequestError('Invalid request data');
     }
 
+    validateCsrfOrigin(req);
     const resolvedParams = await Promise.resolve(params);
-
-    // Get current event with players for validation
-    const currentEvent = await getEventWithPlayers(resolvedParams.eventId);
-
-    if (parsed.data.status) {
-      await validateEventStatusTransition(
-        resolvedParams.eventId,
-        parsed.data.status,
-        currentEvent
-      );
-
-      if (currentEvent.status === 'bracket' && parsed.data.status === 'completed') {
-        await finalizeEventPlacements(resolvedParams.eventId);
-      }
-    }
-
-    // Update event status (happens for all other valid status changes)
-    const updatedEvent = await updateEvent(
+    const updatedEvent = await updateEventSettings(
       resolvedParams.eventId,
       parsed.data
     );
-
-    // When double_grand_final is toggled off, archive the reset match and release its lane
-    if (parsed.data.double_grand_final === false && currentEvent.double_grand_final === true) {
-      await archiveGrandFinalResetMatch(resolvedParams.eventId);
-    }
-
-    // When double_grand_final is toggled back on, restore/reconcile the reset match visibility.
-    if (parsed.data.double_grand_final === true && currentEvent.double_grand_final === false) {
-      await restoreGrandFinalResetMatch(resolvedParams.eventId);
-    }
 
     return NextResponse.json(updatedEvent);
   } catch (error) {
