@@ -40,12 +40,11 @@ import {
 
 /**
  * Ensure the current user is an admin of the event's league.
- * Returns the privileged Supabase client and the direct Postgres connection (`pg`),
- * which may be used for this event's reads and writes.
+ * Returns the authenticated user and direct Postgres connection for this event.
  */
 export async function requireEventAdmin(eventId: string) {
-  const { user, db, pg } = await authorizeEventAdmin(eventId);
-  return { supabase: db, pg, user };
+  const { user, pg } = await authorizeEventAdmin(eventId);
+  return { pg, user };
 }
 
 /**

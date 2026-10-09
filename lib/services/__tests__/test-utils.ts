@@ -578,7 +578,7 @@ export function flushPromises(): Promise<void> {
  * The authorize* functions are derived from the `requireLeagueAdmin` /
  * `requireAuthenticatedUser` mocks and the mocked repositories (`getEventLeagueId`,
  * `isLeagueOwner`), and hand out the mocked
- * `createClient()` result as the privileged `db`. Tests can keep stubbing
+ * `createClient()` result as `pg`. Tests can keep stubbing
  * `requireLeagueAdmin` / `requireAuthenticatedUser` to control authorization.
  *
  * Usage:
@@ -602,7 +602,7 @@ export function createAuthServiceMock() {
     authorizeLeagueAdmin: jest.fn(async (leagueId: string) => {
       const { user } = await requireLeagueAdmin(leagueId);
       const db = await server.createClient();
-      return { user, db, pg: db };
+      return { user, pg: db };
     }),
     authorizeEventAdmin: jest.fn(async (eventId: string) => {
       const db = await server.createClient();
@@ -611,7 +611,7 @@ export function createAuthServiceMock() {
         throw new ForbiddenError('Event not found');
       }
       const { user } = await requireLeagueAdmin(leagueId);
-      return { user, db, pg: db };
+      return { user, pg: db };
     }),
     authorizeLeagueOwner: jest.fn(
       async (leagueId: string, message = 'Only the league owner can perform this action') => {
@@ -621,18 +621,18 @@ export function createAuthServiceMock() {
         if ((await leagueRepo.getLeagueAdminRole(db, leagueId, user.id)) !== 'owner') {
           throw new ForbiddenError(message);
         }
-        return { user, db, pg: db };
+        return { user, pg: db };
       }
     ),
     authorizeAnyLeagueAdmin: jest.fn(async () => {
       const user = await requireAuthenticatedUser();
       const client = await server.createClient();
-      return { user, db: client, pg: client };
+      return { user, pg: client };
     }),
     authorizeLeagueCreation: jest.fn(async () => {
       const user = await requireAuthenticatedUser();
       const client = await server.createClient();
-      return { user, db: client, pg: client };
+      return { user, pg: client };
     }),
     authorizeAuthenticated: jest.fn(async () => {
       const user = await requireAuthenticatedUser();

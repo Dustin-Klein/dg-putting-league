@@ -72,7 +72,7 @@ describe('Event Player Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ pg: mockSupabase });
   });
 
   describe('addPlayerToEvent', () => {

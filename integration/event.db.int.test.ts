@@ -13,13 +13,11 @@ const mockRepo = { failCopy: false };
 jest.mock('@/lib/services/auth', () => ({
   authorizeLeagueAdmin: async () => ({
     user: { id: 'integration-user' },
-    db: null,
     pg: mockAuth.tx,
   }),
   authorizeEventAdmin: async () => ({
     user: { id: 'integration-user' },
     event: {},
-    db: null,
     pg: mockAuth.tx,
   }),
   authorizeEventView: async (eventId: string) => ({

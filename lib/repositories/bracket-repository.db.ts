@@ -1,7 +1,8 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
-import { Status } from 'brackets-model';
+import { Status, type Group, type Match, type Participant, type Round, type Stage } from 'brackets-model';
 import type { Executor } from '@/lib/db/tx';
+import { toIsoTimestamp } from '@/lib/db/mappers';
 import {
   bracket_group,
   bracket_match,
@@ -13,11 +14,117 @@ import {
 } from '@/lib/db/schema';
 import { applyMatchWriteRules } from './bracket-storage.db';
 import { getFrameResultsForMatch } from './frame-repository.db';
-import type {
-  BracketResetContext,
-  BracketResetContextMatch,
-  BracketResetContextStage,
-} from './bracket-repository';
+
+export interface BracketMatchForReset {
+  id: number;
+  stage_id?: number;
+  number: number;
+  status: number;
+  round_id: number;
+  group_id: number;
+  opponent1: { id?: number | null; position?: number; score?: number; result?: string } | null;
+  opponent2: { id?: number | null; position?: number; score?: number; result?: string } | null;
+}
+
+export interface BracketResetContextStage {
+  id: number;
+  type: string;
+  settings: { skipFirstRound?: boolean } | null;
+}
+
+export interface BracketResetContextGroup {
+  id: number;
+  number: number;
+}
+
+export interface BracketResetContextRound {
+  id: number;
+  group_id: number;
+  number: number;
+}
+
+export interface BracketResetContextMatch extends BracketMatchForReset {
+  stage_id: number;
+}
+
+export interface BracketResetContext {
+  stage: BracketResetContextStage;
+  groups: BracketResetContextGroup[];
+  rounds: BracketResetContextRound[];
+  matches: BracketResetContextMatch[];
+}
+
+export interface BracketStructure {
+  stage: Stage;
+  groups: Group[];
+  rounds: Round[];
+  matches: Match[];
+  participants: Array<Participant & { team_id: string | null }>;
+}
+
+function mapTimestamp<T extends { created_at: string }>(row: T): T {
+  return { ...row, created_at: toIsoTimestamp(row.created_at) };
+}
+
+function mapMatchTimestamps<T extends { created_at: string; updated_at: string | null; lane_assigned_at: string | null }>(
+  row: T
+): T {
+  return {
+    ...row,
+    created_at: toIsoTimestamp(row.created_at),
+    updated_at: toIsoTimestamp(row.updated_at),
+    lane_assigned_at: toIsoTimestamp(row.lane_assigned_at),
+  };
+}
+
+export async function bracketStageExists(ex: Executor, eventId: string): Promise<boolean> {
+  return (await getStageForEvent(ex, eventId)) !== null;
+}
+
+export async function fetchBracketStructure(ex: Executor, eventId: string): Promise<BracketStructure | null> {
+  const [stage] = await ex
+    .select()
+    .from(bracket_stage)
+    .where(eq(bracket_stage.tournament_id, eventId))
+    .limit(1);
+  if (!stage) return null;
+
+  const [groups, rounds, matches, participants] = await Promise.all([
+    ex.select().from(bracket_group).where(eq(bracket_group.stage_id, stage.id)).orderBy(asc(bracket_group.number)),
+    ex
+      .select()
+      .from(bracket_round)
+      .where(eq(bracket_round.stage_id, stage.id))
+      .orderBy(asc(bracket_round.group_id), asc(bracket_round.number)),
+    ex
+      .select()
+      .from(bracket_match)
+      .where(and(eq(bracket_match.stage_id, stage.id), eq(bracket_match.event_id, eventId)))
+      .orderBy(asc(bracket_match.round_id), asc(bracket_match.number)),
+    ex
+      .select()
+      .from(bracket_participant)
+      .where(eq(bracket_participant.tournament_id, eventId))
+      .orderBy(asc(bracket_participant.id)),
+  ]);
+
+  return {
+    stage: mapTimestamp(stage) as unknown as Stage,
+    groups: groups.map(mapTimestamp) as unknown as Group[],
+    rounds: rounds.map(mapTimestamp) as unknown as Round[],
+    matches: matches.map(mapMatchTimestamps) as unknown as Match[],
+    participants: participants.map(mapTimestamp) as unknown as Array<Participant & { team_id: string | null }>,
+  };
+}
+
+export async function getReadyMatchesByStageId(ex: Executor, stageId: number): Promise<Match[]> {
+  const rows = await ex
+    .select()
+    .from(bracket_match)
+    .where(and(eq(bracket_match.stage_id, stageId), eq(bracket_match.status, Status.Ready)))
+    .orderBy(asc(bracket_match.round_id), asc(bracket_match.number));
+  return rows.map(mapMatchTimestamps) as unknown as Match[];
+}
 
 export type MatchOpponent = { id?: number | null; position?: number; score?: number; result?: string } | null;
 

@@ -50,8 +50,8 @@ jest.mock('@/lib/repositories/lane-repository.db', () => ({
   lockEventLanes: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/bracket-repository', () => ({
-  getBracketStage: jest.fn(),
+jest.mock('@/lib/repositories/bracket-repository.db', () => ({
+  getStageForEvent: jest.fn(),
   fetchBracketStructure: jest.fn(),
 }));
 
@@ -60,11 +60,12 @@ import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import { authorizeEventView } from '@/lib/services/auth';
 import * as laneRepo from '@/lib/repositories/lane-repository.db';
-import { fetchBracketStructure } from '@/lib/repositories/bracket-repository';
+import { fetchBracketStructure } from '@/lib/repositories/bracket-repository.db';
 import {
   createEventLanes,
   getEventLanes,
   getLanesWithMatches,
+  resolveMatchDisplayNumber,
 } from '../lane/lane-service';
 
 describe('Lane Service', () => {
@@ -74,7 +75,7 @@ describe('Lane Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
     (authorizeEventView as jest.Mock).mockResolvedValue({ pg: mockSupabase });
   });
 
@@ -203,6 +204,14 @@ describe('Lane Service', () => {
 
       expect(result[0].current_match_id).toBeNull();
       expect(result[0].current_match_number).toBeNull();
+    });
+  });
+
+  describe('resolveMatchDisplayNumber', () => {
+    it('does not query bracket data when visibility authorization fails', async () => {
+      (authorizeEventView as jest.Mock).mockRejectedValueOnce(new Error('Event not found'));
+      await expect(resolveMatchDisplayNumber('event-123', 1)).rejects.toThrow('Event not found');
+      expect(fetchBracketStructure).not.toHaveBeenCalled();
     });
   });
 

@@ -29,10 +29,6 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
-jest.mock('@/lib/supabase/privileged', () => ({
-  _createPrivilegedClient: jest.fn(),
-}));
-
 jest.mock('@/lib/db/client', () => ({
   _getDb: jest.fn(),
 }));
@@ -70,7 +66,6 @@ jest.mock('@/lib/services/qualification', () => ({
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb } from '@/lib/db/client';
 import { getPublicTeamsByParticipantIds } from '@/lib/repositories/team-repository.db';
 import {
@@ -131,7 +126,6 @@ describe('Scoring Service', () => {
     mockSupabase = createMockSupabaseClient();
     mockSupabase.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (_createPrivilegedClient as jest.Mock).mockReturnValue(mockSupabase);
     (_getDb as jest.Mock).mockReturnValue(mockPg);
   });
 

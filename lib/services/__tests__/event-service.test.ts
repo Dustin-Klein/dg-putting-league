@@ -28,18 +28,17 @@ import {
 
 describe('event service Drizzle port', () => {
   const pg = { kind: 'pg' };
-  const db = { kind: 'supabase' };
   const user = createMockUser();
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (authorizeEventAdmin as jest.Mock).mockResolvedValue({ user, db, pg });
-    (authorizeLeagueAdmin as jest.Mock).mockResolvedValue({ user, db, pg });
+    (authorizeEventAdmin as jest.Mock).mockResolvedValue({ user, pg });
+    (authorizeLeagueAdmin as jest.Mock).mockResolvedValue({ user, pg });
     (authorizeEventView as jest.Mock).mockResolvedValue({ user: null, event: {}, isAdmin: false, pg });
   });
 
-  it('returns the clients from event-admin authorization', async () => {
-    await expect(requireEventAdmin('event-1')).resolves.toEqual({ supabase: db, pg, user });
+  it('returns the database client from event-admin authorization', async () => {
+    await expect(requireEventAdmin('event-1')).resolves.toEqual({ pg, user });
     expect(authorizeEventAdmin).toHaveBeenCalledWith('event-1');
   });
 

@@ -36,15 +36,12 @@ jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/bracket-repository', () => ({
-  bracketStageExists: jest.fn(),
-  getBracketStage: jest.fn(),
-  fetchBracketStructure: jest.fn(),
-  getParticipantsWithTeamIds: jest.fn(),
-  getReadyMatchesByStageId: jest.fn(),
-}));
-
 jest.mock('@/lib/repositories/bracket-repository.db', () => ({
+  bracketStageExists: jest.fn(),
+  getStageForEvent: jest.fn(),
+  fetchBracketStructure: jest.fn(),
+  getParticipantsForEvent: jest.fn(),
+  getReadyMatchesByStageId: jest.fn(),
   getMatchForScoringById: jest.fn(),
 }));
 
@@ -94,13 +91,14 @@ import { requireEventAdmin } from '@/lib/services/event';
 import {
   bracketStageExists,
   fetchBracketStructure,
-  getBracketStage,
+  getStageForEvent as getBracketStage,
   getReadyMatchesByStageId,
-} from '@/lib/repositories/bracket-repository';
+} from '@/lib/repositories/bracket-repository.db';
 import { getEventById } from '@/lib/repositories/event-repository.db';
 import { authorizeEventView } from '@/lib/services/auth';
 import {
   getBracket,
+  getBracketWithTeams,
   getPublicBracket,
   getReadyMatches,
   bracketExists,
@@ -117,7 +115,7 @@ describe('Bracket Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ pg: mockSupabase, user: createMockUser({ id: 'user-123' }) });
     (authorizeEventView as jest.Mock).mockResolvedValue({ pg: mockSupabase, isAdmin: false });
     mockFindNextMatches.mockResolvedValue([]);
     mockFindPreviousMatches.mockResolvedValue([]);
@@ -125,6 +123,12 @@ describe('Bracket Service', () => {
 
   describe('getBracket', () => {
     const eventId = 'event-123';
+
+    it('does not query bracket data when admin authorization fails', async () => {
+      (requireEventAdmin as jest.Mock).mockRejectedValueOnce(new Error('Not authorized'));
+      await expect(getBracket(eventId)).rejects.toThrow('Not authorized');
+      expect(fetchBracketStructure).not.toHaveBeenCalled();
+    });
 
     it('should throw NotFoundError when bracket not found', async () => {
       (fetchBracketStructure as jest.Mock).mockResolvedValue(null);
@@ -150,6 +154,14 @@ describe('Bracket Service', () => {
       expect(result.rounds).toHaveLength(1);
       expect(result.matches).toHaveLength(1);
       expect(result.participants).toHaveLength(1);
+    });
+  });
+
+  describe('getBracketWithTeams', () => {
+    it('does not query bracket data when admin authorization fails', async () => {
+      (requireEventAdmin as jest.Mock).mockRejectedValueOnce(new Error('Not authorized'));
+      await expect(getBracketWithTeams('event-123')).rejects.toThrow('Not authorized');
+      expect(fetchBracketStructure).not.toHaveBeenCalled();
     });
   });
 
@@ -249,6 +261,13 @@ describe('Bracket Service', () => {
   describe('getReadyMatches', () => {
     const eventId = 'event-123';
 
+    it('does not query matches when admin authorization fails', async () => {
+      (requireEventAdmin as jest.Mock).mockRejectedValueOnce(new Error('Not authorized'));
+      await expect(getReadyMatches(eventId)).rejects.toThrow('Not authorized');
+      expect(getBracketStage).not.toHaveBeenCalled();
+      expect(getReadyMatchesByStageId).not.toHaveBeenCalled();
+    });
+
     it('should throw NotFoundError when bracket not found', async () => {
       (getBracketStage as jest.Mock).mockResolvedValue(null);
 
@@ -271,6 +290,12 @@ describe('Bracket Service', () => {
 
   describe('bracketExists', () => {
     const eventId = 'event-123';
+
+    it('does not query bracket data when visibility authorization fails', async () => {
+      (authorizeEventView as jest.Mock).mockRejectedValueOnce(new NotFoundError('Event not found'));
+      await expect(bracketExists(eventId)).rejects.toThrow(NotFoundError);
+      expect(bracketStageExists).not.toHaveBeenCalled();
+    });
 
     it('should return true when bracket exists', async () => {
       (bracketStageExists as jest.Mock).mockResolvedValue(true);

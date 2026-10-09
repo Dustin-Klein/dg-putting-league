@@ -1,4 +1,4 @@
-import type { PrivilegedClient } from '@/lib/supabase/types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { InternalError } from '@/lib/errors';
 
 export interface RateLimitCounter {
@@ -11,7 +11,7 @@ export interface RateLimitCounter {
  * With `increment: false` the current window is read without counting.
  */
 export async function hitRateLimit(
-  supabase: PrivilegedClient,
+  supabase: SupabaseClient,
   key: string,
   windowMs: number,
   increment = true

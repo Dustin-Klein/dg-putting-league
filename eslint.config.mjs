@@ -27,26 +27,6 @@ const eslintConfig = [
     },
   },
   {
-    // The privileged (secret-key) Supabase client bypasses RLS. Only the auth
-    // services may create it, and only after an authorization check.
-    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
-    ignores: ["lib/services/auth/**", "lib/supabase/privileged.ts", "**/__tests__/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
-              message:
-                "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
     // The direct Postgres connection (lib/db/client) also bypasses RLS. Services get
     // it from the authorize* functions as `pg`; repositories receive an Executor.
     files: ["**/*.{ts,tsx,js,jsx,mjs}"],
@@ -56,11 +36,6 @@ const eslintConfig = [
         "error",
         {
           patterns: [
-            {
-              group: ["@/lib/supabase/privileged", "**/supabase/privileged"],
-              message:
-                "Use the authorize* functions in lib/services/auth to obtain a PrivilegedClient.",
-            },
             {
               group: ["@/lib/db/client", "**/db/client"],
               message:

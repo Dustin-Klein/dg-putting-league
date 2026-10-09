@@ -2,10 +2,9 @@ import 'server-only';
 import { BracketsManager, helpers } from 'brackets-manager';
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
-import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
 import { authorizeEventView } from '@/lib/services/auth';
-import { getEventTeams, Team } from '@/lib/services/team';
+import { Team } from '@/lib/services/team';
 import { autoAssignLanesTx } from '@/lib/services/lane';
 import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
 import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
@@ -23,15 +22,8 @@ import {
   NotFoundError,
 } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
-import {
-  bracketStageExists,
-  getBracketStage,
-  fetchBracketStructure,
-  getParticipantsWithTeamIds,
-  getReadyMatchesByStageId,
-} from '@/lib/repositories/bracket-repository';
-import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
-import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
+import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository.db';
+import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
 import type { EventStatus } from '@/lib/types/event';
 import type {
   BracketWithTeams,
@@ -469,7 +461,6 @@ export async function createBracket(eventId: string): Promise<BracketData> {
  */
 export async function getPublicBracket(eventId: string): Promise<BracketWithTeams> {
   const { pg, isAdmin } = await authorizeEventView(eventId, 'bracket');
-  const supabase = await createClient();
 
   const event = await getEventById(pg, eventId);
 
@@ -484,7 +475,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
 
   // Fetch all data in parallel
   const [bracketStructure, teams, lanes] = await Promise.all([
-    fetchBracketStructure(supabase, eventId),
+    bracketDb.fetchBracketStructure(pg, eventId),
     getPublicTeamsForEvent(pg, eventId),
     // Anonymous lane RLS hid lanes after completion; league admins could still see them.
     event.status === 'bracket' || isAdmin ? getLanesForEvent(pg, eventId) : Promise.resolve([]),
@@ -523,7 +514,7 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
   for (const p of participants) {
     const team = teams.find((t) => t.id === p.team_id);
     if (team) {
-      participantTeamMap[p.id] = team;
+      participantTeamMap[Number(p.id)] = team;
     }
   }
 
@@ -565,9 +556,9 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
  * Get the bracket data for an event
  */
 export async function getBracket(eventId: string): Promise<BracketData> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const bracketStructure = await fetchBracketStructure(supabase, eventId);
+  const bracketStructure = await bracketDb.fetchBracketStructure(pg, eventId);
 
   if (!bracketStructure) {
     throw new NotFoundError('Bracket not found for this event');
@@ -595,15 +586,25 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   frameCountMap: Record<number, number>;
   progressionSourceMap: Record<number, MatchProgressionSources>;
 }> {
-  const { supabase, pg } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const [bracket, teams, event, accessCode, participantsWithTeams] = await Promise.all([
-    getBracket(eventId),
-    getEventTeams(eventId),
+  const [bracketStructure, teams, event, accessCode, participantsWithTeams] = await Promise.all([
+    bracketDb.fetchBracketStructure(pg, eventId),
+    getFullTeamsForEvent(pg, eventId),
     getEventById(pg, eventId),
     getEventAccessCode(pg, eventId),
-    getParticipantsWithTeamIds(supabase, eventId),
+    bracketDb.getParticipantsForEvent(pg, eventId),
   ]);
+  if (!bracketStructure) {
+    throw new NotFoundError('Bracket not found for this event');
+  }
+  const bracket: BracketData = {
+    stage: bracketStructure.stage,
+    groups: bracketStructure.groups,
+    rounds: bracketStructure.rounds,
+    matches: bracketStructure.matches,
+    participants: bracketStructure.participants,
+  };
 
   let effectiveBracket = bracket;
   if (event && !event.double_grand_final) {
@@ -753,15 +754,15 @@ async function requireBracketPlay(tx: Tx, eventId: string) {
  * Get matches that are ready to be played
  */
 export async function getReadyMatches(eventId: string): Promise<Match[]> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const stage = await getBracketStage(supabase, eventId);
+  const stage = await bracketDb.getStageForEvent(pg, eventId);
 
   if (!stage) {
     throw new NotFoundError('Bracket not found');
   }
 
-  return getReadyMatchesByStageId(supabase, stage.id);
+  return bracketDb.getReadyMatchesByStageId(pg, stage.id);
 }
 
 /**
@@ -793,8 +794,8 @@ export async function assignLaneToMatch(
  * Check if bracket exists for an event
  */
 export async function bracketExists(eventId: string): Promise<boolean> {
-  const supabase = await createClient();
-  return bracketStageExists(supabase, eventId);
+  const { pg } = await authorizeEventView(eventId, 'bracket');
+  return bracketDb.bracketStageExists(pg, eventId);
 }
 
 /**
