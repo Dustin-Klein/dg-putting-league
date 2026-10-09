@@ -381,7 +381,7 @@ export async function getAllLeagues(
 
   if (error) {
     console.error('Failed to fetch leagues:', error);
-    return [];
+    throw new InternalError('Failed to fetch leagues');
   }
 
   if (!leagues) {
@@ -410,11 +410,11 @@ export async function getLeagueWithEvents(
     .from('leagues')
     .select('id, name')
     .eq('id', leagueId)
-    .single();
+    .maybeSingle();
 
   if (leagueError) {
     console.error('Failed to fetch league:', leagueError);
-    return null;
+    throw new InternalError('Failed to fetch league');
   }
 
   if (!league) {
@@ -429,15 +429,20 @@ export async function getLeagueWithEvents(
 
   if (eventsError) {
     console.error('Failed to fetch events for league:', eventsError);
-    return null;
+    throw new InternalError('Failed to fetch events for league');
   }
 
   const eventsWithCounts: PublicEvent[] = await Promise.all(
     (events || []).map(async (event) => {
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from('event_players')
         .select('id', { count: 'exact', head: true })
         .eq('event_id', event.id);
+
+      if (countError) {
+        console.error('Failed to fetch participant count for event:', countError);
+        throw new InternalError('Failed to fetch participant count for event');
+      }
 
       return {
         id: event.id,

@@ -55,7 +55,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import * as teamRepo from '@/lib/repositories/team-repository';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
-import { generateTeams, getEventTeams, computeTeamPairings } from '../team/team-service';
+import { generateTeams, getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
 
 describe('Team Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -598,6 +598,115 @@ describe('Team Service', () => {
       expect(result[1].seed).toBe(2);
       // Higher combined score should be seed 1
       expect(result[0].combinedScore).toBeGreaterThanOrEqual(result[1].combinedScore);
+    });
+
+    it('should pair deterministically with an injected RNG', () => {
+      const poolAssignments: PoolAssignment[] = [
+        {
+          eventPlayerId: 'ep-a1',
+          playerId: 'p-a1',
+          playerName: 'Player A1',
+          pool: 'A',
+          pfaScore: 10,
+          scoringMethod: 'default',
+          defaultPool: 'A',
+        },
+        {
+          eventPlayerId: 'ep-a2',
+          playerId: 'p-a2',
+          playerName: 'Player A2',
+          pool: 'A',
+          pfaScore: 20,
+          scoringMethod: 'default',
+          defaultPool: 'A',
+        },
+        {
+          eventPlayerId: 'ep-b1',
+          playerId: 'p-b1',
+          playerName: 'Player B1',
+          pool: 'B',
+          pfaScore: 30,
+          scoringMethod: 'default',
+          defaultPool: 'B',
+        },
+        {
+          eventPlayerId: 'ep-b2',
+          playerId: 'p-b2',
+          playerName: 'Player B2',
+          pool: 'B',
+          pfaScore: 40,
+          scoringMethod: 'default',
+          defaultPool: 'B',
+        },
+      ];
+
+      // With randomInt always returning 0, shuffle([x0, x1]) results in [x1, x0]:
+      // i = 1: j = 0 -> swap index 1 and 0 -> [x1, x0]
+      // For Pool A: [Player A2, Player A1]
+      // For Pool B: [Player B2, Player B1]
+      // Pairs created:
+      // Pair 0: A2 & B2, score = 20 + 40 = 60
+      // Pair 1: A1 & B1, score = 10 + 30 = 40
+      const alwaysZeroRng = () => 0;
+      const result = computeTeamPairings(poolAssignments, alwaysZeroRng);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].poolCombo).toBe('Player A2 & Player B2');
+      expect(result[0].combinedScore).toBe(60);
+      expect(result[0].seed).toBe(1);
+      expect(result[1].poolCombo).toBe('Player A1 & Player B1');
+      expect(result[1].combinedScore).toBe(40);
+      expect(result[1].seed).toBe(2);
+    });
+  });
+
+  describe('shuffle and cryptoRandomInt', () => {
+    describe('shuffle', () => {
+      it('should return a permutation of the array and not mutate the input', () => {
+        const original = [1, 2, 3, 4, 5];
+        const copy = [...original];
+        const shuffled = shuffle(original);
+
+        expect(original).toEqual(copy);
+        expect(shuffled).toHaveLength(original.length);
+        expect(shuffled.slice().sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+      });
+
+      it('should produce a deterministic order with an injected RNG', () => {
+        const input = ['a', 'b', 'c', 'd'];
+        // Fisher-Yates:
+        // i = 3: j = 0 -> swap 3 and 0: ['d', 'b', 'c', 'a']
+        // i = 2: j = 0 -> swap 2 and 0: ['c', 'b', 'd', 'a']
+        // i = 1: j = 0 -> swap 1 and 0: ['b', 'c', 'd', 'a']
+        const alwaysZeroRng = () => 0;
+        const result = shuffle(input, alwaysZeroRng);
+
+        expect(result).toEqual(['b', 'c', 'd', 'a']);
+        expect(input).toEqual(['a', 'b', 'c', 'd']);
+      });
+
+      it('should handle empty and single-element arrays', () => {
+        expect(shuffle([])).toEqual([]);
+        expect(shuffle(['single'])).toEqual(['single']);
+      });
+    });
+
+    describe('cryptoRandomInt', () => {
+      it('should return 0 when maxExclusive is <= 1', () => {
+        expect(cryptoRandomInt(0)).toBe(0);
+        expect(cryptoRandomInt(1)).toBe(0);
+        expect(cryptoRandomInt(-5)).toBe(0);
+      });
+
+      it('should always return integers in [0, n)', () => {
+        const n = 7;
+        for (let i = 0; i < 100; i++) {
+          const val = cryptoRandomInt(n);
+          expect(Number.isInteger(val)).toBe(true);
+          expect(val).toBeGreaterThanOrEqual(0);
+          expect(val).toBeLessThan(n);
+        }
+      });
     });
   });
 });
