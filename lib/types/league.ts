@@ -1,4 +1,4 @@
-export type LeagueAdminRole = 'owner' | 'admin' | 'scorer';
+export type LeagueAdminRole = 'owner' | 'admin';
 
 /**
  * League type with aggregated counts from database query

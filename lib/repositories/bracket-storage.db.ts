@@ -180,6 +180,11 @@ export class DrizzleBracketStorage implements Storage {
     for (const row of rows) {
       await this.assertInsertable(table, row);
     }
+    if (table === 'match') {
+      // bracket_match.event_id is NOT NULL and app-owned; the stage was just verified
+      // to belong to this event.
+      for (const row of rows) row.event_id = this.eventId;
+    }
 
     if (rows.length === 0) {
       return true;

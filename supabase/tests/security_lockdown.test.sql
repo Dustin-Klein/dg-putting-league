@@ -291,5 +291,14 @@ SELECT ok(
   'app_server can write public tables'
 );
 
+-- Schema cleanup (plan 05 C9/C10): one role model, no dead tables, tighter matches.
+SELECT hasnt_table('public', 'player_statistics', 'player_statistics is dropped');
+SELECT hasnt_table('public', 'league_stats', 'league_stats is dropped');
+SELECT hasnt_table('public', 'event_statistics', 'event_statistics is dropped');
+SELECT hasnt_type('public', 'stat_type', 'stat_type is dropped');
+SELECT enum_has_labels('public', 'league_admin_role', ARRAY['owner', 'admin'], 'league_admin_role has no scorer');
+SELECT col_not_null('public', 'bracket_match', 'event_id', 'bracket_match.event_id is NOT NULL');
+SELECT col_has_check('public', 'bracket_match', 'status', 'bracket_match.status has a CHECK constraint');
+
 SELECT * FROM finish();
 ROLLBACK;

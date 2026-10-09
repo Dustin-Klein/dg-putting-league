@@ -360,10 +360,6 @@ export async function linkParticipantsToTeams(
   }
 }
 
-export async function setEventIdOnMatches(ex: Executor, stageId: number, eventId: string): Promise<void> {
-  await ex.update(bracket_match).set({ event_id: eventId }).where(eq(bracket_match.stage_id, stageId));
-}
-
 /**
  * Mark every not-yet-ready match whose two slots hold a participant as Ready.
  */

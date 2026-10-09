@@ -23,6 +23,7 @@ import * as teamDb from '@/lib/repositories/team-repository.db';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import * as eventPlacementDb from '@/lib/repositories/event-placement-repository.db';
+import * as frameDb from '@/lib/repositories/frame-repository.db';
 import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
 import { logger } from '@/lib/utils/logger';
 import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
@@ -173,11 +174,17 @@ export async function createEvent(data: {
 }
 
 /**
- * Delete an event and all related records
+ * Delete an event and all related records, including hand-entered frames that only
+ * reach the event through their results.
  */
 export async function deleteEvent(eventId: string) {
   const { pg } = await requireEventAdmin(eventId);
-  await eventDb.deleteEvent(pg, eventId);
+  await withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    const unlinkedFrameIds = await frameDb.getUnlinkedMatchFrameIdsForEvent(tx, eventId);
+    await eventDb.deleteEvent(tx, eventId);
+    await frameDb.deleteEmptyUnlinkedMatchFrames(tx, unlinkedFrameIds);
+  });
 }
 
 /**

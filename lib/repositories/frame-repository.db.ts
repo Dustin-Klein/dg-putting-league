@@ -1,7 +1,7 @@
 import 'server-only';
-import { and, asc, count, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, lte, notExists, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { bracket_match, frame_results, match_frames } from '@/lib/db/schema';
+import { bracket_match, event_players, frame_results, match_frames } from '@/lib/db/schema';
 import { InternalError } from '@/lib/errors';
 import type { MatchFrame } from '@/lib/types/scoring';
 
@@ -202,4 +202,31 @@ export async function upsertFrameResults(
         recorded_at: sql`now()`,
       },
     });
+}
+
+/**
+ * Frames recorded outside a bracket (hand-entered history) that hold results for the
+ * event's players. They have no foreign key to the event, so deleting the event
+ * cascades their results but not the frames.
+ */
+export async function getUnlinkedMatchFrameIdsForEvent(ex: Executor, eventId: string): Promise<string[]> {
+  const rows = await ex
+    .selectDistinct({ id: match_frames.id })
+    .from(match_frames)
+    .innerJoin(frame_results, eq(frame_results.match_frame_id, match_frames.id))
+    .innerJoin(event_players, eq(event_players.id, frame_results.event_player_id))
+    .where(and(isNull(match_frames.bracket_match_id), eq(event_players.event_id, eventId)));
+  return rows.map((row) => row.id);
+}
+
+/** Delete the given unlinked frames that no longer hold any result. */
+export async function deleteEmptyUnlinkedMatchFrames(ex: Executor, frameIds: string[]): Promise<void> {
+  if (frameIds.length === 0) return;
+  await ex.delete(match_frames).where(
+    and(
+      inArray(match_frames.id, frameIds),
+      isNull(match_frames.bracket_match_id),
+      notExists(ex.select({ id: frame_results.id }).from(frame_results).where(eq(frame_results.match_frame_id, match_frames.id)))
+    )
+  );
 }

@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { event_players, events, team_members, teams } from '@/lib/db/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { event_players, events, frame_results, match_frames, team_members, teams } from '@/lib/db/schema';
 import type { Executor } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as placementDb from '@/lib/repositories/event-placement-repository.db';
-import { createEvent as createEventService, getEventForViewer } from '@/lib/services/event/event-service';
+import {
+  createEvent as createEventService,
+  deleteEvent as deleteEventService,
+  getEventForViewer,
+} from '@/lib/services/event/event-service';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { seedEvent } from './db/seed';
 
@@ -184,6 +188,31 @@ describe('event Drizzle repository and service', () => {
       expect(adminEvent.access_code).toBe(seeded.accessCode);
       expect(adminEvent.players[0].payment_type).toBe('cash');
       mockAuth.isAdmin = false;
+    });
+  });
+
+  it('deletes hand-entered frames with the event, keeping frames other events still use', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.tx = tx;
+      const deleted = await seedEvent(tx, { players: 1, status: 'completed' });
+      const other = await seedEvent(tx, { players: 1, status: 'completed' });
+      const [ownFrame, sharedFrame] = await tx.insert(match_frames).values([
+        { bracket_match_id: null, frame_number: 1 },
+        { bracket_match_id: null, frame_number: 2 },
+      ]).returning({ id: match_frames.id });
+      await tx.insert(frame_results).values([
+        { match_frame_id: ownFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 3, points_earned: 4, order_in_frame: 1 },
+        { match_frame_id: sharedFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 1, points_earned: 1, order_in_frame: 1 },
+        { match_frame_id: sharedFrame.id, event_player_id: other.eventPlayerIds[0], putts_made: 2, points_earned: 2, order_in_frame: 2 },
+      ]);
+
+      await deleteEventService(deleted.eventId);
+
+      const remaining = await tx.select({ id: match_frames.id }).from(match_frames)
+        .where(inArray(match_frames.id, [ownFrame.id, sharedFrame.id]));
+      expect(remaining).toEqual([{ id: sharedFrame.id }]);
+      await expect(tx.select({ id: events.id }).from(events).where(eq(events.id, deleted.eventId)))
+        .resolves.toEqual([]);
     });
   });
 });
