@@ -35,16 +35,17 @@ jest.mock('@/lib/services/event', () => ({
   getEventWithPlayers: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-player-repository', () => ({
+jest.mock('@/lib/db/tx', () => ({
+  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
+}));
+
+jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   getEventPlayerByPlayerAndEvent: jest.fn(),
   insertEventPlayer: jest.fn(),
   getEventPlayer: jest.fn(),
   deleteEventPlayer: jest.fn(),
   updateEventPlayerPayment: jest.fn(),
   getQualificationScore: jest.fn(),
-  getAllEventPlayerIdsForPlayer: jest.fn(),
-  getFrameResultsForEventPlayers: jest.fn(),
-  getAllEventPlayerIdsForPlayersBulk: jest.fn(),
   getPfaScoresBulk: jest.fn(),
   updateEventPlayerPool: jest.fn(),
   getEventPlayersWithPools: jest.fn(),
@@ -53,7 +54,7 @@ jest.mock('@/lib/repositories/event-player-repository', () => ({
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import {
   addPlayerToEvent,
   removePlayerFromEvent,
@@ -71,7 +72,7 @@ describe('Event Player Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase });
   });
 
   describe('addPlayerToEvent', () => {
@@ -255,9 +256,7 @@ describe('Event Player Service', () => {
 
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
 
-      // Mock PFA calculation - no frame history
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayer as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getFrameResultsForEventPlayers as jest.Mock).mockResolvedValue([]);
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       (eventPlayerRepo.updateEventPlayerPool as jest.Mock).mockResolvedValue(undefined);
       (eventPlayerRepo.getEventPlayersWithPools as jest.Mock).mockResolvedValue(
@@ -328,21 +327,16 @@ describe('Event Player Service', () => {
 
       (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayer as jest.Mock).mockResolvedValue([
-        'ep-old-1',
-      ]);
-      (eventPlayerRepo.getFrameResultsForEventPlayers as jest.Mock).mockResolvedValue([
-        { points_earned: 3 },
-        { points_earned: 2 },
-      ]);
+      (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map([
+        [players[0].player_id, { totalPoints: 5, frameCount: 2 }],
+      ]));
 
       (eventPlayerRepo.updateEventPlayerPool as jest.Mock).mockResolvedValue(undefined);
       (eventPlayerRepo.getEventPlayersWithPools as jest.Mock).mockResolvedValue(players);
 
       await splitPlayersIntoPools(eventId);
 
-      expect(eventPlayerRepo.getAllEventPlayerIdsForPlayer).toHaveBeenCalled();
-      expect(eventPlayerRepo.getFrameResultsForEventPlayers).toHaveBeenCalled();
+      expect(eventPlayerRepo.getPfaScoresBulk).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -356,8 +350,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      // Mock bulk queries - return empty maps (no PFA history)
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
@@ -376,7 +368,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       await computePoolAssignments(eventId, event);
@@ -443,11 +434,6 @@ describe('Event Player Service', () => {
       );
 
       // Mock bulk queries - first player has PFA history, second doesn't
-      const playerEventPlayerMap = new Map<string, string[]>();
-      playerEventPlayerMap.set(players[0].player_id, ['ep-old-1']);
-      playerEventPlayerMap.set(players[1].player_id, []);
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(playerEventPlayerMap);
-
       const pfaScores = new Map<string, { totalPoints: number; frameCount: number }>();
       pfaScores.set(players[0].player_id, { totalPoints: 3, frameCount: 1 });
       // Second player has no PFA data
@@ -484,7 +470,6 @@ describe('Event Player Service', () => {
       pfaScores.set(players[9].player_id, { totalPoints: 25, frameCount: 10 }); // 2.5
       // Players 0-3 have no PFA data (will be 'default' scoring method)
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
 
       const result = await computePoolAssignments(eventId, event);
@@ -534,7 +519,6 @@ describe('Event Player Service', () => {
       );
 
       // No PFA data for any player
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
@@ -568,7 +552,6 @@ describe('Event Player Service', () => {
       pfaScores.set(players[6].player_id, { totalPoints: 20, frameCount: 10 }); // 2.0
       pfaScores.set(players[7].player_id, { totalPoints: 10, frameCount: 10 }); // 1.0
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
 
       const result = await computePoolAssignments(eventId, event);
@@ -605,7 +588,6 @@ describe('Event Player Service', () => {
       pfaScores.set(players[4].player_id, { totalPoints: 20, frameCount: 10 }); // 2.0
       pfaScores.set(players[5].player_id, { totalPoints: 10, frameCount: 10 }); // 1.0
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(pfaScores);
 
       const result = await computePoolAssignments(eventId, event);
@@ -630,8 +612,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      // Mock bulk queries - return empty maps (no PFA history)
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
@@ -651,7 +631,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
@@ -670,7 +649,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);
@@ -689,7 +667,6 @@ describe('Event Player Service', () => {
         players
       );
 
-      (eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk as jest.Mock).mockResolvedValue(new Map());
       (eventPlayerRepo.getPfaScoresBulk as jest.Mock).mockResolvedValue(new Map());
 
       const result = await computePoolAssignments(eventId, event);

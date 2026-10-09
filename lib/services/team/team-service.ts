@@ -7,7 +7,7 @@ import type { Team } from '@/lib/types/team';
 import type { EventPlayer } from '@/lib/types/player';
 import type { PoolAssignment } from '@/lib/services/event-player';
 import * as teamRepo from '@/lib/repositories/team-repository';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 
 // Re-export types for consumers
 export type { Team, TeamMember } from '@/lib/types/team';
@@ -72,7 +72,7 @@ export function shuffle<T>(
  * Generate teams of 2 players (1 from Pool A, 1 from Pool B) when event status changes to 'bracket'
  */
 export async function generateTeams(eventId: string): Promise<Team[]> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
   const event = await getEventWithPlayers(eventId);
 
   // Allow team generation for events transitioning to bracket status (pre-bracket)
@@ -108,7 +108,7 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
 
       if (event.qualification_round_enabled) {
         // Calculate total qualification score
-        score = await eventPlayerRepo.getQualificationScore(supabase, eventId, player.id);
+        score = await eventPlayerRepo.getQualificationScore(pg, eventId, player.id);
       } else {
         // For events without qualification, use 0 as base score (seeding will be random within pools)
         score = 0;

@@ -6,7 +6,8 @@ import {
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { EventPlayer, PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import { withTransaction } from '@/lib/db/tx';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 
 /** Number of months of historical frame data used for PFA scoring */
 export const PFA_LOOKBACK_MONTHS = 18;
@@ -35,7 +36,7 @@ export interface PoolAssignment {
  * Add a player to an event
  */
 export async function addPlayerToEvent(eventId: string, playerId: string) {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   // Check event status - players can only be added when event is in pre-bracket status
   const event = await getEventWithPlayers(eventId);
@@ -43,22 +44,12 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
     throw new BadRequestError('Players can only be added to events in pre-bracket status');
   }
 
-  // Check if the player is already in the event
-  const existingPlayer = await eventPlayerRepo.getEventPlayerByPlayerAndEvent(
-    supabase,
-    eventId,
-    playerId
-  );
-
-  if (existingPlayer) {
-    throw new BadRequestError('Player is already in this event');
-  }
-
-  // Insert player
-  const insertedId = await eventPlayerRepo.insertEventPlayer(supabase, eventId, playerId);
-
-  // Fetch the inserted row with nested player info for client state updates
-  return eventPlayerRepo.getEventPlayer(supabase, insertedId);
+  return withTransaction(pg, async (tx) => {
+    const existingPlayer = await eventPlayerRepo.getEventPlayerByPlayerAndEvent(tx, eventId, playerId);
+    if (existingPlayer) throw new BadRequestError('Player is already in this event');
+    const insertedId = await eventPlayerRepo.insertEventPlayer(tx, eventId, playerId);
+    return eventPlayerRepo.getEventPlayer(tx, eventId, insertedId);
+  });
 }
 
 /**
@@ -72,7 +63,7 @@ export async function removePlayerFromEvent(
     throw new BadRequestError('Event Player ID is required');
   }
 
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   // Check event status - players can only be removed when event is in pre-bracket status
   const event = await getEventWithPlayers(eventId);
@@ -80,7 +71,7 @@ export async function removePlayerFromEvent(
     throw new BadRequestError('Players can only be removed from events in pre-bracket status');
   }
 
-  await eventPlayerRepo.deleteEventPlayer(supabase, eventId, eventPlayerId);
+  await eventPlayerRepo.deleteEventPlayer(pg, eventId, eventPlayerId);
 
   return { success: true };
 }
@@ -89,9 +80,9 @@ export async function removePlayerFromEvent(
  * Update player payment status
  */
 export async function updatePlayerPayment(eventId: string, playerId: string, paymentType: PaymentType | null) {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
-  const result = await eventPlayerRepo.updateEventPlayerPayment(supabase, eventId, playerId, paymentType);
+  const result = await eventPlayerRepo.updateEventPlayerPayment(pg, eventId, playerId, paymentType);
 
   if (!result) {
     throw new NotFoundError('Player not found in this event');
@@ -161,7 +152,7 @@ function assignPools(players: PoolInput[]): { pool: 'A' | 'B' }[] {
  * when an event's status changes from 'pre-bracket' to 'bracket'
  */
 export async function splitPlayersIntoPools(eventId: string): Promise<EventPlayer[]> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
   const event = await getEventWithPlayers(eventId);
 
   if (!event.players || event.players.length === 0) {
@@ -174,33 +165,26 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
     throw new BadRequestError('Players have already been assigned to pools');
   }
 
-  const playersWithScores = await Promise.all(
-    event.players.map(async (eventPlayer) => {
+  const pfaScores = event.qualification_round_enabled
+    ? new Map<string, { totalPoints: number; frameCount: number }>()
+    : await eventPlayerRepo.getPfaScoresBulk(
+        pg,
+        event.players.map((eventPlayer) => eventPlayer.player_id),
+        getPfaSinceDate()
+      );
+
+  const playersWithScores = await Promise.all(event.players.map(async (eventPlayer) => {
       let score: number;
       let scoringMethod: 'qualification' | 'pfa' | 'default';
 
       if (event.qualification_round_enabled) {
         // Calculate total qualification score
-        score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
+        score = await eventPlayerRepo.getQualificationScore(pg, eventId, eventPlayer.id);
         scoringMethod = 'qualification';
       } else {
-        const eighteenMonthsAgo = getPfaSinceDate();
-
-        // Get all event_player records for this player (across all events)
-        const eventPlayerIds = await eventPlayerRepo.getAllEventPlayerIdsForPlayer(
-          supabase,
-          eventPlayer.player_id
-        );
-
-        const frameResults = await eventPlayerRepo.getFrameResultsForEventPlayers(
-          supabase,
-          eventPlayerIds,
-          eighteenMonthsAgo
-        );
-
-        if (frameResults.length > 0) {
-          const totalPoints = frameResults.reduce((sum, frame) => sum + frame.points_earned, 0);
-          score = totalPoints / frameResults.length;
+        const pfa = pfaScores.get(eventPlayer.player_id);
+        if (pfa && pfa.frameCount > 0) {
+          score = pfa.totalPoints / pfa.frameCount;
           scoringMethod = 'pfa';
         } else {
           // No frame history, use default_pool for scoring (0 for comparison)
@@ -215,8 +199,7 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
         scoringMethod,
         default_pool: eventPlayer.player.default_pool || 'B'
       };
-    })
-  );
+    }));
 
   const computed = assignPools(playersWithScores.map(p => ({
     score: p.score,
@@ -232,14 +215,14 @@ export async function splitPlayersIntoPools(eventId: string): Promise<EventPlaye
   }));
 
   // Update all player pool assignments
-  const updates = poolAssignments.map(({ id, pool, pfa_score, scoring_method }) => {
-    return eventPlayerRepo.updateEventPlayerPool(supabase, id, pool, pfa_score, scoring_method);
+  await withTransaction(pg, async (tx) => {
+    for (const { id, pool, pfa_score, scoring_method } of poolAssignments) {
+      await eventPlayerRepo.updateEventPlayerPool(tx, eventId, id, pool, pfa_score, scoring_method);
+    }
   });
 
-  await Promise.all(updates);
-
   // Return updated players with pool assignments
-  const finalPlayers = await eventPlayerRepo.getEventPlayersWithPools(supabase, eventId);
+  const finalPlayers = await eventPlayerRepo.getEventPlayersWithPools(pg, eventId);
 
   return finalPlayers as unknown as EventPlayer[];
 }
@@ -254,7 +237,7 @@ export async function computePoolAssignments(
   eventId: string,
   event: EventWithDetails
 ): Promise<PoolAssignment[]> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { pg } = await requireEventAdmin(eventId);
 
   if (!event.players || event.players.length === 0) {
     throw new BadRequestError('No players registered for this event');
@@ -279,7 +262,7 @@ export async function computePoolAssignments(
   if (event.qualification_round_enabled) {
     playersWithScores = await Promise.all(
       event.players.map(async (eventPlayer) => {
-        const score = await eventPlayerRepo.getQualificationScore(supabase, eventId, eventPlayer.id);
+        const score = await eventPlayerRepo.getQualificationScore(pg, eventId, eventPlayer.id);
         return {
           eventPlayerId: eventPlayer.id,
           playerId: eventPlayer.player_id,
@@ -295,14 +278,9 @@ export async function computePoolAssignments(
 
     const playerIds = event.players.map(ep => ep.player_id);
 
-    const playerEventPlayerMap = await eventPlayerRepo.getAllEventPlayerIdsForPlayersBulk(
-      supabase,
-      playerIds
-    );
-
     const pfaScores = await eventPlayerRepo.getPfaScoresBulk(
-      supabase,
-      playerEventPlayerMap,
+      pg,
+      playerIds,
       pfaSince
     );
 
