@@ -9,17 +9,11 @@ export const event_status = pgEnum("event_status", ['created', 'pre-bracket', 'b
 
 export const lane_status = pgEnum("lane_status", ['idle', 'occupied', 'maintenance'])
 
-export const league_admin_role = pgEnum("league_admin_role", ['owner', 'admin', 'scorer'])
-
-export const match_status = pgEnum("match_status", ['pending', 'ready', 'in_progress', 'completed'])
+export const league_admin_role = pgEnum("league_admin_role", ['owner', 'admin'])
 
 export const pool_type = pgEnum("pool_type", ['A', 'B'])
 
 export const qualification_status = pgEnum("qualification_status", ['not_started', 'in_progress', 'completed'])
-
-export const registration_status = pgEnum("registration_status", ['registered', 'paid', 'withdrawn'])
-
-export const stat_type = pgEnum("stat_type", ['qualification_avg', 'match_win_pct', 'putts_made', 'frames_played', 'streak_best', 'qualification_total', 'match_points', 'win_count', 'loss_count', 'overtime_wins', 'overtime_losses', 'avg_points_per_frame', 'total_events_played', 'best_qualification_score', 'perfect_frames', 'total_participants', 'avg_qualification_score', 'highest_match_score', 'total_matches_played'])
 
 export const player_number_seq = pgSequence("player_number_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 
@@ -49,7 +43,7 @@ export const bracket_match = pgTable("bracket_match", {
 	opponent2: jsonb(),
 	lane_id: uuid(),
 	lane_assigned_at: timestamp({ withTimezone: true, mode: 'string' }),
-	event_id: uuid(),
+	event_id: uuid().notNull(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updated_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow(),
 	score_override_1: integer(),
@@ -58,6 +52,7 @@ export const bracket_match = pgTable("bracket_match", {
 	score_override_by: uuid(),
 }, (table) => [
 	check("bracket_match_score_override_pair_check", sql`((score_override_1 IS NULL) AND (score_override_2 IS NULL)) OR ((score_override_1 IS NOT NULL) AND (score_override_2 IS NOT NULL) AND (score_override_1 >= 0) AND (score_override_2 >= 0))`),
+	check("bracket_match_status_check", sql`(status >= 0) AND (status <= 5)`),
 	foreignKey({
 			columns: [table.event_id],
 			foreignColumns: [events.id],
@@ -230,22 +225,6 @@ export const event_players = pgTable("event_players", {
 	unique("event_players_event_id_player_id_key").on(table.event_id, table.player_id),
 ]);
 
-export const event_statistics = pgTable("event_statistics", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	event_id: uuid().notNull(),
-	stat_type: stat_type().notNull(),
-	value: numeric().notNull(),
-	computed_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.event_id],
-			foreignColumns: [events.id],
-			name: "event_statistics_event_id_fkey"
-		}).onDelete("cascade"),
-	index("idx_event_statistics_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
-	unique("event_statistics_event_id_stat_type_computed_at_key").on(table.event_id, table.stat_type, table.computed_at),
-]);
-
 export const events = pgTable("events", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	league_id: uuid().notNull(),
@@ -352,22 +331,6 @@ export const league_admins = pgTable("league_admins", {
 	unique("league_admins_league_id_user_id_key").on(table.league_id, table.user_id),
 ]);
 
-export const league_stats = pgTable("league_stats", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	league_id: uuid().notNull(),
-	stat_type: stat_type().notNull(),
-	value: numeric().notNull(),
-	computed_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.league_id],
-			foreignColumns: [leagues.id],
-			name: "league_stats_league_id_fkey"
-		}).onDelete("cascade"),
-	index("idx_league_stats_league").using("btree", table.league_id.asc().nullsLast().op("uuid_ops")),
-	unique("league_stats_league_id_stat_type_computed_at_key").on(table.league_id, table.stat_type, table.computed_at),
-]);
-
 export const leagues = pgTable("leagues", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: text().notNull(),
@@ -392,36 +355,6 @@ export const match_frames = pgTable("match_frames", {
 		}).onDelete("cascade"),
 	index("idx_match_frames_bracket_match").using("btree", table.bracket_match_id.asc().nullsLast().op("int4_ops")),
 	unique("match_frames_bracket_match_id_frame_number_key").on(table.bracket_match_id, table.frame_number),
-]);
-
-export const player_statistics = pgTable("player_statistics", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	player_id: uuid().notNull(),
-	league_id: uuid().notNull(),
-	event_id: uuid(),
-	stat_type: stat_type().notNull(),
-	value: numeric().notNull(),
-	computed_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.event_id],
-			foreignColumns: [events.id],
-			name: "player_statistics_event_id_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.league_id],
-			foreignColumns: [leagues.id],
-			name: "player_statistics_league_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.player_id],
-			foreignColumns: [players.id],
-			name: "player_statistics_player_id_fkey"
-		}).onDelete("cascade"),
-	index("idx_player_statistics_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
-	index("idx_player_statistics_league").using("btree", table.league_id.asc().nullsLast().op("uuid_ops")),
-	index("idx_player_statistics_player").using("btree", table.player_id.asc().nullsLast().op("uuid_ops")),
-	unique("player_statistics_player_id_event_id_stat_type_key").on(table.player_id, table.event_id, table.stat_type),
 ]);
 
 export const players = pgTable("players", {

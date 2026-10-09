@@ -430,7 +430,6 @@ export async function createBracketTx(
   if (!stage) {
     throw new InternalError('Bracket stage was not created');
   }
-  await bracketDb.setEventIdOnMatches(tx, stage.id, eventId);
   await bracketDb.setFilledMatchesReady(tx, stage.id);
 }
 

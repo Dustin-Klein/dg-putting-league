@@ -62,6 +62,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - The user's own records: `authorizeAuthenticated()` returns `{ user, pg }`; query only by `user.id`. `getViewer()` returns the user or null.
   - Access codes: `authorizeAccessCode` returns `{ event, pg }`; reads and writes stay scoped to `event.id`.
   - Each performs its check before returning `pg`. Every service read has a unit test for the unauthorized case.
+- Roles: `league_admins.role` is `owner` or `admin`; any `league_admins` row grants full admin rights for the league, and owner-only operations use `authorizeLeagueOwner`. The `authorize*` functions are the source of truth; the SQL helpers used by RLS only check that a `league_admins` row exists.
 
 ### Auth
 

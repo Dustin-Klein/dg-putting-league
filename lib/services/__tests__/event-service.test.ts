@@ -13,6 +13,10 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
   getQualificationFrameCounts: jest.fn(), getEventById: jest.fn(), updateEvent: jest.fn(),
   updateEventPayouts: jest.fn(), getEventBracketConfig: jest.fn(), updateEventSettings: jest.fn(),
 }));
+jest.mock('@/lib/repositories/frame-repository.db', () => ({
+  getUnlinkedMatchFrameIdsForEvent: jest.fn(async () => []),
+  deleteEmptyUnlinkedMatchFrames: jest.fn(),
+}));
 jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (pg, fn) => fn(pg)),
   lockEvent: jest.fn(),
