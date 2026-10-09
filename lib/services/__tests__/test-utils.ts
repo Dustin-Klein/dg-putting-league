@@ -625,11 +625,24 @@ export function createAuthServiceMock() {
     ),
     authorizeAnyLeagueAdmin: jest.fn(async () => {
       const user = await requireAuthenticatedUser();
-      return { user, db: await server.createClient() };
+      const client = await server.createClient();
+      return { user, db: client, pg: client };
     }),
     authorizeLeagueCreation: jest.fn(async () => {
       const user = await requireAuthenticatedUser();
-      return { user, db: await server.createClient() };
+      const client = await server.createClient();
+      return { user, db: client, pg: client };
+    }),
+    authorizeAuthenticated: jest.fn(async () => {
+      const user = await requireAuthenticatedUser();
+      return { user, pg: await server.createClient() };
+    }),
+    authorizePublicRead: jest.fn(() => ({
+      pg: {} as unknown,
+    })),
+    authorizeEventView: jest.fn(async (eventId: string) => {
+      const db = await server.createClient();
+      return { user: null, event: { id: eventId }, isAdmin: false, pg: db };
     }),
     authorizeAccessCode: jest.fn(),
   };

@@ -1,8 +1,13 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
+import type { Executor } from '@/lib/db/tx';
 import { BadRequestError } from '@/lib/errors';
-import { requireAuthenticatedUser, authorizeAnyLeagueAdmin } from '@/lib/services/auth';
-import * as playerRepo from '@/lib/repositories/player-repository';
+import {
+  authorizeAnyLeagueAdmin,
+  authorizeAuthenticated,
+  authorizeEventView,
+  authorizePublicRead,
+} from '@/lib/services/auth';
+import * as playerRepo from '@/lib/repositories/player-repository.db';
 
 // Re-export types for consumers
 export type { PlayerSearchResult } from '@/lib/types/player';
@@ -18,7 +23,7 @@ type CreatePlayerInput = {
  * Create a new player
  */
 export async function createPlayer(input: CreatePlayerInput) {
-  const { db } = await authorizeAnyLeagueAdmin();
+  const { pg } = await authorizeAnyLeagueAdmin();
 
   const { name, email, nickname, defaultPool } = input;
 
@@ -30,7 +35,7 @@ export async function createPlayer(input: CreatePlayerInput) {
     throw new BadRequestError('Email is required');
   }
 
-  return playerRepo.insertPlayer(db, {
+  return playerRepo.insertPlayer(pg, {
     full_name: name,
     email,
     nickname,
@@ -46,10 +51,11 @@ export async function searchPlayers(query: string | null, excludeEventId?: strin
     return [];
   }
 
-  const supabase = await createClient();
-  await requireAuthenticatedUser();
+  const { pg } = excludeEventId
+    ? await authorizeEventView(excludeEventId)
+    : await authorizeAuthenticated();
 
-  return searchPlayersInternal(supabase, query, excludeEventId);
+  return searchPlayersInternal(pg, query, excludeEventId);
 }
 
 /**
@@ -60,29 +66,27 @@ export async function searchPlayersPublic(query: string | null) {
     return [];
   }
 
-  const supabase = await createClient();
-  return searchPlayersInternal(supabase, query);
+  const { pg } = authorizePublicRead();
+  return searchPlayersInternal(pg, query);
 }
 
 async function searchPlayersInternal(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  ex: Executor,
   query: string,
   excludeEventId?: string
 ) {
-  // Sanitize and validate input to prevent filter injection
   const trimmed = query.trim();
-  // Escape \, % and _ used by LIKE to avoid unintended wildcards
-  const escaped = trimmed.replace(/[\\%_]/g, (m) => `\\${m}`);
 
-  // Search by name
-  let players = await playerRepo.searchPlayersByName(supabase, escaped, 10);
+  // Search by name (repository handles escaping of %, _, \)
+  let players = await playerRepo.searchPlayersByName(ex, trimmed, 10);
 
   // If numeric, also search by player number
   const numericQuery = Number(trimmed);
-  const isNumeric = !Number.isNaN(numericQuery);
+  // player_number is an integer column; other numbers can't match and would make Postgres error
+  const isNumeric = Number.isSafeInteger(numericQuery) && numericQuery > 0 && numericQuery <= 2147483647;
 
   if (isNumeric) {
-    const byNumber = await playerRepo.searchPlayersByNumber(supabase, numericQuery, 10);
+    const byNumber = await playerRepo.searchPlayersByNumber(ex, numericQuery, 10);
     const seen = new Set(players.map((p) => p.id));
     for (const p of byNumber) {
       if (!seen.has(p.id)) players.push(p);
@@ -91,7 +95,7 @@ async function searchPlayersInternal(
 
   // If we need to exclude players already in an event
   if (excludeEventId) {
-    const excludeIds = await playerRepo.getPlayerIdsInEvent(supabase, excludeEventId);
+    const excludeIds = await playerRepo.getPlayerIdsInEvent(ex, excludeEventId);
     const excludeSet = new Set(excludeIds);
     players = players.filter((p) => !excludeSet.has(p.id));
   }
