@@ -10,7 +10,6 @@
  * - assignLaneToMatch()
  * - bracketExists()
  * - resetMatchResult()
- * - findMatchesToReset()
  */
 
 import {
@@ -98,7 +97,6 @@ import {
   bracketExists,
   buildProgressionSourceMap,
   buildTaintedSlotPlan,
-  findMatchesToReset,
 } from '../bracket/bracket-service';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent } from '@/lib/repositories/lane-repository';
@@ -282,120 +280,6 @@ describe('Bracket Service', () => {
 
       await expect(bracketExists(eventId)).rejects.toThrow(InternalError);
       await expect(bracketExists(eventId)).rejects.toThrow('Failed to check bracket stage');
-    });
-  });
-
-  describe('findMatchesToReset', () => {
-    it('should return empty array when no downstream matches', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 1, round_id: 2, group_id: 1, opponent1: null, opponent2: null },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(0);
-    });
-
-    it('should cascade to downstream completed matches', () => {
-      const target = { id: 1, number: 10, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 11, status: 4, round_id: 2, group_id: 1, opponent1: { id: 10, position: 10 }, opponent2: { id: 30 } },
-        { id: 3, number: 12, status: 4, round_id: 3, group_id: 1, opponent1: { id: 10, position: 11 }, opponent2: { id: 40 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(2);
-      // Deepest first
-      expect(result[0].id).toBe(3);
-      expect(result[1].id).toBe(2);
-    });
-
-    it('should include running matches in cascade', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 3, round_id: 2, group_id: 1, opponent1: { id: 10, position: 1 }, opponent2: { id: 30 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(2);
-    });
-
-    it('should not include waiting or ready matches', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 1, round_id: 2, group_id: 1, opponent1: { id: 10, position: 1 }, opponent2: null },
-        { id: 3, number: 3, status: 2, round_id: 3, group_id: 1, opponent1: { id: 20, position: 2 }, opponent2: { id: 30 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(0);
-    });
-
-    it('should follow transitive downstream links', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 4, round_id: 2, group_id: 1, opponent1: { id: 10, position: 1 }, opponent2: { id: 30 } },
-        { id: 3, number: 3, status: 4, round_id: 3, group_id: 1, opponent1: { id: 30, position: 2 }, opponent2: { id: 40 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(2);
-      expect(result.map((m) => m.id)).toContain(2);
-      expect(result.map((m) => m.id)).toContain(3);
-    });
-
-    it('should not include non-downstream matches even with overlapping participants', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 4, round_id: 2, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 30 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(0);
-    });
-
-    it('should include locked matches in cascade', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 0, round_id: 2, group_id: 1, opponent1: { id: 10, position: 1 }, opponent2: { id: 30 } }, // Locked match
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(2);
-    });
-
-    it('should handle position values represented as strings', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        // Some historical rows can contain stringified position values.
-        { id: 2, number: 2, status: 4, round_id: 2, group_id: 1, opponent1: { id: 10, position: '1' as unknown as number }, opponent2: { id: 30 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(2);
-    });
-
-    it('should use participant fallback when position metadata is missing', () => {
-      const target = { id: 1, number: 1, status: 4, round_id: 1, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 20 } };
-      const allMatches = [
-        target,
-        { id: 2, number: 2, status: 0, round_id: 2, group_id: 1, opponent1: { id: 10 }, opponent2: { id: 30 } },
-      ];
-
-      const result = findMatchesToReset(target, allMatches);
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(2);
     });
   });
 
