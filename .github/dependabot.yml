@@ -11,7 +11,17 @@ updates:
     # PR: the previous single catch-all group mixed majors with patches, which
     # is how a styling regression landed without being attributable to a
     # specific dependency.
+    # A dependency joins the first group that matches it. @radix-ui/* and
+    # @types/* release in bursts of many packages; grouping them (majors
+    # included) keeps one PR per family, and a regression is still
+    # attributable to that family.
     groups:
+      radix-ui:
+        patterns:
+          - "@radix-ui/*"
+      types:
+        patterns:
+          - "@types/*"
       npm-minor-patch:
         patterns:
           - "*"
