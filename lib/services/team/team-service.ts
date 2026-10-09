@@ -180,8 +180,7 @@ export async function generateTeams(eventId: string): Promise<Team[]> {
  */
 export async function getEventTeams(eventId: string): Promise<Team[]> {
   const { pg } = await requireEventAdmin(eventId);
-  const teams = await teamRepo.getFullTeamsForEvent(pg, eventId);
-  return teams as unknown as Team[];
+  return teamRepo.getFullTeamsForEvent(pg, eventId);
 }
 
 /**

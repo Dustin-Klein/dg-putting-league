@@ -22,7 +22,12 @@ import {
   NotFoundError,
 } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
-import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository.db';
+import type {
+  BracketMatchForReset,
+  BracketResetContext,
+  BracketResetContextMatch,
+  SingleBracketMatchForScoring,
+} from '@/lib/repositories/bracket-repository.db';
 import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
 import type { EventStatus } from '@/lib/types/event';
 import type {
@@ -525,8 +530,8 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
 
   const progressionSourceMap = await buildProgressionSourceMap(
     {
-      stage: stage as unknown as Stage,
-      groups: groups as unknown as Group[],
+      stage: stage,
+      groups: groups,
       rounds: effectiveRounds,
       matches: effectiveMatches,
     }
@@ -534,11 +539,11 @@ export async function getPublicBracket(eventId: string): Promise<BracketWithTeam
 
   return {
     bracket: {
-      stage: stage as unknown as Stage,
-      groups: groups as unknown as Group[],
+      stage: stage,
+      groups: groups,
       rounds: effectiveRounds,
       matches: effectiveMatches,
-      participants: participants as unknown as Participant[],
+      participants: participants,
     },
     teams,
     participantTeamMap,
@@ -564,11 +569,11 @@ export async function getBracket(eventId: string): Promise<BracketData> {
   }
 
   return {
-    stage: bracketStructure.stage as unknown as Stage,
-    groups: bracketStructure.groups as unknown as Group[],
-    rounds: bracketStructure.rounds as unknown as Round[],
-    matches: bracketStructure.matches as unknown as Match[],
-    participants: bracketStructure.participants as unknown as Participant[],
+    stage: bracketStructure.stage,
+    groups: bracketStructure.groups,
+    rounds: bracketStructure.rounds,
+    matches: bracketStructure.matches,
+    participants: bracketStructure.participants,
   };
 }
 
@@ -665,7 +670,7 @@ export async function updateMatchResult(
   opponent1Score: number,
   opponent2Score: number,
   winnerId?: number | null
-): Promise<Match> {
+): Promise<SingleBracketMatchForScoring> {
   const { pg, user } = await requireEventAdmin(eventId);
 
   await withTransaction(pg, async (tx) => {
@@ -735,7 +740,7 @@ export async function updateMatchResult(
     throw new InternalError('Failed to fetch updated match');
   }
 
-  return updatedMatch as unknown as Match;
+  return updatedMatch;
 }
 
 async function requireBracketPlay(tx: Tx, eventId: string) {
@@ -1078,6 +1083,7 @@ export async function buildTaintedSlotPlan(
           if (secondNextMatch) {
             const sideIntoLoserBracket = helpers.getNextSideLoserBracket(
               currentMatch.number,
+              // The helper only reads opponent1.position.
               secondNextMatch as unknown as Match,
               adjustedRoundNumber
             ) as MatchSlot;
@@ -1317,8 +1323,8 @@ function hasParticipantInSlot(opponent: unknown): boolean {
 }
 
 function getReenabledResetStatus(
-  firstGrandFinalMatch: Match | undefined,
-  resetMatch: Match
+  firstGrandFinalMatch: BracketResetContextMatch | undefined,
+  resetMatch: BracketResetContextMatch
 ): number {
   const resetHasBothParticipants =
     hasParticipantInSlot(resetMatch.opponent1) &&
@@ -1368,10 +1374,10 @@ export async function restoreGrandFinalResetMatchTx(tx: Tx, eventId: string): Pr
 
   const firstGrandFinalMatch = context.matches.find(
     (m) => m.round_id === gfRoundOne?.id && m.number === 1
-  ) as unknown as Match | undefined;
+  );
   const resetMatch = context.matches.find(
     (m) => m.round_id === gfRoundTwo.id && m.number === 1
-  ) as unknown as Match | undefined;
+  );
   if (!resetMatch) return;
 
   const desiredStatus = getReenabledResetStatus(firstGrandFinalMatch, resetMatch);
