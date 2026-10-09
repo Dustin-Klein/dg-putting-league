@@ -9,11 +9,12 @@ import {
 } from '@/lib/services/scoring/match-scoring';
 import { requireEventAdmin } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
+import { MAX_FRAME_NUMBER } from '@/lib/services/scoring/score-submission';
 
 const recordScoreSchema = z.object({
-  frame_number: z.number().min(1),
+  frame_number: z.number().int().min(1).max(MAX_FRAME_NUMBER),
   event_player_id: z.string().uuid(),
-  putts_made: z.number().min(0).max(3),
+  putts_made: z.number().int().min(0).max(3),
 });
 
 const finalScoreSchema = z.object({

@@ -24,6 +24,7 @@ import {
   getMatchForScoringById,
 } from '@/lib/repositories/bracket-repository';
 import { MatchStatus } from '@/lib/types/bracket';
+import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import type {
   BracketMatchWithDetails,
   OpponentData,
@@ -274,6 +275,17 @@ export async function correctMatchScores(
       throw new BadRequestError('Score correction is only valid for completed matches');
     }
 
+    const opponent1 = match.opponent1 as OpponentData | null;
+    const opponent2 = match.opponent2 as OpponentData | null;
+    const hasTeam1Winner = opponent1?.result === 'win' && opponent2?.result === 'loss';
+    const hasTeam2Winner = opponent1?.result === 'loss' && opponent2?.result === 'win';
+    if (!hasTeam1Winner && !hasTeam2Winner) {
+      throw new BadRequestError('This match has no recorded winner to correct. Use "Reset match" to replay it.');
+    }
+    if (team1Won !== hasTeam1Winner) {
+      throw new BadRequestError(WINNER_CHANGE_MESSAGE);
+    }
+
     const doubleGrandFinal = event?.double_grand_final ?? true;
 
     await updateMatchOpponents(
@@ -283,7 +295,7 @@ export async function correctMatchScores(
       { ...(match.opponent2 as object), score: team2Score, result: team1Won ? 'loss' : 'win' }
     );
 
-    // Handle grand final reset match archiving/un-archiving if winner changed
+    // Reconcile the grand-final reset match in case its state was corrected separately.
     await handleGrandFinalCompletionTx(tx, eventId, bracketMatchId, team1Won, doubleGrandFinal);
   });
 

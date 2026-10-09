@@ -329,6 +329,11 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
           selectedMatch !== null &&
           (selectedMatch.status === Status.Completed || selectedMatch.status === Status.Archived)
         }
+        onRequestReset={() => {
+          if (!selectedMatch) return;
+          setAdvanceMatch(selectedMatch);
+          setIsAdvanceDialogOpen(true);
+        }}
       />
 
       <AdvanceTeamDialog
@@ -366,4 +371,3 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
     </div>
   );
 }
-

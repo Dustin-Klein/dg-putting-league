@@ -9,6 +9,7 @@ import {
 import { handleError, BadRequestError } from '@/lib/errors';
 import { withScoringRateLimit, recordAccessCodeFailure } from '@/lib/middleware/rate-limit';
 import { validateCsrfOrigin } from '@/lib/utils';
+import { MAX_FRAME_NUMBER } from '@/lib/services/scoring/score-submission';
 
 const getMatchSchema = z.object({
   access_code: z.string().min(1),
@@ -16,9 +17,9 @@ const getMatchSchema = z.object({
 
 const recordScoreSchema = z.object({
   access_code: z.string().min(1),
-  frame_number: z.number().min(1),
+  frame_number: z.number().int().min(1).max(MAX_FRAME_NUMBER),
   event_player_id: z.string().uuid(),
-  putts_made: z.number().min(0).max(3),
+  putts_made: z.number().int().min(0).max(3),
   // bonus_point_enabled is now determined server-side from the event record
 });
 
