@@ -45,13 +45,17 @@ jest.mock('@/lib/services/auth', () => {
       if (!event) {
         throw new MockNotFoundError('Invalid access code or event is not accepting qualification scores');
       }
-      return { event, db: await server.createClient() };
+      return { event, pg: await server.createClient() };
     }),
-    authorizeEventAdmin: jest.fn(async () => ({ user: { id: 'admin-1' }, db: await server.createClient() })),
+    authorizeEventAdmin: jest.fn(async () => ({ user: { id: 'admin-1' }, pg: await server.createClient() })),
   };
 });
 
-jest.mock('@/lib/repositories/qualification-repository', () => ({
+jest.mock('@/lib/db/tx', () => ({
+  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
+}));
+
+jest.mock('@/lib/repositories/qualification-repository.db', () => ({
   getOrCreateQualificationRound: jest.fn(),
   getPaidEventPlayers: jest.fn(),
   getQualificationFrameAggregations: jest.fn(),
@@ -63,16 +67,17 @@ jest.mock('@/lib/repositories/qualification-repository', () => ({
   getQualificationFramesBulk: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-player-repository', () => ({
+jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   getEventPlayer: jest.fn(),
   getEventPlayersBulk: jest.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
+import { authorizeEventAdmin } from '@/lib/services/auth';
 import * as eventRepo from '@/lib/repositories/event-repository.db';
-import * as qualificationRepo from '@/lib/repositories/qualification-repository';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import * as qualificationRepo from '@/lib/repositories/qualification-repository.db';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import {
   validateQualificationAccessCode,
   getPlayersForQualification,
@@ -219,6 +224,14 @@ describe('Qualification Service', () => {
       expect(result[0].total_points).toBe(0);
       expect(result[0].is_complete).toBe(false);
     });
+
+    it('does not query qualification data when the access code is unauthorized', async () => {
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(null);
+
+      await expect(getPlayersForQualification(accessCode)).rejects.toThrow(NotFoundError);
+      expect(qualificationRepo.getOrCreateQualificationRound).not.toHaveBeenCalled();
+      expect(qualificationRepo.getPaidEventPlayers).not.toHaveBeenCalled();
+    });
   });
 
   describe('getPlayerQualificationData', () => {
@@ -306,6 +319,13 @@ describe('Qualification Service', () => {
         getPlayerQualificationData(accessCode, eventPlayerId)
       ).rejects.toThrow('Player must be marked as paid');
     });
+
+    it('does not query an event player when the access code is unauthorized', async () => {
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(null);
+
+      await expect(getPlayerQualificationData(accessCode, eventPlayerId)).rejects.toThrow(NotFoundError);
+      expect(eventPlayerRepo.getEventPlayer).not.toHaveBeenCalled();
+    });
   });
 
   describe('recordQualificationScore', () => {
@@ -371,6 +391,7 @@ describe('Qualification Service', () => {
       expect(qualificationRepo.recordQualificationFrame).toHaveBeenCalled();
       expect(qualificationRepo.updateQualificationRoundStatus).toHaveBeenCalledWith(
         mockSupabase,
+        'event-123',
         'round-123',
         'in_progress'
       );
@@ -535,6 +556,13 @@ describe('Qualification Service', () => {
       expect(result.players).toEqual([]);
       expect(result.allComplete).toBe(false);
     });
+
+    it('does not query qualification data when admin authorization fails', async () => {
+      (authorizeEventAdmin as jest.Mock).mockRejectedValueOnce(new ForbiddenError('Insufficient permissions'));
+
+      await expect(getEventQualificationStatus(eventId)).rejects.toThrow(ForbiddenError);
+      expect(qualificationRepo.getQualificationRoundFull).not.toHaveBeenCalled();
+    });
   });
 
   describe('getBatchPlayerQualificationData', () => {
@@ -654,6 +682,13 @@ describe('Qualification Service', () => {
       const result = await getBatchPlayerQualificationData(accessCode, eventPlayerIds);
 
       expect(result.players).toEqual([]);
+    });
+
+    it('does not query players when the access code is unauthorized', async () => {
+      (eventRepo.getEventByAccessCode as jest.Mock).mockResolvedValue(null);
+
+      await expect(getBatchPlayerQualificationData(accessCode, eventPlayerIds)).rejects.toThrow(NotFoundError);
+      expect(eventPlayerRepo.getEventPlayersBulk).not.toHaveBeenCalled();
     });
   });
 });

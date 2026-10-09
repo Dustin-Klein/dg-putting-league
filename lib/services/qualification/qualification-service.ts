@@ -4,14 +4,15 @@ import {
   ForbiddenError,
 } from '@/lib/errors';
 import { calculatePoints } from '@/lib/services/scoring/points-calculator';
-import { authorizeAccessCode, authorizeEventAdmin, type PrivilegedClient } from '@/lib/services/auth';
-import * as qualificationRepo from '@/lib/repositories/qualification-repository';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import { authorizeAccessCode, authorizeEventAdmin, type Db } from '@/lib/services/auth';
+import { withTransaction } from '@/lib/db/tx';
+import * as qualificationRepo from '@/lib/repositories/qualification-repository.db';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import type {
   QualificationRound,
   QualificationFrame,
   PlayerQualificationStatus,
-} from '@/lib/repositories/qualification-repository';
+} from '@/lib/repositories/qualification-repository.db';
 
 // Re-export types
 export type {
@@ -45,12 +46,12 @@ export interface PublicQualificationPlayerInfo {
 
 /**
  * Authorize a qualification scorer by access code.
- * Returns the event and the privileged client to use for this request.
+ * Returns the event and the authorized database connection for this request.
  */
 async function authorizeQualificationScorer(
   accessCode: string
-): Promise<{ event: PublicQualificationEventInfo; db: PrivilegedClient }> {
-  const { event, db } = await authorizeAccessCode(accessCode, { mode: 'qualification' });
+): Promise<{ event: PublicQualificationEventInfo; pg: Db }> {
+  const { event, pg } = await authorizeAccessCode(accessCode, { mode: 'qualification' });
   return {
     event: {
       id: event.id,
@@ -62,7 +63,7 @@ async function authorizeQualificationScorer(
       qualification_frame_count: event.qualification_frame_count,
       status: event.status,
     },
-    db,
+    pg,
   };
 }
 
@@ -83,16 +84,14 @@ export async function validateQualificationAccessCode(
 export async function getPlayersForQualification(
   accessCode: string
 ): Promise<PublicQualificationPlayerInfo[]> {
-  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
+  const { event, pg } = await authorizeQualificationScorer(accessCode);
 
   // Get or create qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
-
-  // Get all paid event players
-  const paidPlayers = await qualificationRepo.getPaidEventPlayers(supabase, event.id);
-
-  // Get aggregated frame data for all players
-  const framesByPlayer = await qualificationRepo.getQualificationFrameAggregations(supabase, event.id);
+  const { round, paidPlayers, framesByPlayer } = await withTransaction(pg, async (tx) => ({
+    round: await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count),
+    paidPlayers: await qualificationRepo.getPaidEventPlayers(tx, event.id),
+    framesByPlayer: await qualificationRepo.getQualificationFrameAggregations(tx, event.id),
+  }));
 
   // Build player info
   return paidPlayers.map((ep) => {
@@ -123,10 +122,10 @@ export async function getPlayerQualificationData(
   frames: QualificationFrame[];
   nextFrameNumber: number;
 }> {
-  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
+  const { event, pg } = await authorizeQualificationScorer(accessCode);
 
   // Get player info from repository
-  const eventPlayer = await eventPlayerRepo.getEventPlayer(supabase, eventPlayerId);
+  const eventPlayer = await eventPlayerRepo.getEventPlayer(pg, event.id, eventPlayerId);
 
   if (eventPlayer.event_id !== event.id) {
     throw new ForbiddenError('Player does not belong to this event');
@@ -137,10 +136,10 @@ export async function getPlayerQualificationData(
   }
 
   // Get qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
-
-  // Get player's frames
-  const frames = await qualificationRepo.getPlayerQualificationFrames(supabase, event.id, eventPlayerId);
+  const { round, frames } = await withTransaction(pg, async (tx) => ({
+    round: await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count),
+    frames: await qualificationRepo.getPlayerQualificationFrames(tx, event.id, eventPlayerId),
+  }));
 
   // Calculate totals
   const framesCompleted = frames.length;
@@ -174,61 +173,56 @@ export async function recordQualificationScore(
   frameNumber: number,
   puttsMade: number
 ): Promise<{ frame: QualificationFrame; player: PublicQualificationPlayerInfo }> {
-  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
+  const { event, pg } = await authorizeQualificationScorer(accessCode);
+
+  return recordQualificationScoreDb(pg, event, eventPlayerId, frameNumber, puttsMade);
+}
+
+/** Transactional qualification writer, exposed for direct-Postgres integration tests. */
+export async function recordQualificationScoreDb(
+  pg: Db,
+  event: PublicQualificationEventInfo,
+  eventPlayerId: string,
+  frameNumber: number,
+  puttsMade: number
+): Promise<{ frame: QualificationFrame; player: PublicQualificationPlayerInfo }> {
 
   // Validate putts
   if (puttsMade < 0 || puttsMade > 3) {
     throw new BadRequestError('Putts must be between 0 and 3');
   }
 
-  // Get player info from repository
-  const eventPlayer = await eventPlayerRepo.getEventPlayer(supabase, eventPlayerId);
+  const { eventPlayer, round, frame, updatedFrames } = await withTransaction(pg, async (tx) => {
+    const eventPlayer = await eventPlayerRepo.getEventPlayer(tx, event.id, eventPlayerId);
+    if (eventPlayer.event_id !== event.id) throw new ForbiddenError('Player does not belong to this event');
+    if (eventPlayer.payment_type === null) {
+      throw new BadRequestError('Player must be marked as paid to participate in qualification');
+    }
 
-  if (eventPlayer.event_id !== event.id) {
-    throw new ForbiddenError('Player does not belong to this event');
-  }
+    const round = await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count);
+    const existingFrames = await qualificationRepo.getPlayerQualificationFrames(tx, event.id, eventPlayerId);
+    const existingFrame = existingFrames.find((candidate) => candidate.frame_number === frameNumber);
+    if (!existingFrame && existingFrames.length >= round.frame_count) {
+      throw new BadRequestError(`Player has already completed all ${round.frame_count} qualification frames`);
+    }
+    if (frameNumber < 1 || frameNumber > round.frame_count) {
+      throw new BadRequestError(`Frame number must be between 1 and ${round.frame_count}`);
+    }
 
-  if (eventPlayer.payment_type === null) {
-    throw new BadRequestError('Player must be marked as paid to participate in qualification');
-  }
-
-  // Get qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
-
-  // Get existing frames to check if this would exceed the limit
-  const existingFrames = await qualificationRepo.getPlayerQualificationFrames(supabase, event.id, eventPlayerId);
-
-  // Check if trying to add more frames than allowed (unless updating existing)
-  const existingFrame = existingFrames.find((f) => f.frame_number === frameNumber);
-  if (!existingFrame && existingFrames.length >= round.frame_count) {
-    throw new BadRequestError(`Player has already completed all ${round.frame_count} qualification frames`);
-  }
-
-  // Validate frame number
-  if (frameNumber < 1 || frameNumber > round.frame_count) {
-    throw new BadRequestError(`Frame number must be between 1 and ${round.frame_count}`);
-  }
-
-  // Calculate points
-  const pointsEarned = calculatePoints(puttsMade, event.bonus_point_enabled);
-
-  // Record the frame
-  const frame = await qualificationRepo.recordQualificationFrame(supabase, {
-    qualificationRoundId: round.id,
-    eventId: event.id,
-    eventPlayerId,
-    frameNumber,
-    puttsMade,
-    pointsEarned,
+    const frame = await qualificationRepo.recordQualificationFrame(tx, {
+      qualificationRoundId: round.id,
+      eventId: event.id,
+      eventPlayerId,
+      frameNumber,
+      puttsMade,
+      pointsEarned: calculatePoints(puttsMade, event.bonus_point_enabled),
+    });
+    if (round.status === 'not_started') {
+      await qualificationRepo.updateQualificationRoundStatus(tx, event.id, round.id, 'in_progress');
+    }
+    const updatedFrames = await qualificationRepo.getPlayerQualificationFrames(tx, event.id, eventPlayerId);
+    return { eventPlayer, round, frame, updatedFrames };
   });
-
-  // Update round status if needed
-  if (round.status === 'not_started') {
-    await qualificationRepo.updateQualificationRoundStatus(supabase, round.id, 'in_progress');
-  }
-
-  // Get updated player data
-  const updatedFrames = await qualificationRepo.getPlayerQualificationFrames(supabase, event.id, eventPlayerId);
   const framesCompleted = updatedFrames.length;
   const totalPoints = updatedFrames.reduce((sum, f) => sum + f.points_earned, 0);
 
@@ -259,14 +253,14 @@ export async function getEventQualificationStatus(
   allComplete: boolean;
 }> {
   // Reads payment status, which only the server can see
-  const { db: supabase } = await authorizeEventAdmin(eventId);
+  const { pg } = await authorizeEventAdmin(eventId);
 
-  const round = await qualificationRepo.getQualificationRoundFull(supabase, eventId);
+  const round = await qualificationRepo.getQualificationRoundFull(pg, eventId);
   if (!round) {
     return { round: null, players: [], allComplete: false };
   }
 
-  const players = await qualificationRepo.getEventPlayersQualificationStatus(supabase, eventId);
+  const players = await qualificationRepo.getEventPlayersQualificationStatus(pg, eventId);
   const allComplete = players.length > 0 && players.every((p) => p.is_complete);
 
   return { round, players, allComplete };
@@ -283,13 +277,13 @@ export async function getBatchPlayerQualificationData(
   round: { id: string; frame_count: number };
   players: Array<PublicQualificationPlayerInfo & { frames: QualificationFrame[] }>;
 }> {
-  const { event, db: supabase } = await authorizeQualificationScorer(accessCode);
+  const { event, pg } = await authorizeQualificationScorer(accessCode);
 
   // Get qualification round
-  const round = await qualificationRepo.getOrCreateQualificationRound(supabase, event.id, event.qualification_frame_count);
-
-  // Bulk fetch all event players (1 query instead of N)
-  const eventPlayers = await eventPlayerRepo.getEventPlayersBulk(supabase, eventPlayerIds);
+  const { round, eventPlayers } = await withTransaction(pg, async (tx) => ({
+    round: await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count),
+    eventPlayers: await eventPlayerRepo.getEventPlayersBulk(tx, event.id, eventPlayerIds),
+  }));
 
   // Filter to only valid players (belong to event and have paid)
   const validEventPlayers = eventPlayers.filter(
@@ -311,7 +305,7 @@ export async function getBatchPlayerQualificationData(
 
   // Bulk fetch all frames for valid players (1 query instead of N)
   const framesByPlayer = await qualificationRepo.getQualificationFramesBulk(
-    supabase,
+    pg,
     event.id,
     validPlayerIds
   );

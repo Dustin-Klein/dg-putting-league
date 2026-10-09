@@ -42,7 +42,7 @@ jest.mock('@/lib/repositories/team-repository', () => ({
   getFullTeamsForEvent: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-player-repository', () => ({
+jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   getQualificationScore: jest.fn(),
 }));
 
@@ -54,7 +54,7 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import * as teamRepo from '@/lib/repositories/team-repository';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository';
+import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import { generateTeams, getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
 
 describe('Team Service', () => {
@@ -64,7 +64,7 @@ describe('Team Service', () => {
     jest.clearAllMocks();
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
-    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase });
+    (requireEventAdmin as jest.Mock).mockResolvedValue({ supabase: mockSupabase, pg: mockSupabase });
   });
 
   describe('generateTeams', () => {
