@@ -5,6 +5,7 @@ import { clearScoreOverride, correctMatchScores } from '@/lib/services/scoring/m
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { resetMatchResult, updateMatchResult } from '@/lib/services/bracket/bracket-service';
 import { MatchStatus } from '@/lib/types/bracket';
+import { clearAllMatchOpponents, getStageForEvent } from '@/lib/repositories/bracket-repository.db';
 import type { Executor } from '@/lib/db/tx';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, getParticipantPlayers, seedBracket, type BracketSnapshot } from './db/seed';
@@ -212,6 +213,25 @@ describe('completeMatch', () => {
 });
 
 describe('completed score corrections', () => {
+  it('clears manual score overrides when bracket placements are cleared', async () => {
+    await withRollback(db, async (tx) => {
+      mockAdmin.tx = tx;
+      const event = await seedBracket(tx, { teams: 4 });
+      const match = playableMatches(await getBracketSnapshot(tx, event.eventId))[0];
+      await completeMatch(tx, event.eventId, match.id, { team1Score: 30, team2Score: 20 });
+      expect(await getMatch(tx, match.id)).toMatchObject({ score_override_1: 30, score_override_2: 20 });
+
+      const stage = await getStageForEvent(tx, event.eventId);
+      await clearAllMatchOpponents(tx, stage!.id);
+      expect(await getMatch(tx, match.id)).toMatchObject({
+        score_override_1: null,
+        score_override_2: null,
+        score_override_reason: null,
+        score_override_by: null,
+      });
+    });
+  });
+
   it('rejects a completed match without a recorded winner', async () => {
     await withRollback(db, async (tx) => {
       mockAdmin.tx = tx;

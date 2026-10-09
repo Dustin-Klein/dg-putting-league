@@ -189,6 +189,10 @@ export async function clearAllMatchOpponents(ex: Executor, stageId: number): Pro
       status: Status.Waiting,
       lane_id: null,
       lane_assigned_at: null,
+      score_override_1: null,
+      score_override_2: null,
+      score_override_reason: null,
+      score_override_by: null,
     })
     .where(eq(bracket_match.stage_id, stageId));
 }
