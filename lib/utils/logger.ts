@@ -41,3 +41,13 @@ export const logger = {
   warn: (message: string, meta?: Record<string, unknown>) => log('warn', message, meta),
   error: (message: string, meta?: Record<string, unknown>) => log('error', message, meta),
 };
+
+/**
+ * Name, message and stack of a thrown value, for log metadata. Never send this to clients.
+ */
+export function describeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message, stack: error.stack };
+  }
+  return { message: String(error) };
+}

@@ -2,8 +2,19 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils/utils";
 import { getOriginMismatchReason, requiresCsrfCheck } from "../utils/same-origin";
+import { REQUEST_ID_HEADER } from "../utils/request-id";
 
 export async function updateSession(request: NextRequest) {
+  // Request id: handlers read it from the request headers (getRequestId) and log it
+  // with every error; clients see it on the response. Any client-sent value is replaced.
+  const requestId = crypto.randomUUID();
+  request.headers.set(REQUEST_ID_HEADER, requestId);
+  const response = await handleSession(request);
+  response.headers.set(REQUEST_ID_HEADER, requestId);
+  return response;
+}
+
+async function handleSession(request: NextRequest) {
   // CSRF: every state-changing API request must come from our own origin.
   if (
     requiresCsrfCheck(request.method, request.nextUrl.pathname) &&

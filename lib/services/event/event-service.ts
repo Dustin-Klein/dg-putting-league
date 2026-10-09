@@ -54,7 +54,7 @@ export async function requireEventAdmin(eventId: string) {
  */
 export async function getEventWithPlayers(eventId: string) {
   if (!eventId) {
-    console.error('No eventId provided');
+    logger.warn('getEventWithPlayers called without an eventId');
     redirect('/admin/leagues');
   }
 

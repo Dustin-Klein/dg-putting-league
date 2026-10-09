@@ -7,23 +7,26 @@ import {
   ForbiddenError,
   ConflictError,
 } from "./custom-errors";
-import { logger } from "../utils/logger";
+import { describeError, logger } from "../utils/logger";
+import { getRequestId } from "../utils/request-id";
 
 /**
  * Converts domain errors to appropriate HTTP responses.
  * Maps custom error types to their corresponding status codes.
- * Unknown errors are logged and returned as 500 Internal Server Error.
+ * Unknown errors are logged with the request id and returned as 500 Internal Server
+ * Error; the response includes the request id so users can report it.
  * @param error - The error to handle
  * @returns NextResponse with appropriate status code and error message
  */
-export function handleError(error: unknown) {
+export async function handleError(error: unknown): Promise<NextResponse> {
+  const requestId = await getRequestId();
   if (error instanceof ZodError) {
     const sanitizedIssues = error.issues.map((issue) => ({
       path: issue.path,
       code: issue.code,
       message: issue.message,
     }));
-    logger.error('Validation error', { issues: sanitizedIssues });
+    logger.error('Validation error', { requestId, issues: sanitizedIssues });
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   if (error instanceof UnauthorizedError) {
@@ -41,8 +44,6 @@ export function handleError(error: unknown) {
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
-  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-  const errorName = error instanceof Error ? error.name : undefined;
-  logger.error('Unhandled error', { name: errorName, message: errorMessage });
-  return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  logger.error('Unhandled error', { requestId, ...describeError(error) });
+  return NextResponse.json({ error: 'Internal server error', requestId }, { status: 500 });
 }

@@ -12,15 +12,17 @@ export default function Error({
   retry: () => void
 }) {
   useEffect(() => {
-    console.error('Leagues page error:', error)
+    // Server errors are logged with this digest by instrumentation.ts (onRequestError).
+    console.error('Page error:', error)
   }, [error])
 
   return (
     <div className="container mx-auto p-4">
       <div className="rounded-lg border bg-card text-card-foreground shadow-xs p-6">
-        <h2 className="text-2xl font-bold mb-4">Something went wrong!</h2>
+        <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
         <p className="text-muted-foreground mb-6">
-          We couldn&apos;t load the leagues. Please try again or contact support if the problem persists.
+          Please try again. If the problem persists, contact the league organizer
+          {error.digest ? <> and mention error code <code>{error.digest}</code></> : null}.
         </p>
         <div className="flex space-x-4">
           <Button variant="outline" onClick={() => retry()}>

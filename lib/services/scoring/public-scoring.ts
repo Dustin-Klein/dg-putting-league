@@ -18,6 +18,7 @@ import {
 import { lockMatch, withTransaction } from '@/lib/db/tx';
 import type { PublicMatchDetails, OpponentData } from '@/lib/types/scoring';
 import { InternalError } from '@/lib/errors';
+import { describeError, logger } from '@/lib/utils/logger';
 import {
   validateQualificationAccessCode,
   getPlayersForQualification,
@@ -391,7 +392,11 @@ export async function completeMatchPublic(
   try {
     return await getMatchForScoringInternal(pg, event, bracketMatchId);
   } catch (fetchError) {
-    console.error('Failed to fetch updated match after completion:', fetchError);
+    logger.warn('Failed to fetch updated match after completion', {
+      eventId: event.id,
+      bracketMatchId,
+      ...describeError(fetchError),
+    });
     return {
       ...match,
       status: MatchStatus.Completed,

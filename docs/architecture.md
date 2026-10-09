@@ -128,6 +128,16 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 
 ---
 
+## Logging & Errors
+
+- Server code (`lib/**`, `app/api/**`, `proxy.ts`, `instrumentation.ts`) logs through `logger` (`lib/utils/logger.ts`), which writes one JSON line per entry; ESLint `no-console` enforces it. Client components may use `console`.
+- The proxy assigns every request an `x-request-id` (on the request and the response; a client-sent value is replaced). `getRequestId()` (`lib/utils/request-id.ts`) reads it on the server.
+- `handleError` logs unhandled errors with the request id, name, message and stack, and returns `{ error: 'Internal server error', requestId }` with status 500 so users can report the id. Domain errors map to 4xx without leaking internals.
+- Errors Next.js catches itself (server components, uncaught route errors) are logged by `onRequestError` in `instrumentation.ts` with the request id and the error `digest`. `app/error.tsx` and `app/global-error.tsx` show the digest so it can be matched to that log line.
+- Monitoring: errors are structured log lines in the hosting platform's logs (Vercel). Hook an alerting/monitoring tool (log drain or Sentry) to `level: "error"` entries.
+
+---
+
 ## Security
 
 ### CSRF Protection

@@ -27,6 +27,15 @@ const eslintConfig = [
     },
   },
   {
+    // Server code logs through the structured logger (lib/utils/logger.ts), which
+    // attaches request ids and error details. Client components may use console.
+    files: ["lib/**/*.{ts,tsx}", "app/api/**/*.{ts,tsx}", "proxy.ts", "instrumentation.ts"],
+    ignores: ["lib/utils/logger.ts", "**/__tests__/**"],
+    rules: {
+      "no-console": "error",
+    },
+  },
+  {
     // The direct Postgres connection (lib/db/client) also bypasses RLS. Services get
     // it from the authorize* functions as `pg`; repositories receive an Executor.
     files: ["**/*.{ts,tsx,js,jsx,mjs}"],
