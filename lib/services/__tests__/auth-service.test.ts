@@ -17,7 +17,6 @@ import {
 import {
   createMockSupabaseClient,
   createMockUser,
-  createMockLeagueAdmin,
   MockSupabaseClient,
 } from './test-utils';
 
@@ -34,17 +33,13 @@ jest.mock('@/lib/db/client', () => ({
   _getDb: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/league-repository', () => ({
-  getLeagueAdminByUserAndLeague: jest.fn(),
-  isLeagueOwner: jest.fn(),
+jest.mock('@/lib/repositories/league-repository.db', () => ({
+  getLeagueAdminRole: jest.fn(),
   isAnyLeagueAdmin: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-repository', () => ({
-  getEventLeagueId: jest.fn(),
-}));
-
 jest.mock('@/lib/repositories/event-repository.db', () => ({
+  getEventAccess: jest.fn(),
   getEventByAccessCode: jest.fn(),
 }));
 
@@ -52,13 +47,8 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
 import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb } from '@/lib/db/client';
-import {
-  getLeagueAdminByUserAndLeague,
-  isLeagueOwner,
-  isAnyLeagueAdmin,
-} from '@/lib/repositories/league-repository';
-import { getEventLeagueId } from '@/lib/repositories/event-repository';
-import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
+import { getLeagueAdminRole, isAnyLeagueAdmin } from '@/lib/repositories/league-repository.db';
+import { getEventAccess, getEventByAccessCode } from '@/lib/repositories/event-repository.db';
 import {
   requireAuthenticatedUser,
   requireLeagueAdmin,
@@ -68,7 +58,23 @@ import {
   authorizeAnyLeagueAdmin,
   authorizeLeagueCreation,
   authorizeAccessCode,
+  authorizeEventView,
+  getViewer,
 } from '../auth/auth-service';
+
+const LEAGUE_ID = '11111111-1111-4111-8111-111111111111';
+const EVENT_ID = '22222222-2222-4222-8222-222222222222';
+
+function eventAccess(overrides: Record<string, unknown> = {}) {
+  return {
+    id: EVENT_ID,
+    league_id: LEAGUE_ID,
+    status: 'bracket',
+    qualification_round_enabled: false,
+    admin_role: null,
+    ...overrides,
+  };
+}
 
 describe('Auth Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -140,24 +146,22 @@ describe('Auth Service', () => {
   });
 
   describe('requireLeagueAdmin', () => {
-    const leagueId = 'league-123';
+    const leagueId = LEAGUE_ID;
 
     beforeEach(() => signIn());
 
     it('should return user and isAdmin flag when user is a league admin', async () => {
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(
-        createMockLeagueAdmin({ league_id: leagueId, user_id: 'user-123' })
-      );
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue('admin');
 
       const result = await requireLeagueAdmin(leagueId);
 
       expect(result.user.id).toBe('user-123');
       expect(result.isAdmin).toBe(true);
-      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockDb, leagueId, 'user-123');
+      expect(getLeagueAdminRole).toHaveBeenCalledWith(mockPg, leagueId, 'user-123');
     });
 
     it('should throw ForbiddenError when user is not a league admin', async () => {
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue(null);
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(ForbiddenError);
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow('Insufficient permissions');
@@ -168,24 +172,27 @@ describe('Auth Service', () => {
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(UnauthorizedError);
       expect(_createPrivilegedClient).not.toHaveBeenCalled();
+      expect(getLeagueAdminRole).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed league id without a query', async () => {
+      await expect(requireLeagueAdmin('not-a-uuid')).rejects.toThrow(ForbiddenError);
+      expect(getLeagueAdminRole).not.toHaveBeenCalled();
     });
 
     it('should propagate InternalError when repository throws database error', async () => {
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockRejectedValue(
-        new InternalError('Failed to fetch league admin: DB error')
-      );
+      (getLeagueAdminRole as jest.Mock).mockRejectedValue(new InternalError('DB error'));
 
       await expect(requireLeagueAdmin(leagueId)).rejects.toThrow(InternalError);
-      await expect(requireLeagueAdmin(leagueId)).rejects.toThrow('Failed to fetch league admin');
     });
   });
 
   describe('authorizeLeagueAdmin', () => {
-    it('returns the privileged client for a league admin', async () => {
+    it('returns the clients for a league admin', async () => {
       signIn();
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue({ id: 'admin-1' });
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue('admin');
 
-      const result = await authorizeLeagueAdmin('league-1');
+      const result = await authorizeLeagueAdmin(LEAGUE_ID);
 
       expect(result.db).toBe(mockDb);
       expect(result.pg).toBe(mockPg);
@@ -194,64 +201,124 @@ describe('Auth Service', () => {
 
     it('rejects a non-admin', async () => {
       signIn();
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue(null);
 
-      await expect(authorizeLeagueAdmin('league-1')).rejects.toThrow(ForbiddenError);
+      await expect(authorizeLeagueAdmin(LEAGUE_ID)).rejects.toThrow(ForbiddenError);
     });
   });
 
   describe('authorizeLeagueOwner', () => {
-    it('returns the privileged client for the owner', async () => {
+    it('returns the clients for the owner', async () => {
       signIn('owner-1');
-      (isLeagueOwner as jest.Mock).mockResolvedValue(true);
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue('owner');
 
-      const result = await authorizeLeagueOwner('league-1');
+      const result = await authorizeLeagueOwner(LEAGUE_ID);
 
       expect(result.db).toBe(mockDb);
-      expect(isLeagueOwner).toHaveBeenCalledWith(mockDb, 'league-1', 'owner-1');
+      expect(getLeagueAdminRole).toHaveBeenCalledWith(mockPg, LEAGUE_ID, 'owner-1');
     });
 
     it('rejects a non-owner admin with the given message', async () => {
       signIn();
-      (isLeagueOwner as jest.Mock).mockResolvedValue(false);
+      (getLeagueAdminRole as jest.Mock).mockResolvedValue('admin');
 
-      await expect(authorizeLeagueOwner('league-1', 'Owners only')).rejects.toThrow('Owners only');
+      await expect(authorizeLeagueOwner(LEAGUE_ID, 'Owners only')).rejects.toThrow('Owners only');
     });
 
     it('rejects an anonymous caller before creating a privileged client', async () => {
       signOut();
 
-      await expect(authorizeLeagueOwner('league-1')).rejects.toThrow(UnauthorizedError);
+      await expect(authorizeLeagueOwner(LEAGUE_ID)).rejects.toThrow(UnauthorizedError);
       expect(_createPrivilegedClient).not.toHaveBeenCalled();
     });
   });
 
   describe('authorizeEventAdmin', () => {
-    it('checks admin rights on the event league', async () => {
+    it('checks admin rights on the event league in one lookup', async () => {
       signIn();
-      (getEventLeagueId as jest.Mock).mockResolvedValue('league-9');
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue({ id: 'admin-1' });
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ admin_role: 'admin' }));
 
-      const result = await authorizeEventAdmin('event-1');
+      const result = await authorizeEventAdmin(EVENT_ID);
 
       expect(result.db).toBe(mockDb);
-      expect(getLeagueAdminByUserAndLeague).toHaveBeenCalledWith(mockDb, 'league-9', 'user-123');
+      expect(result.event.league_id).toBe(LEAGUE_ID);
+      expect(getEventAccess).toHaveBeenCalledWith(mockPg, EVENT_ID, 'user-123');
     });
 
     it('rejects an unknown event', async () => {
       signIn();
-      (getEventLeagueId as jest.Mock).mockResolvedValue(null);
+      (getEventAccess as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeEventAdmin(EVENT_ID)).rejects.toThrow(ForbiddenError);
+    });
+
+    it('rejects a malformed event id without a query', async () => {
+      signIn();
 
       await expect(authorizeEventAdmin('missing')).rejects.toThrow(ForbiddenError);
-      expect(getLeagueAdminByUserAndLeague).not.toHaveBeenCalled();
+      expect(getEventAccess).not.toHaveBeenCalled();
     });
 
     it('rejects an admin of a different league', async () => {
       signIn();
-      (getEventLeagueId as jest.Mock).mockResolvedValue('league-9');
-      (getLeagueAdminByUserAndLeague as jest.Mock).mockResolvedValue(null);
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ admin_role: null }));
 
-      await expect(authorizeEventAdmin('event-1')).rejects.toThrow(ForbiddenError);
+      await expect(authorizeEventAdmin(EVENT_ID)).rejects.toThrow('Insufficient permissions');
+    });
+  });
+
+  describe('authorizeEventView', () => {
+    it('lets an anonymous viewer read a publicly visible event', async () => {
+      signOut();
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ status: 'bracket' }));
+
+      const result = await authorizeEventView(EVENT_ID);
+
+      expect(result).toMatchObject({ user: null, isAdmin: false, pg: mockPg });
+      expect(getEventAccess).toHaveBeenCalledWith(mockPg, EVENT_ID, null);
+    });
+
+    it('hides a private event from anonymous viewers as not found', async () => {
+      signOut();
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ status: 'pre-bracket' }));
+
+      await expect(authorizeEventView(EVENT_ID)).rejects.toThrow(NotFoundError);
+    });
+
+    it('applies the requested scope', async () => {
+      signOut();
+      (getEventAccess as jest.Mock).mockResolvedValue(
+        eventAccess({ status: 'pre-bracket', qualification_round_enabled: true })
+      );
+
+      await expect(authorizeEventView(EVENT_ID, 'qualification')).resolves.toMatchObject({ isAdmin: false });
+      await expect(authorizeEventView(EVENT_ID, 'bracket')).rejects.toThrow(NotFoundError);
+
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ status: 'completed' }));
+      await expect(authorizeEventView(EVENT_ID, 'lanes')).rejects.toThrow(NotFoundError);
+    });
+
+    it('lets a league admin read a private event', async () => {
+      signIn();
+      (getEventAccess as jest.Mock).mockResolvedValue(eventAccess({ status: 'created', admin_role: 'owner' }));
+
+      await expect(authorizeEventView(EVENT_ID, 'bracket')).resolves.toMatchObject({ isAdmin: true });
+    });
+
+    it('treats an unknown or malformed event id as not found', async () => {
+      signIn();
+      (getEventAccess as jest.Mock).mockResolvedValue(null);
+
+      await expect(authorizeEventView(EVENT_ID)).rejects.toThrow(NotFoundError);
+      await expect(authorizeEventView('nope')).rejects.toThrow(NotFoundError);
+      expect(getEventAccess).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getViewer', () => {
+    it('returns null for anonymous visitors', async () => {
+      signOut();
+      await expect(getViewer()).resolves.toBeNull();
     });
   });
 
@@ -261,6 +328,7 @@ describe('Auth Service', () => {
       (isAnyLeagueAdmin as jest.Mock).mockResolvedValue(true);
 
       await expect(authorizeAnyLeagueAdmin()).resolves.toMatchObject({ db: mockDb });
+      expect(isAnyLeagueAdmin).toHaveBeenCalledWith(mockPg, 'user-123');
     });
 
     it('rejects a signed-in user who administers no league', async () => {

@@ -1,7 +1,8 @@
 import 'server-only';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { events } from '@/lib/db/schema';
+import { events, league_admins } from '@/lib/db/schema';
+import type { LeagueAdminRole } from './league-repository.db';
 import type { AccessCodeEvent } from './event-repository';
 
 /**
@@ -82,4 +83,42 @@ export async function updateEventSettings(
 ): Promise<void> {
   if (Object.keys(patch).length === 0) return;
   await ex.update(events).set(patch).where(eq(events.id, eventId));
+}
+
+export interface EventAccess {
+  id: string;
+  league_id: string;
+  status: AccessCodeEvent['status'];
+  qualification_round_enabled: boolean;
+  /** The viewer's role in the event's league; null for anonymous viewers and non-admins. */
+  admin_role: LeagueAdminRole | null;
+}
+
+/**
+ * Load what authorization needs about an event and the viewer in one query.
+ */
+export async function getEventAccess(
+  ex: Executor,
+  eventId: string,
+  userId: string | null
+): Promise<EventAccess | null> {
+  const rows = await ex
+    .select({
+      id: events.id,
+      league_id: events.league_id,
+      status: events.status,
+      qualification_round_enabled: events.qualification_round_enabled,
+      admin_role: league_admins.role,
+    })
+    .from(events)
+    .leftJoin(
+      league_admins,
+      and(
+        eq(league_admins.league_id, events.league_id),
+        userId === null ? sql`false` : eq(league_admins.user_id, userId)
+      )
+    )
+    .where(eq(events.id, eventId))
+    .limit(1);
+  return rows[0] ?? null;
 }

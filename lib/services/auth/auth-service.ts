@@ -4,21 +4,21 @@ import { createClient } from '@/lib/supabase/server';
 import { _createPrivilegedClient, type PrivilegedClient } from '@/lib/supabase/privileged';
 import { _getDb, type Db } from '@/lib/db/client';
 import { UnauthorizedError, ForbiddenError, NotFoundError, InvalidAccessCodeError } from '@/lib/errors';
+import { getLeagueAdminRole, isAnyLeagueAdmin } from '@/lib/repositories/league-repository.db';
+import type { AccessCodeEvent } from '@/lib/repositories/event-repository';
 import {
-  getLeagueAdminByUserAndLeague,
-  isLeagueOwner,
-  isAnyLeagueAdmin,
-} from '@/lib/repositories/league-repository';
-import {
-  getEventLeagueId,
-  type AccessCodeEvent,
-} from '@/lib/repositories/event-repository';
-import { getEventByAccessCode } from '@/lib/repositories/event-repository.db';
+  getEventAccess,
+  getEventByAccessCode,
+  type EventAccess,
+} from '@/lib/repositories/event-repository.db';
 import { normalizeAccessCode } from '@/lib/utils/access-code';
+import { isUuid } from '@/lib/utils/uuid';
+import { isPubliclyVisible, type EventVisibilityScope } from './visibility';
 
 export type { PrivilegedClient } from '@/lib/supabase/privileged';
 export type { Db } from '@/lib/db/client';
 export type { AccessCodeEvent } from '@/lib/repositories/event-repository';
+export type { EventAccess } from '@/lib/repositories/event-repository.db';
 
 export async function requireAuthenticatedUser() {
     const supabase = await createClient();
@@ -33,6 +33,15 @@ export async function requireAuthenticatedUser() {
     }
 
     return user;
+}
+
+/**
+ * The signed-in user, or null for anonymous visitors.
+ */
+export async function getViewer(): Promise<User | null> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user ?? null;
 }
 
 export async function requireLeagueAdmin(leagueId: string) {
@@ -53,6 +62,10 @@ export async function requireLeagueAdmin(leagueId: string) {
 // used for transactional service methods (lib/db). Plan 04 retires `db`.
 // ---------------------------------------------------------------------------
 
+async function leagueRole(pg: Db, leagueId: string, userId: string) {
+    return isUuid(leagueId) ? getLeagueAdminRole(pg, leagueId, userId) : null;
+}
+
 /**
  * Require the current user to be an admin (or owner) of the league.
  */
@@ -60,14 +73,13 @@ export async function authorizeLeagueAdmin(
     leagueId: string
 ): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
-    const db = _createPrivilegedClient();
+    const pg = _getDb();
 
-    const leagueAdmin = await getLeagueAdminByUserAndLeague(db, leagueId, user.id);
-    if (!leagueAdmin) {
+    if (!(await leagueRole(pg, leagueId, user.id))) {
         throw new ForbiddenError('Insufficient permissions');
     }
 
-    return { user, db, pg: _getDb() };
+    return { user, db: _createPrivilegedClient(), pg };
 }
 
 /**
@@ -78,14 +90,13 @@ export async function authorizeLeagueOwner(
     forbiddenMessage = 'Only the league owner can perform this action'
 ): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
-    const db = _createPrivilegedClient();
+    const pg = _getDb();
 
-    const isOwner = await isLeagueOwner(db, leagueId, user.id);
-    if (!isOwner) {
+    if ((await leagueRole(pg, leagueId, user.id)) !== 'owner') {
         throw new ForbiddenError(forbiddenMessage);
     }
 
-    return { user, db, pg: _getDb() };
+    return { user, db: _createPrivilegedClient(), pg };
 }
 
 /**
@@ -93,21 +104,19 @@ export async function authorizeLeagueOwner(
  */
 export async function authorizeEventAdmin(
     eventId: string
-): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
+): Promise<{ user: User; event: EventAccess; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
-    const db = _createPrivilegedClient();
+    const pg = _getDb();
 
-    const leagueId = await getEventLeagueId(db, eventId);
-    if (!leagueId) {
+    const event = isUuid(eventId) ? await getEventAccess(pg, eventId, user.id) : null;
+    if (!event) {
         throw new ForbiddenError('Event not found');
     }
-
-    const leagueAdmin = await getLeagueAdminByUserAndLeague(db, leagueId, user.id);
-    if (!leagueAdmin) {
+    if (!event.admin_role) {
         throw new ForbiddenError('Insufficient permissions');
     }
 
-    return { user, db, pg: _getDb() };
+    return { user, event, db: _createPrivilegedClient(), pg };
 }
 
 /**
@@ -116,14 +125,13 @@ export async function authorizeEventAdmin(
  */
 export async function authorizeAnyLeagueAdmin(): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
-    const db = _createPrivilegedClient();
+    const pg = _getDb();
 
-    const isAdmin = await isAnyLeagueAdmin(db, user.id);
-    if (!isAdmin) {
+    if (!(await isAnyLeagueAdmin(pg, user.id))) {
         throw new ForbiddenError('Only league admins can perform this action');
     }
 
-    return { user, db, pg: _getDb() };
+    return { user, db: _createPrivilegedClient(), pg };
 }
 
 /**
@@ -133,6 +141,53 @@ export async function authorizeAnyLeagueAdmin(): Promise<{ user: User; db: Privi
 export async function authorizeLeagueCreation(): Promise<{ user: User; db: PrivilegedClient; pg: Db }> {
     const user = await requireAuthenticatedUser();
     return { user, db: _createPrivilegedClient(), pg: _getDb() };
+}
+
+/**
+ * Require a signed-in user, for reads scoped to that user's own records
+ * (e.g. the leagues they administer). Query only by `user.id`.
+ */
+export async function authorizeAuthenticated(): Promise<{ user: User; pg: Db }> {
+    const user = await requireAuthenticatedUser();
+    return { user, pg: _getDb() };
+}
+
+/**
+ * Database access for reads that anyone may make. `pg` bypasses RLS: before
+ * returning event-scoped data, check it with `lib/services/auth/visibility.ts`
+ * (or use `authorizeEventView`). Only data that is public for every row
+ * (leagues, players without email, placements) may be returned unchecked.
+ */
+export function authorizePublicRead(): { pg: Db } {
+    return { pg: _getDb() };
+}
+
+/**
+ * Authorize reading an event's data. League admins may read any of their events;
+ * everyone else only when `scope` is publicly visible (see visibility.ts).
+ * Throws NotFoundError otherwise, so private events don't reveal they exist.
+ */
+export async function authorizeEventView(
+    eventId: string,
+    scope: EventVisibilityScope = 'event'
+): Promise<{ user: User | null; event: EventAccess; isAdmin: boolean; pg: Db }> {
+    const pg = _getDb();
+    if (!isUuid(eventId)) {
+        throw new NotFoundError('Event not found');
+    }
+
+    const user = await getViewer();
+    const event = await getEventAccess(pg, eventId, user?.id ?? null);
+    if (!event) {
+        throw new NotFoundError('Event not found');
+    }
+
+    const isAdmin = event.admin_role !== null;
+    if (!isAdmin && !isPubliclyVisible(event, scope)) {
+        throw new NotFoundError('Event not found');
+    }
+
+    return { user, event, isAdmin, pg };
 }
 
 export type AccessCodeMode = 'bracket' | 'qualification';
