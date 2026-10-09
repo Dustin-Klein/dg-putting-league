@@ -592,7 +592,7 @@ export function createAuthServiceMock() {
   const requireLeagueAdmin = jest.fn();
 
   const getEventLeagueId = async (db: unknown, eventId: string) => {
-    const eventRepo = jest.requireMock('@/lib/repositories/event-repository');
+    const eventRepo = jest.requireMock('@/lib/repositories/event-repository.db');
     return eventRepo.getEventLeagueId(db, eventId);
   };
 
@@ -601,7 +601,8 @@ export function createAuthServiceMock() {
     requireLeagueAdmin,
     authorizeLeagueAdmin: jest.fn(async (leagueId: string) => {
       const { user } = await requireLeagueAdmin(leagueId);
-      return { user, db: await server.createClient() };
+      const db = await server.createClient();
+      return { user, db, pg: db };
     }),
     authorizeEventAdmin: jest.fn(async (eventId: string) => {
       const db = await server.createClient();
@@ -610,7 +611,7 @@ export function createAuthServiceMock() {
         throw new ForbiddenError('Event not found');
       }
       const { user } = await requireLeagueAdmin(leagueId);
-      return { user, db };
+      return { user, db, pg: db };
     }),
     authorizeLeagueOwner: jest.fn(
       async (leagueId: string, message = 'Only the league owner can perform this action') => {

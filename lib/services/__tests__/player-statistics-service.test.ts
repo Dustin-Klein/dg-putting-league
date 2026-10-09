@@ -6,6 +6,10 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/services/auth', () => ({
+  authorizePublicRead: jest.fn(() => ({ pg: { kind: 'pg' } })),
+}));
+
 jest.mock('@/lib/repositories/player-statistics-repository', () => ({
   getPlayerByNumber: jest.fn(),
   getPlayerEventParticipations: jest.fn(),

@@ -46,7 +46,7 @@ jest.mock('@/lib/repositories/event-player-repository', () => ({
   getQualificationScore: jest.fn(),
 }));
 
-jest.mock('@/lib/repositories/event-repository', () => ({
+jest.mock('@/lib/repositories/event-repository.db', () => ({
   getEventLeagueId: jest.fn(),
 }));
 

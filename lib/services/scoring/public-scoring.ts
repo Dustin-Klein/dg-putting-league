@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
-import { authorizeAccessCode, type AccessCodeEvent, type Db, type PrivilegedClient } from '@/lib/services/auth';
+import { authorizeAccessCode, authorizeEventView, type AccessCodeEvent, type Db, type PrivilegedClient } from '@/lib/services/auth';
 import {
   BadRequestError,
   NotFoundError,
@@ -9,7 +9,7 @@ import {
 import { completeMatch } from './match-completion';
 import { recordFrameScores, type FrameScore } from './score-submission';
 import { getPublicTeamFromParticipant, getTeamFromParticipant } from '@/lib/repositories/team-repository';
-import { getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository';
+import { getEventBracketFrameCount, getEventScoringConfig } from '@/lib/repositories/event-repository.db';
 import { getLaneLabelsForEvent, getLanesForEvent } from '@/lib/repositories/lane-repository';
 import {
   getMatchesForScoringByEvent,
@@ -316,12 +316,13 @@ export async function getPublicMatchDetails(
   eventId: string,
   matchId: number
 ): Promise<PublicMatchDetails> {
+  const { pg } = await authorizeEventView(eventId, 'bracket');
   const supabase = await createClient();
 
   const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
     getMatchForScoringById(supabase, matchId),
-    getEventBracketFrameCount(supabase, eventId),
-    getEventScoringConfig(supabase, eventId),
+    getEventBracketFrameCount(pg, eventId),
+    getEventScoringConfig(pg, eventId),
   ]);
 
   if (!bracketMatch || bracketMatch.event_id !== eventId) {

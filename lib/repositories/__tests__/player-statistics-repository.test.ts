@@ -22,7 +22,7 @@ import { InternalError } from '@/lib/errors';
 jest.mock('server-only', () => ({}));
 
 // Mock the event-placement-repository dependency
-jest.mock('../event-placement-repository', () => ({
+jest.mock('../event-placement-repository.db', () => ({
   getStoredPlacementsForEvents: jest.fn(),
 }));
 
@@ -36,7 +36,7 @@ import {
   getPlacementsForEvents,
   calculateEventPlacements,
 } from '../player-statistics-repository';
-import * as eventPlacementRepo from '../event-placement-repository';
+import * as eventPlacementRepo from '../event-placement-repository.db';
 
 describe('Player Statistics Repository', () => {
   let mockSupabase: MockSupabaseClient;
@@ -515,7 +515,7 @@ describe('Player Statistics Repository', () => {
 
   describe('getPlacementsForEvents', () => {
     it('should return empty array for empty input', async () => {
-      const result = await getPlacementsForEvents(mockSupabase as any, []);
+      const result = await getPlacementsForEvents(mockSupabase as any, {} as any, []);
 
       expect(result).toEqual([]);
     });
@@ -536,7 +536,7 @@ describe('Player Statistics Repository', () => {
       stageQuery.maybeSingle.mockResolvedValue({ data: null, error: null });
       mockSupabase.from.mockReturnValue(stageQuery);
 
-      const result = await getPlacementsForEvents(mockSupabase as any, ['event-1', 'event-2']);
+      const result = await getPlacementsForEvents(mockSupabase as any, {} as any, ['event-1', 'event-2']);
 
       // Should include stored placements from event-1
       expect(result).toContainEqual({ eventId: 'event-1', teamId: 'team-1', placement: 1 });

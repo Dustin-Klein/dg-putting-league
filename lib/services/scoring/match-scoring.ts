@@ -13,8 +13,7 @@ import {
   getOrCreateFrameWithResults,
 } from '@/lib/repositories/frame-repository';
 import { getMatchFrame } from '@/lib/repositories/frame-repository';
-import { getEventScoringConfig, getEventBracketFrameCount } from '@/lib/repositories/event-repository';
-import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { getEventScoringConfig, getEventBracketFrameCount, getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import {
   getMatchByIdAndEvent,
   updateMatchStatus,
@@ -74,12 +73,12 @@ export async function getBracketMatchWithDetails(
   eventId: string,
   bracketMatchId: number
 ): Promise<BracketMatchWithDetails> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
 
   const [bracketMatch, bracketFrameCount, eventConfig] = await Promise.all([
     getMatchForScoringById(supabase, bracketMatchId),
-    getEventBracketFrameCount(supabase, eventId),
-    getEventScoringConfig(supabase, eventId),
+    getEventBracketFrameCount(pg, eventId),
+    getEventScoringConfig(pg, eventId),
   ]);
 
   if (!bracketMatch || bracketMatch.event_id !== eventId) {

@@ -8,12 +8,14 @@ import type {
   PlayerOngoingEvent,
 } from '@/lib/types/player-statistics';
 import * as playerStatsRepo from '@/lib/repositories/player-statistics-repository';
+import { authorizePublicRead } from '@/lib/services/auth';
 
 /**
  * Get complete player profile with statistics and event history
  */
 export async function getPlayerProfile(playerNumber: number): Promise<PlayerProfile> {
   const supabase = await createClient();
+  const { pg } = authorizePublicRead();
 
   const player = await playerStatsRepo.getPlayerByNumber(supabase, playerNumber);
   if (!player) {
@@ -52,7 +54,7 @@ export async function getPlayerProfile(playerNumber: number): Promise<PlayerProf
   const [teamInfoMap, frameResults, placements] = await Promise.all([
     playerStatsRepo.getTeamInfoForEventPlayers(supabase, eventPlayerIds),
     playerStatsRepo.getPlayerFrameResultsWithDetails(supabase, completedEventPlayerIds),
-    playerStatsRepo.getPlacementsForEvents(supabase, completedEventIds),
+    playerStatsRepo.getPlacementsForEvents(supabase, pg, completedEventIds),
   ]);
 
   // Second: fetch match records (depends on team info)

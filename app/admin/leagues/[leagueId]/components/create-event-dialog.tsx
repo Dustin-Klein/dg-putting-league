@@ -5,7 +5,7 @@ import { formatForDatabase, formatDisplayDate } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { EventForm, type EventFormValues } from './event-form';
-import { EventData } from '@/lib/repositories/event-repository';
+import type { EventData } from '@/lib/repositories/event-repository.db';
 
 interface CreateEventDialogProps {
   leagueId: string;

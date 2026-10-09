@@ -4,6 +4,7 @@ import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin } from '@/lib/services/event';
+import { authorizeEventView } from '@/lib/services/auth';
 import { getEventTeams, Team } from '@/lib/services/team';
 import { autoAssignLanesTx } from '@/lib/services/lane';
 import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
@@ -11,7 +12,7 @@ import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
 import { assignLane, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
-import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { getEventAccessCode, getEventBracketConfig, getEventById } from '@/lib/repositories/event-repository.db';
 import { clearScoreOverrides } from '@/lib/repositories/match-scores-repository.db';
 import { setScoreOverride } from '@/lib/repositories/match-scores-repository.db';
 import { syncMatchScores } from '@/lib/services/scoring/match-scores';
@@ -33,7 +34,6 @@ import {
 import type { BracketMatchForReset, BracketResetContext } from '@/lib/repositories/bracket-repository';
 import { getPublicTeamsForEvent } from '@/lib/repositories/team-repository';
 import { getLanesForEvent } from '@/lib/repositories/lane-repository';
-import { getEventById, getEventAccessCode } from '@/lib/repositories/event-repository';
 import type { EventStatus } from '@/lib/types/event';
 import type {
   BracketWithTeams,
@@ -470,10 +470,10 @@ export async function createBracket(eventId: string): Promise<BracketData> {
  * Get public bracket data with teams and lanes
  */
 export async function getPublicBracket(eventId: string): Promise<BracketWithTeams> {
+  const { pg } = await authorizeEventView(eventId, 'bracket');
   const supabase = await createClient();
 
-  // Get event to check it exists and get status
-  const event = await getEventById(supabase, eventId);
+  const event = await getEventById(pg, eventId);
 
   if (!event) {
     throw new NotFoundError('Event not found');
@@ -596,13 +596,13 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   frameCountMap: Record<number, number>;
   progressionSourceMap: Record<number, MatchProgressionSources>;
 }> {
-  const { supabase } = await requireEventAdmin(eventId);
+  const { supabase, pg } = await requireEventAdmin(eventId);
 
   const [bracket, teams, event, accessCode, participantsWithTeams] = await Promise.all([
     getBracket(eventId),
     getEventTeams(eventId),
-    getEventById(supabase, eventId),
-    getEventAccessCode(supabase, eventId),
+    getEventById(pg, eventId),
+    getEventAccessCode(pg, eventId),
     getParticipantsWithTeamIds(supabase, eventId),
   ]);
 

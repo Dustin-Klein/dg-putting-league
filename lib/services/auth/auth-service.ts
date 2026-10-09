@@ -5,10 +5,10 @@ import { _createPrivilegedClient, type PrivilegedClient } from '@/lib/supabase/p
 import { _getDb, type Db } from '@/lib/db/client';
 import { UnauthorizedError, ForbiddenError, NotFoundError, InvalidAccessCodeError } from '@/lib/errors';
 import { getLeagueAdminRole, isAnyLeagueAdmin } from '@/lib/repositories/league-repository.db';
-import type { AccessCodeEvent } from '@/lib/repositories/event-repository';
 import {
   getEventAccess,
   getEventByAccessCode,
+  type AccessCodeEvent,
   type EventAccess,
 } from '@/lib/repositories/event-repository.db';
 import { normalizeAccessCode } from '@/lib/utils/access-code';
@@ -17,8 +17,7 @@ import { isPubliclyVisible, type EventVisibilityScope } from './visibility';
 
 export type { PrivilegedClient } from '@/lib/supabase/privileged';
 export type { Db } from '@/lib/db/client';
-export type { AccessCodeEvent } from '@/lib/repositories/event-repository';
-export type { EventAccess } from '@/lib/repositories/event-repository.db';
+export type { AccessCodeEvent, EventAccess } from '@/lib/repositories/event-repository.db';
 
 export async function requireAuthenticatedUser() {
     const supabase = await createClient();
