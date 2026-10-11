@@ -5,29 +5,12 @@ import {
 import { requireEventAdmin } from '@/lib/services/event';
 import type { Team } from '@/lib/types/team';
 import type { PoolAssignment } from '@/lib/services/event-player';
+import { buildTeamPairing, seedTeams, type TeamPairing } from './composition';
 import * as teamRepo from '@/lib/repositories/team-repository.db';
 
 // Re-export types for consumers
 export type { Team, TeamMember } from '@/lib/types/team';
-
-/**
- * Team member data structure for atomic transition
- */
-export interface TeamMemberPairing {
-  eventPlayerId: string;
-  role: 'A_pool' | 'B_pool';
-  slot: number;
-}
-
-/**
- * Team pairing data structure for atomic transition
- */
-export interface TeamPairing {
-  seed: number;
-  poolCombo: string;
-  combinedScore: number;
-  members: TeamMemberPairing[];
-}
+export * from './composition';
 
 /**
  * Generate a cryptographically secure random integer in [0, maxExclusive)
@@ -79,7 +62,7 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
  * Compute team pairings based on pool assignments without persisting.
  * This is used by the atomic transition RPC to pre-compute the data.
  *
- * Randomly pairs Pool A players with Pool B players.
+ * Randomly pairs Pool A players (slot 1) with Pool B players (slot 2).
  * Returns teams sorted by combined score (highest first) with seeds assigned.
  */
 export function computeTeamPairings(
@@ -101,29 +84,9 @@ export function computeTeamPairings(
   // Generate teams by randomly pairing Pool A with Pool B players
   const minPoolSize = Math.min(shuffledPoolA.length, shuffledPoolB.length);
   const teams: TeamPairing[] = [];
-
   for (let i = 0; i < minPoolSize; i++) {
-    const poolAPlayer = shuffledPoolA[i];
-    const poolBPlayer = shuffledPoolB[i];
-    const combinedScore = poolAPlayer.pfaScore + poolBPlayer.pfaScore;
-    const poolCombo = `${poolAPlayer.playerName} & ${poolBPlayer.playerName}`;
-
-    teams.push({
-      seed: 0, // Will be assigned after sorting by combined score
-      poolCombo,
-      combinedScore,
-      members: [
-        { eventPlayerId: poolAPlayer.eventPlayerId, role: 'A_pool', slot: 1 },
-        { eventPlayerId: poolBPlayer.eventPlayerId, role: 'B_pool', slot: 2 },
-      ],
-    });
+    teams.push(buildTeamPairing([shuffledPoolA[i], shuffledPoolB[i]]));
   }
 
-  // Sort teams by combined score (descending) and assign seeds
-  teams.sort((a, b) => b.combinedScore - a.combinedScore);
-  teams.forEach((team, index) => {
-    team.seed = index + 1;
-  });
-
-  return teams;
+  return seedTeams(teams);
 }

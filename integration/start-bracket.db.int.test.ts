@@ -4,6 +4,7 @@ import { MatchStatus } from '@/lib/types/bracket';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { buildDeterministicPairings, getBracketSnapshot, seedBracket, seedEvent } from './db/seed';
 import { startBracket } from '@/lib/services/event/event-service';
+import { STALE_PREVIEW_MESSAGE } from '@/lib/constants/event';
 
 const db = createTestDb();
 afterAll(() => closeDb(db));
@@ -61,9 +62,10 @@ describe('startBracket', () => {
       const event = await seedEvent(tx, { players: 4 });
       const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
       const foreign = '00000000-0000-0000-0000-000000000000';
-      teamPairings[1].members[1] = { eventPlayerId: foreign, role: 'B_pool', slot: 2 };
+      teamPairings[1].members[1] = { eventPlayerId: foreign, slot: 2 };
+      // Indistinguishable from a player removed since the preview, so it reads as a stale roster.
       await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toThrow(
-        'Teams must contain only players registered for this event'
+        STALE_PREVIEW_MESSAGE
       );
     });
   });

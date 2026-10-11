@@ -8,8 +8,8 @@ import {
 } from '@/lib/errors';
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
-import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
-import { computeTeamPairings } from '@/lib/services/team';
+import { assignPoolsFromScores, computePlayerScores, type PlayerScore } from '@/lib/services/event-player';
+import { computeTeamPairings, usesPools, type TeamFormat } from '@/lib/services/team';
 import {
   archiveGrandFinalResetMatchTx,
   createBracketTx,
@@ -34,7 +34,10 @@ import {
   type PlacementOpponent,
 } from './placements';
 import {
-  validatePreviewPayload,
+  assertRosterCurrent,
+  resolvePoolAssignments,
+  validatePoolPairing,
+  validateTeamComposition,
   type ProvidedPoolAssignment,
   type ProvidedTeamPairing,
 } from './preview';
@@ -384,25 +387,31 @@ export async function transitionEventToBracket(
   }
 
   // Use provided pairings if available, otherwise compute new ones
-  const recomputedPoolAssignments = await computePoolAssignments(eventId, event);
-  const poolAssignments = providedPoolAssignments ?? recomputedPoolAssignments;
-  const teamPairings = providedTeamPairings ?? computeTeamPairings(recomputedPoolAssignments);
+  const playerScores = await computePlayerScores(eventId, event);
+  const recomputedPools = assignPoolsFromScores(playerScores);
+  const poolAssignments = providedPoolAssignments ?? recomputedPools;
+  const teamPairings = providedTeamPairings ?? computeTeamPairings(recomputedPools);
 
-  await startBracket(pg, eventId, poolAssignments, teamPairings, recomputedPoolAssignments);
+  await startBracket(pg, eventId, poolAssignments, teamPairings, playerScores);
 }
 
 /**
  * Start bracket play for a pre-bracket event (the transactional part of
  * `transitionEventToBracket`). Callers authorize and validate first.
+ *
+ * The team format is read from the locked event row. Every format validates team
+ * composition; only the random doubles draw takes pool assignments and validates
+ * pool pairing. `playerScores` are the server-computed scores; when omitted they
+ * are taken from complete `poolAssignments`.
  */
 export async function startBracket(
   pg: Executor,
   eventId: string,
-  poolAssignments: ProvidedPoolAssignment[],
+  poolAssignments: ProvidedPoolAssignment[] | undefined,
   teamPairings: ProvidedTeamPairing[],
-  recomputedPoolAssignments?: PoolAssignment[]
+  playerScores?: PlayerScore[]
 ): Promise<void> {
-  const authoritativeAssignments = recomputedPoolAssignments ?? poolAssignments.map((assignment) => {
+  const authoritativeScores = playerScores ?? (poolAssignments ?? []).map((assignment) => {
     if (
       assignment.playerId === undefined ||
       assignment.playerName === undefined ||
@@ -416,7 +425,6 @@ export async function startBracket(
       eventPlayerId: assignment.eventPlayerId,
       playerId: assignment.playerId,
       playerName: assignment.playerName,
-      pool: assignment.pool,
       pfaScore: assignment.pfaScore,
       scoringMethod: assignment.scoringMethod,
       defaultPool: assignment.defaultPool,
@@ -434,32 +442,58 @@ export async function startBracket(
       throw new BadRequestError(`Event must be in pre-bracket status to start bracket play (current status: ${current.status})`);
     }
 
-    const eventPlayerIds = await eventPlayerDb.getEventPlayerIds(tx, eventId);
-    const validated = validatePreviewPayload({
-      currentEventPlayerIds: eventPlayerIds,
-      recomputedPoolAssignments: authoritativeAssignments,
-      providedPoolAssignments: poolAssignments,
-      providedTeamPairings: teamPairings,
-    });
+    const format: TeamFormat = { teamSize: current.team_size, teamAssignment: current.team_assignment };
+    const pools = usesPools(format);
+    if (pools && poolAssignments === undefined) {
+      throw new BadRequestError('Pool assignments are required for the random doubles draw');
+    }
+    if (!pools && poolAssignments !== undefined) {
+      throw new BadRequestError('Pool assignments apply only to the random doubles draw');
+    }
 
-    await eventPlayerDb.applyPoolAssignments(
+    const eventPlayerIds = await eventPlayerDb.getEventPlayerIds(tx, eventId);
+    assertRosterCurrent(eventPlayerIds, authoritativeScores);
+    const assignments = pools
+      ? resolvePoolAssignments({ players: authoritativeScores, providedPoolAssignments: poolAssignments! })
+      : null;
+    const teams = validateTeamComposition({
+      players: authoritativeScores,
+      teams: teamPairings,
+      teamSize: format.teamSize,
+    });
+    if (assignments) {
+      validatePoolPairing({ teams, assignments });
+    }
+
+    // Scores are recorded for every format; pool only for the random doubles draw.
+    const poolById = new Map(assignments?.map((a) => [a.eventPlayerId, a.pool]) ?? []);
+    await eventPlayerDb.applyPlayerScores(
       tx,
       eventId,
-      validated.poolAssignments.map((pa) => ({
-        event_player_id: pa.eventPlayerId,
-        pool: pa.pool,
-        pfa_score: pa.pfaScore,
-        scoring_method: pa.scoringMethod,
+      authoritativeScores.map((player) => ({
+        event_player_id: player.eventPlayerId,
+        pool: poolById.get(player.eventPlayerId) ?? null,
+        pfa_score: player.pfaScore,
+        scoring_method: player.scoringMethod,
       }))
     );
 
+    // team_members.role is written only where it is true (pool-paired doubles), until it is dropped.
+    const roleOf = (eventPlayerId: string) => {
+      const pool = poolById.get(eventPlayerId);
+      return pool ? (`${pool}_pool` as const) : null;
+    };
     await teamDb.insertTeamsWithMembers(
       tx,
       eventId,
-      validated.teamPairings.map((tp) => ({
+      teams.map((tp) => ({
         seed: tp.seed,
         pool_combo: tp.poolCombo,
-        members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role, slot: m.slot })),
+        members: tp.members.map((m) => ({
+          event_player_id: m.eventPlayerId,
+          role: roleOf(m.eventPlayerId),
+          slot: m.slot,
+        })),
       }))
     );
 

@@ -9,7 +9,7 @@ import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 const teamMemberSchema = z.object({
   eventPlayerId: z.string(),
-  role: z.enum(['A_pool', 'B_pool']),
+  slot: z.number().int().min(1),
 });
 
 const startBracketSchema = z.object({

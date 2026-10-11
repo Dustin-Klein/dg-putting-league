@@ -4,7 +4,7 @@ import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { InternalError, NotFoundError } from '@/lib/errors';
-import type { EventStatus, PayoutPlace } from '@/lib/types/event';
+import type { EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
 import type { Team, TeamMember } from '@/lib/types/team';
 import type { LeagueAdminRole } from './league-repository.db';
@@ -27,6 +27,8 @@ export interface EventData {
   admin_fee_per_player: number | null;
   payout_pool_override: number | null;
   payout_structure: PayoutPlace[] | null;
+  team_size: number;
+  team_assignment: TeamAssignment;
   created_at: string;
 }
 
@@ -65,6 +67,8 @@ const eventSelection = {
   admin_fee_per_player: events.admin_fee_per_player,
   payout_pool_override: events.payout_pool_override,
   payout_structure: events.payout_structure,
+  team_size: events.team_size,
+  team_assignment: events.team_assignment,
   created_at: events.created_at,
 };
 
@@ -352,6 +356,8 @@ export interface EventBracketConfig {
   bracket_frame_count: number;
   double_grand_final: boolean;
   lane_count: number;
+  team_size: number;
+  team_assignment: TeamAssignment;
 }
 
 export async function getEventBracketConfig(
@@ -366,6 +372,8 @@ export async function getEventBracketConfig(
     bracket_frame_count: events.bracket_frame_count,
     double_grand_final: events.double_grand_final,
     lane_count: events.lane_count,
+    team_size: events.team_size,
+    team_assignment: events.team_assignment,
   }).from(events).where(eq(events.id, eventId));
   const rows = opts.lock ? await query.for(opts.lock) : await query;
   return rows[0] ?? null;

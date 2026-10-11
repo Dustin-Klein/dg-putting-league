@@ -125,11 +125,11 @@ describe('Team Service', () => {
       // Teams should be sorted by combined score (descending)
       expect(result[0].seed).toBe(1);
       expect(result[1].seed).toBe(2);
-      // Each team should have one A_pool and one B_pool member
+      // Each team should have its Pool A member in slot 1 and Pool B member in slot 2
+      const poolOf = new Map(poolAssignments.map((pa) => [pa.eventPlayerId, pa.pool]));
       result.forEach((team) => {
         expect(team.members).toHaveLength(2);
-        expect(team.members.some((m) => m.role === 'A_pool')).toBe(true);
-        expect(team.members.some((m) => m.role === 'B_pool')).toBe(true);
+        expect(team.members.map((m) => [m.slot, poolOf.get(m.eventPlayerId)])).toEqual([[1, 'A'], [2, 'B']]);
       });
     });
 
@@ -313,11 +313,11 @@ describe('Team Service', () => {
       const result = computeTeamPairings(poolAssignments);
 
       expect(result).toHaveLength(2);
-      // Each team should have one A_pool and one B_pool member
+      // Each team should have its Pool A member in slot 1 and Pool B member in slot 2
+      const poolOf = new Map(poolAssignments.map((pa) => [pa.eventPlayerId, pa.pool]));
       result.forEach((team) => {
         expect(team.members).toHaveLength(2);
-        expect(team.members.some((m) => m.role === 'A_pool')).toBe(true);
-        expect(team.members.some((m) => m.role === 'B_pool')).toBe(true);
+        expect(team.members.map((m) => [m.slot, poolOf.get(m.eventPlayerId)])).toEqual([[1, 'A'], [2, 'B']]);
       });
       // Combined scores should be correct
       const totalScore = result.reduce((sum, t) => sum + t.combinedScore, 0);

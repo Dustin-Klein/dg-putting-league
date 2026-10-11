@@ -281,7 +281,7 @@ export async function getTeamMemberIds(ex: Executor, teamIds: string[]): Promise
 export interface NewTeam {
   seed: number;
   pool_combo: string;
-  members: Array<{ event_player_id: string; role: string; slot: number }>;
+  members: Array<{ event_player_id: string; role: 'A_pool' | 'B_pool' | null; slot: number }>;
 }
 
 /**
