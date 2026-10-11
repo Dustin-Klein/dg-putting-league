@@ -66,3 +66,49 @@ export function describeTeamFormat(teamSize: number, teamAssignment: TeamAssignm
   }[teamAssignment];
   return `${size}, ${method}`;
 }
+
+/** A manual team draft: one array per team, one event player id (or null) per slot. */
+export type TeamDraft = Array<Array<string | null>>;
+
+/** An empty draft with one row per team. */
+export function emptyTeamDraft(playerCount: number, teamSize: number): TeamDraft {
+  return Array.from({ length: Math.floor(playerCount / teamSize) }, () => Array<string | null>(teamSize).fill(null));
+}
+
+/**
+ * Why a draft can't be submitted yet, or null when every player is on exactly one
+ * full team. For feedback only; the server validates the submission itself.
+ */
+export function teamDraftProblem(draft: TeamDraft, playerIds: string[], teamSize: number): string | null {
+  const over = playerIds.length % teamSize;
+  if (over !== 0) {
+    return `${playerIds.length} players can't be split into teams of ${teamSize}`;
+  }
+  const placed = draft.flat().filter((id): id is string => id !== null);
+  if (new Set(placed).size !== placed.length) {
+    return 'A player is on more than one team';
+  }
+  const unassigned = playerIds.filter((id) => !placed.includes(id)).length;
+  if (unassigned > 0) {
+    return `${unassigned} player${unassigned === 1 ? '' : 's'} not on a team yet`;
+  }
+  if (placed.some((id) => !playerIds.includes(id))) {
+    return 'The roster changed; clear the teams and start again';
+  }
+  return null;
+}
+
+/** Team pairings to submit for a complete draft, slots numbered by position. */
+export function teamDraftToPairings(draft: TeamDraft): TeamPairing[] {
+  return draft.map((team) => ({
+    seed: 0,
+    poolCombo: '',
+    combinedScore: 0,
+    members: team.map((eventPlayerId, index) => ({ eventPlayerId: eventPlayerId!, slot: index + 1 })),
+  }));
+}
+
+/** A draft from a server draw, so an organizer can start from it and edit. */
+export function teamDraftFromPairings(pairings: TeamPairing[]): TeamDraft {
+  return pairings.map((team) => sortBySlot(team.members).map((member) => member.eventPlayerId));
+}

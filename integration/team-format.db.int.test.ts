@@ -1,6 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
-import { event_placements, event_players, events, team_members, teams } from '@/lib/db/schema';
+import { event_placements, event_players, events, players, team_members, teams } from '@/lib/db/schema';
 import type { Executor, Tx } from '@/lib/db/tx';
+import { STALE_PREVIEW_MESSAGE } from '@/lib/constants/event';
 import {
   getEventWithPlayers,
   previewTeams,
@@ -8,6 +9,7 @@ import {
   updateEventSettingsTx,
 } from '@/lib/services/event/event-service';
 import type { TeamAssignment } from '@/lib/types/event';
+import type { TeamPairing } from '@/lib/types/team';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, seedEvent, type SeededEvent } from './db/seed';
 import { expectScoresMatchFrames, playOutBracket } from './db/play';
@@ -98,6 +100,71 @@ describe('team formats end to end', () => {
       expect(placements.filter((p) => p.placement === 1)).toHaveLength(1);
       const [row] = await tx.select({ status: events.status }).from(events).where(eq(events.id, event.eventId));
       expect(row.status).toBe('completed');
+    });
+  });
+
+  it('keeps the organizer’s exact manual doubles pairings and leaves pools unset', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedFormat(tx, 8, 2, 'manual');
+      const ids = event.eventPlayerIds;
+
+      const preview = await previewTeams(event.eventId);
+      expect(preview.teamPairings).toEqual([]);
+      expect(preview.players).toHaveLength(8);
+
+      // Pair first with last, and put the later player in slot 1.
+      const pairings = [0, 1, 2, 3].map((i) => ({
+        seed: 99,
+        poolCombo: 'forged',
+        combinedScore: 1000,
+        members: [
+          { eventPlayerId: ids[7 - i], slot: 1 },
+          { eventPlayerId: ids[i], slot: 2 },
+        ],
+      }));
+      await transitionEventToBracket(event.eventId, await getEventWithPlayers(event.eventId), undefined, pairings);
+
+      const stored = await storedTeams(tx, event.eventId);
+      expect(stored).toHaveLength(4);
+      const asPairs = stored.map((members) => members.map((m) => [m.slot, m.eventPlayerId, m.role]));
+      for (const pairing of pairings) {
+        expect(asPairs).toContainEqual(pairing.members.map((m) => [m.slot, m.eventPlayerId, null]));
+      }
+      const teamRows = await tx.select().from(teams).where(eq(teams.event_id, event.eventId));
+      expect(teamRows.every((team) => team.pool_combo !== 'forged' && team.seed !== 99)).toBe(true);
+
+      const entries = await storedEntries(tx, event.eventId);
+      expect(entries.every((entry) => entry.pool === null)).toBe(true);
+
+      await completeEvent(tx, event.eventId);
+      const placements = await tx.select().from(event_placements).where(eq(event_placements.event_id, event.eventId));
+      expect(placements).toHaveLength(4);
+    });
+  });
+
+  it.each([
+    ['added', async (tx: Executor, event: SeededEvent) => {
+      const [player] = await tx.insert(players).values({ full_name: 'Late Player' }).returning({ id: players.id });
+      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash' });
+    }],
+    ['removed', async (tx: Executor, event: SeededEvent) => {
+      await tx.delete(event_players).where(eq(event_players.id, event.eventPlayerIds[3]));
+    }],
+  ])('rejects a manual submission after a player is %s', async (_change, changeRoster) => {
+    await withRollback(db, async (tx) => {
+      const event = await seedFormat(tx, 4, 2, 'manual');
+      const snapshot = await getEventWithPlayers(event.eventId);
+      const pairings: TeamPairing[] = [
+        { seed: 0, poolCombo: '', combinedScore: 0, members: [{ eventPlayerId: event.eventPlayerIds[0], slot: 1 }, { eventPlayerId: event.eventPlayerIds[1], slot: 2 }] },
+        { seed: 0, poolCombo: '', combinedScore: 0, members: [{ eventPlayerId: event.eventPlayerIds[2], slot: 1 }, { eventPlayerId: event.eventPlayerIds[3], slot: 2 }] },
+      ];
+
+      await changeRoster(tx, event);
+
+      await expect(transitionEventToBracket(event.eventId, snapshot, undefined, pairings)).rejects.toThrow(
+        STALE_PREVIEW_MESSAGE
+      );
+      expect(await tx.select().from(teams).where(eq(teams.event_id, event.eventId))).toHaveLength(0);
     });
   });
 
