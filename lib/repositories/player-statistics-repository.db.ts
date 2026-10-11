@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Executor } from '@/lib/db/tx';
 import { toIsoTimestamp } from '@/lib/db/mappers';
@@ -128,7 +128,7 @@ export async function getPlayerParticipations(
 
   const rows = await query
     .where(and(eq(event_players.player_id, playerId), visibility))
-    .orderBy(desc(event_players.created_at));
+    .orderBy(desc(event_players.created_at), asc(teammateMember.slot));
 
   const participations: EventParticipation[] = [];
   const teamInfoMap = new Map<string, TeamInfo>();
@@ -149,7 +149,11 @@ export async function getPlayerParticipations(
       });
     }
 
-    if (row.teamId && row.seed !== null && !teamInfoMap.has(row.eventPlayerId)) {
+    const known = teamInfoMap.get(row.eventPlayerId);
+    if (known && row.teammateName) {
+      // Teams of three or more: one row per teammate, joined in slot order.
+      known.teammateName = known.teammateName ? `${known.teammateName} & ${row.teammateName}` : row.teammateName;
+    } else if (row.teamId && row.seed !== null && !known) {
       teamInfoMap.set(row.eventPlayerId, {
         eventPlayerId: row.eventPlayerId,
         teamId: row.teamId,

@@ -12,6 +12,15 @@ interface TeamDisplayProps {
 
 export function TeamDisplay({ event }: TeamDisplayProps) {
   const teams = event.teams || [];
+  const pooled = event.team_size === 2 && event.team_assignment === 'random_pairing';
+  const formationDetail =
+    event.team_size === 1
+      ? 'Every player enters the bracket on their own'
+      : pooled
+        ? 'Teams are formed with 1 player from Pool A and 1 player from Pool B'
+        : event.team_assignment === 'manual'
+          ? `Teams of ${event.team_size} were picked by the organizer`
+          : `Teams of ${event.team_size} were drawn at random from all players`;
   // Column headers follow the first team's slots: pool names when the event drew
   // from pools, otherwise player positions.
   const slotHeaders = sortBySlot(teams[0]?.team_members ?? []).map((member) =>
@@ -93,14 +102,20 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
       <div className="bg-muted/50 rounded-lg p-4">
         <h3 className="font-medium mb-2">Team Generation Details</h3>
         <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• Teams are formed with 1 player from Pool A and 1 player from Pool B</li>
-          <li>• Teams are seeded based on combined scores (lower seed = higher combined score)</li>
+          <li>• {formationDetail}</li>
+          <li>
+            • {event.team_size === 1 ? 'Players are seeded by score' : 'Teams are seeded based on combined scores'}
+            {' '}(lower seed = higher score)
+          </li>
           {event.qualification_round_enabled ? (
             <li>• Scores based on qualification round performance</li>
           ) : (
             <>
               <li>• Scores based on PFA (Per Frame Average) from the last 18 months</li>
-              <li>• Players with no frame history show &quot;X&quot; and are assigned pools by default pool setting</li>
+              <li>
+                • Players with no frame history show &quot;X&quot;
+                {pooled && ' and are assigned pools by default pool setting'}
+              </li>
             </>
           )}
         </ul>

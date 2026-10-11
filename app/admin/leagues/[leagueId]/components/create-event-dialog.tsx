@@ -40,6 +40,8 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
           entry_fee_per_player: values.entry_fee_per_player ?? null,
           admin_fees: values.admin_fees ?? null,
           admin_fee_per_player: values.admin_fee_per_player ?? null,
+          team_size: values.team_size,
+          team_assignment: values.team_assignment,
           ...(copyFromEventId ? { copy_players_from_event_id: copyFromEventId } : {}),
         }),
       });
