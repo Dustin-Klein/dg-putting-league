@@ -142,17 +142,18 @@ export async function getEventPlayerIds(ex: Executor, eventId: string): Promise<
   return rows.map((r) => r.id);
 }
 
-export interface PoolAssignmentRow {
+export interface PlayerScoreRow {
   event_player_id: string;
-  pool: 'A' | 'B';
+  /** Null for every format but the random doubles draw. */
+  pool: 'A' | 'B' | null;
   pfa_score: number;
   scoring_method: string;
 }
 
-export async function applyPoolAssignments(
+export async function applyPlayerScores(
   ex: Executor,
   eventId: string,
-  assignments: PoolAssignmentRow[]
+  assignments: PlayerScoreRow[]
 ): Promise<void> {
   for (const a of assignments) {
     const updated = await ex.update(event_players)

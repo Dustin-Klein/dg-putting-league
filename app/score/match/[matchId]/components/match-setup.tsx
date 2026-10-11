@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Play, Users } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { MatchStatus, getStatusLabel } from '@/lib/types/bracket';
+import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 import type { MatchInfo, PlayerInfo, TeamInfo } from './wizard-types';
 
 interface MatchSetupProps {
@@ -131,7 +132,7 @@ function TeamCard({ team, teamNumber }: TeamCardProps) {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-2">
-          {team.players.map((player) => (
+          {sortBySlot(team.players).map((player) => (
             <PlayerDisplay key={player.event_player_id} player={player} />
           ))}
         </div>
@@ -149,9 +150,11 @@ function PlayerDisplay({ player }: { player: PlayerInfo }) {
           <div className="text-xs text-muted-foreground">&quot;{player.nickname}&quot;</div>
         )}
       </div>
-      <Badge variant="secondary" className="text-xs">
-        {player.role === 'A_pool' ? 'Pool A' : 'Pool B'}
-      </Badge>
+      {player.pool && (
+        <Badge variant="secondary" className="text-xs">
+          {poolLabel(player.pool)}
+        </Badge>
+      )}
     </div>
   );
 }

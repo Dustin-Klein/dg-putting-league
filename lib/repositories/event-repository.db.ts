@@ -1,12 +1,12 @@
 import 'server-only';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { InternalError, NotFoundError } from '@/lib/errors';
-import type { EventStatus, PayoutPlace } from '@/lib/types/event';
+import type { EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
-import type { Team, TeamMember } from '@/lib/types/team';
+import type { Team } from '@/lib/types/team';
 import type { LeagueAdminRole } from './league-repository.db';
 
 export interface EventData {
@@ -27,6 +27,8 @@ export interface EventData {
   admin_fee_per_player: number | null;
   payout_pool_override: number | null;
   payout_structure: PayoutPlace[] | null;
+  team_size: number;
+  team_assignment: TeamAssignment;
   created_at: string;
 }
 
@@ -65,6 +67,8 @@ const eventSelection = {
   admin_fee_per_player: events.admin_fee_per_player,
   payout_pool_override: events.payout_pool_override,
   payout_structure: events.payout_structure,
+  team_size: events.team_size,
+  team_assignment: events.team_assignment,
   created_at: events.created_at,
 };
 
@@ -149,12 +153,13 @@ export async function getEventWithPlayers(
       created_at: teams.created_at,
       member_team_id: team_members.team_id,
       event_player_id: team_members.event_player_id,
-      role: team_members.role,
+      slot: team_members.slot,
       joined_at: team_members.joined_at,
     })
     .from(teams)
     .leftJoin(team_members, eq(team_members.team_id, teams.id))
-    .where(eq(teams.event_id, eventId));
+    .where(eq(teams.event_id, eventId))
+    .orderBy(asc(teams.seed), asc(team_members.slot));
 
   const teamsById = new Map<string, Team>();
   for (const row of teamRows) {
@@ -170,13 +175,13 @@ export async function getEventWithPlayers(
       } as Team;
       teamsById.set(row.id, team);
     }
-    if (row.event_player_id && row.member_team_id && row.role && row.joined_at) {
+    if (row.event_player_id && row.member_team_id && row.slot !== null && row.joined_at) {
       const eventPlayer = eventPlayerById.get(row.event_player_id);
       if (!eventPlayer) throw new InternalError('Team member references an event player outside the event');
       team.team_members.push({
         team_id: row.member_team_id,
         event_player_id: row.event_player_id,
-        role: row.role as TeamMember['role'],
+        slot: row.slot,
         joined_at: toIsoTimestamp(row.joined_at),
         event_player: eventPlayer,
       });
@@ -285,6 +290,8 @@ export interface CreateEventData {
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
+  team_size?: number;
+  team_assignment?: TeamAssignment;
   status: EventStatus;
 }
 
@@ -352,6 +359,8 @@ export interface EventBracketConfig {
   bracket_frame_count: number;
   double_grand_final: boolean;
   lane_count: number;
+  team_size: number;
+  team_assignment: TeamAssignment;
 }
 
 export async function getEventBracketConfig(
@@ -366,6 +375,8 @@ export async function getEventBracketConfig(
     bracket_frame_count: events.bracket_frame_count,
     double_grand_final: events.double_grand_final,
     lane_count: events.lane_count,
+    team_size: events.team_size,
+    team_assignment: events.team_assignment,
   }).from(events).where(eq(events.id, eventId));
   const rows = opts.lock ? await query.for(opts.lock) : await query;
   return rows[0] ?? null;
@@ -378,7 +389,12 @@ export async function setEventStatus(ex: Executor, eventId: string, status: Even
 export async function updateEventSettings(
   ex: Executor,
   eventId: string,
-  patch: { status?: EventStatus; double_grand_final?: boolean }
+  patch: {
+    status?: EventStatus;
+    double_grand_final?: boolean;
+    team_size?: number;
+    team_assignment?: TeamAssignment;
+  }
 ): Promise<void> {
   if (Object.keys(patch).length > 0) await ex.update(events).set(patch).where(eq(events.id, eventId));
 }

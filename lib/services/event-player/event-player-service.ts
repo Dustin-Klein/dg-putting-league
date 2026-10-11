@@ -20,16 +20,23 @@ export function getPfaSinceDate(): Date {
 }
 
 /**
- * Pool assignment data structure for atomic transition
+ * A player's server-computed seeding score: qualification total when the event
+ * has a qualification round, otherwise PFA.
  */
-export interface PoolAssignment {
+export interface PlayerScore {
   eventPlayerId: string;
   playerId: string;
   playerName: string;
-  pool: 'A' | 'B';
   pfaScore: number;
   scoringMethod: 'qualification' | 'pfa' | 'default';
   defaultPool: 'A' | 'B';
+}
+
+/**
+ * Pool assignment data structure for atomic transition
+ */
+export interface PoolAssignment extends PlayerScore {
+  pool: 'A' | 'B';
 }
 
 /**
@@ -148,15 +155,13 @@ function assignPools(players: PoolInput[]): { pool: 'A' | 'B' }[] {
 }
 
 /**
- * Compute pool assignments for all players in an event without persisting.
- * Used by transitionEventToBracket, which persists the assignments when the bracket starts.
- *
- * Returns an array of pool assignments sorted by score (top half -> Pool A, bottom half -> Pool B)
+ * Compute every player's seeding score without persisting.
+ * Used by transitionEventToBracket, which persists the scores when the bracket starts.
  */
-export async function computePoolAssignments(
+export async function computePlayerScores(
   eventId: string,
   event: EventWithDetails
-): Promise<PoolAssignment[]> {
+): Promise<PlayerScore[]> {
   const { pg } = await requireEventAdmin(eventId);
 
   if (!event.players || event.players.length === 0) {
@@ -228,20 +233,30 @@ export async function computePoolAssignments(
     });
   }
 
-  const computed = assignPools(playersWithScores.map(p => ({
-    score: p.score,
+  return playersWithScores.map((player) => ({
+    eventPlayerId: player.eventPlayerId,
+    playerId: player.playerId,
+    playerName: player.playerName,
+    pfaScore: player.score,
+    scoringMethod: player.scoringMethod,
+    defaultPool: player.defaultPool,
+  }));
+}
+
+/**
+ * Split players into Pool A (top half) and Pool B (bottom half), honoring default
+ * pools for unscored players. Sorted Pool A first, then by score.
+ */
+export function assignPoolsFromScores(players: PlayerScore[]): PoolAssignment[] {
+  const computed = assignPools(players.map(p => ({
+    score: p.pfaScore,
     scoringMethod: p.scoringMethod,
     defaultPool: p.defaultPool,
   })));
 
-  const assignments: PoolAssignment[] = playersWithScores.map((player, i) => ({
-    eventPlayerId: player.eventPlayerId,
-    playerId: player.playerId,
-    playerName: player.playerName,
+  const assignments: PoolAssignment[] = players.map((player, i) => ({
+    ...player,
     pool: computed[i].pool,
-    pfaScore: player.score,
-    scoringMethod: player.scoringMethod,
-    defaultPool: player.defaultPool,
   }));
 
   return assignments.sort((a, b) => {
@@ -250,4 +265,16 @@ export async function computePoolAssignments(
     }
     return b.pfaScore - a.pfaScore;
   });
+}
+
+/**
+ * Compute pool assignments for all players in an event without persisting.
+ *
+ * Returns an array of pool assignments sorted by score (top half -> Pool A, bottom half -> Pool B)
+ */
+export async function computePoolAssignments(
+  eventId: string,
+  event: EventWithDetails
+): Promise<PoolAssignment[]> {
+  return assignPoolsFromScores(await computePlayerScores(eventId, event));
 }

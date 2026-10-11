@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
+import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 
 interface MatchResultsDialogProps {
   match: Match | null;
@@ -184,13 +185,15 @@ export function MatchResultsDialog({
                                 {matchDetails.team_one.pool_combo}
                               </td>
                             </tr>
-                            {matchDetails.team_one.players.map((player) => (
+                            {sortBySlot(matchDetails.team_one.players).map((player) => (
                               <tr key={player.event_player_id} className="border-b">
                                 <td className="p-3">
                                   <div className="font-medium">{player.player.full_name}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {player.role === 'A_pool' ? 'Pool A' : 'Pool B'}
-                                  </div>
+                                  {player.pool && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {poolLabel(player.pool)}
+                                    </div>
+                                  )}
                                 </td>
                                 {frameNumbers.map((frameNum) => {
                                   const score = getPlayerScore(player.event_player_id, frameNum);
@@ -224,13 +227,15 @@ export function MatchResultsDialog({
                                 {matchDetails.team_two.pool_combo}
                               </td>
                             </tr>
-                            {matchDetails.team_two.players.map((player) => (
+                            {sortBySlot(matchDetails.team_two.players).map((player) => (
                               <tr key={player.event_player_id} className="border-b">
                                 <td className="p-3">
                                   <div className="font-medium">{player.player.full_name}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {player.role === 'A_pool' ? 'Pool A' : 'Pool B'}
-                                  </div>
+                                  {player.pool && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {poolLabel(player.pool)}
+                                    </div>
+                                  )}
                                 </td>
                                 {frameNumbers.map((frameNum) => {
                                   const score = getPlayerScore(player.event_player_id, frameNum);

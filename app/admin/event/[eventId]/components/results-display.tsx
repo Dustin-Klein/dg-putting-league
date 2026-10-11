@@ -6,6 +6,8 @@ import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Badge } from '@/components/ui/badge';
+import { PoolBadge } from '@/components/pool-badge';
+import { sortBySlot } from '@/lib/utils/team-utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Trophy, Medal, Award } from 'lucide-react';
 
@@ -280,12 +282,7 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
           </TableHeader>
           <TableBody>
             {placements.map((placement) => {
-              const poolAMember = placement.team.team_members?.find(
-                (m) => m.role === 'A_pool'
-              );
-              const poolBMember = placement.team.team_members?.find(
-                (m) => m.role === 'B_pool'
-              );
+              const members = sortBySlot(placement.team.team_members ?? []);
 
               return (
                 <TableRow key={placement.team.id}>
@@ -308,36 +305,21 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
                   </TableCell>
                   <TableCell>
                     <div className="space-y-1">
-                      {poolAMember && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="text-xs">A</Badge>
-                          {poolAMember.event_player.player.player_number ? (
+                      {members.map((member) => (
+                        <div key={member.event_player_id} className="flex items-center gap-2">
+                          <PoolBadge pool={member.event_player.pool} className="text-xs" />
+                          {member.event_player.player.player_number ? (
                             <Link
-                              href={`/player/${poolAMember.event_player.player.player_number}`}
+                              href={`/player/${member.event_player.player.player_number}`}
                               className="hover:underline"
                             >
-                              {poolAMember.event_player.player.full_name}
+                              {member.event_player.player.full_name}
                             </Link>
                           ) : (
-                            <span>{poolAMember.event_player.player.full_name}</span>
+                            <span>{member.event_player.player.full_name}</span>
                           )}
                         </div>
-                      )}
-                      {poolBMember && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="text-xs bg-blue-500">B</Badge>
-                          {poolBMember.event_player.player.player_number ? (
-                            <Link
-                              href={`/player/${poolBMember.event_player.player.player_number}`}
-                              className="hover:underline"
-                            >
-                              {poolBMember.event_player.player.full_name}
-                            </Link>
-                          ) : (
-                            <span>{poolBMember.event_player.player.full_name}</span>
-                          )}
-                        </div>
-                      )}
+                      ))}
                     </div>
                   </TableCell>
                   <TableCell>

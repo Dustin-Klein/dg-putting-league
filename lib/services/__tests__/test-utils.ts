@@ -205,6 +205,8 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     admin_fee_per_player: null,
     payout_pool_override: null,
     payout_structure: null,
+    team_size: 2,
+    team_assignment: 'random_pairing',
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
     ...overrides,
@@ -229,6 +231,8 @@ export interface MockEvent {
   admin_fee_per_player: number | null;
   payout_pool_override: number | null;
   payout_structure: { place: number; percentage: number }[] | null;
+  team_size: number;
+  team_assignment: 'random_pairing' | 'random_flat' | 'manual';
   created_at: string;
   putt_distance_ft: number;
   participant_count?: number;
@@ -324,7 +328,7 @@ export interface MockTeamMember {
   id: string;
   team_id: string;
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  slot: number;
 }
 
 /**
@@ -545,13 +549,13 @@ export function createMockTeamsFromPlayers(
             id: `member-a-${i + 1}`,
             team_id: `team-${i + 1}`,
             event_player_id: poolA[i].id,
-            role: 'A_pool',
+            slot: 1,
           },
           {
             id: `member-b-${i + 1}`,
             team_id: `team-${i + 1}`,
             event_player_id: poolB[i].id,
-            role: 'B_pool',
+            slot: 2,
           },
         ],
       })

@@ -1,6 +1,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
-import { EventWithDetails, PayoutPlace } from '@/lib/types/event';
+import { EventWithDetails, PayoutPlace, type TeamAssignment } from '@/lib/types/event';
+import type { TeamPreview } from '@/lib/types/team';
 import {
   BadRequestError,
   ConflictError,
@@ -8,8 +9,14 @@ import {
 } from '@/lib/errors';
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
-import { computePoolAssignments, PoolAssignment } from '@/lib/services/event-player';
-import { computeTeamPairings } from '@/lib/services/team';
+import { assignPoolsFromScores, computePlayerScores, type PlayerScore } from '@/lib/services/event-player';
+import {
+  computeTeamPairings,
+  teamFormatError,
+  teamSizeShortfallMessage,
+  usesPools,
+  type TeamFormat,
+} from '@/lib/services/team';
 import {
   archiveGrandFinalResetMatchTx,
   createBracketTx,
@@ -34,7 +41,10 @@ import {
   type PlacementOpponent,
 } from './placements';
 import {
-  validatePreviewPayload,
+  assertRosterCurrent,
+  resolvePoolAssignments,
+  validatePoolPairing,
+  validateTeamComposition,
   type ProvidedPoolAssignment,
   type ProvidedTeamPairing,
 } from './preview';
@@ -100,10 +110,20 @@ export async function createEvent(data: {
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
+  team_size?: number;
+  team_assignment?: TeamAssignment;
   copy_players_from_event_id?: string;
 }) {
   // 1. Auth check
   const { user, pg } = await authorizeLeagueAdmin(data.league_id);
+
+  const formatError = teamFormatError({
+    teamSize: data.team_size ?? 2,
+    teamAssignment: data.team_assignment ?? 'random_pairing',
+  });
+  if (formatError) {
+    throw new BadRequestError(formatError);
+  }
 
   // 2. Normalize and check access code uniqueness (across all leagues)
   const accessCode = normalizeAccessCode(data.access_code);
@@ -202,10 +222,9 @@ export async function validateEventStatusTransition(
 
   // Validation for pre-bracket to bracket transition
   if (currentStatus === 'pre-bracket' && newStatus === 'bracket') {
-    if (currentEvent.players.length % 2 !== 0) {
-      throw new BadRequestError(
-        'An even number of players is required before starting bracket play'
-      );
+    const shortfall = teamSizeShortfallMessage(currentEvent.players.length, currentEvent.team_size);
+    if (shortfall) {
+      throw new BadRequestError(`${shortfall} before starting bracket play`);
     }
 
     // Always check payment
@@ -257,6 +276,8 @@ function validateStatusFlow(currentStatus: string, newStatus: string): void {
 export interface UpdateEventSettingsPatch {
   status?: 'created' | 'pre-bracket' | 'completed';
   double_grand_final?: boolean;
+  team_size?: number;
+  team_assignment?: TeamAssignment;
   force?: boolean;
 }
 
@@ -292,6 +313,20 @@ export async function updateEventSettingsTx(
 
   if (patch.status) {
     validateStatusFlow(current.status, patch.status);
+  }
+
+  if (patch.team_size !== undefined || patch.team_assignment !== undefined) {
+    // Teams are formed when bracket play starts; after that the format is history.
+    if (current.status !== 'created' && current.status !== 'pre-bracket') {
+      throw new BadRequestError('Team format can only be changed before bracket play starts');
+    }
+    const formatError = teamFormatError({
+      teamSize: patch.team_size ?? current.team_size,
+      teamAssignment: patch.team_assignment ?? current.team_assignment,
+    });
+    if (formatError) {
+      throw new BadRequestError(formatError);
+    }
   }
 
   if (current.status === 'bracket' && patch.status === 'completed') {
@@ -345,6 +380,8 @@ export async function updateEventSettingsTx(
     ...(patch.double_grand_final !== undefined
       ? { double_grand_final: patch.double_grand_final }
       : {}),
+    ...(patch.team_size !== undefined ? { team_size: patch.team_size } : {}),
+    ...(patch.team_assignment !== undefined ? { team_assignment: patch.team_assignment } : {}),
   });
 }
 
@@ -360,49 +397,105 @@ export async function updateEvent(
 }
 
 /**
+ * Preview the teams for a pre-bracket event without persisting anything.
+ * Random formats return the server's draw; manual assignment returns the roster
+ * with scores and no teams, for the organizer to build.
+ */
+export async function previewTeams(eventId: string): Promise<TeamPreview> {
+  await requireEventAdmin(eventId);
+  const event = await getEventWithPlayers(eventId);
+  if (event.status !== 'pre-bracket') {
+    throw new BadRequestError('Team preview is only available for events in pre-bracket status');
+  }
+
+  const format: TeamFormat = { teamSize: event.team_size, teamAssignment: event.team_assignment };
+  const playerScores = await computePlayerScores(eventId, event);
+  const entrants: Array<PlayerScore & { pool: 'A' | 'B' | null }> = usesPools(format)
+    ? assignPoolsFromScores(playerScores)
+    : playerScores.map((player) => ({ ...player, pool: null }));
+  const teamPairings = format.teamAssignment === 'manual' ? [] : computeTeamPairings(format, entrants);
+
+  return {
+    teamSize: format.teamSize,
+    teamAssignment: format.teamAssignment,
+    players: entrants.map((entrant) => ({
+      eventPlayerId: entrant.eventPlayerId,
+      playerName: entrant.playerName,
+      pfaScore: entrant.pfaScore,
+      scoringMethod: entrant.scoringMethod,
+      pool: entrant.pool,
+    })),
+    teamPairings,
+  };
+}
+
+/**
  * Handle the transition from pre-bracket to bracket status, in one transaction:
- * pool assignments, teams, lanes, event status, bracket structure and initial lane
- * assignments all commit together or not at all.
+ * player scores (and pools, for the random doubles draw), teams, lanes, event status,
+ * bracket structure and initial lane assignments all commit together or not at all.
  *
  * @param eventId - The event ID
  * @param event - The event with details
- * @param providedPoolAssignments - Optional pre-computed pool assignments (from preview)
- * @param providedTeamPairings - Optional pre-computed team pairings (from preview)
+ * @param providedPoolAssignments - Pool choice from the preview; random doubles draw only
+ * @param providedTeamPairings - Teams from the preview; required for manual assignment
+ * @param options.teamAssignment - 'manual' when the organizer hand-edited a random draw;
+ *   recorded on the event in the same transaction that starts the bracket
  */
 export async function transitionEventToBracket(
   eventId: string,
   event: EventWithDetails,
   providedPoolAssignments?: ProvidedPoolAssignment[],
-  providedTeamPairings?: ProvidedTeamPairing[]
+  providedTeamPairings?: ProvidedTeamPairing[],
+  options: { teamAssignment?: 'manual' } = {}
 ) {
   const { pg } = await requireEventAdmin(eventId);
 
   await validateEventStatusTransition(eventId, 'bracket', event, pg);
 
-  if ((providedPoolAssignments === undefined) !== (providedTeamPairings === undefined)) {
-    throw new BadRequestError('Pool assignments and team pairings must be provided together');
+  const format: TeamFormat = {
+    teamSize: event.team_size,
+    teamAssignment: options.teamAssignment ?? event.team_assignment,
+  };
+  if (usesPools(format)) {
+    if ((providedPoolAssignments === undefined) !== (providedTeamPairings === undefined)) {
+      throw new BadRequestError('Pool assignments and team pairings must be provided together');
+    }
+  } else if (providedPoolAssignments !== undefined) {
+    throw new BadRequestError('Pool assignments apply only to the random doubles draw');
+  }
+  if (format.teamAssignment === 'manual' && providedTeamPairings === undefined) {
+    throw new BadRequestError('Build every team before starting bracket play');
   }
 
   // Use provided pairings if available, otherwise compute new ones
-  const recomputedPoolAssignments = await computePoolAssignments(eventId, event);
-  const poolAssignments = providedPoolAssignments ?? recomputedPoolAssignments;
-  const teamPairings = providedTeamPairings ?? computeTeamPairings(recomputedPoolAssignments);
+  const playerScores = await computePlayerScores(eventId, event);
+  const recomputedPools = usesPools(format) ? assignPoolsFromScores(playerScores) : undefined;
+  const poolAssignments = recomputedPools && (providedPoolAssignments ?? recomputedPools);
+  const teamPairings = providedTeamPairings ?? computeTeamPairings(format, recomputedPools ?? playerScores);
 
-  await startBracket(pg, eventId, poolAssignments, teamPairings, recomputedPoolAssignments);
+  await startBracket(pg, eventId, poolAssignments, teamPairings, playerScores, options);
 }
 
 /**
  * Start bracket play for a pre-bracket event (the transactional part of
  * `transitionEventToBracket`). Callers authorize and validate first.
+ *
+ * The team format is read from the locked event row. Every format validates team
+ * composition; only the random doubles draw takes pool assignments and validates
+ * pool pairing. `playerScores` are the server-computed scores; when omitted they
+ * are taken from complete `poolAssignments`. `options.teamAssignment` switches the
+ * event to manual assignment as part of the start, so a cancelled or failed start
+ * leaves the event's format unchanged.
  */
 export async function startBracket(
   pg: Executor,
   eventId: string,
-  poolAssignments: ProvidedPoolAssignment[],
+  poolAssignments: ProvidedPoolAssignment[] | undefined,
   teamPairings: ProvidedTeamPairing[],
-  recomputedPoolAssignments?: PoolAssignment[]
+  playerScores?: PlayerScore[],
+  options: { teamAssignment?: 'manual' } = {}
 ): Promise<void> {
-  const authoritativeAssignments = recomputedPoolAssignments ?? poolAssignments.map((assignment) => {
+  const authoritativeScores = playerScores ?? (poolAssignments ?? []).map((assignment) => {
     if (
       assignment.playerId === undefined ||
       assignment.playerName === undefined ||
@@ -416,7 +509,6 @@ export async function startBracket(
       eventPlayerId: assignment.eventPlayerId,
       playerId: assignment.playerId,
       playerName: assignment.playerName,
-      pool: assignment.pool,
       pfaScore: assignment.pfaScore,
       scoringMethod: assignment.scoringMethod,
       defaultPool: assignment.defaultPool,
@@ -434,32 +526,64 @@ export async function startBracket(
       throw new BadRequestError(`Event must be in pre-bracket status to start bracket play (current status: ${current.status})`);
     }
 
-    const eventPlayerIds = await eventPlayerDb.getEventPlayerIds(tx, eventId);
-    const validated = validatePreviewPayload({
-      currentEventPlayerIds: eventPlayerIds,
-      recomputedPoolAssignments: authoritativeAssignments,
-      providedPoolAssignments: poolAssignments,
-      providedTeamPairings: teamPairings,
-    });
+    const format: TeamFormat = {
+      teamSize: current.team_size,
+      teamAssignment: options.teamAssignment ?? current.team_assignment,
+    };
+    if (format.teamAssignment !== current.team_assignment) {
+      await eventDb.updateEventSettings(tx, eventId, { team_assignment: format.teamAssignment });
+    }
+    const pools = usesPools(format);
+    if (pools && poolAssignments === undefined) {
+      throw new BadRequestError('Pool assignments are required for the random doubles draw');
+    }
+    if (!pools && poolAssignments !== undefined) {
+      throw new BadRequestError('Pool assignments apply only to the random doubles draw');
+    }
 
-    await eventPlayerDb.applyPoolAssignments(
+    const eventPlayerIds = await eventPlayerDb.getEventPlayerIds(tx, eventId);
+    assertRosterCurrent(eventPlayerIds, authoritativeScores);
+    const assignments = pools
+      ? resolvePoolAssignments({ players: authoritativeScores, providedPoolAssignments: poolAssignments! })
+      : null;
+    const teams = validateTeamComposition({
+      players: authoritativeScores,
+      teams: teamPairings,
+      teamSize: format.teamSize,
+    });
+    if (assignments) {
+      validatePoolPairing({ teams, assignments });
+    }
+
+    // Scores are recorded for every format; pool only for the random doubles draw.
+    const poolById = new Map(assignments?.map((a) => [a.eventPlayerId, a.pool]) ?? []);
+    await eventPlayerDb.applyPlayerScores(
       tx,
       eventId,
-      validated.poolAssignments.map((pa) => ({
-        event_player_id: pa.eventPlayerId,
-        pool: pa.pool,
-        pfa_score: pa.pfaScore,
-        scoring_method: pa.scoringMethod,
+      authoritativeScores.map((player) => ({
+        event_player_id: player.eventPlayerId,
+        pool: poolById.get(player.eventPlayerId) ?? null,
+        pfa_score: player.pfaScore,
+        scoring_method: player.scoringMethod,
       }))
     );
 
+    // team_members.role is written only where it is true (pool-paired doubles), until it is dropped.
+    const roleOf = (eventPlayerId: string) => {
+      const pool = poolById.get(eventPlayerId);
+      return pool ? (`${pool}_pool` as const) : null;
+    };
     await teamDb.insertTeamsWithMembers(
       tx,
       eventId,
-      validated.teamPairings.map((tp) => ({
+      teams.map((tp) => ({
         seed: tp.seed,
         pool_combo: tp.poolCombo,
-        members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role })),
+        members: tp.members.map((m) => ({
+          event_player_id: m.eventPlayerId,
+          role: roleOf(m.eventPlayerId),
+          slot: m.slot,
+        })),
       }))
     );
 

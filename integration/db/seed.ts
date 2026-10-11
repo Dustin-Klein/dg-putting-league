@@ -135,8 +135,8 @@ export function buildDeterministicPairings(event: SeededEvent): {
     poolCombo: `${event.playerNames[i]} & ${event.playerNames[i + half]}`,
     combinedScore: 200 - 2 * i,
     members: [
-      { eventPlayerId: event.eventPlayerIds[i], role: 'A_pool' },
-      { eventPlayerId: event.eventPlayerIds[i + half], role: 'B_pool' },
+      { eventPlayerId: event.eventPlayerIds[i], slot: 1 },
+      { eventPlayerId: event.eventPlayerIds[i + half], slot: 2 },
     ],
   }));
   return { poolAssignments, teamPairings };
@@ -241,6 +241,6 @@ export async function getParticipantPlayers(ex: Executor, eventId: string, parti
     .innerJoin(teams, eq(teams.id, bracket_participant.team_id))
     .innerJoin(team_members, eq(team_members.team_id, teams.id))
     .where(and(eq(bracket_participant.id, participantId), eq(bracket_participant.tournament_id, eventId)))
-    .orderBy(asc(team_members.role));
+    .orderBy(asc(team_members.slot));
   return rows.map((r) => r.event_player_id);
 }

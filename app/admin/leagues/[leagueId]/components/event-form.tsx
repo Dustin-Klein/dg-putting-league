@@ -24,6 +24,15 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils/utils';
+import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
+import { TEAM_SIZE_LABELS, teamAssignmentOptions } from '@/lib/utils/team-utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export const eventFormSchema = z.object({
   event_date: z.date()
@@ -41,7 +50,12 @@ export const eventFormSchema = z.object({
   entry_fee_per_player: z.coerce.number().min(0).nullable().default(null),
   admin_fees: z.coerce.number().min(0).nullable().default(null),
   admin_fee_per_player: z.coerce.number().min(0).nullable().default(null),
-});
+  team_size: z.coerce.number().int().min(TEAM_SIZE_MIN).max(TEAM_SIZE_MAX).default(2),
+  team_assignment: z.enum(['random_pairing', 'random_flat', 'manual']).default('random_pairing'),
+}).refine(
+  (values) => teamAssignmentOptions(values.team_size).some((option) => option.value === values.team_assignment),
+  { message: 'Choose how teams are formed for this team size', path: ['team_assignment'] }
+);
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
 
@@ -85,11 +99,14 @@ export function EventForm({
       bracket_frame_count: 5,
       qualification_frame_count: 5,
       double_grand_final: true,
+      team_size: 2,
+      team_assignment: 'random_pairing',
       ...defaultValues,
     },
   });
 
   const qualificationRoundEnabled = form.watch('qualification_round_enabled');
+  const assignmentOptions = teamAssignmentOptions(form.watch('team_size'));
 
   const generateRandomCode = (length: number = 6): string => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -217,6 +234,69 @@ export function EventForm({
               </FormItem>
             )}
           />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="team_size"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Team Size</FormLabel>
+                <Select
+                  value={String(field.value)}
+                  onValueChange={(value) => {
+                    const size = Number(value);
+                    field.onChange(size);
+                    const options = teamAssignmentOptions(size);
+                    if (!options.some((option) => option.value === form.getValues('team_assignment'))) {
+                      form.setValue('team_assignment', options[0].value);
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  <FormControl>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {Object.entries(TEAM_SIZE_LABELS).map(([size, label]) => (
+                      <SelectItem key={size} value={size}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>Players per bracket entrant</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {assignmentOptions.length > 1 && (
+            <FormField
+              control={form.control}
+              name="team_assignment"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Team Assignment</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange} disabled={isLoading}>
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {assignmentOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>How teams are formed when bracket play starts</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
 
         <FormField
@@ -351,7 +431,7 @@ export function EventForm({
                     <div className="space-y-0.5">
                       <FormLabel className="text-base">Qualification Round</FormLabel>
                       <FormDescription>
-                        Include a qualification round to determine A/B pools
+                        Include a qualification round to seed players (and set A/B pools for random doubles)
                       </FormDescription>
                     </div>
                     <FormControl>

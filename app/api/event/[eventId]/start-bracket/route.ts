@@ -9,7 +9,7 @@ import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
 const teamMemberSchema = z.object({
   eventPlayerId: z.string(),
-  role: z.enum(['A_pool', 'B_pool']),
+  slot: z.number().int().min(1),
 });
 
 const startBracketSchema = z.object({
@@ -32,10 +32,9 @@ const startBracketSchema = z.object({
       members: z.array(teamMemberSchema),
     })
   ).optional(),
-}).refine(
-  (data) => (data.poolAssignments === undefined) === (data.teamPairings === undefined),
-  { message: 'Pool assignments and team pairings must be provided together' }
-);
+  // Set when the organizer hand-edited a random draw; recorded only if the bracket starts.
+  teamAssignment: z.literal('manual').optional(),
+});
 
 export async function POST(
   req: NextRequest,
@@ -59,7 +58,8 @@ export async function POST(
       eventId,
       event,
       parsed.data.poolAssignments,
-      parsed.data.teamPairings
+      parsed.data.teamPairings,
+      { teamAssignment: parsed.data.teamAssignment }
     );
 
     const updatedEvent = await getEventWithPlayers(eventId);

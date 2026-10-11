@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { EventWithDetails } from '@/lib/types/event';
 import { TeamPreviewDialog } from '@/components/team-preview-dialog';
 import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
+import type { StartBracketRequest } from '@/lib/utils/team-utils';
 
 const nextStatusMap = {
   'created': 'pre-bracket',
@@ -34,24 +35,6 @@ const nextStatusLabels = {
 interface NextStatusButtonProps {
   event: EventWithDetails;
   onStatusUpdate?: () => void;
-}
-
-interface TeamPreviewData {
-  poolAssignments: Array<{
-    eventPlayerId: string;
-    playerId: string;
-    playerName: string;
-    pool: 'A' | 'B';
-    pfaScore: number;
-    scoringMethod: 'qualification' | 'pfa' | 'default';
-    defaultPool: 'A' | 'B';
-  }>;
-  teamPairings: Array<{
-    seed: number;
-    poolCombo: string;
-    combinedScore: number;
-    members: Array<{ eventPlayerId: string; role: 'A_pool' | 'B_pool' }>;
-  }>;
 }
 
 export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProps) {
@@ -110,7 +93,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
     }
   };
 
-  const handleStartBracket = async (previewData: TeamPreviewData) => {
+  const handleStartBracket = async (request: StartBracketRequest) => {
     try {
       setIsUpdating(true);
 
@@ -119,10 +102,7 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          poolAssignments: previewData.poolAssignments,
-          teamPairings: previewData.teamPairings,
-        }),
+        body: JSON.stringify(request),
       });
 
       if (!response.ok) {
@@ -175,8 +155,8 @@ export function NextStatusButton({ event, onStatusUpdate }: NextStatusButtonProp
     }
   };
 
-  const handlePreviewConfirm = async (data: TeamPreviewData) => {
-    await handleStartBracket(data);
+  const handlePreviewConfirm = async (request: StartBracketRequest) => {
+    await handleStartBracket(request);
   };
 
   return (

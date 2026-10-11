@@ -13,7 +13,8 @@ export interface TeamData {
 
 export interface TeamPlayerInfo {
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  slot: number;
+  pool: 'A' | 'B' | null;
   player: { id: string; full_name: string; nickname: string | null };
 }
 
@@ -23,7 +24,8 @@ export interface TeamWithPlayers extends TeamData {
 
 export interface PublicTeamPlayerInfo {
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  slot: number;
+  pool: 'A' | 'B' | null;
   full_name: string;
   nickname: string | null;
 }
@@ -38,7 +40,8 @@ type ParticipantTeamRow = {
   seed: number | null;
   pool_combo: string | null;
   event_player_id: string | null;
-  role: string | null;
+  slot: number | null;
+  pool: 'A' | 'B' | null;
   player_id: string | null;
   full_name: string | null;
   nickname: string | null;
@@ -57,7 +60,8 @@ async function getParticipantTeamRows(
       seed: teams.seed,
       pool_combo: teams.pool_combo,
       event_player_id: team_members.event_player_id,
-      role: team_members.role,
+      slot: team_members.slot,
+      pool: event_players.pool,
       player_id: players.id,
       full_name: players.full_name,
       nickname: players.nickname,
@@ -74,7 +78,7 @@ async function getParticipantTeamRows(
         inArray(bracket_participant.id, participantIds)
       )
     )
-    .orderBy(asc(bracket_participant.id), asc(team_members.joined_at));
+    .orderBy(asc(bracket_participant.id), asc(team_members.slot));
 }
 
 /** All requested participant teams in one joined query, keyed by participant id. */
@@ -90,10 +94,11 @@ export async function getTeamsByParticipantIds(
       team = { id: row.team_id, seed: row.seed ?? 0, pool_combo: row.pool_combo ?? '', players: [] };
       result.set(row.participant_id, team);
     }
-    if (row.event_player_id && row.role && row.player_id && row.full_name !== null) {
+    if (row.event_player_id && row.slot !== null && row.player_id && row.full_name !== null) {
       team.players.push({
         event_player_id: row.event_player_id,
-        role: row.role as 'A_pool' | 'B_pool',
+        slot: row.slot,
+        pool: row.pool,
         player: { id: row.player_id, full_name: row.full_name, nickname: row.nickname },
       });
     }
@@ -114,10 +119,11 @@ export async function getPublicTeamsByParticipantIds(
       team = { id: row.team_id, seed: row.seed ?? 0, pool_combo: row.pool_combo ?? '', players: [] };
       result.set(row.participant_id, team);
     }
-    if (row.event_player_id && row.role) {
+    if (row.event_player_id && row.slot !== null) {
       team.players.push({
         event_player_id: row.event_player_id,
-        role: row.role as 'A_pool' | 'B_pool',
+        slot: row.slot,
+        pool: row.pool,
         full_name: row.full_name ?? 'Unknown',
         nickname: row.nickname,
       });
@@ -144,32 +150,6 @@ export async function getPublicTeamFromParticipant(
   return (await getPublicTeamsByParticipantIds(ex, eventId, [participantId])).get(participantId) ?? null;
 }
 
-export async function getTeamsForEvent(ex: Executor, eventId: string): Promise<Array<{ id: string }>> {
-  return ex.select({ id: teams.id }).from(teams).where(eq(teams.event_id, eventId));
-}
-
-export async function getTeamsWithMembersForEvent(
-  ex: Executor,
-  eventId: string
-): Promise<Array<{ id: string; team_members: Array<{ event_player_id: string }> }>> {
-  const rows = await ex
-    .select({ id: teams.id, event_player_id: team_members.event_player_id })
-    .from(teams)
-    .leftJoin(team_members, eq(team_members.team_id, teams.id))
-    .where(eq(teams.event_id, eventId));
-  const grouped = new Map<string, { id: string; team_members: Array<{ event_player_id: string }> }>();
-  for (const row of rows) {
-    const team = grouped.get(row.id) ?? { id: row.id, team_members: [] };
-    if (row.event_player_id) team.team_members.push({ event_player_id: row.event_player_id });
-    grouped.set(row.id, team);
-  }
-  return [...grouped.values()];
-}
-
-export async function updateTeamSeed(ex: Executor, teamId: string, seed: number): Promise<void> {
-  await ex.update(teams).set({ seed }).where(eq(teams.id, teamId));
-}
-
 export async function getFullTeamsForEvent(ex: Executor, eventId: string, includePaymentType = true): Promise<Team[]> {
   const rows = await ex
     .select({
@@ -185,7 +165,7 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
       pfa_score: event_players.pfa_score,
       scoring_method: event_players.scoring_method,
       event_player_created_at: event_players.created_at,
-      role: team_members.role,
+      slot: team_members.slot,
       joined_at: team_members.joined_at,
       player_number: players.player_number,
       full_name: players.full_name,
@@ -198,7 +178,7 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
     .leftJoin(event_players, eq(event_players.id, team_members.event_player_id))
     .leftJoin(players, eq(players.id, event_players.player_id))
     .where(eq(teams.event_id, eventId))
-    .orderBy(asc(teams.seed), asc(team_members.joined_at));
+    .orderBy(asc(teams.seed), asc(team_members.slot));
 
   const grouped = new Map<string, Team>();
   for (const row of rows) {
@@ -217,7 +197,7 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
     if (
       row.event_player_id &&
       row.player_id &&
-      row.role &&
+      row.slot !== null &&
       row.joined_at &&
       row.full_name !== null &&
       row.player_created_at
@@ -225,7 +205,7 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
       team.team_members.push({
         team_id: row.team_id,
         event_player_id: row.event_player_id,
-        role: row.role as 'A_pool' | 'B_pool' | 'alternate',
+        slot: row.slot,
         joined_at: toIsoTimestamp(row.joined_at),
         event_player: {
           id: row.event_player_id,
@@ -307,7 +287,7 @@ export async function getTeamMemberIds(ex: Executor, teamIds: string[]): Promise
 export interface NewTeam {
   seed: number;
   pool_combo: string;
-  members: Array<{ event_player_id: string; role: string }>;
+  members: Array<{ event_player_id: string; role: 'A_pool' | 'B_pool' | null; slot: number }>;
 }
 
 /**
@@ -328,7 +308,7 @@ export async function insertTeamsWithMembers(
     if (t.members.length > 0) {
       await ex
         .insert(team_members)
-        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role })));
+        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role, slot: m.slot })));
     }
     inserted.push(team);
   }

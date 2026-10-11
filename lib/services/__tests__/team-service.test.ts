@@ -2,7 +2,6 @@
  * Team Service Tests
  *
  * Tests for team management functions:
- * - generateTeams()
  * - getEventTeams()
  * - computeTeamPairings()
  */
@@ -10,8 +9,6 @@
 import { BadRequestError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockEventWithDetails,
-  createMockEventPlayers,
   createMockTeam,
   MockSupabaseClient,
 } from './test-utils';
@@ -26,41 +23,19 @@ jest.mock('@/lib/services/auth', () => ({
   requireAuthenticatedUser: jest.fn(),
 }));
 
-jest.mock('@/lib/db/tx', () => ({
-  lockEvent: jest.fn(),
-  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
-}));
-
 jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
-  getEventWithPlayers: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/team-repository.db', () => ({
-  getTeamsForEvent: jest.fn(),
-  insertTeam: jest.fn(),
-  insertTeamMember: jest.fn(),
-  insertTeamsWithMembers: jest.fn(),
-  getTeamsWithMembersForEvent: jest.fn(),
-  updateTeamSeed: jest.fn(),
   getFullTeamsForEvent: jest.fn(),
-}));
-
-jest.mock('@/lib/repositories/event-player-repository.db', () => ({
-  getQualificationScore: jest.fn(),
-}));
-
-jest.mock('@/lib/repositories/event-repository.db', () => ({
-  getEventLeagueId: jest.fn(),
-  getEventBracketConfig: jest.fn().mockResolvedValue({ status: 'pre-bracket' }),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import { requireEventAdmin } from '@/lib/services/event';
 import * as teamRepo from '@/lib/repositories/team-repository.db';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
-import { generateTeams, getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
+import { getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt, type DrawEntrant } from '../team/team-service';
 
 describe('Team Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -70,206 +45,6 @@ describe('Team Service', () => {
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
     (requireEventAdmin as jest.Mock).mockResolvedValue({ pg: mockSupabase });
-  });
-
-  describe('generateTeams', () => {
-    const eventId = 'event-123';
-
-    it('should generate teams for event in pre-bracket status', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-      players[2].pool = 'B';
-      players[3].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', qualification_round_enabled: false },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[2].id },
-          ],
-        },
-        {
-          id: 'team-2',
-          seed: 2,
-          team_members: [
-            { event_player_id: players[1].id },
-            { event_player_id: players[3].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-        createMockTeam({ id: 'team-2', seed: 2 }),
-      ]);
-
-      const result = await generateTeams(eventId);
-
-      expect(result).toHaveLength(2);
-      expect(teamRepo.insertTeamsWithMembers).toHaveBeenCalledTimes(1);
-    });
-
-    it('should generate teams for event in bracket status', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'bracket' },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[1].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-      ]);
-
-      const result = await generateTeams(eventId);
-
-      expect(result).toHaveLength(1);
-    });
-
-    it('should throw BadRequestError for invalid event status', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'created' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Teams can only be generated for events in pre-bracket or bracket status'
-      );
-    });
-
-    it('should throw BadRequestError when teams already exist', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([createMockTeam()]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Teams have already been generated for this event'
-      );
-    });
-
-    it('should throw BadRequestError when no players have pools assigned', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      // No pool assignments
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'No players have been assigned to pools'
-      );
-    });
-
-    it('should throw BadRequestError when Pool A is empty', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'B';
-      players[1].pool = 'B';
-
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Both Pool A and Pool B must have players'
-      );
-    });
-
-    it('should throw BadRequestError when Pool B is empty', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Both Pool A and Pool B must have players'
-      );
-    });
-
-    it('should use qualification scores for seeding when enabled', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-      players[2].pool = 'B';
-      players[3].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', qualification_round_enabled: true },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock)
-        .mockResolvedValueOnce(30) // Player 1
-        .mockResolvedValueOnce(20) // Player 2
-        .mockResolvedValueOnce(25) // Player 3
-        .mockResolvedValueOnce(15); // Player 4
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[2].id },
-          ],
-        },
-        {
-          id: 'team-2',
-          seed: 2,
-          team_members: [
-            { event_player_id: players[1].id },
-            { event_player_id: players[3].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-        createMockTeam({ id: 'team-2', seed: 2 }),
-      ]);
-
-      await generateTeams(eventId);
-
-      expect(eventPlayerRepo.getQualificationScore).toHaveBeenCalledTimes(4);
-    });
   });
 
   describe('getEventTeams', () => {
@@ -304,6 +79,8 @@ describe('Team Service', () => {
   });
 
   describe('computeTeamPairings', () => {
+    const DOUBLES = { teamSize: 2, teamAssignment: 'random_pairing' } as const;
+
     it('should pair Pool A and Pool B players into teams', () => {
       const poolAssignments: PoolAssignment[] = [
         {
@@ -344,17 +121,17 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       expect(result).toHaveLength(2);
       // Teams should be sorted by combined score (descending)
       expect(result[0].seed).toBe(1);
       expect(result[1].seed).toBe(2);
-      // Each team should have one A_pool and one B_pool member
+      // Each team should have its Pool A member in slot 1 and Pool B member in slot 2
+      const poolOf = new Map(poolAssignments.map((pa) => [pa.eventPlayerId, pa.pool]));
       result.forEach((team) => {
         expect(team.members).toHaveLength(2);
-        expect(team.members.some((m) => m.role === 'A_pool')).toBe(true);
-        expect(team.members.some((m) => m.role === 'B_pool')).toBe(true);
+        expect(team.members.map((m) => [m.slot, poolOf.get(m.eventPlayerId)])).toEqual([[1, 'A'], [2, 'B']]);
       });
     });
 
@@ -371,8 +148,8 @@ describe('Team Service', () => {
         },
       ];
 
-      expect(() => computeTeamPairings(poolAssignments)).toThrow(BadRequestError);
-      expect(() => computeTeamPairings(poolAssignments)).toThrow(
+      expect(() => computeTeamPairings(DOUBLES, poolAssignments)).toThrow(BadRequestError);
+      expect(() => computeTeamPairings(DOUBLES, poolAssignments)).toThrow(
         'Both Pool A and Pool B must have players'
       );
     });
@@ -390,7 +167,7 @@ describe('Team Service', () => {
         },
       ];
 
-      expect(() => computeTeamPairings(poolAssignments)).toThrow(BadRequestError);
+      expect(() => computeTeamPairings(DOUBLES, poolAssignments)).toThrow(BadRequestError);
     });
 
     it('should handle uneven pool sizes by using minimum', () => {
@@ -433,7 +210,7 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       // Should only create 1 team (min of 3 Pool A, 1 Pool B)
       expect(result).toHaveLength(1);
@@ -461,7 +238,7 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       expect(result[0].combinedScore).toBe(55); // 30 + 25
     });
@@ -488,7 +265,7 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       expect(result[0].poolCombo).toContain('Alice');
       expect(result[0].poolCombo).toContain('Bob');
@@ -535,14 +312,14 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       expect(result).toHaveLength(2);
-      // Each team should have one A_pool and one B_pool member
+      // Each team should have its Pool A member in slot 1 and Pool B member in slot 2
+      const poolOf = new Map(poolAssignments.map((pa) => [pa.eventPlayerId, pa.pool]));
       result.forEach((team) => {
         expect(team.members).toHaveLength(2);
-        expect(team.members.some((m) => m.role === 'A_pool')).toBe(true);
-        expect(team.members.some((m) => m.role === 'B_pool')).toBe(true);
+        expect(team.members.map((m) => [m.slot, poolOf.get(m.eventPlayerId)])).toEqual([[1, 'A'], [2, 'B']]);
       });
       // Combined scores should be correct
       const totalScore = result.reduce((sum, t) => sum + t.combinedScore, 0);
@@ -593,7 +370,7 @@ describe('Team Service', () => {
         },
       ];
 
-      const result = computeTeamPairings(poolAssignments);
+      const result = computeTeamPairings(DOUBLES, poolAssignments);
 
       expect(result[0].seed).toBe(1);
       expect(result[1].seed).toBe(2);
@@ -649,7 +426,7 @@ describe('Team Service', () => {
       // Pair 0: A2 & B2, score = 20 + 40 = 60
       // Pair 1: A1 & B1, score = 10 + 30 = 40
       const alwaysZeroRng = () => 0;
-      const result = computeTeamPairings(poolAssignments, alwaysZeroRng);
+      const result = computeTeamPairings(DOUBLES, poolAssignments, alwaysZeroRng);
 
       expect(result).toHaveLength(2);
       expect(result[0].poolCombo).toBe('Player A2 & Player B2');
@@ -658,6 +435,89 @@ describe('Team Service', () => {
       expect(result[1].poolCombo).toBe('Player A1 & Player B1');
       expect(result[1].combinedScore).toBe(40);
       expect(result[1].seed).toBe(2);
+    });
+  });
+
+  describe('computeTeamPairings by team format', () => {
+    const entrants = (n: number): DrawEntrant[] =>
+      Array.from({ length: n }, (_, i) => ({
+        eventPlayerId: `ep-${i + 1}`,
+        playerName: `P${i + 1}`,
+        pfaScore: i + 1,
+      }));
+
+    function expectEveryPlayerPlacedOnce(teams: ReturnType<typeof computeTeamPairings>, n: number, size: number) {
+      const ids = teams.flatMap((team) => team.members.map((m) => m.eventPlayerId));
+      expect(ids).toHaveLength(n);
+      expect(new Set(ids)).toEqual(new Set(entrants(n).map((e) => e.eventPlayerId)));
+      for (const team of teams) {
+        expect(team.members.map((m) => m.slot)).toEqual(Array.from({ length: size }, (_, i) => i + 1));
+      }
+      expect(teams.map((team) => team.seed)).toEqual(teams.map((_, i) => i + 1));
+    }
+
+    it.each([1, 2, 3])('random_flat chunks %i-player teams with every player placed once', (size) => {
+      const n = size * 4;
+      // randomInt(i + 1) => i keeps Fisher-Yates from swapping, so the order is unchanged.
+      const identity = (maxExclusive: number) => maxExclusive - 1;
+      const teams = computeTeamPairings({ teamSize: size, teamAssignment: 'random_flat' }, entrants(n), identity);
+
+      expect(teams).toHaveLength(4);
+      expectEveryPlayerPlacedOnce(teams, n, size);
+      // Unshuffled chunks: the last chunk has the highest scores, so it is seed 1.
+      expect(teams[0].members.map((m) => m.eventPlayerId)).toEqual(
+        entrants(n).slice(n - size).map((e) => e.eventPlayerId)
+      );
+      expect(teams[0].combinedScore).toBe(entrants(n).slice(n - size).reduce((sum, e) => sum + e.pfaScore, 0));
+      expect(teams[0].poolCombo).toBe(entrants(n).slice(n - size).map((e) => e.playerName).join(' & '));
+    });
+
+    it('random_flat uses the injected randomInt to shuffle', () => {
+      const alwaysZero = () => 0;
+      const teams = computeTeamPairings({ teamSize: 2, teamAssignment: 'random_flat' }, entrants(4), alwaysZero);
+      // shuffle([1, 2, 3, 4]) with j = 0 every step => [2, 3, 4, 1]; chunks [2, 3] and [4, 1].
+      expect(teams.map((team) => team.members.map((m) => m.eventPlayerId))).toEqual([
+        ['ep-2', 'ep-3'],
+        ['ep-4', 'ep-1'],
+      ]);
+      expectEveryPlayerPlacedOnce(teams, 4, 2);
+    });
+
+    it('random_pairing at size 1 makes one team per player, seeded by score', () => {
+      const teams = computeTeamPairings({ teamSize: 1, teamAssignment: 'random_pairing' }, entrants(3));
+      expect(teams.map((team) => [team.seed, team.poolCombo, team.combinedScore])).toEqual([
+        [1, 'P3', 3],
+        [2, 'P2', 2],
+        [3, 'P1', 1],
+      ]);
+      expectEveryPlayerPlacedOnce(teams, 3, 1);
+    });
+
+    it('singles accept an odd player count and a single player', () => {
+      expect(computeTeamPairings({ teamSize: 1, teamAssignment: 'random_pairing' }, entrants(5))).toHaveLength(5);
+      expect(computeTeamPairings({ teamSize: 1, teamAssignment: 'random_flat' }, entrants(1))).toHaveLength(1);
+    });
+
+    it('rejects an empty roster', () => {
+      expect(() => computeTeamPairings({ teamSize: 1, teamAssignment: 'random_pairing' }, [])).toThrow(
+        'No players registered for this event'
+      );
+    });
+
+    it.each([3, 4])('rejects random_pairing at team size %i', (size) => {
+      expect(() =>
+        computeTeamPairings({ teamSize: size, teamAssignment: 'random_pairing' }, entrants(size * 2))
+      ).toThrow(/use a flat random draw/);
+    });
+
+    it('rejects manual assignment, which has no draw', () => {
+      expect(() => computeTeamPairings({ teamSize: 2, teamAssignment: 'manual' }, entrants(4))).toThrow(BadRequestError);
+    });
+
+    it('rejects leftover players, naming the shortfall', () => {
+      expect(() => computeTeamPairings({ teamSize: 3, teamAssignment: 'random_flat' }, entrants(16))).toThrow(
+        "16 players can't be split into teams of 3: add 2 players or remove 1 player"
+      );
     });
   });
 

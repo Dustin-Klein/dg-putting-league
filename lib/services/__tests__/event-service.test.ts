@@ -27,7 +27,7 @@ import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import {
   createEvent, deleteEvent, getEventForViewer, getEventsByLeagueId, getEventWithPlayers,
-  requireEventAdmin, updateEvent, validateEventStatusTransition,
+  requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
 } from '../event/event-service';
 
 describe('event service Drizzle port', () => {
@@ -132,6 +132,43 @@ describe('event service Drizzle port', () => {
       await expect(createEvent(data)).rejects.toThrow(BadRequestError);
       await expect(createEvent({ ...data, access_code: 'short' })).rejects.toThrow(BadRequestError);
     });
+
+    it('stores the team format and rejects random pairing above doubles', async () => {
+      await createEvent({ ...data, team_size: 3, team_assignment: 'random_flat' });
+      expect(eventDb.createEvent).toHaveBeenCalledWith(pg, expect.objectContaining({
+        team_size: 3, team_assignment: 'random_flat',
+      }));
+      await expect(createEvent({ ...data, team_size: 3, team_assignment: 'random_pairing' }))
+        .rejects.toThrow(/use a flat random draw/);
+    });
+  });
+
+  describe('updateEventSettings team format', () => {
+    const config = { status: 'pre-bracket', team_size: 2, team_assignment: 'random_pairing', double_grand_final: true };
+
+    beforeEach(() => {
+      (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(createMockEventWithDetails({ status: 'pre-bracket' }));
+      (eventDb.getEventById as jest.Mock).mockResolvedValue(createMockEvent());
+    });
+
+    it('changes the format before bracket play', async () => {
+      (eventDb.getEventBracketConfig as jest.Mock).mockResolvedValue(config);
+      await updateEventSettings('event-1', { team_size: 1 });
+      expect(eventDb.updateEventSettings).toHaveBeenCalledWith(pg, 'event-1', { team_size: 1 });
+    });
+
+    it('validates the merged format', async () => {
+      (eventDb.getEventBracketConfig as jest.Mock).mockResolvedValue({ ...config, team_size: 3, team_assignment: 'manual' });
+      await expect(updateEventSettings('event-1', { team_assignment: 'random_pairing' }))
+        .rejects.toThrow(/use a flat random draw/);
+      expect(eventDb.updateEventSettings).not.toHaveBeenCalled();
+    });
+
+    it('refuses to change the format once teams exist', async () => {
+      (eventDb.getEventBracketConfig as jest.Mock).mockResolvedValue({ ...config, status: 'bracket' });
+      await expect(updateEventSettings('event-1', { team_assignment: 'manual' }))
+        .rejects.toThrow('Team format can only be changed before bracket play starts');
+    });
   });
 
   it('uses the authorized pg client for delete and update', async () => {
@@ -154,5 +191,31 @@ describe('event service Drizzle port', () => {
     await expect(validateEventStatusTransition('event-1', 'bracket', event, pg as never)).resolves.toBeUndefined();
     expect(eventDb.getQualificationRound).toHaveBeenCalledWith(pg, 'event-1');
     expect(eventDb.getQualificationFrameCounts).toHaveBeenCalledWith(pg, 'event-1');
+  });
+
+  describe('pre-bracket to bracket player count', () => {
+    function paidEvent(playerCount: number, teamSize: number) {
+      const players = createMockEventPlayers(playerCount, 'event-1');
+      players.forEach((player) => { player.payment_type = 'cash'; });
+      return createMockEventWithDetails({ status: 'pre-bracket', team_size: teamSize }, players);
+    }
+
+    it.each([
+      [1, 1], [1, 5], [2, 4], [2, 8], [3, 6], [3, 9],
+    ])('allows team size %i with %i players', async (teamSize, playerCount) => {
+      await expect(
+        validateEventStatusTransition('event-1', 'bracket', paidEvent(playerCount, teamSize), pg as never)
+      ).resolves.toBeUndefined();
+    });
+
+    it.each([
+      [2, 5, "5 players can't be split into teams of 2: add 1 player or remove 1 player before starting bracket play"],
+      [3, 16, "16 players can't be split into teams of 3: add 2 players or remove 1 player before starting bracket play"],
+      [3, 4, "4 players can't be split into teams of 3: add 2 players or remove 1 player before starting bracket play"],
+    ])('blocks team size %i with %i players, naming the shortfall', async (teamSize, playerCount, message) => {
+      await expect(
+        validateEventStatusTransition('event-1', 'bracket', paidEvent(playerCount, teamSize), pg as never)
+      ).rejects.toThrow(new BadRequestError(message));
+    });
   });
 });

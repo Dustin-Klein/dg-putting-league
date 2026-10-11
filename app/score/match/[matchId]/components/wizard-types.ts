@@ -26,7 +26,8 @@ export type WizardStage = 'setup' | 'scoring' | 'review';
 
 export interface PlayerInfo {
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  slot: number;
+  pool: 'A' | 'B' | null;
   full_name: string;
   nickname: string | null;
 }
@@ -119,7 +120,7 @@ export function needsOvertime(match: MatchInfo, standardFrames: number): boolean
   return (
     areScoresTied(match) &&
     match.frames.length >= standardFrames &&
-    match.frames.every(f => f.results.length === 4)
+    match.frames.every(f => f.results.length === getAllPlayers(match).length)
   );
 }
 

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { EventWithDetails } from '@/lib/types/event';
+import { describeTeamFormat } from '@/lib/utils/team-utils';
 
 export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: () => void }) {
   // Use the event prop directly since state is now managed by parent
@@ -87,6 +88,13 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
             <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
             <p className="text-lg font-medium">
               {event.players?.filter(p => p.payment_type !== null).length || 0}/{event.players?.length || 0} paid
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Teams</h3>
+            <p className="text-lg font-medium">
+              {describeTeamFormat(event.team_size, event.team_assignment)}
             </p>
           </div>
 

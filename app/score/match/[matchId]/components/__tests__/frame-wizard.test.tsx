@@ -3,12 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { FrameWizard } from '../frame-wizard';
 import { MatchStatus } from '@/lib/types/bracket';
 import type { MatchInfo, ScoreState, PlayerInfo, TeamInfo, FrameInfo } from '../wizard-types';
-import { MIN_PUTTS, MAX_PUTTS } from '../wizard-types';
+import { MIN_PUTTS, MAX_PUTTS, needsOvertime } from '../wizard-types';
 
 function createPlayer(overrides: Partial<PlayerInfo> = {}): PlayerInfo {
   return {
     event_player_id: 'player-1',
-    role: 'A_pool',
+    slot: 1,
+    pool: 'A',
     full_name: 'Player One',
     nickname: null,
     ...overrides,
@@ -21,8 +22,8 @@ function createTeam(overrides: Partial<TeamInfo> = {}): TeamInfo {
     seed: 1,
     pool_combo: 'Player A & Player B',
     players: [
-      createPlayer({ event_player_id: 'player-1a', role: 'A_pool', full_name: 'Player 1A' }),
-      createPlayer({ event_player_id: 'player-1b', role: 'B_pool', full_name: 'Player 1B' }),
+      createPlayer({ event_player_id: 'player-1a', slot: 1, pool: 'A', full_name: 'Player 1A' }),
+      createPlayer({ event_player_id: 'player-1b', slot: 2, pool: 'B', full_name: 'Player 1B' }),
     ],
     ...overrides,
   };
@@ -39,8 +40,8 @@ function createMatch(overrides: Partial<MatchInfo> = {}): MatchInfo {
       id: 'team-1',
       seed: 1,
       players: [
-        createPlayer({ event_player_id: 'p1a', role: 'A_pool', full_name: 'Team1 PlayerA' }),
-        createPlayer({ event_player_id: 'p1b', role: 'B_pool', full_name: 'Team1 PlayerB' }),
+        createPlayer({ event_player_id: 'p1a', slot: 1, pool: 'A', full_name: 'Team1 PlayerA' }),
+        createPlayer({ event_player_id: 'p1b', slot: 2, pool: 'B', full_name: 'Team1 PlayerB' }),
       ],
     }),
     team_two: createTeam({
@@ -48,8 +49,8 @@ function createMatch(overrides: Partial<MatchInfo> = {}): MatchInfo {
       seed: 2,
       pool_combo: 'Player C & Player D',
       players: [
-        createPlayer({ event_player_id: 'p2a', role: 'A_pool', full_name: 'Team2 PlayerA' }),
-        createPlayer({ event_player_id: 'p2b', role: 'B_pool', full_name: 'Team2 PlayerB' }),
+        createPlayer({ event_player_id: 'p2a', slot: 1, pool: 'A', full_name: 'Team2 PlayerA' }),
+        createPlayer({ event_player_id: 'p2b', slot: 2, pool: 'B', full_name: 'Team2 PlayerB' }),
       ],
     }),
     team_one_score: 0,
@@ -507,5 +508,41 @@ describe('FrameWizard', () => {
         expect(dot).toBeDisabled();
       });
     });
+  });
+});
+
+describe('needsOvertime', () => {
+  const allScored = (ids: string[]) =>
+    Array.from({ length: 5 }, (_, i) =>
+      createFrame(i + 1, ids.map((id) => ({ id: `${id}-${i + 1}`, event_player_id: id, putts_made: 2, points_earned: 2 })))
+    );
+
+  it('counts the players actually in the match, not a fixed four', () => {
+    const singles = createMatch({
+      team_one: createTeam({ players: [createPlayer({ event_player_id: 's1', pool: null })] }),
+      team_two: createTeam({ id: 'team-2', players: [createPlayer({ event_player_id: 's2', pool: null })] }),
+      team_one_score: 10,
+      team_two_score: 10,
+    });
+    expect(needsOvertime({ ...singles, frames: allScored(['s1', 's2']) }, 5)).toBe(true);
+    expect(needsOvertime({ ...singles, frames: allScored(['s1']) }, 5)).toBe(false);
+
+    const doubles = createMatch({ team_one_score: 20, team_two_score: 20 });
+    expect(needsOvertime({ ...doubles, frames: allScored(['p1a', 'p1b', 'p2a', 'p2b']) }, 5)).toBe(true);
+  });
+
+  it('renders players without a pool label when the event has no pools', () => {
+    render(
+      <FrameWizard
+        {...defaultProps}
+        match={createMatch({
+          team_one: createTeam({ players: [createPlayer({ event_player_id: 's1', full_name: 'Solo One', pool: null })] }),
+          team_two: createTeam({ id: 'team-2', players: [createPlayer({ event_player_id: 's2', full_name: 'Solo Two', pool: null })] }),
+        })}
+      />
+    );
+    expect(screen.getByText('Solo One')).toBeInTheDocument();
+    expect(screen.getByText('Solo Two')).toBeInTheDocument();
+    expect(screen.queryByText(/^B$/)).not.toBeInTheDocument();
   });
 });

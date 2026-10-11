@@ -8,6 +8,7 @@ import {
 } from '@/lib/errors';
 import { validateCsrfOrigin } from '@/lib/utils';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
+import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
 
 const eventSchema = z.object({
   event_date: z.string().refine((val) => {
@@ -26,6 +27,8 @@ const eventSchema = z.object({
   entry_fee_per_player: z.number().min(0).nullable().optional().default(null),
   admin_fees: z.number().min(0).nullable().optional().default(null),
   admin_fee_per_player: z.number().min(0).nullable().optional().default(null),
+  team_size: z.number().int().min(TEAM_SIZE_MIN).max(TEAM_SIZE_MAX).optional().default(2),
+  team_assignment: z.enum(['random_pairing', 'random_flat', 'manual']).optional().default('random_pairing'),
   copy_players_from_event_id: z.string().uuid().optional(),
 });
 
