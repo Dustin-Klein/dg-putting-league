@@ -30,7 +30,11 @@ export function toStartBracketRequest(preview: TeamPreview, teamPairings: TeamPa
   };
 }
 
-export type StartBracketRequest = ReturnType<typeof toStartBracketRequest>;
+/**
+ * `teamAssignment: 'manual'` marks a hand-edited random draw; the server records it
+ * on the event only if the bracket starts.
+ */
+export type StartBracketRequest = ReturnType<typeof toStartBracketRequest> & { teamAssignment?: 'manual' };
 
 export const TEAM_SIZE_LABELS: Record<number, string> = {
   1: 'Singles',

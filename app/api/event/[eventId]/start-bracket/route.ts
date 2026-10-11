@@ -32,6 +32,8 @@ const startBracketSchema = z.object({
       members: z.array(teamMemberSchema),
     })
   ).optional(),
+  // Set when the organizer hand-edited a random draw; recorded only if the bracket starts.
+  teamAssignment: z.literal('manual').optional(),
 });
 
 export async function POST(
@@ -56,7 +58,8 @@ export async function POST(
       eventId,
       event,
       parsed.data.poolAssignments,
-      parsed.data.teamPairings
+      parsed.data.teamPairings,
+      { teamAssignment: parsed.data.teamAssignment }
     );
 
     const updatedEvent = await getEventWithPlayers(eventId);

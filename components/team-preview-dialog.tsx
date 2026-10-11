@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Eraser, Loader2, Pencil, RefreshCw, Shuffle } from 'lucide-react';
+import { Eraser, Loader2, Pencil, RefreshCw, Shuffle, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -90,14 +90,15 @@ export function TeamPreviewDialog({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [isSwitching, setIsSwitching] = useState(false);
+  // The server draw kept while the organizer hand-edits it, so they can go back to it.
+  const [drawPreview, setDrawPreview] = useState<TeamPreview | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [previewData, setPreviewData] = useState<TeamPreview | null>(null);
   const [draft, setDraft] = useState<TeamDraft | null>(null);
 
   const isManual = previewData?.teamAssignment === 'manual';
 
-  const fetchPreview = useCallback(async (seedDraft?: TeamDraft) => {
+  const fetchPreview = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`/api/event/${event.id}/team-preview`, {
@@ -113,7 +114,7 @@ export function TeamPreviewDialog({
       setPreviewData(data);
       setDraft(
         data.teamAssignment === 'manual'
-          ? seedDraft ?? loadDraft(event.id, data) ?? emptyTeamDraft(data.players.length, data.teamSize)
+          ? loadDraft(event.id, data) ?? emptyTeamDraft(data.players.length, data.teamSize)
           : null
       );
     } catch (error) {
@@ -135,7 +136,8 @@ export function TeamPreviewDialog({
 
   const updateDraft = (next: TeamDraft) => {
     setDraft(next);
-    if (previewData) saveDraft(event.id, previewData, next);
+    // A hand-edited draw isn't the event's format until the bracket starts; don't keep it.
+    if (previewData && !drawPreview) saveDraft(event.id, previewData, next);
   };
 
   const handleRegenerate = async () => {
@@ -144,29 +146,26 @@ export function TeamPreviewDialog({
     setIsRegenerating(false);
   };
 
-  /** Record the event as hand-picked, starting from the current draw. */
-  const handleEditManually = async () => {
+  /**
+   * Hand-edit the current draw. Nothing is saved yet: starting the bracket records
+   * the event as manually assigned, and cancelling leaves it as it was.
+   */
+  const handleEditManually = () => {
     if (!previewData) return;
-    try {
-      setIsSwitching(true);
-      const response = await fetch(`/api/event/${event.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_assignment: 'manual' }),
-      });
-      if (!response.ok) {
-        throw new Error(await readError(response, 'Failed to switch to manual teams'));
-      }
-      await fetchPreview(teamDraftFromPairings(previewData.teamPairings));
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to switch to manual teams',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSwitching(false);
-    }
+    setDrawPreview(previewData);
+    setPreviewData({
+      ...previewData,
+      teamAssignment: 'manual',
+      players: previewData.players.map((player) => ({ ...player, pool: null })),
+      teamPairings: [],
+    });
+    setDraft(teamDraftFromPairings(previewData.teamPairings));
+  };
+
+  const handleBackToDraw = () => {
+    setPreviewData(drawPreview);
+    setDrawPreview(null);
+    setDraft(null);
   };
 
   /** Fill the open slots with the unassigned players in random order. */
@@ -193,7 +192,10 @@ export function TeamPreviewDialog({
       setIsConfirming(true);
       await onConfirm(
         isManual && draft
-          ? toStartBracketRequest(previewData, teamDraftToPairings(draft))
+          ? {
+              ...toStartBracketRequest(previewData, teamDraftToPairings(draft)),
+              ...(drawPreview ? { teamAssignment: 'manual' as const } : {}),
+            }
           : toStartBracketRequest(previewData)
       );
     } catch (error) {
@@ -210,6 +212,7 @@ export function TeamPreviewDialog({
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setPreviewData(null);
+      setDrawPreview(null);
       setDraft(null);
     }
     onOpenChange(newOpen);
@@ -217,7 +220,7 @@ export function TeamPreviewDialog({
 
   const playerById = new Map(previewData?.players.map((player) => [player.eventPlayerId, player]));
 
-  const isProcessing = isLoading || isRegenerating || isSwitching || isConfirming;
+  const isProcessing = isLoading || isRegenerating || isConfirming;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -302,6 +305,17 @@ export function TeamPreviewDialog({
           </Button>
           {isManual ? (
             <>
+              {drawPreview && (
+                <Button
+                  variant="outline"
+                  onClick={handleBackToDraw}
+                  disabled={isProcessing}
+                  className="w-full sm:w-auto"
+                >
+                  <Undo2 className="mr-2 h-4 w-4" />
+                  Back to Draw
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => previewData && updateDraft(emptyTeamDraft(previewData.players.length, previewData.teamSize))}
@@ -342,13 +356,9 @@ export function TeamPreviewDialog({
                   onClick={handleEditManually}
                   disabled={isProcessing}
                   className="w-full sm:w-auto"
-                  title="Switch this event to hand-picked teams, starting from this draw"
+                  title="Hand-pick teams, starting from this draw"
                 >
-                  {isSwitching ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Pencil className="mr-2 h-4 w-4" />
-                  )}
+                  <Pencil className="mr-2 h-4 w-4" />
                   Edit Teams
                 </Button>
               )}

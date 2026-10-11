@@ -438,18 +438,24 @@ export async function previewTeams(eventId: string): Promise<TeamPreview> {
  * @param event - The event with details
  * @param providedPoolAssignments - Pool choice from the preview; random doubles draw only
  * @param providedTeamPairings - Teams from the preview; required for manual assignment
+ * @param options.teamAssignment - 'manual' when the organizer hand-edited a random draw;
+ *   recorded on the event in the same transaction that starts the bracket
  */
 export async function transitionEventToBracket(
   eventId: string,
   event: EventWithDetails,
   providedPoolAssignments?: ProvidedPoolAssignment[],
-  providedTeamPairings?: ProvidedTeamPairing[]
+  providedTeamPairings?: ProvidedTeamPairing[],
+  options: { teamAssignment?: 'manual' } = {}
 ) {
   const { pg } = await requireEventAdmin(eventId);
 
   await validateEventStatusTransition(eventId, 'bracket', event, pg);
 
-  const format: TeamFormat = { teamSize: event.team_size, teamAssignment: event.team_assignment };
+  const format: TeamFormat = {
+    teamSize: event.team_size,
+    teamAssignment: options.teamAssignment ?? event.team_assignment,
+  };
   if (usesPools(format)) {
     if ((providedPoolAssignments === undefined) !== (providedTeamPairings === undefined)) {
       throw new BadRequestError('Pool assignments and team pairings must be provided together');
@@ -467,7 +473,7 @@ export async function transitionEventToBracket(
   const poolAssignments = recomputedPools && (providedPoolAssignments ?? recomputedPools);
   const teamPairings = providedTeamPairings ?? computeTeamPairings(format, recomputedPools ?? playerScores);
 
-  await startBracket(pg, eventId, poolAssignments, teamPairings, playerScores);
+  await startBracket(pg, eventId, poolAssignments, teamPairings, playerScores, options);
 }
 
 /**
@@ -477,14 +483,17 @@ export async function transitionEventToBracket(
  * The team format is read from the locked event row. Every format validates team
  * composition; only the random doubles draw takes pool assignments and validates
  * pool pairing. `playerScores` are the server-computed scores; when omitted they
- * are taken from complete `poolAssignments`.
+ * are taken from complete `poolAssignments`. `options.teamAssignment` switches the
+ * event to manual assignment as part of the start, so a cancelled or failed start
+ * leaves the event's format unchanged.
  */
 export async function startBracket(
   pg: Executor,
   eventId: string,
   poolAssignments: ProvidedPoolAssignment[] | undefined,
   teamPairings: ProvidedTeamPairing[],
-  playerScores?: PlayerScore[]
+  playerScores?: PlayerScore[],
+  options: { teamAssignment?: 'manual' } = {}
 ): Promise<void> {
   const authoritativeScores = playerScores ?? (poolAssignments ?? []).map((assignment) => {
     if (
@@ -517,7 +526,13 @@ export async function startBracket(
       throw new BadRequestError(`Event must be in pre-bracket status to start bracket play (current status: ${current.status})`);
     }
 
-    const format: TeamFormat = { teamSize: current.team_size, teamAssignment: current.team_assignment };
+    const format: TeamFormat = {
+      teamSize: current.team_size,
+      teamAssignment: options.teamAssignment ?? current.team_assignment,
+    };
+    if (format.teamAssignment !== current.team_assignment) {
+      await eventDb.updateEventSettings(tx, eventId, { team_assignment: format.teamAssignment });
+    }
     const pools = usesPools(format);
     if (pools && poolAssignments === undefined) {
       throw new BadRequestError('Pool assignments are required for the random doubles draw');

@@ -168,6 +168,46 @@ describe('team formats end to end', () => {
     });
   });
 
+  it('records a hand-edited random draw as manual only when the bracket starts', async () => {
+    await withRollback(db, async (tx) => {
+      const event = await seedFormat(tx, 4, 2, 'random_pairing');
+      const ids = event.eventPlayerIds;
+      // Same-pool pairs: invalid for the pool draw, fine once the event is manual.
+      const pairings = [
+        { members: [{ eventPlayerId: ids[0], slot: 1 }, { eventPlayerId: ids[1], slot: 2 }] },
+        { members: [{ eventPlayerId: ids[2], slot: 1 }, { eventPlayerId: ids[3], slot: 2 }] },
+      ];
+      const assignmentOf = async () =>
+        (await tx.select({ a: events.team_assignment }).from(events).where(eq(events.id, event.eventId)))[0].a;
+
+      // A failed start (stale roster) must not leave the event switched to manual.
+      const snapshot = await getEventWithPlayers(event.eventId);
+      await tx.delete(event_players).where(eq(event_players.id, ids[3]));
+      await expect(
+        transitionEventToBracket(event.eventId, snapshot, undefined, pairings, { teamAssignment: 'manual' })
+      ).rejects.toThrow();
+      expect(await assignmentOf()).toBe('random_pairing');
+    });
+
+    await withRollback(db, async (tx) => {
+      const event = await seedFormat(tx, 4, 2, 'random_pairing');
+      const ids = event.eventPlayerIds;
+      const pairings = [
+        { members: [{ eventPlayerId: ids[0], slot: 1 }, { eventPlayerId: ids[1], slot: 2 }] },
+        { members: [{ eventPlayerId: ids[2], slot: 1 }, { eventPlayerId: ids[3], slot: 2 }] },
+      ];
+      await transitionEventToBracket(
+        event.eventId, await getEventWithPlayers(event.eventId), undefined, pairings, { teamAssignment: 'manual' }
+      );
+
+      const [row] = await tx.select({ a: events.team_assignment, status: events.status }).from(events)
+        .where(eq(events.id, event.eventId));
+      expect(row).toEqual({ a: 'manual', status: 'bracket' });
+      expect((await storedEntries(tx, event.eventId)).every((entry) => entry.pool === null)).toBe(true);
+      expect((await storedTeams(tx, event.eventId)).flat().every((m) => m.role === null)).toBe(true);
+    });
+  });
+
   it('draws flat random triples and plays them out', async () => {
     await withRollback(db, async (tx) => {
       const event = await seedFormat(tx, 9, 3, 'random_flat');
