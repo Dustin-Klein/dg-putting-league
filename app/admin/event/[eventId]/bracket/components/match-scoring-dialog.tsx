@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketMatchWithDetails, PlayerInTeam } from '@/lib/types/scoring';
+import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -377,7 +378,11 @@ export function MatchScoringDialog({
     team1Score === team2Score &&
     matchDetails.frames &&
     matchDetails.frames.length >= standardFrames &&
-    matchDetails.frames.every((f) => f.results?.length === 4);
+    matchDetails.frames.every(
+      (f) =>
+        f.results?.length ===
+        (matchDetails.team_one?.players.length ?? 0) + (matchDetails.team_two?.players.length ?? 0)
+    );
 
   if (needsOvertime && frameNumbers.length === maxFrameNumber) {
     frameNumbers.push(maxFrameNumber + 1);
@@ -525,7 +530,7 @@ export function MatchScoringDialog({
                                 {matchDetails.team_one.pool_combo}
                               </td>
                             </tr>
-                            {matchDetails.team_one.players.map((player) => (
+                            {sortBySlot(matchDetails.team_one.players).map((player) => (
                               <PlayerRow
                                 key={player.event_player_id}
                                 player={player}
@@ -553,7 +558,7 @@ export function MatchScoringDialog({
                                 {matchDetails.team_two.pool_combo}
                               </td>
                             </tr>
-                            {matchDetails.team_two.players.map((player) => (
+                            {sortBySlot(matchDetails.team_two.players).map((player) => (
                               <PlayerRow
                                 key={player.event_player_id}
                                 player={player}
@@ -750,9 +755,11 @@ function PlayerRow({
     <tr className="border-b">
       <td className="p-3">
         <div className="font-medium">{player.player.full_name}</div>
-        <div className="text-xs text-muted-foreground">
-          {player.role === 'A_pool' ? 'Pool A' : 'Pool B'}
-        </div>
+        {player.pool && (
+          <div className="text-xs text-muted-foreground">
+            {poolLabel(player.pool)}
+          </div>
+        )}
       </td>
       {frameNumbers.map((frameNum) => {
         const score = getScore(player.event_player_id, frameNum);

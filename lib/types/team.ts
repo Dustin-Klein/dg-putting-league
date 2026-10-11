@@ -1,12 +1,13 @@
 import type { EventPlayer } from './player';
 
 /**
- * Team member assignment
+ * Team member assignment. Members render in `slot` order; a pool label, when the
+ * event drew from pools, comes from `event_player.pool`.
  */
 export interface TeamMember {
   team_id: string;
   event_player_id: string;
-  role: 'A_pool' | 'B_pool' | 'alternate';
+  slot: number;
   joined_at: string;
   event_player: EventPlayer;
 }

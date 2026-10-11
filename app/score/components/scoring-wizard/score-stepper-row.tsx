@@ -8,7 +8,7 @@ import { MAX_PUTTS, MIN_PUTTS, calculatePoints } from './scoring-utils';
 
 interface ScoreStepperRowProps {
   label: string;
-  subtitle: string;
+  subtitle?: string;
   score: number | null;
   bonusPointEnabled: boolean;
   disabled?: boolean;
@@ -48,7 +48,7 @@ export function ScoreStepperRow({
         <div className="text-xs text-muted-foreground">
           {subtitle}
           {points !== null && (
-            <span className="ml-1 text-primary font-medium">
+            <span className={cn(subtitle && 'ml-1', 'text-primary font-medium')}>
               → {points}pt
             </span>
           )}

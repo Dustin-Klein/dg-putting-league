@@ -328,7 +328,7 @@ export interface MockTeamMember {
   id: string;
   team_id: string;
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  slot: number;
 }
 
 /**
@@ -549,13 +549,13 @@ export function createMockTeamsFromPlayers(
             id: `member-a-${i + 1}`,
             team_id: `team-${i + 1}`,
             event_player_id: poolA[i].id,
-            role: 'A_pool',
+            slot: 1,
           },
           {
             id: `member-b-${i + 1}`,
             team_id: `team-${i + 1}`,
             event_player_id: poolB[i].id,
-            role: 'B_pool',
+            slot: 2,
           },
         ],
       })

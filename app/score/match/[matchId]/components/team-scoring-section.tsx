@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils/utils';
+import { sortBySlot } from '@/lib/utils/team-utils';
 import { Badge } from '@/components/ui/badge';
 import { ScoreStepperRow } from '@/app/score/components/scoring-wizard/score-stepper-row';
 import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-utils';
@@ -75,7 +76,7 @@ export function TeamScoringSection({
         </Badge>
       </div>
       <div className="space-y-2">
-        {team.players.map((player) => (
+        {sortBySlot(team.players).map((player) => (
           <MatchPlayerScoreRow
             key={player.event_player_id}
             player={player}
@@ -113,7 +114,7 @@ function MatchPlayerScoreRow({
   return (
     <ScoreStepperRow
       label={player.full_name}
-      subtitle={player.role === 'A_pool' ? 'A' : 'B'}
+      subtitle={player.pool ?? undefined}
       score={currentScore}
       bonusPointEnabled={bonusPointEnabled}
       onChange={(puttsMade) => onScoreChange(player.event_player_id, frameNumber, puttsMade)}

@@ -38,7 +38,10 @@ export interface PublicTeamInfo {
 
 export interface PublicPlayerInfo {
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  /** Position in the team, 1..team size. Players are listed in slot order. */
+  slot: number;
+  /** Set only when the event drew teams from Pool A/B. */
+  pool: 'A' | 'B' | null;
   full_name: string;
   nickname: string | null;
 }
@@ -112,7 +115,10 @@ export interface TeamWithPlayers {
 
 export interface PlayerInTeam {
   event_player_id: string;
-  role: 'A_pool' | 'B_pool';
+  /** Position in the team, 1..team size. Players are listed in slot order. */
+  slot: number;
+  /** Set only when the event drew teams from Pool A/B. */
+  pool: 'A' | 'B' | null;
   player: {
     id: string;
     full_name: string;

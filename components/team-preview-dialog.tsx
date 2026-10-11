@@ -21,40 +21,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
+import { PoolBadge } from '@/components/pool-badge';
 import { EventWithDetails } from '@/lib/types/event';
-
-interface PoolAssignment {
-  eventPlayerId: string;
-  playerId: string;
-  playerName: string;
-  pool: 'A' | 'B';
-  pfaScore: number;
-  scoringMethod: 'qualification' | 'pfa' | 'default';
-  defaultPool: 'A' | 'B';
-}
-
-interface TeamMemberPairing {
-  eventPlayerId: string;
-  role: 'A_pool' | 'B_pool';
-}
-
-interface TeamPairing {
-  seed: number;
-  poolCombo: string;
-  combinedScore: number;
-  members: TeamMemberPairing[];
-}
-
-interface TeamPreviewData {
-  poolAssignments: PoolAssignment[];
-  teamPairings: TeamPairing[];
-}
+import type { TeamPreview, TeamPreviewPlayer } from '@/lib/types/team';
+import { sortBySlot, toStartBracketRequest, type StartBracketRequest } from '@/lib/utils/team-utils';
 
 interface TeamPreviewDialogProps {
   event: EventWithDetails;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (data: TeamPreviewData) => Promise<void>;
+  onConfirm: (request: StartBracketRequest) => Promise<void>;
 }
 
 export function TeamPreviewDialog({
@@ -67,7 +43,7 @@ export function TeamPreviewDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [previewData, setPreviewData] = useState<TeamPreviewData | null>(null);
+  const [previewData, setPreviewData] = useState<TeamPreview | null>(null);
 
   const fetchPreview = useCallback(async () => {
     try {
@@ -118,7 +94,7 @@ export function TeamPreviewDialog({
 
     try {
       setIsConfirming(true);
-      await onConfirm(previewData);
+      await onConfirm(toStartBracketRequest(previewData));
     } catch (error) {
       toast({
         title: 'Error',
@@ -137,14 +113,7 @@ export function TeamPreviewDialog({
     onOpenChange(newOpen);
   };
 
-  const getPlayerFromPoolAssignment = (eventPlayerId: string): PoolAssignment | undefined => {
-    return previewData?.poolAssignments.find(pa => pa.eventPlayerId === eventPlayerId);
-  };
-
-  const formatScore = (score: number, scoringMethod: string): string => {
-    if (scoringMethod === 'default') return 'X';
-    return score.toFixed(2);
-  };
+  const playerById = new Map(previewData?.players.map((player) => [player.eventPlayerId, player]));
 
   const isProcessing = isLoading || isRegenerating || isConfirming;
 
@@ -175,16 +144,9 @@ export function TeamPreviewDialog({
                 </TableHeader>
                 <TableBody>
                   {previewData.teamPairings.map((team) => {
-                    const poolAMember = team.members.find(m => m.role === 'A_pool');
-                    const poolBMember = team.members.find(m => m.role === 'B_pool');
-                    const poolAPlayer = poolAMember ? getPlayerFromPoolAssignment(poolAMember.eventPlayerId) : undefined;
-                    const poolBPlayer = poolBMember ? getPlayerFromPoolAssignment(poolBMember.eventPlayerId) : undefined;
-
-                    const poolAHasScore = poolAPlayer?.scoringMethod !== 'default';
-                    const poolBHasScore = poolBPlayer?.scoringMethod !== 'default';
-
-                    const poolADisplay = poolAPlayer ? formatScore(poolAPlayer.pfaScore, poolAPlayer.scoringMethod) : 'X';
-                    const poolBDisplay = poolBPlayer ? formatScore(poolBPlayer.pfaScore, poolBPlayer.scoringMethod) : 'X';
+                    const members = sortBySlot(team.members)
+                      .map((member) => playerById.get(member.eventPlayerId))
+                      .filter((player): player is TeamPreviewPlayer => player !== undefined);
 
                     return (
                       <TableRow key={team.seed}>
@@ -193,44 +155,16 @@ export function TeamPreviewDialog({
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
-                            {poolAPlayer && (
-                              <div className="flex items-center gap-2">
-                                <Badge variant="default" className="text-xs">A</Badge>
-                                <span className="font-medium">{poolAPlayer.playerName}</span>
+                            {members.map((player) => (
+                              <div key={player.eventPlayerId} className="flex items-center gap-2">
+                                <PoolBadge pool={player.pool} className="text-xs" />
+                                <span className="font-medium">{player.playerName}</span>
                               </div>
-                            )}
-                            {poolBPlayer && (
-                              <div className="flex items-center gap-2">
-                                <Badge variant="default" className="text-xs bg-blue-500">B</Badge>
-                                <span className="font-medium">{poolBPlayer.playerName}</span>
-                              </div>
-                            )}
+                            ))}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="text-sm">
-                            {!poolAHasScore && !poolBHasScore ? (
-                              <span className="text-muted-foreground">
-                                {poolADisplay} + {poolBDisplay} = No data
-                              </span>
-                            ) : !poolAHasScore || !poolBHasScore ? (
-                              <span>
-                                <span className={!poolAHasScore ? 'text-muted-foreground' : ''}>
-                                  {poolADisplay}
-                                </span>
-                                {' + '}
-                                <span className={!poolBHasScore ? 'text-muted-foreground' : ''}>
-                                  {poolBDisplay}
-                                </span>
-                                {' = '}
-                                <span className="text-muted-foreground">Incomplete</span>
-                              </span>
-                            ) : (
-                              <span className="font-medium">
-                                {poolADisplay} + {poolBDisplay} = {team.combinedScore.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
+                          <CombinedScore members={members} total={team.combinedScore} />
                         </TableCell>
                       </TableRow>
                     );
@@ -274,5 +208,40 @@ export function TeamPreviewDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function formatScore(player: TeamPreviewPlayer): string {
+  return player.scoringMethod === 'default' ? 'X' : player.pfaScore.toFixed(2);
+}
+
+/**
+ * Member scores and their sum, e.g. "3.10 + 2.40 = 5.50". Players with no score
+ * history show as X, and the sum reads "Incomplete" (or "No data" if nobody has one).
+ */
+export function CombinedScore({ members, total }: { members: TeamPreviewPlayer[]; total: number }) {
+  const scored = members.filter((player) => player.scoringMethod !== 'default');
+  const parts = members.map((player, index) => (
+    <span key={player.eventPlayerId} className={player.scoringMethod === 'default' ? 'text-muted-foreground' : ''}>
+      {index > 0 && ' + '}
+      {formatScore(player)}
+    </span>
+  ));
+
+  if (scored.length === 0) {
+    return <span className="text-sm text-muted-foreground">{parts} = No data</span>;
+  }
+  if (scored.length < members.length) {
+    return (
+      <span className="text-sm">
+        {parts} = <span className="text-muted-foreground">Incomplete</span>
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm font-medium">
+      {members.length > 1 ? <>{parts} = </> : null}
+      {total.toFixed(2)}
+    </span>
   );
 }
