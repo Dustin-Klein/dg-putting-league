@@ -20,6 +20,10 @@ import { playOutBracket } from './db/play';
 import { cleanupLeague, seedBracket, seedEvent, type SeededEvent } from './db/seed';
 
 const mockAuth: { pg?: Executor } = {};
+jest.mock('@/lib/repositories/event-repository.db', () => {
+  const actual = jest.requireActual('@/lib/repositories/event-repository.db');
+  return { __esModule: true, ...actual, isAccessCodeUnique: jest.fn(actual.isAccessCodeUnique) };
+});
 jest.mock('@/lib/services/auth', () => ({
   authorizeEventAdmin: async () => ({ user: { id: 'integration-user' }, event: {}, pg: mockAuth.pg }),
   authorizeLeagueAdmin: async () => ({ user: { id: 'integration-user' }, pg: mockAuth.pg }),
@@ -224,11 +228,11 @@ describe('cross-event locking (committed data, real concurrency)', () => {
     await db.update(events).set({ status: 'completed' }).where(eq(events.id, parent.eventId));
 
     // Force both requests to pass their preflight check before either inserts.
-    const checkUnique = eventDb.isAccessCodeUnique;
+    const checkUnique = jest.requireActual<typeof eventDb>('@/lib/repositories/event-repository.db').isAccessCodeUnique;
     let checked = 0;
     let release!: () => void;
     const bothChecked = new Promise<void>((resolve) => { release = resolve; });
-    const check = jest.spyOn(eventDb, 'isAccessCodeUnique').mockImplementation(async (...args) => {
+    const check = jest.mocked(eventDb.isAccessCodeUnique).mockImplementation(async (...args) => {
       const unique = await checkUnique(...args);
       if (++checked === 2) release();
       await bothChecked;
@@ -249,7 +253,7 @@ describe('cross-event locking (committed data, real concurrency)', () => {
       expect(children).toHaveLength(1);
       expect(await entrantsOf(db, children[0].id)).toHaveLength(2);
     } finally {
-      check.mockRestore();
+      check.mockImplementation(checkUnique);
     }
   });
 
