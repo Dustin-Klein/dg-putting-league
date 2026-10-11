@@ -13,8 +13,9 @@ export type Executor = Db | Tx;
  * open their own. Throwing inside `fn` rolls everything back. Given a transaction
  * instead of the Db, it runs `fn` in a savepoint (integration tests rely on this).
  *
- * Lock order (prevents deadlocks): event advisory lock → event row (FOR SHARE /
- * FOR UPDATE) → match rows (ascending id) → lane rows (ascending id).
+ * Lock order (prevents deadlocks): event advisory lock (several events: ascending
+ * event id, see lockEvents) → event row (FOR SHARE / FOR UPDATE) → match rows
+ * (ascending id) → lane rows (ascending id).
  */
 export function withTransaction<T>(
   ex: Executor,
@@ -33,6 +34,17 @@ export function withTransaction<T>(
  */
 export async function lockEvent(tx: Tx, eventId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'event:' + eventId}, 0))`);
+}
+
+/**
+ * Take the event lock for several events (e.g. a parent and its linked events) in
+ * ascending event-id order. Only a total order on the lock key is deadlock-safe:
+ * "parent before child" is not, since a child's id can sort below its parent's.
+ */
+export async function lockEvents(tx: Tx, eventIds: readonly string[]): Promise<void> {
+  for (const eventId of [...new Set(eventIds)].sort()) {
+    await lockEvent(tx, eventId);
+  }
 }
 
 export type LockedMatch = typeof bracket_match.$inferSelect;

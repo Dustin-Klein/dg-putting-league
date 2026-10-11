@@ -93,6 +93,7 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   2. Event row (`getEventBracketConfig(tx, eventId, { lock: 'share' })`; `'update'` when changing the event). Holding it means the event can't be completed under a write that already checked its status.
   3. Match rows (`lockMatch(tx, matchId, eventId)`, ordered by ascending id)
   4. Lane rows (ordered by ascending id)
+  - Several events at once (a parent and its linked events): take the event locks with `lockEvents`, ascending by event id, never "parent first" — a child's id can sort below its parent's.
   - Any operation mutating bracket structure/progression or lanes takes the event lock first.
   - Score submission locks only the match row.
 - **Bracket storage**: `brackets-manager` runs on `DrizzleBracketStorage` (`lib/repositories/bracket-storage.db.ts`), constructed per transaction with `(tx, eventId)`. Every read/update/delete is scoped to that event's bracket; throws on DB errors (rollback) instead of returning false; `position` in opponent JSON is structural and never changed by callers.
@@ -103,6 +104,8 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
   - Reset match result, manual advance/remove, lane assign/release/maintenance/idle, clear placements, grand-final toggles
   - Lane add/delete (event lock → event row → match → lanes), league + owner creation, event creation with copied players, adding a player, qualification frames (the round row is locked before the max-frames check), team generation
 - **Score writer**: `syncMatchScores` is the sole application score writer. Inside the caller's transaction it writes manual override totals when present, otherwise sums `frame_results` by the opponent teams; matches without either source have no `score` key. Manual final scores live in the `score_override_*` columns, frame edits are blocked until an admin clears the override, and clearing it restores frame-derived totals without changing the recorded winner.
+
+- **Linked events** (`events.parent_event_id` + `link_type`; today only `second_chance`): a linked event is a normal event in its parent's league, so authorization is unchanged. Links are one level deep (a child is never a parent), enforced only in `createSecondChanceEvent`. A second-chance event is singles, entered by every player whose team placed below the cut, and copies `player_id` only: `payment_type`, `pool`, `qualification_seed` start NULL and `pfa_score` is computed fresh. `parent_event_id` is `ON DELETE RESTRICT`; `deleteEvent` deletes children still in `created` with the parent and refuses once one has moved past it.
 
 ---
 

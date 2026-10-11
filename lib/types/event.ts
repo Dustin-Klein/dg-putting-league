@@ -8,6 +8,9 @@ export type EventStatus = 'created' | 'pre-bracket' | 'bracket' | 'completed';
  */
 export type TeamAssignment = 'random_pairing' | 'random_flat' | 'manual';
 
+/** How a linked event relates to its parent. Only 'second_chance' is built today. */
+export type EventLinkType = 'second_chance' | 'side' | 'makeup';
+
 export const TEAM_SIZE_MIN = 1;
 export const TEAM_SIZE_MAX = 4;
 
@@ -37,6 +40,9 @@ export interface Event {
   payout_structure: PayoutPlace[] | null;
   team_size: number;
   team_assignment: TeamAssignment;
+  /** Set on a linked event (e.g. a second-chance tournament); links are one level deep. */
+  parent_event_id: string | null;
+  link_type: EventLinkType | null;
   created_at: string;
   participant_count?: number;
 }
@@ -65,6 +71,8 @@ export interface EventWithDetails {
   payout_structure: PayoutPlace[] | null;
   team_size: number;
   team_assignment: TeamAssignment;
+  parent_event_id: string | null;
+  link_type: EventLinkType | null;
   created_at: string;
   players: import('./player').EventPlayer[];
   teams?: import('./team').Team[];

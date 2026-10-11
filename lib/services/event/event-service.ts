@@ -9,7 +9,12 @@ import {
 } from '@/lib/errors';
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
-import { assignPoolsFromScores, computePlayerScores, type PlayerScore } from '@/lib/services/event-player';
+import {
+  assignPoolsFromScores,
+  computePfaScores,
+  computePlayerScores,
+  type PlayerScore,
+} from '@/lib/services/event-player';
 import {
   computeTeamPairings,
   teamFormatError,
@@ -23,7 +28,7 @@ import {
   restoreGrandFinalResetMatchTx,
 } from '@/lib/services/bracket';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { lockEvent, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockEvents, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
 import * as teamDb from '@/lib/repositories/team-repository.db';
@@ -40,6 +45,7 @@ import {
   type PlacementMatch,
   type PlacementOpponent,
 } from './placements';
+import { DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS, selectSecondChancePlayers } from './linked-events';
 import {
   assertRosterCurrent,
   resolvePoolAssignments,
@@ -93,6 +99,19 @@ export async function getEventsByLeagueId(leagueId: string) {
   return eventDb.getEventsByLeagueId(pg, leagueId);
 }
 
+/** Normalize an access code for a new event and check it is unused (across all leagues). */
+async function normalizeNewAccessCode(ex: Executor, rawAccessCode: string): Promise<string> {
+  const accessCode = normalizeAccessCode(rawAccessCode);
+  if (accessCode.length < ACCESS_CODE_MIN_LENGTH) {
+    throw new BadRequestError(`Access code must be at least ${ACCESS_CODE_MIN_LENGTH} characters`);
+  }
+  const isUnique = await eventDb.isAccessCodeUnique(ex, accessCode);
+  if (!isUnique) {
+    throw new BadRequestError('An event with this access code already exists');
+  }
+  return accessCode;
+}
+
 /**
  * Create a new event with validation
  */
@@ -126,14 +145,7 @@ export async function createEvent(data: {
   }
 
   // 2. Normalize and check access code uniqueness (across all leagues)
-  const accessCode = normalizeAccessCode(data.access_code);
-  if (accessCode.length < ACCESS_CODE_MIN_LENGTH) {
-    throw new BadRequestError(`Access code must be at least ${ACCESS_CODE_MIN_LENGTH} characters`);
-  }
-  const isUnique = await eventDb.isAccessCodeUnique(pg, accessCode);
-  if (!isUnique) {
-    throw new BadRequestError('An event with this access code already exists');
-  }
+  const accessCode = await normalizeNewAccessCode(pg, data.access_code);
 
   // 3. Format date — data.event_date is already YYYY-MM-DD from the form
   const formattedDate = data.event_date;
@@ -193,17 +205,143 @@ export async function createEvent(data: {
   return newEvent;
 }
 
+export interface CreateSecondChanceEventInput {
+  access_code: string;
+  /** Teams placed this well or better in the parent are excluded (default: the winners only). */
+  exclude_top_placements?: number;
+  /** Omitted settings are taken from the parent event. */
+  event_date?: string;
+  location?: string | null;
+  lane_count?: number;
+  putt_distance_ft?: number;
+  bracket_frame_count?: number;
+  double_grand_final?: boolean;
+  entry_fee_per_player?: number | null;
+  admin_fees?: number | null;
+  admin_fee_per_player?: number | null;
+}
+
+/**
+ * Create a singles second-chance event linked to a completed event, entering every
+ * player whose team placed below the cut.
+ *
+ * Only `player_id` carries over. The child has its own entry fee, so payment_type
+ * starts NULL (the pre-bracket → bracket gate then asks for the second entry); pool
+ * and qualification_seed stay NULL (singles, no qualification round); pfa_score is
+ * computed fresh over the normal PFA window, which now includes the parent's frames.
+ *
+ * Links are one level deep: a linked event can't have linked events of its own. No
+ * CHECK can see the parent row, so this is the only place that rule is enforced.
+ */
+export async function createSecondChanceEvent(
+  parentEventId: string,
+  input: CreateSecondChanceEventInput
+): Promise<eventDb.EventData> {
+  const { user, pg } = await requireEventAdmin(parentEventId);
+  const accessCode = await normalizeNewAccessCode(pg, input.access_code);
+  const excludeTopPlacements = input.exclude_top_placements ?? DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS;
+
+  let child: eventDb.EventData;
+  try {
+    child = await withTransaction(pg, async (tx) => {
+      // Holding the parent's lock and row keeps its placements and status fixed, and
+      // serializes with deleteEvent on the parent.
+      await lockEvent(tx, parentEventId);
+      const link = await eventDb.getEventLink(tx, parentEventId, { lock: 'share' });
+      const parent = await eventDb.getEventById(tx, parentEventId);
+      if (!link || !parent) throw new NotFoundError('Event not found');
+      if (link.parent_event_id !== null) {
+        throw new BadRequestError('A linked event cannot have linked events of its own');
+      }
+      if (link.status !== 'completed') {
+        throw new BadRequestError('A second-chance event can only be created from a completed event');
+      }
+
+      const playerIds = selectSecondChancePlayers(
+        await eventPlacementDb.getPlacedPlayers(tx, parentEventId),
+        excludeTopPlacements
+      );
+      if (playerIds.length === 0) {
+        throw new BadRequestError('No players are eligible for a second-chance event');
+      }
+
+      const created = await eventDb.createEvent(tx, {
+        league_id: link.league_id,
+        parent_event_id: parentEventId,
+        link_type: 'second_chance',
+        access_code: accessCode,
+        event_date: input.event_date ?? parent.event_date,
+        location: input.location !== undefined ? input.location : parent.location,
+        lane_count: input.lane_count ?? parent.lane_count,
+        putt_distance_ft: input.putt_distance_ft ?? parent.putt_distance_ft,
+        bracket_frame_count: input.bracket_frame_count ?? parent.bracket_frame_count,
+        double_grand_final: input.double_grand_final ?? parent.double_grand_final,
+        qualification_round_enabled: false,
+        qualification_frame_count: parent.qualification_frame_count,
+        entry_fee_per_player: input.entry_fee_per_player ?? null,
+        admin_fees: input.admin_fees ?? null,
+        admin_fee_per_player: input.admin_fee_per_player ?? null,
+        team_size: 1,
+        team_assignment: 'random_pairing',
+        status: 'created',
+      });
+
+      const pfaScores = await computePfaScores(tx, playerIds);
+      await eventPlayerDb.insertScoredEventPlayers(tx, created.id, playerIds.map((playerId) => {
+        const { score, scoringMethod } = pfaScores.get(playerId)!;
+        return { player_id: playerId, pfa_score: score, scoring_method: scoringMethod };
+      }));
+      return created;
+    });
+  } catch (error) {
+    logger.error('Second-chance event creation failed', {
+      userId: user.id,
+      action: 'create_second_chance_event',
+      parentEventId,
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  logger.info('Second-chance event created', {
+    userId: user.id,
+    action: 'create_second_chance_event',
+    eventId: child.id,
+    parentEventId,
+    outcome: 'success',
+  });
+  return child;
+}
+
 /**
  * Delete an event and all related records, including hand-entered frames that only
  * reach the event through their results.
+ *
+ * Linked events still in 'created' status go with it; once one has moved past
+ * 'created' (players paying a second entry, a bracket, results) the delete is refused.
+ * The parent_event_id FK is ON DELETE RESTRICT as the backstop.
  */
 export async function deleteEvent(eventId: string) {
   const { pg } = await requireEventAdmin(eventId);
   await withTransaction(pg, async (tx) => {
-    await lockEvent(tx, eventId);
-    const unlinkedFrameIds = await frameDb.getUnlinkedMatchFrameIdsForEvent(tx, eventId);
-    await eventDb.deleteEvent(tx, eventId);
-    await frameDb.deleteEmptyUnlinkedMatchFrames(tx, unlinkedFrameIds);
+    const childIds = (await eventDb.getChildEvents(tx, eventId)).map((child) => child.id);
+    await lockEvents(tx, [eventId, ...childIds]);
+    const children = await eventDb.getChildEvents(tx, eventId, { lock: 'update' });
+    if (children.some((child) => !childIds.includes(child.id))) {
+      throw new ConflictError('A linked event was just created for this event. Try again.');
+    }
+    if (children.some((child) => child.status !== 'created')) {
+      throw new ConflictError(
+        'This event has a linked event (such as a second-chance tournament) that has already started. Delete the linked event first.'
+      );
+    }
+
+    for (const id of [...children.map((child) => child.id), eventId]) {
+      const unlinkedFrameIds = await frameDb.getUnlinkedMatchFrameIdsForEvent(tx, id);
+      await eventDb.deleteEvent(tx, id);
+      await frameDb.deleteEmptyUnlinkedMatchFrames(tx, unlinkedFrameIds);
+    }
   });
 }
 

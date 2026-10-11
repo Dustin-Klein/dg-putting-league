@@ -3,8 +3,8 @@ import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
-import { InternalError, NotFoundError } from '@/lib/errors';
-import type { EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
+import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
+import type { EventLinkType, EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
 import type { Team } from '@/lib/types/team';
 import type { LeagueAdminRole } from './league-repository.db';
@@ -29,6 +29,8 @@ export interface EventData {
   payout_structure: PayoutPlace[] | null;
   team_size: number;
   team_assignment: TeamAssignment;
+  parent_event_id: string | null;
+  link_type: EventLinkType | null;
   created_at: string;
 }
 
@@ -69,6 +71,8 @@ const eventSelection = {
   payout_structure: events.payout_structure,
   team_size: events.team_size,
   team_assignment: events.team_assignment,
+  parent_event_id: events.parent_event_id,
+  link_type: events.link_type,
   created_at: events.created_at,
 };
 
@@ -292,6 +296,8 @@ export interface CreateEventData {
   admin_fee_per_player?: number | null;
   team_size?: number;
   team_assignment?: TeamAssignment;
+  parent_event_id?: string;
+  link_type?: EventLinkType;
   status: EventStatus;
 }
 
@@ -303,8 +309,10 @@ export async function createEvent(ex: Executor, data: CreateEventData): Promise<
     admin_fees: data.admin_fees == null ? null : String(data.admin_fees),
     admin_fee_per_player: data.admin_fee_per_player == null ? null : String(data.admin_fee_per_player),
     payout_pool_override: null,
-  }).returning(eventSelection);
-  if (!rows[0]) throw new InternalError('Failed to create event');
+  }).onConflictDoNothing({ target: events.access_code }).returning(eventSelection);
+  // The preflight uniqueness check can race another creation. Let Postgres decide
+  // atomically, and report the same client error when that request won the code.
+  if (!rows[0]) throw new BadRequestError('An event with this access code already exists');
   return mapEvent(rows[0]);
 }
 
@@ -314,6 +322,40 @@ export async function copyEventPlayers(ex: Executor, sourceEventId: string, dest
   if (rows.length > 0) {
     await ex.insert(event_players).values(rows.map(({ player_id }) => ({ event_id: destinationEventId, player_id })));
   }
+}
+
+export interface EventLink {
+  id: string;
+  league_id: string;
+  status: EventStatus;
+  parent_event_id: string | null;
+}
+
+/** The fields that decide whether an event can be (or have) a linked event. */
+export async function getEventLink(
+  ex: Executor,
+  eventId: string,
+  opts: { lock?: 'share' | 'update' } = {}
+): Promise<EventLink | null> {
+  const query = ex.select({
+    id: events.id,
+    league_id: events.league_id,
+    status: events.status,
+    parent_event_id: events.parent_event_id,
+  }).from(events).where(eq(events.id, eventId));
+  const rows = opts.lock ? await query.for(opts.lock) : await query;
+  return rows[0] ?? null;
+}
+
+/** Events linked to `parentEventId`, ordered by id (the cross-event lock order). */
+export async function getChildEvents(
+  ex: Executor,
+  parentEventId: string,
+  opts: { lock?: 'update' } = {}
+): Promise<Array<{ id: string; status: EventStatus }>> {
+  const query = ex.select({ id: events.id, status: events.status }).from(events)
+    .where(eq(events.parent_event_id, parentEventId)).orderBy(asc(events.id));
+  return opts.lock ? query.for(opts.lock) : query;
 }
 
 export async function getEventBracketFrameCount(ex: Executor, eventId: string): Promise<number | null> {

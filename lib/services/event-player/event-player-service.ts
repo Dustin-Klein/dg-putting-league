@@ -6,7 +6,7 @@ import {
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
 import { PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
-import { withTransaction } from '@/lib/db/tx';
+import { withTransaction, type Executor } from '@/lib/db/tx';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 
 /** Number of months of historical frame data used for PFA scoring */
@@ -155,6 +155,26 @@ function assignPools(players: PoolInput[]): { pool: 'A' | 'B' }[] {
 }
 
 /**
+ * Each player's PFA over the lookback window (every event's frames, not one event's),
+ * or a 'default' score of 0 when they have no frames in it. Callers authorize first.
+ */
+export async function computePfaScores(
+  ex: Executor,
+  playerIds: string[]
+): Promise<Map<string, { score: number; scoringMethod: 'pfa' | 'default' }>> {
+  const pfaData = await eventPlayerRepo.getPfaScoresBulk(ex, playerIds, getPfaSinceDate());
+  return new Map(playerIds.map((playerId) => {
+    const data = pfaData.get(playerId);
+    return [
+      playerId,
+      data && data.frameCount > 0
+        ? { score: data.totalPoints / data.frameCount, scoringMethod: 'pfa' as const }
+        : { score: 0, scoringMethod: 'default' as const },
+    ];
+  }));
+}
+
+/**
  * Compute every player's seeding score without persisting.
  * Used by transitionEventToBracket, which persists the scores when the bracket starts.
  */
@@ -199,29 +219,10 @@ export async function computePlayerScores(
       })
     );
   } else {
-    const pfaSince = getPfaSinceDate();
-
-    const playerIds = event.players.map(ep => ep.player_id);
-
-    const pfaScores = await eventPlayerRepo.getPfaScoresBulk(
-      pg,
-      playerIds,
-      pfaSince
-    );
+    const pfaScores = await computePfaScores(pg, event.players.map((ep) => ep.player_id));
 
     playersWithScores = event.players.map((eventPlayer) => {
-      const pfaData = pfaScores.get(eventPlayer.player_id);
-      let score: number;
-      let scoringMethod: 'qualification' | 'pfa' | 'default';
-
-      if (pfaData && pfaData.frameCount > 0) {
-        score = pfaData.totalPoints / pfaData.frameCount;
-        scoringMethod = 'pfa';
-      } else {
-        score = 0;
-        scoringMethod = 'default';
-      }
-
+      const { score, scoringMethod } = pfaScores.get(eventPlayer.player_id)!;
       return {
         eventPlayerId: eventPlayer.id,
         playerId: eventPlayer.player_id,

@@ -5,6 +5,8 @@ import { authUsers as users } from 'drizzle-orm/supabase';
 import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgSequence, pgTable, primaryKey, serial, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
+export const event_link_type = pgEnum("event_link_type", ['second_chance', 'side', 'makeup'])
+
 export const event_status = pgEnum("event_status", ['created', 'pre-bracket', 'bracket', 'completed'])
 
 export const lane_status = pgEnum("lane_status", ['idle', 'occupied', 'maintenance'])
@@ -249,10 +251,14 @@ export const events = pgTable("events", {
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	team_size: smallint().default(2).notNull(),
 	team_assignment: team_assignment_type().default('random_pairing').notNull(),
+	parent_event_id: uuid(),
+	link_type: event_link_type(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),
 	check("events_lane_count_check", sql`lane_count > 0`),
+	check("events_link_consistent", sql`(parent_event_id IS NULL) = (link_type IS NULL)`),
+	check("events_no_self_link", sql`parent_event_id IS DISTINCT FROM id`),
 	check("events_qualification_frame_count_check", sql`(qualification_frame_count > 0) AND (qualification_frame_count <= 10)`),
 	check("events_team_size_check", sql`(team_size >= 1) AND (team_size <= 4)`),
 	foreignKey({
@@ -260,7 +266,13 @@ export const events = pgTable("events", {
 			foreignColumns: [leagues.id],
 			name: "events_league_id_fkey"
 		}).onDelete("cascade"),
-	index("idx_events_league_date").using("btree", table.league_id.asc().nullsLast().op("date_ops"), table.event_date.desc().nullsFirst().op("date_ops")),
+	foreignKey({
+			columns: [table.parent_event_id],
+			foreignColumns: [table.id],
+			name: "events_parent_event_id_fkey"
+		}).onDelete("restrict"),
+	index("idx_events_league_date").using("btree", table.league_id.asc().nullsLast().op("uuid_ops"), table.event_date.desc().nullsFirst().op("date_ops")),
+	index("idx_events_parent").using("btree", table.parent_event_id.asc().nullsLast().op("uuid_ops")).where(sql`(parent_event_id IS NOT NULL)`),
 	unique("events_access_code_key").on(table.access_code),
 ]);
 
