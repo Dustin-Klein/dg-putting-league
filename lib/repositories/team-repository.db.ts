@@ -281,7 +281,7 @@ export async function getTeamMemberIds(ex: Executor, teamIds: string[]): Promise
 export interface NewTeam {
   seed: number;
   pool_combo: string;
-  members: Array<{ event_player_id: string; role: string }>;
+  members: Array<{ event_player_id: string; role: string; slot: number }>;
 }
 
 /**
@@ -302,7 +302,7 @@ export async function insertTeamsWithMembers(
     if (t.members.length > 0) {
       await ex
         .insert(team_members)
-        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role })));
+        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role, slot: m.slot })));
     }
     inserted.push(team);
   }

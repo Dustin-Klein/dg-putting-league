@@ -459,7 +459,7 @@ export async function startBracket(
       validated.teamPairings.map((tp) => ({
         seed: tp.seed,
         pool_combo: tp.poolCombo,
-        members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role })),
+        members: tp.members.map((m) => ({ event_player_id: m.eventPlayerId, role: m.role, slot: m.slot })),
       }))
     );
 

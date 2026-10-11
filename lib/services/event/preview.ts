@@ -1,7 +1,7 @@
 import { BadRequestError, ConflictError } from '@/lib/errors';
 import { STALE_PREVIEW_MESSAGE } from '@/lib/constants/event';
 import type { PoolAssignment } from '@/lib/services/event-player';
-import type { TeamPairing } from '@/lib/services/team';
+import type { TeamMemberPairing, TeamPairing } from '@/lib/services/team';
 
 export interface ValidatedPreviewPayload {
   poolAssignments: PoolAssignment[];
@@ -13,7 +13,7 @@ export type ProvidedPoolAssignment =
   Partial<Omit<PoolAssignment, 'eventPlayerId' | 'pool'>>;
 
 export type ProvidedTeamPairing =
-  Pick<TeamPairing, 'members'> &
+  { members: Array<Omit<TeamMemberPairing, 'slot'> & Partial<Pick<TeamMemberPairing, 'slot'>>> } &
   Partial<Omit<TeamPairing, 'members'>>;
 
 export function validatePreviewPayload(input: {
@@ -101,8 +101,8 @@ export function validatePreviewPayload(input: {
       poolCombo: `${playerA.playerName} & ${playerB.playerName}`,
       combinedScore: playerA.pfaScore + playerB.pfaScore,
       members: [
-        { eventPlayerId: playerA.eventPlayerId, role: 'A_pool' as const },
-        { eventPlayerId: playerB.eventPlayerId, role: 'B_pool' as const },
+        { eventPlayerId: playerA.eventPlayerId, role: 'A_pool' as const, slot: 1 },
+        { eventPlayerId: playerB.eventPlayerId, role: 'B_pool' as const, slot: 2 },
       ],
     };
   });

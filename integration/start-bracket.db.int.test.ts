@@ -61,7 +61,7 @@ describe('startBracket', () => {
       const event = await seedEvent(tx, { players: 4 });
       const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
       const foreign = '00000000-0000-0000-0000-000000000000';
-      teamPairings[1].members[1] = { eventPlayerId: foreign, role: 'B_pool' };
+      teamPairings[1].members[1] = { eventPlayerId: foreign, role: 'B_pool', slot: 2 };
       await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toThrow(
         'Teams must contain only players registered for this event'
       );

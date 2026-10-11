@@ -11,8 +11,8 @@ const assignments: PoolAssignment[] = [
 ];
 
 const teams: TeamPairing[] = [
-  { seed: 99, poolCombo: 'spoofed', combinedScore: 999, members: [{ eventPlayerId: 'a1', role: 'A_pool' }, { eventPlayerId: 'b2', role: 'B_pool' }] },
-  { seed: 98, poolCombo: 'spoofed', combinedScore: 998, members: [{ eventPlayerId: 'a2', role: 'A_pool' }, { eventPlayerId: 'b1', role: 'B_pool' }] },
+  { seed: 99, poolCombo: 'spoofed', combinedScore: 999, members: [{ eventPlayerId: 'a1', role: 'A_pool', slot: 1 }, { eventPlayerId: 'b2', role: 'B_pool', slot: 2 }] },
+  { seed: 98, poolCombo: 'spoofed', combinedScore: 998, members: [{ eventPlayerId: 'a2', role: 'A_pool', slot: 1 }, { eventPlayerId: 'b1', role: 'B_pool', slot: 2 }] },
 ];
 
 describe('validatePreviewPayload', () => {

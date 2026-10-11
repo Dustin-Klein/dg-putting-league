@@ -2,7 +2,7 @@
 // Do not edit by hand: change the schema with a migration in supabase/migrations, then re-run.
 /* eslint-disable */
 import { authUsers as users } from 'drizzle-orm/supabase';
-import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgSequence, pgTable, primaryKey, serial, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core"
+import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgSequence, pgTable, primaryKey, serial, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const event_status = pgEnum("event_status", ['created', 'pre-bracket', 'bracket', 'completed'])
@@ -14,6 +14,8 @@ export const league_admin_role = pgEnum("league_admin_role", ['owner', 'admin'])
 export const pool_type = pgEnum("pool_type", ['A', 'B'])
 
 export const qualification_status = pgEnum("qualification_status", ['not_started', 'in_progress', 'completed'])
+
+export const team_assignment_type = pgEnum("team_assignment_type", ['random_pairing', 'random_flat', 'manual'])
 
 export const player_number_seq = pgSequence("player_number_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 
@@ -245,11 +247,14 @@ export const events = pgTable("events", {
 	payout_structure: jsonb(),
 	status: event_status().default('created').notNull(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	team_size: smallint().default(2).notNull(),
+	team_assignment: team_assignment_type().default('random_pairing').notNull(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),
 	check("events_lane_count_check", sql`lane_count > 0`),
 	check("events_qualification_frame_count_check", sql`(qualification_frame_count > 0) AND (qualification_frame_count <= 10)`),
+	check("events_team_size_check", sql`(team_size >= 1) AND (team_size <= 4)`),
 	foreignKey({
 			columns: [table.league_id],
 			foreignColumns: [leagues.id],
@@ -442,10 +447,12 @@ export const rate_limits = pgTable("rate_limits", {
 export const team_members = pgTable("team_members", {
 	team_id: uuid().notNull(),
 	event_player_id: uuid().notNull(),
-	role: text().notNull(),
+	role: text(),
 	joined_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	slot: smallint().notNull(),
 }, (table) => [
 	check("team_members_role_check", sql`role = ANY (ARRAY['A_pool'::text, 'B_pool'::text, 'alternate'::text])`),
+	check("team_members_slot_check", sql`slot >= 1`),
 	foreignKey({
 			columns: [table.event_player_id],
 			foreignColumns: [event_players.id],
@@ -459,6 +466,7 @@ export const team_members = pgTable("team_members", {
 	index("idx_team_members_event_player").using("btree", table.event_player_id.asc().nullsLast().op("uuid_ops")),
 	index("idx_team_members_team").using("btree", table.team_id.asc().nullsLast().op("uuid_ops")),
 	primaryKey({ columns: [table.team_id, table.event_player_id], name: "team_members_pkey"}),
+	uniqueIndex("team_members_team_slot_key").using("btree", table.team_id.asc().nullsLast().op("int2_ops"), table.slot.asc().nullsLast().op("int2_ops")),
 ]);
 
 export const teams = pgTable("teams", {

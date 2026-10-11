@@ -70,8 +70,8 @@ describe('event Drizzle repository and service', () => {
         pool_combo: 'A/B',
       }).returning({ id: teams.id });
       await tx.insert(team_members).values([
-        { team_id: team.id, event_player_id: seeded.eventPlayerIds[0], role: 'A_pool' },
-        { team_id: team.id, event_player_id: seeded.eventPlayerIds[1], role: 'B_pool' },
+        { team_id: team.id, event_player_id: seeded.eventPlayerIds[0], role: 'A_pool', slot: 1 },
+        { team_id: team.id, event_player_id: seeded.eventPlayerIds[1], role: 'B_pool', slot: 2 },
       ]);
 
       const event = await eventDb.getEventWithPlayers(tx, seeded.eventId, { includePaymentType: true });

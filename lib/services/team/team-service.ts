@@ -16,6 +16,7 @@ export type { Team, TeamMember } from '@/lib/types/team';
 export interface TeamMemberPairing {
   eventPlayerId: string;
   role: 'A_pool' | 'B_pool';
+  slot: number;
 }
 
 /**
@@ -112,8 +113,8 @@ export function computeTeamPairings(
       poolCombo,
       combinedScore,
       members: [
-        { eventPlayerId: poolAPlayer.eventPlayerId, role: 'A_pool' },
-        { eventPlayerId: poolBPlayer.eventPlayerId, role: 'B_pool' },
+        { eventPlayerId: poolAPlayer.eventPlayerId, role: 'A_pool', slot: 1 },
+        { eventPlayerId: poolBPlayer.eventPlayerId, role: 'B_pool', slot: 2 },
       ],
     });
   }

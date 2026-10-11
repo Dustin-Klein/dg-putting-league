@@ -135,8 +135,8 @@ export function buildDeterministicPairings(event: SeededEvent): {
     poolCombo: `${event.playerNames[i]} & ${event.playerNames[i + half]}`,
     combinedScore: 200 - 2 * i,
     members: [
-      { eventPlayerId: event.eventPlayerIds[i], role: 'A_pool' },
-      { eventPlayerId: event.eventPlayerIds[i + half], role: 'B_pool' },
+      { eventPlayerId: event.eventPlayerIds[i], role: 'A_pool', slot: 1 },
+      { eventPlayerId: event.eventPlayerIds[i + half], role: 'B_pool', slot: 2 },
     ],
   }));
   return { poolAssignments, teamPairings };
