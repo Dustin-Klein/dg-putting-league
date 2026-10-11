@@ -2,7 +2,6 @@
  * Team Service Tests
  *
  * Tests for team management functions:
- * - generateTeams()
  * - getEventTeams()
  * - computeTeamPairings()
  */
@@ -10,8 +9,6 @@
 import { BadRequestError } from '@/lib/errors';
 import {
   createMockSupabaseClient,
-  createMockEventWithDetails,
-  createMockEventPlayers,
   createMockTeam,
   MockSupabaseClient,
 } from './test-utils';
@@ -26,41 +23,19 @@ jest.mock('@/lib/services/auth', () => ({
   requireAuthenticatedUser: jest.fn(),
 }));
 
-jest.mock('@/lib/db/tx', () => ({
-  lockEvent: jest.fn(),
-  withTransaction: jest.fn(async (ex, fn) => fn(ex)),
-}));
-
 jest.mock('@/lib/services/event', () => ({
   requireEventAdmin: jest.fn(),
-  getEventWithPlayers: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/team-repository.db', () => ({
-  getTeamsForEvent: jest.fn(),
-  insertTeam: jest.fn(),
-  insertTeamMember: jest.fn(),
-  insertTeamsWithMembers: jest.fn(),
-  getTeamsWithMembersForEvent: jest.fn(),
-  updateTeamSeed: jest.fn(),
   getFullTeamsForEvent: jest.fn(),
-}));
-
-jest.mock('@/lib/repositories/event-player-repository.db', () => ({
-  getQualificationScore: jest.fn(),
-}));
-
-jest.mock('@/lib/repositories/event-repository.db', () => ({
-  getEventLeagueId: jest.fn(),
-  getEventBracketConfig: jest.fn().mockResolvedValue({ status: 'pre-bracket' }),
 }));
 
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import { requireEventAdmin } from '@/lib/services/event';
 import * as teamRepo from '@/lib/repositories/team-repository.db';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
-import { generateTeams, getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
+import { getEventTeams, computeTeamPairings, shuffle, cryptoRandomInt } from '../team/team-service';
 
 describe('Team Service', () => {
   let mockSupabase: MockSupabaseClient;
@@ -70,206 +45,6 @@ describe('Team Service', () => {
     mockSupabase = createMockSupabaseClient();
     (createClient as jest.Mock).mockResolvedValue(mockSupabase);
     (requireEventAdmin as jest.Mock).mockResolvedValue({ pg: mockSupabase });
-  });
-
-  describe('generateTeams', () => {
-    const eventId = 'event-123';
-
-    it('should generate teams for event in pre-bracket status', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-      players[2].pool = 'B';
-      players[3].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', qualification_round_enabled: false },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[2].id },
-          ],
-        },
-        {
-          id: 'team-2',
-          seed: 2,
-          team_members: [
-            { event_player_id: players[1].id },
-            { event_player_id: players[3].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-        createMockTeam({ id: 'team-2', seed: 2 }),
-      ]);
-
-      const result = await generateTeams(eventId);
-
-      expect(result).toHaveLength(2);
-      expect(teamRepo.insertTeamsWithMembers).toHaveBeenCalledTimes(1);
-    });
-
-    it('should generate teams for event in bracket status', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'bracket' },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(0);
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[1].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-      ]);
-
-      const result = await generateTeams(eventId);
-
-      expect(result).toHaveLength(1);
-    });
-
-    it('should throw BadRequestError for invalid event status', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'created' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Teams can only be generated for events in pre-bracket or bracket status'
-      );
-    });
-
-    it('should throw BadRequestError when teams already exist', async () => {
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' });
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([createMockTeam()]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Teams have already been generated for this event'
-      );
-    });
-
-    it('should throw BadRequestError when no players have pools assigned', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      // No pool assignments
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'No players have been assigned to pools'
-      );
-    });
-
-    it('should throw BadRequestError when Pool A is empty', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'B';
-      players[1].pool = 'B';
-
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Both Pool A and Pool B must have players'
-      );
-    });
-
-    it('should throw BadRequestError when Pool B is empty', async () => {
-      const players = createMockEventPlayers(2, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-
-      const event = createMockEventWithDetails({ id: eventId, status: 'pre-bracket' }, players);
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-
-      await expect(generateTeams(eventId)).rejects.toThrow(BadRequestError);
-      await expect(generateTeams(eventId)).rejects.toThrow(
-        'Both Pool A and Pool B must have players'
-      );
-    });
-
-    it('should use qualification scores for seeding when enabled', async () => {
-      const players = createMockEventPlayers(4, eventId);
-      players[0].pool = 'A';
-      players[1].pool = 'A';
-      players[2].pool = 'B';
-      players[3].pool = 'B';
-
-      const event = createMockEventWithDetails(
-        { id: eventId, status: 'pre-bracket', qualification_round_enabled: true },
-        players
-      );
-
-      (getEventWithPlayers as jest.Mock).mockResolvedValue(event);
-      (teamRepo.getTeamsForEvent as jest.Mock).mockResolvedValue([]);
-      (eventPlayerRepo.getQualificationScore as jest.Mock)
-        .mockResolvedValueOnce(30) // Player 1
-        .mockResolvedValueOnce(20) // Player 2
-        .mockResolvedValueOnce(25) // Player 3
-        .mockResolvedValueOnce(15); // Player 4
-      (teamRepo.insertTeamsWithMembers as jest.Mock).mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
-      (teamRepo.getTeamsWithMembersForEvent as jest.Mock).mockResolvedValue([
-        {
-          id: 'team-1',
-          seed: 1,
-          team_members: [
-            { event_player_id: players[0].id },
-            { event_player_id: players[2].id },
-          ],
-        },
-        {
-          id: 'team-2',
-          seed: 2,
-          team_members: [
-            { event_player_id: players[1].id },
-            { event_player_id: players[3].id },
-          ],
-        },
-      ]);
-      (teamRepo.updateTeamSeed as jest.Mock).mockResolvedValue(undefined);
-      (teamRepo.getFullTeamsForEvent as jest.Mock).mockResolvedValue([
-        createMockTeam({ id: 'team-1', seed: 1 }),
-        createMockTeam({ id: 'team-2', seed: 2 }),
-      ]);
-
-      await generateTeams(eventId);
-
-      expect(eventPlayerRepo.getQualificationScore).toHaveBeenCalledTimes(4);
-    });
   });
 
   describe('getEventTeams', () => {

@@ -2,14 +2,10 @@ import 'server-only';
 import {
   BadRequestError,
 } from '@/lib/errors';
-import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import { requireEventAdmin } from '@/lib/services/event';
 import type { Team } from '@/lib/types/team';
-import type { EventPlayer } from '@/lib/types/player';
 import type { PoolAssignment } from '@/lib/services/event-player';
 import * as teamRepo from '@/lib/repositories/team-repository.db';
-import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
-import { lockEvent, withTransaction } from '@/lib/db/tx';
-import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 
 // Re-export types for consumers
 export type { Team, TeamMember } from '@/lib/types/team';
@@ -68,111 +64,6 @@ export function shuffle<T>(
     [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
   }
   return newArray;
-}
-
-/**
- * Generate teams of 2 players (1 from Pool A, 1 from Pool B) when event status changes to 'bracket'
- */
-export async function generateTeams(eventId: string): Promise<Team[]> {
-  const { pg } = await requireEventAdmin(eventId);
-  const event = await getEventWithPlayers(eventId);
-
-  // Allow team generation for events transitioning to bracket status (pre-bracket)
-  // or already in bracket status
-  if (event.status !== 'pre-bracket' && event.status !== 'bracket') {
-    throw new BadRequestError('Teams can only be generated for events in pre-bracket or bracket status');
-  }
-
-  // Check if teams already exist
-  const existingTeams = await teamRepo.getTeamsForEvent(pg, eventId);
-  if (existingTeams.length > 0) {
-    throw new BadRequestError('Teams have already been generated for this event');
-  }
-
-  // Get players with their pools and qualification scores
-  const playersWithPools = event.players.filter(player => player.pool);
-  if (playersWithPools.length === 0) {
-    throw new BadRequestError('No players have been assigned to pools');
-  }
-
-  // Separate players by pool
-  const poolAPlayers = playersWithPools.filter(player => player.pool === 'A');
-  const poolBPlayers = playersWithPools.filter(player => player.pool === 'B');
-
-  if (poolAPlayers.length === 0 || poolBPlayers.length === 0) {
-    throw new BadRequestError('Both Pool A and Pool B must have players to generate teams');
-  }
-
-  // Calculate qualification scores for seeding
-  const playersWithScores = await Promise.all(
-    playersWithPools.map(async (player) => {
-      let score: number;
-
-      if (event.qualification_round_enabled) {
-        // Calculate total qualification score
-        score = await eventPlayerRepo.getQualificationScore(pg, eventId, player.id);
-      } else {
-        // For events without qualification, use 0 as base score (seeding will be random within pools)
-        score = 0;
-      }
-
-      return {
-        ...player,
-        qualificationScore: score
-      };
-    })
-  );
-
-  // Shuffle players in each pool for random pairing
-  const shuffledPoolA = shuffle(poolAPlayers);
-  const shuffledPoolB = shuffle(poolBPlayers);
-
-  // Generate teams by randomly pairing Pool A with Pool B players
-  const teamsToCreate: { poolAPlayer: EventPlayer; poolBPlayer: EventPlayer }[] = [];
-  const minPoolSize = Math.min(shuffledPoolA.length, shuffledPoolB.length);
-
-  for (let i = 0; i < minPoolSize; i++) {
-    teamsToCreate.push({
-      poolAPlayer: shuffledPoolA[i],
-      poolBPlayer: shuffledPoolB[i],
-    });
-  }
-
-  const scoreByPlayer = new Map(playersWithScores.map((player) => [player.id, player.qualificationScore]));
-
-  return withTransaction(pg, async (tx) => {
-    await lockEvent(tx, eventId);
-    await getEventBracketConfig(tx, eventId, { lock: 'share' });
-    if ((await teamRepo.getTeamsForEvent(tx, eventId)).length > 0) {
-      throw new BadRequestError('Teams have already been generated for this event');
-    }
-
-    const inserted = await teamRepo.insertTeamsWithMembers(
-      tx,
-      eventId,
-      teamsToCreate.map((team, index) => ({
-        seed: index + 1,
-        pool_combo: `${team.poolAPlayer.player.full_name} & ${team.poolBPlayer.player.full_name}`,
-        members: [
-          { event_player_id: team.poolAPlayer.id, role: 'A_pool' },
-          { event_player_id: team.poolBPlayer.id, role: 'B_pool' },
-        ],
-      }))
-    );
-
-    const ranked = inserted.map((team, index) => ({
-      id: team.id,
-      combinedScore:
-        (scoreByPlayer.get(teamsToCreate[index].poolAPlayer.id) ?? 0) +
-        (scoreByPlayer.get(teamsToCreate[index].poolBPlayer.id) ?? 0),
-    }));
-    ranked.sort((a, b) => b.combinedScore - a.combinedScore);
-    for (const [index, team] of ranked.entries()) {
-      await teamRepo.updateTeamSeed(tx, team.id, index + 1);
-    }
-
-    return teamRepo.getFullTeamsForEvent(tx, eventId);
-  });
 }
 
 /**

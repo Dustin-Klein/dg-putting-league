@@ -144,32 +144,6 @@ export async function getPublicTeamFromParticipant(
   return (await getPublicTeamsByParticipantIds(ex, eventId, [participantId])).get(participantId) ?? null;
 }
 
-export async function getTeamsForEvent(ex: Executor, eventId: string): Promise<Array<{ id: string }>> {
-  return ex.select({ id: teams.id }).from(teams).where(eq(teams.event_id, eventId));
-}
-
-export async function getTeamsWithMembersForEvent(
-  ex: Executor,
-  eventId: string
-): Promise<Array<{ id: string; team_members: Array<{ event_player_id: string }> }>> {
-  const rows = await ex
-    .select({ id: teams.id, event_player_id: team_members.event_player_id })
-    .from(teams)
-    .leftJoin(team_members, eq(team_members.team_id, teams.id))
-    .where(eq(teams.event_id, eventId));
-  const grouped = new Map<string, { id: string; team_members: Array<{ event_player_id: string }> }>();
-  for (const row of rows) {
-    const team = grouped.get(row.id) ?? { id: row.id, team_members: [] };
-    if (row.event_player_id) team.team_members.push({ event_player_id: row.event_player_id });
-    grouped.set(row.id, team);
-  }
-  return [...grouped.values()];
-}
-
-export async function updateTeamSeed(ex: Executor, teamId: string, seed: number): Promise<void> {
-  await ex.update(teams).set({ seed }).where(eq(teams.id, teamId));
-}
-
 export async function getFullTeamsForEvent(ex: Executor, eventId: string, includePaymentType = true): Promise<Team[]> {
   const rows = await ex
     .select({
