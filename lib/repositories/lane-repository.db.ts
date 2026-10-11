@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Status } from 'brackets-model';
 import type { Executor, Tx } from '@/lib/db/tx';
 import { bracket_match, bracket_round, lanes } from '@/lib/db/schema';
+import { compareMatchQueue } from '@/lib/utils/match-queue';
 import type { Lane } from '@/lib/types/bracket';
 
 /**
@@ -144,15 +145,7 @@ export async function getUnassignedReadyMatches(ex: Executor, stageId: number): 
       )
     );
 
-  const time = (v: string | null) => (v ? new Date(v).getTime() : 0);
-  rows.sort((a, b) => {
-    if (a.round_number !== b.round_number) return a.round_number - b.round_number;
-    if (b.status !== a.status) return b.status - a.status;
-    const byTime = time(a.updated_at) - time(b.updated_at);
-    if (byTime !== 0) return byTime;
-    if (a.number !== b.number) return a.number - b.number;
-    return a.id - b.id;
-  });
+  rows.sort(compareMatchQueue);
 
   return rows.map(({ id, round_id, number, status }) => ({ id, round_id, number, status }));
 }

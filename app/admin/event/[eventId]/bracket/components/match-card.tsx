@@ -24,6 +24,7 @@ interface MatchCardProps {
   opponent2Placeholder?: string;
   laneLabel?: string;
   isIdle?: boolean;
+  onDeckPosition?: number;
   onClick?: () => void;
   isClickable?: boolean;
   isCorrectionMode?: boolean;
@@ -140,6 +141,7 @@ export function MatchCard({
   opponent2Placeholder,
   laneLabel,
   isIdle = false,
+  onDeckPosition,
   onClick,
   isClickable = false,
   isCorrectionMode = false,
@@ -161,6 +163,9 @@ export function MatchCard({
   const team1IsWinner = isComplete && opponent1?.result === 'win';
   const team2IsWinner = isComplete && opponent2?.result === 'win';
 
+  const showOnDeck = onDeckPosition !== undefined && onDeckPosition > 0 && !laneLabel && !isIdle &&
+    (match.status === Status.Ready || match.status === Status.Waiting);
+
   const laneNumber = laneLabel?.match(/\d+/)?.[0] || laneLabel;
 
   return (
@@ -170,6 +175,7 @@ export function MatchCard({
         isClickable && 'cursor-pointer hover:shadow-md hover:border-primary/50',
         match.status === Status.Running && 'border-2 border-blue-400',
         laneLabel && !isIdle && match.status !== Status.Running && !isComplete && 'shadow-[0_0_12px_rgba(245,158,11,0.5)]',
+        showOnDeck && 'shadow-[0_0_12px_rgba(139,92,246,0.5)]',
         isIdle && 'shadow-[0_0_12px_rgba(239,68,68,0.5)]'
       )}
       onClick={isClickable ? onClick : undefined}
@@ -179,6 +185,9 @@ export function MatchCard({
       )}
       {isIdle && (
         <div className="absolute inset-0 border-2 border-red-500 rounded-[inherit] animate-pulse-ring-fast pointer-events-none z-10" />
+      )}
+      {showOnDeck && (
+        <div className="absolute inset-0 border-2 border-violet-500 rounded-[inherit] pointer-events-none z-10" />
       )}
       {isCorrectionMode && (
         <div className="absolute top-0 left-0">
@@ -190,6 +199,16 @@ export function MatchCard({
           <span className="text-sm font-medium text-muted-foreground">
             M{matchNumber}
           </span>
+          {showOnDeck && (
+            <span
+              className="text-[9px] leading-tight text-center font-semibold whitespace-nowrap text-violet-700 dark:text-violet-300"
+              aria-label={`On deck #${onDeckPosition}`}
+              title={`On deck #${onDeckPosition} in automatic lane assignment order`}
+            >
+              On deck
+              <span className="block tabular-nums">#{onDeckPosition}</span>
+            </span>
+          )}
           {laneNumber && (
             <div className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
               <MapPin className="h-2.5 w-2.5" aria-hidden="true" />
