@@ -166,13 +166,10 @@ export async function autoAssignLanesTx(tx: Tx, eventId: string): Promise<number
 
   const matches = await laneDb.getUnassignedReadyMatches(tx, stage.id);
 
-  let assigned = 0;
-  for (let i = 0; i < Math.min(idleLanes.length, matches.length); i++) {
-    if (await laneDb.assignLane(tx, eventId, idleLanes[i].id, matches[i].id)) {
-      assigned++;
-    }
-  }
-  return assigned;
+  const pairs = matches
+    .slice(0, idleLanes.length)
+    .map((match, i) => ({ laneId: idleLanes[i].id, matchId: match.id }));
+  return (await laneDb.assignLanes(tx, eventId, pairs)).length;
 }
 
 /**

@@ -60,8 +60,8 @@ jest.mock('@/lib/repositories/bracket-repository.db', () => ({
 }));
 
 jest.mock('@/lib/services/qualification', () => ({
-  validateQualificationAccessCode: jest.fn(),
-  getPlayersForQualification: jest.fn(),
+  toQualificationEventInfo: jest.requireActual('@/lib/services/qualification/qualification-service').toQualificationEventInfo,
+  getPlayersForQualificationDb: jest.fn(),
 }));
 
 // Import after mocking
@@ -80,8 +80,7 @@ import {
   getMatchForScoringById,
 } from '@/lib/repositories/bracket-repository.db';
 import {
-  validateQualificationAccessCode,
-  getPlayersForQualification,
+  getPlayersForQualificationDb,
 } from '@/lib/services/qualification';
 import { calculatePoints } from '../scoring/points-calculator';
 import {
@@ -142,25 +141,32 @@ describe('Scoring Service', () => {
     const accessCode = 'ABC123';
 
     it('should return qualification context when event is pre-bracket and qualification is enabled', async () => {
-      (getEventByAccessCode as jest.Mock).mockResolvedValue({
+      const accessEvent = {
         id: 'event-123',
-        status: 'pre-bracket',
+        event_date: '2026-03-15',
+        location: 'Venue',
+        lane_count: 2,
+        bonus_point_enabled: true,
         qualification_round_enabled: true,
-      });
+        qualification_frame_count: 5,
+        status: 'pre-bracket',
+      };
+      (getEventByAccessCode as jest.Mock).mockResolvedValue(accessEvent);
 
-      const mockEvent = { id: 'event-123', status: 'pre-bracket' };
       const mockPlayers = [{ event_player_id: 'ep-1' }];
-      (validateQualificationAccessCode as jest.Mock).mockResolvedValue(mockEvent);
-      (getPlayersForQualification as jest.Mock).mockResolvedValue(mockPlayers);
+      (getPlayersForQualificationDb as jest.Mock).mockResolvedValue(mockPlayers);
 
       const result = await getEventScoringContext(accessCode);
 
       expect(result).toEqual({
         mode: 'qualification',
-        event: mockEvent,
+        event: accessEvent,
         players: mockPlayers,
       });
+      // The access code is looked up once and its connection reused.
+      expect(getEventByAccessCode).toHaveBeenCalledTimes(1);
       expect(getEventByAccessCode).toHaveBeenCalledWith(mockPg, accessCode.toLowerCase());
+      expect(getPlayersForQualificationDb).toHaveBeenCalledWith(mockPg, accessEvent);
     });
 
     it('should return bracket context when event is in bracket status', async () => {

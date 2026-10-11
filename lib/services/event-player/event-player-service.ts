@@ -183,7 +183,18 @@ export async function computePlayerScores(
   event: EventWithDetails
 ): Promise<PlayerScore[]> {
   const { pg } = await requireEventAdmin(eventId);
+  return computePlayerScoresDb(pg, eventId, event);
+}
 
+/**
+ * `computePlayerScores` for a caller that has already authorized as event admin and
+ * holds that connection, so a composite operation checks permission once.
+ */
+export async function computePlayerScoresDb(
+  pg: Executor,
+  eventId: string,
+  event: EventWithDetails
+): Promise<PlayerScore[]> {
   if (!event.players || event.players.length === 0) {
     throw new BadRequestError('No players registered for this event');
   }
@@ -205,19 +216,15 @@ export async function computePlayerScores(
   }>;
 
   if (event.qualification_round_enabled) {
-    playersWithScores = await Promise.all(
-      event.players.map(async (eventPlayer) => {
-        const score = await eventPlayerRepo.getQualificationScore(pg, eventId, eventPlayer.id);
-        return {
-          eventPlayerId: eventPlayer.id,
-          playerId: eventPlayer.player_id,
-          playerName: eventPlayer.player.full_name,
-          score,
-          scoringMethod: 'qualification' as const,
-          defaultPool: (eventPlayer.player.default_pool || 'B') as 'A' | 'B',
-        };
-      })
-    );
+    const totals = await eventPlayerRepo.getQualificationScores(pg, eventId);
+    playersWithScores = event.players.map((eventPlayer) => ({
+      eventPlayerId: eventPlayer.id,
+      playerId: eventPlayer.player_id,
+      playerName: eventPlayer.player.full_name,
+      score: totals.get(eventPlayer.id) ?? 0,
+      scoringMethod: 'qualification' as const,
+      defaultPool: (eventPlayer.player.default_pool || 'B') as 'A' | 'B',
+    }));
   } else {
     const pfaScores = await computePfaScores(pg, event.players.map((ep) => ep.player_id));
 

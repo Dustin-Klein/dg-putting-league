@@ -76,14 +76,14 @@ describe('event service Drizzle port', () => {
     (authorizeEventView as jest.Mock).mockResolvedValue({ user, event: {}, isAdmin: true, pg });
     (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(event);
     (eventDb.getEventAccessCode as jest.Mock).mockResolvedValue('secret1');
-    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: 'secret1' });
+    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: 'secret1', viewer_is_admin: true });
     expect(authorizeEventView).toHaveBeenCalledTimes(1);
     expect(eventDb.getEventWithPlayers).toHaveBeenCalledWith(pg, 'event-1', { includePaymentType: true });
   });
 
   it('hides access code and payment type from a public viewer', async () => {
     (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(createMockEventWithDetails({ id: 'event-1' }));
-    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: null });
+    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: null, viewer_is_admin: false });
     expect(eventDb.getEventAccessCode).not.toHaveBeenCalled();
     expect(eventDb.getEventWithPlayers).toHaveBeenCalledWith(pg, 'event-1', { includePaymentType: false });
   });

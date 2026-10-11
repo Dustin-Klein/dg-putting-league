@@ -6,11 +6,20 @@ import { requireEventAdmin } from '@/lib/services/event';
 import { authorizeEventView } from '@/lib/services/auth';
 import { Team } from '@/lib/services/team';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockMatch, lockMatches, withTransaction, type Tx } from '@/lib/db/tx';
 import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
+import * as bracketStorageDb from '@/lib/repositories/bracket-storage.db';
+import { MemoryBracketStorage } from './memory-bracket-storage';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
-import { assignLane, getLanesForEvent, lockEventLanes, releaseMatchLane, resetOccupiedLanesToIdle } from '@/lib/repositories/lane-repository.db';
+import {
+  assignLane,
+  getLanesForEvent,
+  lockEventLanes,
+  releaseMatchLane,
+  releaseMatchLanes,
+  resetOccupiedLanesToIdle,
+} from '@/lib/repositories/lane-repository.db';
 import { getFrameCountsForMatches } from '@/lib/repositories/frame-repository.db';
 import { getEventAccessCode, getEventBracketConfig, getEventById } from '@/lib/repositories/event-repository.db';
 import { clearScoreOverrides } from '@/lib/repositories/match-scores-repository.db';
@@ -32,6 +41,7 @@ import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories
 import type { EventStatus } from '@/lib/types/event';
 import type {
   BracketWithTeams,
+  Lane,
   MatchProgressionSources,
 } from '@/lib/types/bracket';
 
@@ -382,13 +392,17 @@ export async function buildProgressionSourceMap(
  * Create the double-elimination bracket for an event from its teams (seed order),
  * inside the caller's transaction, which must hold the event lock: brackets-manager
  * structure, participant → team links, and first-round matches set Ready.
+ *
+ * brackets-manager generates the structure in memory (it would otherwise make one
+ * round trip per group, round and match); the result is then written in bulk, so the
+ * statement count doesn't grow with the bracket size.
  */
 export async function createBracketTx(
   tx: Tx,
   eventId: string,
   doubleGrandFinal: boolean
 ): Promise<void> {
-  if (await bracketDb.getStageForEvent(tx, eventId)) {
+  if (await bracketStorageDb.bracketRowsExist(tx, eventId)) {
     throw new BadRequestError('Bracket has already been created for this event');
   }
 
@@ -408,7 +422,8 @@ export async function createBracketTx(
     seeding.push(null);
   }
 
-  const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
+  const storage = new MemoryBracketStorage();
+  const manager = new BracketsManager(storage);
   await manager.create.stage({
     tournamentId: eventId as unknown as number,
     name: 'Double Elimination',
@@ -421,21 +436,30 @@ export async function createBracketTx(
     },
   });
 
-  // Participants are created in seeding order.
-  const participants = await bracketDb.getParticipantsForEvent(tx, eventId);
-  await bracketDb.linkParticipantsToTeams(
-    tx,
-    eventId,
-    participants
-      .map((participant, i) => ({ participantId: participant.id, teamId: sortedTeams[i]?.id }))
-      .filter((m): m is { participantId: number; teamId: string } => m.teamId !== undefined)
-  );
+  const bracket = {
+    stage: storage.dump('stage'),
+    participant: storage.dump('participant'),
+    group: storage.dump('group'),
+    round: storage.dump('round'),
+    match: storage.dump('match'),
+    match_game: storage.dump('match_game'),
+  } as bracketStorageDb.GeneratedBracket;
 
-  const stage = await bracketDb.getStageForEvent(tx, eventId);
-  if (!stage) {
-    throw new InternalError('Bracket stage was not created');
+  // Every match whose two slots hold a participant starts Ready.
+  for (const match of bracket.match) {
+    if (match.status < Status.Ready && match.opponent1?.id != null && match.opponent2?.id != null) {
+      match.status = Status.Ready;
+    }
   }
-  await bracketDb.setFilledMatchesReady(tx, stage.id);
+
+  // Participants are created in seeding order.
+  const participantTeamIds = new Map<number, string>();
+  bracket.participant.forEach((participant, i) => {
+    const team = sortedTeams[i];
+    if (team) participantTeamIds.set(Number(participant.id), team.id);
+  });
+
+  await bracketStorageDb.insertGeneratedBracket(tx, eventId, bracket, participantTeamIds);
 }
 
 /**
@@ -578,7 +602,8 @@ export async function getBracket(eventId: string): Promise<BracketData> {
 }
 
 /**
- * Get bracket data with team information included
+ * Get bracket data with team information and the event's lanes (the admin bracket
+ * view, refetched on every live change), under one admin authorization.
  */
 export async function getBracketWithTeams(eventId: string): Promise<{
   bracket: BracketData;
@@ -589,15 +614,17 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   bracketFrameCount?: number;
   frameCountMap: Record<number, number>;
   progressionSourceMap: Record<number, MatchProgressionSources>;
+  lanes: Lane[];
+  laneMap: Record<string, string>;
 }> {
   const { pg } = await requireEventAdmin(eventId);
 
-  const [bracketStructure, teams, event, accessCode, participantsWithTeams] = await Promise.all([
+  const [bracketStructure, teams, event, accessCode, lanes] = await Promise.all([
     bracketDb.fetchBracketStructure(pg, eventId),
     getFullTeamsForEvent(pg, eventId),
     getEventById(pg, eventId),
     getEventAccessCode(pg, eventId),
-    bracketDb.getParticipantsForEvent(pg, eventId),
+    getLanesForEvent(pg, eventId),
   ]);
   if (!bracketStructure) {
     throw new NotFoundError('Bracket not found for this event');
@@ -641,11 +668,12 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   );
 
   const participantTeamMap: Record<number, Team> = {};
+  const teamById = new Map(teams.map((team) => [team.id, team]));
 
-  for (const p of participantsWithTeams) {
-    const team = teams.find((t) => t.id === p.team_id);
+  for (const p of bracketStructure.participants) {
+    const team = p.team_id ? teamById.get(p.team_id) : undefined;
     if (team) {
-      participantTeamMap[p.id] = team;
+      participantTeamMap[Number(p.id)] = team;
     }
   }
 
@@ -656,6 +684,8 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     eventStatus: event?.status,
     accessCode: accessCode ?? undefined,
     bracketFrameCount: event?.bracket_frame_count ?? undefined,
+    lanes,
+    laneMap: Object.fromEntries(lanes.map((lane) => [lane.id, lane.label])),
     frameCountMap,
     progressionSourceMap,
   };
@@ -937,6 +967,21 @@ export async function clearBracketPlacements(eventId: string): Promise<BracketDa
 const GRAND_FINAL_GROUP_NUMBER = 3;
 const FIRST_GF_ROUND_NUMBER = 1;
 type MatchSlot = 'opponent1' | 'opponent2';
+/**
+ * In-memory brackets-manager storage holding a reset snapshot, so graph lookups
+ * (`find.nextMatches`) need no database reads. Every group and round in the snapshot
+ * belongs to its one stage.
+ */
+export function snapshotStorage(context: BracketResetContext): MemoryBracketStorage {
+  const storage = new MemoryBracketStorage();
+  const stageId = context.stage.id;
+  storage.seed('stage', [{ ...context.stage, settings: context.stage.settings ?? {} } as unknown as Stage]);
+  storage.seed('group', context.groups.map((group) => ({ ...group, stage_id: stageId })) as Group[]);
+  storage.seed('round', context.rounds.map((round) => ({ ...round, stage_id: stageId })) as Round[]);
+  storage.seed('match', context.matches as unknown as Match[]);
+  return storage;
+}
+
 type NextMatchesResolver = (matchId: number) => Promise<number[]>;
 
 export interface TaintedSlotPlan {
@@ -1173,38 +1218,24 @@ export async function resetMatchResult(
       throw new BadRequestError('Only completed, running, or archived matches can be reset');
     }
 
-    const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
-    const managerFind = (
-      manager as unknown as {
-        find?: {
-          nextMatches?: (matchId: number) => Promise<Array<{ id: number }>>;
-        };
-      }
-    ).find;
-    const toMatchId = (id: unknown): number | null => {
-      const parsed = Number(id);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-
-    if (!managerFind?.nextMatches) {
-      throw new InternalError('Bracket reset graph traversal is unavailable');
-    }
-
+    // Graph lookups run brackets-manager over the snapshot already loaded, in memory.
+    const snapshotFind = new BracketsManager(snapshotStorage(context)).find;
     const nextMatchesResolver = async (currentId: number): Promise<number[]> => {
-      const nextMatches = await managerFind.nextMatches!(currentId);
+      const nextMatches = await snapshotFind.nextMatches(currentId);
       return nextMatches
-        .map((nextMatch) => toMatchId((nextMatch as { id: unknown }).id))
-        .filter((nextId): nextId is number => nextId != null);
+        .map((nextMatch) => Number(nextMatch.id))
+        .filter((nextId) => Number.isFinite(nextId));
     };
 
     const taintPlan = await buildTaintedSlotPlan(matchId, context, nextMatchesResolver);
     const resetMatchIds = [matchId, ...taintPlan.affectedMatchIds.filter((id) => id !== matchId)];
     const baselineById = new Map<number, BracketMatchForReset>(context.matches.map((match) => [match.id, match]));
 
+    // Lock every match being rewritten up front, in ascending id order.
+    const lockedById = await lockMatches(tx, resetMatchIds, eventId);
+
     // Matches being reset give their lanes back; free lanes are reassigned at the end.
-    for (const { id } of await bracketDb.getMatchesWithLanes(tx, resetMatchIds)) {
-      await releaseMatchLane(tx, eventId, id);
-    }
+    await releaseMatchLanes(tx, eventId, resetMatchIds);
 
     for (const currentId of resetMatchIds) {
       const baselineMatch = baselineById.get(currentId);
@@ -1231,16 +1262,16 @@ export async function resetMatchResult(
         ? { id: desiredOpponent2Id }
         : (opp2WasLiteralNull ? null : { id: null });
 
-      // Step A: force-clear score/result artifacts from both slots.
-      const before = await lockMatch(tx, currentId, eventId);
+      const before = lockedById.get(currentId);
       if (!before) {
         throw new InternalError(`Match ${currentId} disappeared during reset`);
       }
-      await bracketDb.mergeMatchOpponents(tx, before, scrubOpponent1, scrubOpponent2, Status.Waiting);
-
-      // Step B: restore canonical replay participants for this match.
-      const scrubbed = (await lockMatch(tx, currentId, eventId))!;
-      await bracketDb.mergeMatchOpponents(tx, scrubbed, restoreOpponent1, restoreOpponent2, Status.Waiting);
+      // Step A force-clears score/result artifacts from both slots; step B restores the
+      // canonical replay participants on top of the scrubbed row. Both are computed on
+      // the locked row and written once.
+      const scrubbed = bracketDb.mergedMatchOpponents(before, scrubOpponent1, scrubOpponent2, Status.Waiting);
+      const restored = bracketDb.mergedMatchOpponents(scrubbed, restoreOpponent1, restoreOpponent2, Status.Waiting);
+      await bracketDb.writeMatchOpponents(tx, currentId, restored);
     }
 
     await bracketDb.deleteMatchFrames(tx, resetMatchIds);

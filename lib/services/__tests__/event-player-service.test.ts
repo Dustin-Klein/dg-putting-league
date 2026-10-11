@@ -44,7 +44,7 @@ jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   getEventPlayer: jest.fn(),
   deleteEventPlayer: jest.fn(),
   updateEventPlayerPayment: jest.fn(),
-  getQualificationScore: jest.fn(),
+  getQualificationScores: jest.fn(),
   getPfaScoresBulk: jest.fn(),
 }));
 
@@ -57,6 +57,7 @@ import {
   removePlayerFromEvent,
   updatePlayerPayment,
   computePoolAssignments,
+  computePlayerScores,
   PFA_LOOKBACK_MONTHS,
   getPfaSinceDate,
 } from '../event-player/event-player-service';
@@ -316,12 +317,33 @@ describe('Event Player Service', () => {
       );
 
       // All same scores to test tie-breaking
-      (eventPlayerRepo.getQualificationScore as jest.Mock).mockResolvedValue(10);
+      (eventPlayerRepo.getQualificationScores as jest.Mock).mockResolvedValue(
+        new Map(players.map((p) => [p.id, 10]))
+      );
 
       const result = await computePoolAssignments(eventId, event);
 
       // Players with default_pool 'A' should rank higher in ties
       expect(result).toHaveLength(4);
+      expect(eventPlayerRepo.getQualificationScores).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads every qualification total in one query and scores players without frames as 0', async () => {
+      const players = createMockEventPlayers(3, eventId);
+      const event = createMockEventWithDetails(
+        { id: eventId, qualification_round_enabled: true },
+        players
+      );
+      (eventPlayerRepo.getQualificationScores as jest.Mock).mockResolvedValue(
+        new Map([[players[0].id, 12], [players[2].id, 30]])
+      );
+
+      const scores = await computePlayerScores(eventId, event);
+
+      expect(eventPlayerRepo.getQualificationScores).toHaveBeenCalledTimes(1);
+      expect(scores.map((s) => s.eventPlayerId)).toEqual(players.map((p) => p.id));
+      expect(scores.map((s) => s.pfaScore)).toEqual([12, 0, 30]);
+      expect(scores.every((s) => s.scoringMethod === 'qualification')).toBe(true);
     });
 
     it('should calculate correct scoring method', async () => {

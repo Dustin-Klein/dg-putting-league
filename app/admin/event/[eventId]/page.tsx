@@ -80,14 +80,7 @@ export default function EventPage({
 
       try {
         const eventData = await fetchEvent(eventId);
-
-        try {
-          const adminResponse = await fetch(`/api/league/${eventData.league_id}/is-admin`);
-          setIsAdmin(adminResponse.ok);
-        } catch {
-          setIsAdmin(false);
-        }
-
+        setIsAdmin(eventData.viewer_is_admin === true);
         setEvent(eventData);
       } catch (error) {
         console.error('Failed to load event:', error);

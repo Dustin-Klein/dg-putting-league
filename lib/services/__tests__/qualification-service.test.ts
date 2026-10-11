@@ -65,6 +65,7 @@ jest.mock('@/lib/repositories/qualification-repository.db', () => ({
   getQualificationRoundFull: jest.fn(),
   getEventPlayersQualificationStatus: jest.fn(),
   getQualificationFramesBulk: jest.fn(),
+  lockQualificationEvent: jest.fn(),
 }));
 
 jest.mock('@/lib/repositories/event-player-repository.db', () => ({
@@ -358,6 +359,26 @@ describe('Qualification Service', () => {
         mockRound
       );
       (qualificationRepo.getPlayerQualificationFrames as jest.Mock).mockResolvedValue([]);
+      (qualificationRepo.lockQualificationEvent as jest.Mock).mockResolvedValue({
+        status: 'pre-bracket',
+        qualification_round_enabled: true,
+        qualification_frame_count: 5,
+        bonus_point_enabled: true,
+      });
+    });
+
+    it('rejects the write when the event left qualification after authorization', async () => {
+      (qualificationRepo.lockQualificationEvent as jest.Mock).mockResolvedValue({
+        status: 'bracket',
+        qualification_round_enabled: true,
+        qualification_frame_count: 10,
+        bonus_point_enabled: true,
+      });
+
+      await expect(recordQualificationScore(accessCode, eventPlayerId, frameNumber, puttsMade)).rejects.toThrow(
+        'Event is not accepting qualification scores'
+      );
+      expect(qualificationRepo.recordQualificationFrame).not.toHaveBeenCalled();
     });
 
     it('should record qualification score successfully', async () => {

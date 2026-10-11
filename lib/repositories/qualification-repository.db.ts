@@ -45,6 +45,26 @@ function mapFrame(row: typeof qualification_frames.$inferSelect): QualificationF
 }
 
 /**
+ * Lock the event row (`FOR SHARE`) and return its qualification settings, so a write
+ * can check under the lock that the event still accepts qualification scores (bracket
+ * start takes the row `FOR UPDATE`, so it can't commit in between).
+ */
+export async function lockQualificationEvent(ex: Executor, eventId: string): Promise<{
+  status: string;
+  qualification_round_enabled: boolean;
+  qualification_frame_count: number;
+  bonus_point_enabled: boolean;
+} | null> {
+  const [row] = await ex.select({
+    status: events.status,
+    qualification_round_enabled: events.qualification_round_enabled,
+    qualification_frame_count: events.qualification_frame_count,
+    bonus_point_enabled: events.bonus_point_enabled,
+  }).from(events).where(eq(events.id, eventId)).for('share');
+  return row ?? null;
+}
+
+/**
  * Get the event's qualification round, creating it if needed, and lock it
  * (`FOR UPDATE`) so callers can check a player's frame count without racing other
  * scorers. The event row is held `FOR SHARE` so the event can't leave qualification
@@ -187,6 +207,47 @@ export async function recordQualificationFrame(
   }).returning();
   if (!frame) throw new InternalError('Failed to record qualification frame');
   return mapFrame(frame);
+}
+
+/**
+ * Record several players' frames in one statement (insert, or overwrite the same
+ * player's frame number). The caller holds the round lock and has checked that every
+ * player belongs to the event. Returns the written frames.
+ */
+export async function recordQualificationFrames(
+  ex: Executor,
+  rows: Array<{
+    qualificationRoundId: string;
+    eventId: string;
+    eventPlayerId: string;
+    frameNumber: number;
+    puttsMade: number;
+    pointsEarned: number;
+  }>
+): Promise<QualificationFrame[]> {
+  if (rows.length === 0) return [];
+  const written = await ex.insert(qualification_frames).values(rows.map((row) => ({
+    qualification_round_id: row.qualificationRoundId,
+    event_id: row.eventId,
+    event_player_id: row.eventPlayerId,
+    frame_number: row.frameNumber,
+    putts_made: row.puttsMade,
+    points_earned: row.pointsEarned,
+    recorded_by: null,
+    recorded_at: sql`now()`,
+  }))).onConflictDoUpdate({
+    target: [qualification_frames.event_player_id, qualification_frames.frame_number],
+    set: {
+      qualification_round_id: sql`excluded.qualification_round_id`,
+      event_id: sql`excluded.event_id`,
+      putts_made: sql`excluded.putts_made`,
+      points_earned: sql`excluded.points_earned`,
+      recorded_by: sql`excluded.recorded_by`,
+      recorded_at: sql`now()`,
+    },
+  }).returning();
+  if (written.length !== rows.length) throw new InternalError('Failed to record qualification frames');
+  return written.map(mapFrame);
 }
 
 export async function getEventPlayersQualificationStatus(

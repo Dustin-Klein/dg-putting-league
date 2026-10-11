@@ -10,12 +10,6 @@ export interface ComputedMatchScores {
 
 type Opponent = Record<string, unknown> | null;
 
-function opponentId(value: unknown): number | null {
-  if (value === null || typeof value !== 'object') return null;
-  const id = (value as Record<string, unknown>).id;
-  return typeof id === 'number' ? id : null;
-}
-
 export function applyScoresToOpponentJson(
   opponent1: unknown,
   opponent2: unknown,
@@ -34,36 +28,35 @@ export function applyScoresToOpponentJson(
   };
 }
 
-export async function computeMatchScores(ex: Executor, matchId: number): Promise<ComputedMatchScores | null> {
-  const source = await scoreDb.getMatchScoreSource(ex, matchId);
-  if (!source) throw new NotFoundError('Match not found');
-
-  if (source.scoreOverride1 !== null && source.scoreOverride2 !== null) {
-    return { team1Score: source.scoreOverride1, team2Score: source.scoreOverride2 };
+/** The canonical scores for a match's loaded score inputs (see `computeMatchScores`). */
+function scoresFromInputs(inputs: scoreDb.MatchScoreInputs): ComputedMatchScores | null {
+  if (inputs.scoreOverride1 !== null && inputs.scoreOverride2 !== null) {
+    return { team1Score: inputs.scoreOverride1, team2Score: inputs.scoreOverride2 };
   }
-
-  const participant1 = opponentId(source.opponent1);
-  const participant2 = opponentId(source.opponent2);
-  const participantIds = [participant1, participant2].filter((id): id is number => id !== null);
-  const teams = await scoreDb.getParticipantTeamIds(ex, participantIds);
-  const team1 = participant1 === null ? null : teams.get(participant1) ?? null;
-  const team2 = participant2 === null ? null : teams.get(participant2) ?? null;
-  const teamIds = [team1, team2].filter((id): id is string => id !== null);
-  const frameScores = await scoreDb.getFrameScoreSums(ex, matchId, teamIds);
-  if (frameScores.resultCount === 0) return null;
-  if (team1 === null || team2 === null) return { team1Score: 0, team2Score: 0 };
-
-  return {
-    team1Score: frameScores.scores.get(team1) ?? 0,
-    team2Score: frameScores.scores.get(team2) ?? 0,
-  };
+  if (inputs.resultCount === 0) return null;
+  if (inputs.team1Id === null || inputs.team2Id === null) return { team1Score: 0, team2Score: 0 };
+  return { team1Score: inputs.team1Points ?? 0, team2Score: inputs.team2Points ?? 0 };
 }
 
+/**
+ * A match's canonical scores: its paired manual override, otherwise frame results
+ * summed by each opponent's team; null when it has neither (no `score` key).
+ */
+export async function computeMatchScores(ex: Executor, matchId: number): Promise<ComputedMatchScores | null> {
+  const inputs = await scoreDb.getMatchScoreInputs(ex, matchId);
+  if (!inputs) throw new NotFoundError('Match not found');
+  return scoresFromInputs(inputs);
+}
+
+/**
+ * Write a match's canonical scores into its opponent JSON (the sole application score
+ * writer) and return them. One read and one write.
+ */
 export async function syncMatchScores(ex: Executor, matchId: number): Promise<ComputedMatchScores | null> {
-  const source = await scoreDb.getMatchScoreSource(ex, matchId);
-  if (!source) throw new NotFoundError('Match not found');
-  const scores = await computeMatchScores(ex, matchId);
-  const opponents = applyScoresToOpponentJson(source.opponent1, source.opponent2, scores);
+  const inputs = await scoreDb.getMatchScoreInputs(ex, matchId);
+  if (!inputs) throw new NotFoundError('Match not found');
+  const scores = scoresFromInputs(inputs);
+  const opponents = applyScoresToOpponentJson(inputs.opponent1, inputs.opponent2, scores);
   await scoreDb.writeMatchScores(ex, matchId, opponents.opponent1, opponents.opponent2);
   return scores;
 }

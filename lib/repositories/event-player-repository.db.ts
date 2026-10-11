@@ -1,9 +1,10 @@
 import 'server-only';
-import { and, count, eq, gte, inArray, sum } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, sql, sum } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, frame_results, players, qualification_frames } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
-import { InternalError, NotFoundError } from '@/lib/errors';
+import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
+import { chunks } from '@/lib/db/batch';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
 
 export interface EventPlayerData {
@@ -125,11 +126,16 @@ export async function updateEventPlayerPayment(
   return row ? { id: row.id, payment_type: row.payment_type as PaymentType | null } : null;
 }
 
-export async function getQualificationScore(ex: Executor, eventId: string, eventPlayerId: string): Promise<number> {
-  const [row] = await ex.select({ total: sum(qualification_frames.points_earned) })
+/** Each event player's qualification total, in one grouped read. Players without frames are absent. */
+export async function getQualificationScores(ex: Executor, eventId: string): Promise<Map<string, number>> {
+  const rows = await ex.select({
+    event_player_id: qualification_frames.event_player_id,
+    total: sum(qualification_frames.points_earned),
+  })
     .from(qualification_frames)
-    .where(and(eq(qualification_frames.event_id, eventId), eq(qualification_frames.event_player_id, eventPlayerId)));
-  return toNumber(row?.total ?? 0);
+    .where(eq(qualification_frames.event_id, eventId))
+    .groupBy(qualification_frames.event_player_id);
+  return new Map(rows.map((row) => [row.event_player_id, toNumber(row.total ?? 0)]));
 }
 
 /** Aggregate all recent frame history for each player, including hand-entered rows. */
@@ -173,11 +179,26 @@ export async function applyPlayerScores(
   eventId: string,
   assignments: PlayerScoreRow[]
 ): Promise<void> {
-  for (const a of assignments) {
-    const updated = await ex.update(event_players)
-      .set({ pool: a.pool, pfa_score: String(a.pfa_score), scoring_method: a.scoring_method })
-      .where(and(eq(event_players.id, a.event_player_id), eq(event_players.event_id, eventId)))
-      .returning({ id: event_players.id });
-    if (updated.length === 0) throw new NotFoundError(`Event player not found: ${a.event_player_id}`);
+  const expected = new Set(assignments.map((a) => a.event_player_id));
+  if (expected.size !== assignments.length) {
+    throw new BadRequestError('Each player can be scored only once');
   }
+
+  const updated = new Set<string>();
+  for (const batch of chunks(assignments)) {
+    const values = sql.join(
+      batch.map((a) => sql`(${a.event_player_id}::uuid, ${a.pool}::public.pool_type, ${String(a.pfa_score)}::numeric, ${a.scoring_method}::text)`),
+      sql`, `
+    );
+    const rows = await ex.execute<{ id: string }>(sql`
+      update ${event_players} as ep
+      set pool = v.pool, pfa_score = v.pfa_score, scoring_method = v.scoring_method
+      from (values ${values}) as v(id, pool, pfa_score, scoring_method)
+      where ep.id = v.id and ep.event_id = ${eventId}
+      returning ep.id`);
+    for (const row of rows) updated.add(row.id);
+  }
+
+  const missing = [...expected].find((id) => !updated.has(id));
+  if (missing) throw new NotFoundError(`Event player not found: ${missing}`);
 }

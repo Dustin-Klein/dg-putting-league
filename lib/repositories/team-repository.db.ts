@@ -1,6 +1,8 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
+import { chunks } from '@/lib/db/batch';
 import { bracket_participant, event_players, players, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import type { Team } from '@/lib/types/team';
@@ -291,26 +293,24 @@ export interface NewTeam {
 }
 
 /**
- * Insert teams and their members. Returns the new teams in input order.
+ * Insert teams and their members (one statement per table and chunk). Ids are
+ * generated here, so the result is in input order without relying on RETURNING order.
  */
 export async function insertTeamsWithMembers(
   ex: Executor,
   eventId: string,
   newTeams: NewTeam[]
 ): Promise<Array<{ id: string; seed: number | null; pool_combo: string | null }>> {
-  // One insert per team: a multi-row RETURNING isn't guaranteed to come back in input order.
-  const inserted: Array<{ id: string; seed: number | null; pool_combo: string | null }> = [];
-  for (const t of newTeams) {
-    const [team] = await ex
-      .insert(teams)
-      .values({ event_id: eventId, seed: t.seed, pool_combo: t.pool_combo })
-      .returning({ id: teams.id, seed: teams.seed, pool_combo: teams.pool_combo });
-    if (t.members.length > 0) {
-      await ex
-        .insert(team_members)
-        .values(t.members.map((m) => ({ team_id: team.id, event_player_id: m.event_player_id, role: m.role, slot: m.slot })));
-    }
-    inserted.push(team);
+  const inserted = newTeams.map((t) => ({ id: randomUUID(), seed: t.seed, pool_combo: t.pool_combo }));
+  for (const batch of chunks(inserted)) {
+    await ex.insert(teams).values(batch.map((t) => ({ ...t, event_id: eventId })));
+  }
+
+  const members = newTeams.flatMap((t, i) =>
+    t.members.map((m) => ({ team_id: inserted[i].id, event_player_id: m.event_player_id, role: m.role, slot: m.slot }))
+  );
+  for (const batch of chunks(members)) {
+    await ex.insert(team_members).values(batch);
   }
 
   return inserted;

@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { createClient } from '@/lib/supabase/client';
 import { useDebouncedCallback } from 'use-debounce';
 
@@ -51,11 +52,12 @@ export function PlayerManagement({
   }, [event.players]);
 
   // Fetch qualification status function (extracted for reuse)
-  const fetchQualificationStatus = useCallback(async () => {
+  const fetchQualificationStatus = useCallback(async (signal: AbortSignal) => {
     try {
-      const response = await fetch(`/api/event/${event.id}/qualification`);
+      const response = await fetch(`/api/event/${event.id}/qualification`, { signal });
       if (response.ok) {
         const data = await response.json();
+        if (signal.aborted) return;
         const statusMap: Record<string, QualificationStatus> = {};
         for (const player of data.players || []) {
           statusMap[player.event_player_id] = player;
@@ -63,9 +65,11 @@ export function PlayerManagement({
         setQualificationStatus(statusMap);
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.error('Failed to fetch qualification status:', error);
     }
   }, [event.id]);
+  const qualificationRefresh = useCoalescedRefresh(fetchQualificationStatus, event.id);
 
   // Initial fetch and realtime subscription for qualification status
   useEffect(() => {
@@ -74,7 +78,7 @@ export function PlayerManagement({
     }
 
     // Initial fetch
-    fetchQualificationStatus();
+    qualificationRefresh.refresh();
 
     // Set up realtime subscription for qualification frame updates
     const supabase = createClient();
@@ -89,8 +93,8 @@ export function PlayerManagement({
           filter: `event_id=eq.${event.id}`,
         },
         () => {
-          // Refetch qualification status when any frame is added/updated
-          fetchQualificationStatus();
+          // Refetch qualification status when frames are added/updated (a group save is one refetch)
+          qualificationRefresh.request();
         }
       )
       .subscribe();
@@ -98,7 +102,7 @@ export function PlayerManagement({
     return () => {
       channel.unsubscribe();
     };
-  }, [event.id, event.qualification_round_enabled, event.status, fetchQualificationStatus]);
+  }, [event.id, event.qualification_round_enabled, event.status, qualificationRefresh]);
 
   // Notify parent when players change (skip initial mount)
   useEffect(() => {
@@ -184,12 +188,21 @@ export function PlayerManagement({
     return filteredPlayers;
   }, [players, filterQuery, sortConfig, qualificationStatus]);
 
-  // Handle search input change (debounced to reduce API calls)
+  // Handle search input change (debounced to reduce API calls). Each search cancels the
+  // previous one, so a slow older response can't replace newer results.
+  const searchControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => searchControllerRef.current?.abort(), []);
   const handleSearch = useDebouncedCallback(async (query: string) => {
+    searchControllerRef.current?.abort();
     if (!query.trim()) {
+      searchControllerRef.current = null;
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const { signal } = controller;
 
     try {
       setIsSearching(true);
@@ -197,13 +210,14 @@ export function PlayerManagement({
         query,
         excludeEventId: event.id
       });
-      const response = await fetch(`/api/players/search?${searchParams.toString()}`);
+      const response = await fetch(`/api/players/search?${searchParams.toString()}`, { signal });
 
       if (!response.ok) {
         throw new Error('Search failed');
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       // Map the API response to match the expected format
       const mappedResults = (data.results || []).map((player: { id: string; full_name?: string; player_number?: number }) => ({
         id: player.id,
@@ -213,13 +227,14 @@ export function PlayerManagement({
       }));
       setSearchResults(mappedResults);
     } catch (error) {
+      if (signal.aborted) return;
       console.error('Search error:', error);
       toast({
         title: 'Error',
         description: 'Failed to search for players',
       });
     } finally {
-      setIsSearching(false);
+      if (!signal.aborted) setIsSearching(false);
     }
   }, 300);
 

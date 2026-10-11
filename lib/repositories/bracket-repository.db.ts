@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { Status, type Group, type Match, type Participant, type Round, type Stage } from 'brackets-model';
 import type { Executor } from '@/lib/db/tx';
 import { toIsoTimestamp } from '@/lib/db/mappers';
@@ -308,22 +308,6 @@ export async function startReadyMatch(ex: Executor, matchId: number, eventId: st
   return updated.length > 0;
 }
 
-export async function getMatchOpponentScores(
-  ex: Executor,
-  matchId: number
-): Promise<{ opponent1: MatchOpponent; opponent2: MatchOpponent } | null> {
-  const rows = await ex
-    .select({ opponent1: bracket_match.opponent1, opponent2: bracket_match.opponent2 })
-    .from(bracket_match)
-    .where(eq(bracket_match.id, matchId))
-    .limit(1);
-  if (!rows[0]) return null;
-  return {
-    opponent1: rows[0].opponent1 as MatchOpponent,
-    opponent2: rows[0].opponent2 as MatchOpponent,
-  };
-}
-
 export async function getStageForEvent(
   ex: Executor,
   eventId: string
@@ -345,36 +329,6 @@ export async function getParticipantsForEvent(
     .from(bracket_participant)
     .where(eq(bracket_participant.tournament_id, eventId))
     .orderBy(asc(bracket_participant.id));
-}
-
-export async function linkParticipantsToTeams(
-  ex: Executor,
-  eventId: string,
-  mappings: Array<{ participantId: number; teamId: string }>
-): Promise<void> {
-  for (const { participantId, teamId } of mappings) {
-    await ex
-      .update(bracket_participant)
-      .set({ team_id: teamId })
-      .where(and(eq(bracket_participant.id, participantId), eq(bracket_participant.tournament_id, eventId)));
-  }
-}
-
-/**
- * Mark every not-yet-ready match whose two slots hold a participant as Ready.
- */
-export async function setFilledMatchesReady(ex: Executor, stageId: number): Promise<void> {
-  await ex
-    .update(bracket_match)
-    .set({ status: Status.Ready })
-    .where(
-      and(
-        eq(bracket_match.stage_id, stageId),
-        lt(bracket_match.status, Status.Ready),
-        sql`${bracket_match.opponent1}->>'id' is not null`,
-        sql`${bracket_match.opponent2}->>'id' is not null`
-      )
-    );
 }
 
 export interface MatchGroupInfo {
@@ -445,12 +399,33 @@ export async function mergeMatchOpponents(
   opponent2: MatchOpponent,
   status: number
 ): Promise<void> {
-  const merged = {
+  await writeMatchOpponents(ex, match.id, mergedMatchOpponents(match, opponent1, opponent2, status));
+}
+
+/**
+ * The row `mergeMatchOpponents` would write, without writing it (merge semantics and
+ * match write rules applied to `match`'s stored opponents).
+ */
+export function mergedMatchOpponents(
+  match: { opponent1: unknown; opponent2: unknown },
+  opponent1: MatchOpponent,
+  opponent2: MatchOpponent,
+  status: number
+): { status: number; opponent1: MatchOpponent; opponent2: MatchOpponent } {
+  const next = applyMatchWriteRules(match, {
     status,
     opponent1: mergeOpponent(match.opponent1 as MatchOpponent, opponent1),
     opponent2: mergeOpponent(match.opponent2 as MatchOpponent, opponent2),
-  };
-  const next = applyMatchWriteRules(match, merged);
+  });
+  return { status: next.status!, opponent1: next.opponent1 as MatchOpponent, opponent2: next.opponent2 as MatchOpponent };
+}
+
+/** Write a match's status and opponents as computed by `mergedMatchOpponents`. */
+export async function writeMatchOpponents(
+  ex: Executor,
+  matchId: number,
+  next: { status: number; opponent1: MatchOpponent; opponent2: MatchOpponent }
+): Promise<void> {
   await ex
     .update(bracket_match)
     .set({
@@ -459,7 +434,7 @@ export async function mergeMatchOpponents(
       opponent2: next.opponent2,
       updated_at: sql`clock_timestamp()`,
     })
-    .where(eq(bracket_match.id, match.id));
+    .where(eq(bracket_match.id, matchId));
 }
 
 /**

@@ -29,6 +29,12 @@ export interface PublicMatchInfo {
   frames: PublicFrameInfo[];
 }
 
+/** One match for a public scorer, with the event settings scoring it needs. */
+export interface PublicScoringMatch extends PublicMatchInfo {
+  bonus_point_enabled: boolean;
+  bracket_frame_count: number;
+}
+
 export interface PublicTeamInfo {
   id: string;
   seed: number;

@@ -152,52 +152,40 @@ describe('QualificationScoringPage', () => {
         };
       }
 
-      if (url === '/api/score/qualification/player-1') {
+      if (url === '/api/score/qualification/frames') {
         return {
           ok: true,
           json: async () => ({
-            frame: {
-              id: 'frame-1-player-1',
-              frame_number: 1,
-              putts_made: 3,
-              points_earned: 4,
-            },
-            player: {
-              event_player_id: 'player-1',
-              player_id: 'player-a',
-              full_name: 'Player One',
-              nickname: null,
-              player_number: 12,
-              frames_completed: 1,
-              total_frames_required: 1,
-              total_points: 4,
-              is_complete: true,
-            },
-          }),
-        };
-      }
-
-      if (url === '/api/score/qualification/player-2') {
-        return {
-          ok: true,
-          json: async () => ({
-            frame: {
-              id: 'frame-1-player-2',
-              frame_number: 1,
-              putts_made: 2,
-              points_earned: 2,
-            },
-            player: {
-              event_player_id: 'player-2',
-              player_id: 'player-b',
-              full_name: 'Player Two',
-              nickname: null,
-              player_number: 18,
-              frames_completed: 1,
-              total_frames_required: 1,
-              total_points: 2,
-              is_complete: true,
-            },
+            results: [
+              {
+                frame: { id: 'frame-1-player-1', frame_number: 1, putts_made: 3, points_earned: 4 },
+                player: {
+                  event_player_id: 'player-1',
+                  player_id: 'player-a',
+                  full_name: 'Player One',
+                  nickname: null,
+                  player_number: 12,
+                  frames_completed: 1,
+                  total_frames_required: 1,
+                  total_points: 4,
+                  is_complete: true,
+                },
+              },
+              {
+                frame: { id: 'frame-1-player-2', frame_number: 1, putts_made: 2, points_earned: 2 },
+                player: {
+                  event_player_id: 'player-2',
+                  player_id: 'player-b',
+                  full_name: 'Player Two',
+                  nickname: null,
+                  player_number: 18,
+                  frames_completed: 1,
+                  total_frames_required: 1,
+                  total_points: 2,
+                  is_complete: true,
+                },
+              },
+            ],
           }),
         };
       }
@@ -223,6 +211,18 @@ describe('QualificationScoringPage', () => {
 
     expect(screen.getByRole('button', { name: /submit qualification scores/i })).toBeInTheDocument();
     expect(screen.getByTitle('Edit frame 1')).toBeInTheDocument();
+
+    // Both players' scores went in one request.
+    const saves = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/score/qualification/frames');
+    expect(saves).toHaveLength(1);
+    expect(JSON.parse(String((saves[0] as unknown as [string, RequestInit])[1].body))).toEqual({
+      access_code: 'code-123',
+      frame_number: 1,
+      scores: [
+        { event_player_id: 'player-1', putts_made: 1 },
+        { event_player_id: 'player-2', putts_made: 1 },
+      ],
+    });
   });
 
   it('renders persisted scores for selected players on the active frame', async () => {
@@ -346,29 +346,33 @@ describe('QualificationScoringPage', () => {
         });
       }
 
-      if (url === '/api/score/qualification/player-1') {
+      if (url === '/api/score/qualification/frames') {
         return new Promise((resolve) => {
           resolvePlayerOneSave = () =>
             resolve({
               ok: true,
               json: async () => ({
-                frame: {
-                  id: 'frame-1-player-1',
-                  frame_number: 1,
-                  putts_made: 1,
-                  points_earned: 0,
-                },
-                player: {
-                  event_player_id: 'player-1',
-                  player_id: 'player-a',
-                  full_name: 'Player One',
-                  nickname: null,
-                  player_number: 12,
-                  frames_completed: 1,
-                  total_frames_required: 1,
-                  total_points: 0,
-                  is_complete: true,
-                },
+                results: [
+                  {
+                    frame: {
+                      id: 'frame-1-player-1',
+                      frame_number: 1,
+                      putts_made: 1,
+                      points_earned: 0,
+                    },
+                    player: {
+                      event_player_id: 'player-1',
+                      player_id: 'player-a',
+                      full_name: 'Player One',
+                      nickname: null,
+                      player_number: 12,
+                      frames_completed: 1,
+                      total_frames_required: 1,
+                      total_points: 0,
+                      is_complete: true,
+                    },
+                  },
+                ],
               }),
             });
         });
