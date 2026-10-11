@@ -89,6 +89,17 @@ describe('group qualification saves', () => {
     status: 'pre-bracket',
   });
 
+  async function seedQualificationEvent(
+    ex: Parameters<Parameters<typeof withRollback>[1]>[0],
+    players: number,
+    frameCount = 3
+  ) {
+    const seededEvent = await seedEvent(ex, { players });
+    await ex.update(events).set({ qualification_round_enabled: true, qualification_frame_count: frameCount })
+      .where(eq(events.id, seededEvent.eventId));
+    return seededEvent;
+  }
+
   async function framesOf(ex: Parameters<Parameters<typeof withRollback>[1]>[0], ids: string[]) {
     return ex.select().from(qualification_frames).where(inArray(qualification_frames.event_player_id, ids));
   }
@@ -97,7 +108,7 @@ describe('group qualification saves', () => {
     const totals: number[] = [];
     for (const players of [2, 8]) {
       await withRollback(counting.db, async (tx) => {
-        const seededEvent = await seedEvent(tx, { players });
+        const seededEvent = await seedQualificationEvent(tx, players);
         const scores = seededEvent.eventPlayerIds.map((eventPlayerId, i) => ({ eventPlayerId, puttsMade: i % 4 }));
 
         const { total } = await counting.count(() =>
@@ -119,7 +130,7 @@ describe('group qualification saves', () => {
 
   it('returns each player\'s totals and overwrites the same frame on retry', async () => {
     await withRollback(counting.db, async (tx) => {
-      const seededEvent = await seedEvent(tx, { players: 2 });
+      const seededEvent = await seedQualificationEvent(tx, 2);
       const [a, b] = seededEvent.eventPlayerIds;
       const event = eventInfo(seededEvent.eventId);
 
@@ -143,14 +154,14 @@ describe('group qualification saves', () => {
     ['a player who finished every frame', 'has already completed all 1 qualification frames'],
   ])('rolls back the whole group for %s', async (scenario, message) => {
     await withRollback(counting.db, async (tx) => {
-      const seededEvent = await seedEvent(tx, { players: 3 });
+      const seededEvent = await seedQualificationEvent(tx, 3, 1);
       const [a, b, c] = seededEvent.eventPlayerIds;
       const event = eventInfo(seededEvent.eventId, 1);
       let last = c;
       if (scenario === 'an unpaid player') {
         await tx.update(event_players).set({ payment_type: null }).where(eq(event_players.id, c));
       } else if (scenario === 'a player from another event') {
-        last = (await seedEvent(tx, { players: 1 })).eventPlayerIds[0];
+        last = (await seedQualificationEvent(tx, 1)).eventPlayerIds[0];
       } else {
         await recordQualificationScoresDb(tx, event, 1, [{ eventPlayerId: c, puttsMade: 1 }]);
         // A different (out-of-range) frame number, so the limit applies rather than an overwrite.
@@ -170,7 +181,7 @@ describe('group qualification saves', () => {
 
   it('rejects duplicate players and out-of-range frames', async () => {
     await withRollback(counting.db, async (tx) => {
-      const seededEvent = await seedEvent(tx, { players: 1 });
+      const seededEvent = await seedQualificationEvent(tx, 1);
       const [a] = seededEvent.eventPlayerIds;
       const event = eventInfo(seededEvent.eventId);
       await expect(
@@ -185,6 +196,8 @@ describe('group qualification saves', () => {
   it('serializes with single-player saves on the last free frame slot', async () => {
     const seededEvent = await seedEvent(db, { players: 2 });
     seeded.push(seededEvent);
+    await db.update(events).set({ qualification_round_enabled: true, qualification_frame_count: 1 })
+      .where(eq(events.id, seededEvent.eventId));
     const [a, b] = seededEvent.eventPlayerIds;
     const event = eventInfo(seededEvent.eventId, 1);
 
@@ -197,5 +210,23 @@ describe('group qualification saves', () => {
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
     const rows = await db.select().from(qualification_frames).where(eq(qualification_frames.event_player_id, a));
     expect(rows).toHaveLength(1);
+  });
+
+  it('rejects a save once bracket play has started, even with an earlier authorization', async () => {
+    await withRollback(counting.db, async (tx) => {
+      const seededEvent = await seedQualificationEvent(tx, 2);
+      const [a, b] = seededEvent.eventPlayerIds;
+      // Authorized while the event was in qualification; bracket play started since.
+      const event = eventInfo(seededEvent.eventId);
+      await tx.update(events).set({ status: 'bracket' }).where(eq(events.id, seededEvent.eventId));
+
+      await expect(
+        recordQualificationScoresDb(tx, event, 1, [{ eventPlayerId: a, puttsMade: 1 }, { eventPlayerId: b, puttsMade: 1 }])
+      ).rejects.toThrow('Event is not accepting qualification scores');
+      await expect(recordQualificationScoreDb(tx, event, a, 1, 1)).rejects.toThrow(
+        'Event is not accepting qualification scores'
+      );
+      expect(await framesOf(tx, [a, b])).toHaveLength(0);
+    });
   });
 });

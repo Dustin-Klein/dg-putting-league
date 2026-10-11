@@ -45,6 +45,26 @@ function mapFrame(row: typeof qualification_frames.$inferSelect): QualificationF
 }
 
 /**
+ * Lock the event row (`FOR SHARE`) and return its qualification settings, so a write
+ * can check under the lock that the event still accepts qualification scores (bracket
+ * start takes the row `FOR UPDATE`, so it can't commit in between).
+ */
+export async function lockQualificationEvent(ex: Executor, eventId: string): Promise<{
+  status: string;
+  qualification_round_enabled: boolean;
+  qualification_frame_count: number;
+  bonus_point_enabled: boolean;
+} | null> {
+  const [row] = await ex.select({
+    status: events.status,
+    qualification_round_enabled: events.qualification_round_enabled,
+    qualification_frame_count: events.qualification_frame_count,
+    bonus_point_enabled: events.bonus_point_enabled,
+  }).from(events).where(eq(events.id, eventId)).for('share');
+  return row ?? null;
+}
+
+/**
  * Get the event's qualification round, creating it if needed, and lock it
  * (`FOR UPDATE`) so callers can check a player's frame count without racing other
  * scorers. The event row is held `FOR SHARE` so the event can't leave qualification

@@ -193,6 +193,19 @@ export async function getPlayerQualificationData(
 }
 
 /**
+ * Inside a write transaction: lock the event and return its current scoring settings,
+ * or reject if it no longer accepts qualification scores (e.g. bracket play started
+ * after the access code was authorized).
+ */
+async function lockQualificationScoring(tx: Executor, eventId: string) {
+  const current = await qualificationRepo.lockQualificationEvent(tx, eventId);
+  if (!current || current.status !== 'pre-bracket' || !current.qualification_round_enabled) {
+    throw new BadRequestError('Event is not accepting qualification scores');
+  }
+  return current;
+}
+
+/**
  * Record a qualification score for a player
  */
 export async function recordQualificationScore(
@@ -208,7 +221,7 @@ export async function recordQualificationScore(
 
 /** Transactional qualification writer, exposed for direct-Postgres integration tests. */
 export async function recordQualificationScoreDb(
-  pg: Db,
+  pg: Executor,
   event: PublicQualificationEventInfo,
   eventPlayerId: string,
   frameNumber: number,
@@ -221,13 +234,14 @@ export async function recordQualificationScoreDb(
   }
 
   const { eventPlayer, round, frame, updatedFrames } = await withTransaction(pg, async (tx) => {
+    const current = await lockQualificationScoring(tx, event.id);
     const eventPlayer = await eventPlayerRepo.getEventPlayer(tx, event.id, eventPlayerId);
     if (eventPlayer.event_id !== event.id) throw new ForbiddenError('Player does not belong to this event');
     if (eventPlayer.payment_type === null) {
       throw new BadRequestError('Player must be marked as paid to participate in qualification');
     }
 
-    const round = await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count);
+    const round = await qualificationRepo.getOrCreateQualificationRound(tx, event.id, current.qualification_frame_count);
     const existingFrames = await qualificationRepo.getPlayerQualificationFrames(tx, event.id, eventPlayerId);
     const existingFrame = existingFrames.find((candidate) => candidate.frame_number === frameNumber);
     if (!existingFrame && existingFrames.length >= round.frame_count) {
@@ -243,7 +257,7 @@ export async function recordQualificationScoreDb(
       eventPlayerId,
       frameNumber,
       puttsMade,
-      pointsEarned: calculatePoints(puttsMade, event.bonus_point_enabled),
+      pointsEarned: calculatePoints(puttsMade, current.bonus_point_enabled),
     });
     if (round.status === 'not_started') {
       await qualificationRepo.updateQualificationRoundStatus(tx, event.id, round.id, 'in_progress');
@@ -310,6 +324,7 @@ export async function recordQualificationScoresDb(
   const playerIds = entries.map((entry) => entry.eventPlayerId);
 
   const { eventPlayers, round, frames, updatedFrames } = await withTransaction(pg, async (tx) => {
+    const current = await lockQualificationScoring(tx, event.id);
     const eventPlayers = await eventPlayerRepo.getEventPlayersBulk(tx, event.id, playerIds);
     const playerById = new Map(eventPlayers.map((ep) => [ep.id, ep]));
     for (const id of playerIds) {
@@ -320,7 +335,7 @@ export async function recordQualificationScoresDb(
       }
     }
 
-    const round = await qualificationRepo.getOrCreateQualificationRound(tx, event.id, event.qualification_frame_count);
+    const round = await qualificationRepo.getOrCreateQualificationRound(tx, event.id, current.qualification_frame_count);
     if (frameNumber < 1 || frameNumber > round.frame_count) {
       throw new BadRequestError(`Frame number must be between 1 and ${round.frame_count}`);
     }
@@ -342,7 +357,7 @@ export async function recordQualificationScoresDb(
         eventPlayerId: entry.eventPlayerId,
         frameNumber,
         puttsMade: entry.puttsMade,
-        pointsEarned: calculatePoints(entry.puttsMade, event.bonus_point_enabled),
+        pointsEarned: calculatePoints(entry.puttsMade, current.bonus_point_enabled),
       }))
     );
     if (round.status === 'not_started') {
