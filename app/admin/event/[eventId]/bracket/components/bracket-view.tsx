@@ -1,5 +1,7 @@
 'use client';
 
+import { getOnDeckMatchIds } from '@/lib/utils/match-queue';
+
 import React, { useMemo, useState, useEffect, Fragment } from 'react';
 import type { Match, Group, Round } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
@@ -354,6 +356,13 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
     sessionStorage.setItem('bracket-hide-finished', String(hideFinished));
   }, [hideFinished]);
 
+  const onDeckPositions = useMemo(() => {
+    const ids = getOnDeckMatchIds(
+      bracket.matches, bracket.rounds, data.lanes, eventStatus ?? data.eventStatus,
+    );
+    return new Map([...ids].map((id, index) => [id, index + 1]));
+  }, [bracket.matches, bracket.rounds, data.lanes, eventStatus, data.eventStatus]);
+
   // Organize matches by group and round
   const groupsWithRounds = useMemo(() => {
     const result: GroupWithRounds[] = [];
@@ -623,6 +632,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
                           opponent2Placeholder={placeholderMap.get(match.id)?.opponent2}
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                           isIdle={idleMatchIds.has(match.id)}
+                          onDeckPosition={onDeckPositions.get(match.id)}
                           onClick={() => onMatchClick?.(match)}
                           isClickable={
                             !!onMatchClick && (

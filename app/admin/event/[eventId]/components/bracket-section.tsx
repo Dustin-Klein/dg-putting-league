@@ -90,6 +90,22 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
           fetchBracket();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lanes',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => { fetchBracket(); }
+      )
+      // Realtime DELETE events cannot be filtered by event_id.
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'lanes' },
+        () => { fetchBracket(); }
+      )
       .subscribe();
 
     return () => {
