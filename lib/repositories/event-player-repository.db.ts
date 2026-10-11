@@ -67,6 +67,24 @@ export async function insertEventPlayer(ex: Executor, eventId: string, playerId:
   return row.id;
 }
 
+/**
+ * Enter players into an event with a seeding score. Every other column (payment_type,
+ * pool, qualification_seed) starts NULL: it belongs to this event, not to any other.
+ */
+export async function insertScoredEventPlayers(
+  ex: Executor,
+  eventId: string,
+  entrants: Array<{ player_id: string; pfa_score: number; scoring_method: 'pfa' | 'default' }>
+): Promise<void> {
+  if (entrants.length === 0) return;
+  await ex.insert(event_players).values(entrants.map((entrant) => ({
+    event_id: eventId,
+    player_id: entrant.player_id,
+    pfa_score: String(entrant.pfa_score),
+    scoring_method: entrant.scoring_method,
+  })));
+}
+
 export async function getEventPlayer(ex: Executor, eventId: string, eventPlayerId: string): Promise<EventPlayer> {
   const [row] = await ex.select({ eventPlayer: event_players, player: joinedPlayerColumns })
     .from(event_players)

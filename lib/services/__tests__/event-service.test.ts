@@ -1,4 +1,4 @@
-import { BadRequestError, ForbiddenError, NotFoundError } from '@/lib/errors';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { createMockEvent, createMockEventPlayers, createMockEventWithDetails, createMockUser } from './test-utils';
 
 jest.mock('@/lib/services/auth', () => ({
@@ -12,6 +12,7 @@ jest.mock('@/lib/repositories/event-repository.db', () => ({
   copyEventPlayers: jest.fn(), deleteEvent: jest.fn(), getQualificationRound: jest.fn(),
   getQualificationFrameCounts: jest.fn(), getEventById: jest.fn(), updateEvent: jest.fn(),
   updateEventPayouts: jest.fn(), getEventBracketConfig: jest.fn(), updateEventSettings: jest.fn(),
+  getChildEvents: jest.fn(async () => []), getEventLink: jest.fn(),
 }));
 jest.mock('@/lib/repositories/frame-repository.db', () => ({
   getUnlinkedMatchFrameIdsForEvent: jest.fn(async () => []),
@@ -20,11 +21,13 @@ jest.mock('@/lib/repositories/frame-repository.db', () => ({
 jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (pg, fn) => fn(pg)),
   lockEvent: jest.fn(),
+  lockEvents: jest.fn(),
 }));
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import * as eventDb from '@/lib/repositories/event-repository.db';
+import { lockEvents } from '@/lib/db/tx';
 import {
   createEvent, deleteEvent, getEventForViewer, getEventsByLeagueId, getEventWithPlayers,
   requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
@@ -217,5 +220,38 @@ describe('event service Drizzle port', () => {
         validateEventStatusTransition('event-1', 'bracket', paidEvent(playerCount, teamSize), pg as never)
       ).rejects.toThrow(new BadRequestError(message));
     });
+  });
+});
+
+describe('deleteEvent with linked events', () => {
+  const pg = { kind: 'pg' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (authorizeEventAdmin as jest.Mock).mockResolvedValue({ user: createMockUser(), pg });
+  });
+
+  it('refuses while a linked event has moved past created, deleting nothing', async () => {
+    const children = [{ id: 'child-1', status: 'pre-bracket' }];
+    (eventDb.getChildEvents as jest.Mock).mockResolvedValueOnce(children).mockResolvedValueOnce(children);
+    await expect(deleteEvent('event-1')).rejects.toThrow(ConflictError);
+    expect(eventDb.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  it('locks the event and its linked events together, then deletes created children before the parent', async () => {
+    const children = [{ id: 'child-1', status: 'created' }];
+    (eventDb.getChildEvents as jest.Mock).mockResolvedValueOnce(children).mockResolvedValueOnce(children);
+    await deleteEvent('event-1');
+    expect(lockEvents).toHaveBeenCalledWith(pg, ['event-1', 'child-1']);
+    expect(eventDb.getChildEvents).toHaveBeenLastCalledWith(pg, 'event-1', { lock: 'update' });
+    expect((eventDb.deleteEvent as jest.Mock).mock.calls).toEqual([[pg, 'child-1'], [pg, 'event-1']]);
+  });
+
+  it('refuses when a linked event appeared before the locks were taken', async () => {
+    (eventDb.getChildEvents as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'child-1', status: 'created' }]);
+    await expect(deleteEvent('event-1')).rejects.toThrow(ConflictError);
+    expect(eventDb.deleteEvent).not.toHaveBeenCalled();
   });
 });
