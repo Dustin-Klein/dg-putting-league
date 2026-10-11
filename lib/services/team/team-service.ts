@@ -4,8 +4,16 @@ import {
 } from '@/lib/errors';
 import { requireEventAdmin } from '@/lib/services/event';
 import type { Team } from '@/lib/types/team';
-import type { PoolAssignment } from '@/lib/services/event-player';
-import { buildTeamPairing, seedTeams, type TeamPairing } from './composition';
+import {
+  buildTeamPairing,
+  seedTeams,
+  teamFormatError,
+  teamSizeShortfallMessage,
+  usesPools,
+  type TeamEntrant,
+  type TeamFormat,
+  type TeamPairing,
+} from './composition';
 import * as teamRepo from '@/lib/repositories/team-repository.db';
 
 // Re-export types for consumers
@@ -58,30 +66,68 @@ export async function getEventTeams(eventId: string): Promise<Team[]> {
   return teamRepo.getFullTeamsForEvent(pg, eventId);
 }
 
+/** A player entering the draw; `pool` is set only for the random doubles draw. */
+export type DrawEntrant = TeamEntrant & { pool?: 'A' | 'B' | null };
+
 /**
- * Compute team pairings based on pool assignments without persisting.
- * This is used by the atomic transition RPC to pre-compute the data.
+ * Compute team pairings for an event's format without persisting.
+ * Used by the team preview and by transitionEventToBracket.
  *
- * Randomly pairs Pool A players (slot 1) with Pool B players (slot 2).
+ * - random_pairing, size 2: randomly pairs Pool A players with Pool B players.
+ * - random_pairing, size 1: one team per player.
+ * - random_flat: shuffles every entrant and chunks them into teams of team size.
  * Returns teams sorted by combined score (highest first) with seeds assigned.
  */
 export function computeTeamPairings(
-  poolAssignments: PoolAssignment[],
+  format: TeamFormat,
+  entrants: readonly DrawEntrant[],
   randomInt?: (maxExclusive: number) => number
 ): TeamPairing[] {
-  // Separate players by pool
-  const poolAPlayers = poolAssignments.filter(pa => pa.pool === 'A');
-  const poolBPlayers = poolAssignments.filter(pa => pa.pool === 'B');
+  const { teamSize, teamAssignment } = format;
+  if (teamAssignment === 'manual') {
+    throw new BadRequestError('Teams for this event are built by the organizer');
+  }
+  const formatError = teamFormatError(format);
+  if (formatError) {
+    throw new BadRequestError(formatError);
+  }
+  if (entrants.length === 0) {
+    throw new BadRequestError('No players registered for this event');
+  }
+
+  if (usesPools(format)) {
+    return pairAcrossPools(entrants, randomInt);
+  }
+
+  const shortfall = teamSizeShortfallMessage(entrants.length, teamSize);
+  if (shortfall) {
+    throw new BadRequestError(shortfall);
+  }
+  const ordered = teamAssignment === 'random_flat' ? shuffle(entrants, randomInt) : [...entrants];
+  const teams: TeamPairing[] = [];
+  for (let i = 0; i < ordered.length; i += teamSize) {
+    teams.push(buildTeamPairing(ordered.slice(i, i + teamSize)));
+  }
+  return seedTeams(teams);
+}
+
+/**
+ * Random doubles draw: shuffle each pool and pair Pool A[i] (slot 1) with Pool B[i] (slot 2).
+ */
+function pairAcrossPools(
+  entrants: readonly DrawEntrant[],
+  randomInt?: (maxExclusive: number) => number
+): TeamPairing[] {
+  const poolAPlayers = entrants.filter(entrant => entrant.pool === 'A');
+  const poolBPlayers = entrants.filter(entrant => entrant.pool === 'B');
 
   if (poolAPlayers.length === 0 || poolBPlayers.length === 0) {
     throw new BadRequestError('Both Pool A and Pool B must have players to generate teams');
   }
 
-  // Shuffle players in each pool for random pairing
   const shuffledPoolA = shuffle(poolAPlayers, randomInt);
   const shuffledPoolB = shuffle(poolBPlayers, randomInt);
 
-  // Generate teams by randomly pairing Pool A with Pool B players
   const minPoolSize = Math.min(shuffledPoolA.length, shuffledPoolB.length);
   const teams: TeamPairing[] = [];
   for (let i = 0; i < minPoolSize; i++) {

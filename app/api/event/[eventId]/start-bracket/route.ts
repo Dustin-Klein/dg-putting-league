@@ -32,10 +32,7 @@ const startBracketSchema = z.object({
       members: z.array(teamMemberSchema),
     })
   ).optional(),
-}).refine(
-  (data) => (data.poolAssignments === undefined) === (data.teamPairings === undefined),
-  { message: 'Pool assignments and team pairings must be provided together' }
-);
+});
 
 export async function POST(
   req: NextRequest,

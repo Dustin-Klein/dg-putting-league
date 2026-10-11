@@ -43,3 +43,25 @@ export interface TeamPairing {
   members: TeamMemberPairing[];
 }
 
+/**
+ * A player as the team preview shows them: server-computed score, and a pool
+ * only for the random doubles draw.
+ */
+export interface TeamPreviewPlayer {
+  eventPlayerId: string;
+  playerName: string;
+  pfaScore: number;
+  scoringMethod: 'qualification' | 'pfa' | 'default';
+  pool: 'A' | 'B' | null;
+}
+
+/**
+ * Team preview response. `teamPairings` is the server's draw, or empty under manual
+ * assignment, where the organizer builds the teams from `players`.
+ */
+export interface TeamPreview {
+  teamSize: number;
+  teamAssignment: import('./event').TeamAssignment;
+  players: TeamPreviewPlayer[];
+  teamPairings: TeamPairing[];
+}

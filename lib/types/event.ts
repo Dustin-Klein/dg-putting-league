@@ -8,6 +8,9 @@ export type EventStatus = 'created' | 'pre-bracket' | 'bracket' | 'completed';
  */
 export type TeamAssignment = 'random_pairing' | 'random_flat' | 'manual';
 
+export const TEAM_SIZE_MIN = 1;
+export const TEAM_SIZE_MAX = 4;
+
 export interface PayoutPlace {
   place: number;
   percentage: number;

@@ -289,6 +289,8 @@ export interface CreateEventData {
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
+  team_size?: number;
+  team_assignment?: TeamAssignment;
   status: EventStatus;
 }
 
@@ -386,7 +388,12 @@ export async function setEventStatus(ex: Executor, eventId: string, status: Even
 export async function updateEventSettings(
   ex: Executor,
   eventId: string,
-  patch: { status?: EventStatus; double_grand_final?: boolean }
+  patch: {
+    status?: EventStatus;
+    double_grand_final?: boolean;
+    team_size?: number;
+    team_assignment?: TeamAssignment;
+  }
 ): Promise<void> {
   if (Object.keys(patch).length > 0) await ex.update(events).set(patch).where(eq(events.id, eventId));
 }

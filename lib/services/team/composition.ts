@@ -27,6 +27,17 @@ export function usesPools(format: TeamFormat): boolean {
 }
 
 /**
+ * Formats no draw can produce. random_pairing is the pool draw, which only
+ * exists for doubles (and is one team per player at size 1).
+ */
+export function teamFormatError(format: TeamFormat): string | null {
+  if (format.teamAssignment === 'random_pairing' && format.teamSize > 2) {
+    return 'Random pairing draws doubles from Pool A and Pool B; use a flat random draw for teams of 3 or more';
+  }
+  return null;
+}
+
+/**
  * Null when `playerCount` splits evenly into teams of `teamSize`, otherwise a
  * message naming how many players to add or remove.
  */
