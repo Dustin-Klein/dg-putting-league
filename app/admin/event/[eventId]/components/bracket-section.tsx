@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { createClient } from '@/lib/supabase/client';
 import { BracketView, MatchScoringDialog, LaneManagement, AdvanceTeamDialog } from '../bracket/components';
 import { PayoutsDisplay } from './payouts-display';
@@ -42,14 +43,14 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
   const [doubleGrandFinal, setDoubleGrandFinal] = useState(initialDoubleGrandFinal);
   const { toast } = useToast();
 
-  const fetchBracket = useCallback(async () => {
+  const fetchBracket = useCallback(async (signal: AbortSignal) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/event/${eventId}/bracket`);
+      const response = await fetch(`/api/event/${eventId}/bracket`, { signal });
 
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Bracket not found.');
+          if (!signal.aborted) setError('Bracket not found.');
         } else {
           const data = await response.json();
           throw new Error(data.error || 'Failed to load bracket');
@@ -58,19 +59,22 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setBracketData(data);
       setError(null);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load bracket');
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [eventId]);
+  const bracketRefresh = useCoalescedRefresh(fetchBracket, eventId);
 
   // Initial fetch
   useEffect(() => {
-    fetchBracket();
-  }, [fetchBracket]);
+    bracketRefresh.refresh();
+  }, [bracketRefresh]);
 
   // Set up realtime subscription
   useEffect(() => {
@@ -87,7 +91,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
           filter: `event_id=eq.${eventId}`,
         },
         () => {
-          fetchBracket();
+          bracketRefresh.request();
         }
       )
       .on(
@@ -98,20 +102,20 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
           table: 'lanes',
           filter: `event_id=eq.${eventId}`,
         },
-        () => { fetchBracket(); }
+        () => { bracketRefresh.request(); }
       )
       // Realtime DELETE events cannot be filtered by event_id.
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'lanes' },
-        () => { fetchBracket(); }
+        () => { bracketRefresh.request(); }
       )
       .subscribe();
 
     return () => {
       channel.unsubscribe();
     };
-  }, [eventId, fetchBracket]);
+  }, [eventId, bracketRefresh]);
 
   const handleMatchClick = (match: Match) => {
     if (!bracketData) return;
@@ -142,7 +146,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
   };
 
   const handleScoreSubmit = () => {
-    fetchBracket();
+    bracketRefresh.refresh();
   };
 
   const handleEditCompletedMatchScores = (match: Match) => {
@@ -176,7 +180,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         throw new Error(data.error || 'Failed to clear placements');
       }
 
-      await fetchBracket();
+      bracketRefresh.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to clear placements');
     } finally {
@@ -197,7 +201,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
     return (
       <div className="text-center py-8">
         <p className="text-muted-foreground">{error}</p>
-        <Button onClick={fetchBracket} className="mt-4">
+        <Button onClick={bracketRefresh.refresh} className="mt-4">
           <RefreshCw className="mr-2 h-4 w-4" />
           Retry
         </Button>
@@ -223,7 +227,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchBracket}
+            onClick={bracketRefresh.refresh}
             disabled={loading}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -311,7 +315,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
                   if (!res.ok) {
                     throw new Error('Request failed');
                   }
-                  await fetchBracket();
+                  bracketRefresh.refresh();
                 } catch {
                   setDoubleGrandFinal(!checked);
                   toast({
@@ -357,7 +361,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         eventId={eventId}
         open={isAdvanceDialogOpen}
         onOpenChange={setIsAdvanceDialogOpen}
-        onAdvanceComplete={fetchBracket}
+        onAdvanceComplete={bracketRefresh.refresh}
         onEditScores={handleEditCompletedMatchScores}
         participants={bracketData?.bracket.participants ?? []}
         participantTeamMap={bracketData?.participantTeamMap ?? {}}

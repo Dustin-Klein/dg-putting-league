@@ -11,6 +11,7 @@ import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
@@ -44,16 +45,16 @@ export default function BracketPage({
   }, [params]);
 
   // Fetch bracket data
-  const fetchBracket = useCallback(async () => {
+  const fetchBracket = useCallback(async (signal: AbortSignal) => {
     if (!eventId) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/event/${eventId}/bracket`);
+      const response = await fetch(`/api/event/${eventId}/bracket`, { signal });
 
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Bracket not found. The event may not have started bracket play yet.');
+          if (!signal.aborted) setError('Bracket not found. The event may not have started bracket play yet.');
         } else {
           const data = await response.json();
           throw new Error(data.error || 'Failed to load bracket');
@@ -62,21 +63,24 @@ export default function BracketPage({
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setBracketData(data);
       setError(null);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load bracket');
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [eventId]);
+  const bracketRefresh = useCoalescedRefresh(fetchBracket, eventId);
 
   // Initial fetch
   useEffect(() => {
     if (eventId) {
-      fetchBracket();
+      bracketRefresh.refresh();
     }
-  }, [eventId, fetchBracket]);
+  }, [eventId, bracketRefresh]);
 
   // Set up realtime subscription
   useEffect(() => {
@@ -97,7 +101,7 @@ export default function BracketPage({
         },
         () => {
           // Refetch bracket data when a match changes
-          fetchBracket();
+          bracketRefresh.request();
         }
       )
       .on(
@@ -108,20 +112,20 @@ export default function BracketPage({
           table: 'lanes',
           filter: `event_id=eq.${eventId}`,
         },
-        () => { fetchBracket(); }
+        () => { bracketRefresh.request(); }
       )
       // Realtime DELETE events cannot be filtered by event_id.
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'lanes' },
-        () => { fetchBracket(); }
+        () => { bracketRefresh.request(); }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [eventId, fetchBracket]);
+  }, [eventId, bracketRefresh]);
 
   // Handle ESC key to exit presentation mode
   useEffect(() => {
@@ -188,7 +192,7 @@ export default function BracketPage({
   };
 
   const handleScoreSubmit = () => {
-    fetchBracket();
+    bracketRefresh.refresh();
   };
 
   if (loading && !bracketData) {
@@ -215,7 +219,7 @@ export default function BracketPage({
         </Button>
         <div className="text-center py-12">
           <p className="text-muted-foreground">{error}</p>
-          <Button onClick={fetchBracket} className="mt-4">
+          <Button onClick={bracketRefresh.refresh} className="mt-4">
             <RefreshCw className="mr-2 h-4 w-4" />
             Retry
           </Button>
@@ -253,7 +257,7 @@ export default function BracketPage({
           scale={effectiveScale}
           isAutoScale={isAutoScaleEnabled}
           onToggleAutoScale={() => setIsAutoScaleEnabled(!isAutoScaleEnabled)}
-          onRefresh={fetchBracket}
+          onRefresh={bracketRefresh.refresh}
           onExit={exitPresentationMode}
           isRefreshing={loading}
           accessCode={bracketData.accessCode}
@@ -360,7 +364,7 @@ export default function BracketPage({
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchBracket}
+            onClick={bracketRefresh.refresh}
             disabled={loading}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

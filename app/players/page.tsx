@@ -21,17 +21,19 @@ export default function PlayersPage() {
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const searchPlayers = useCallback(async (query: string) => {
+  const searchPlayers = useCallback(async (query: string, signal: AbortSignal) => {
     if (!query.trim()) {
       setResults([]);
       setHasSearched(false);
+      setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
       const response = await fetch(
-        `/api/players/search?query=${encodeURIComponent(query.trim())}`
+        `/api/players/search?query=${encodeURIComponent(query.trim())}`,
+        { signal }
       );
 
       if (!response.ok) {
@@ -39,22 +41,29 @@ export default function PlayersPage() {
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setResults(data.results || []);
       setHasSearched(true);
     } catch (error) {
+      if (signal.aborted) return;
       console.error('Search error:', error);
       setResults([]);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, []);
 
+  // Each new query cancels the previous one, so a slow older response never replaces newer results.
   useEffect(() => {
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      searchPlayers(searchQuery);
+      searchPlayers(searchQuery, controller.signal);
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery, searchPlayers]);
 
   return (

@@ -1,15 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { MatchSetup } from './components/match-setup';
 import { FrameWizard } from './components/frame-wizard';
 import { ReviewSubmit } from './components/review-submit';
 import type { WizardStage, MatchInfo, ScoreState } from './components/wizard-types';
 import { getFrameNumbers, getScoreKey, areScoresTiedWithLocalScores } from './components/wizard-types';
-
-const SKIP_REFETCH_WINDOW_MS = 2000;
 
 export default function MatchScoringPage({
   params,
@@ -33,23 +32,19 @@ export default function MatchScoringPage({
   // Optimistic local scores for immediate UI feedback
   const [localScores, setLocalScores] = useState<ScoreState>(new Map());
 
-  // Track last save time to avoid refetch during our own updates
-  const lastSaveTimestampRef = useRef(0);
-
   // Resolve params
   useEffect(() => {
     params.then((p) => setMatchId(p.matchId));
   }, [params]);
 
-  const fetchMatch = useCallback(async (code: string, id: string, showLoading = true) => {
+  const fetchMatch = useCallback(async (signal: AbortSignal) => {
+    if (!accessCode || !matchId) return;
     try {
-      if (showLoading) {
-        setIsLoading(true);
-      }
-      const response = await fetch(`/api/score/match/${id}`, {
+      const response = await fetch(`/api/score/match/${matchId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_code: code }),
+        body: JSON.stringify({ access_code: accessCode }),
+        signal,
       });
 
       if (!response.ok) {
@@ -58,16 +53,20 @@ export default function MatchScoringPage({
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setMatch(data);
+      // The event's scoring settings come with the match.
+      setBonusPointEnabled(data.bonus_point_enabled);
+      setBracketFrameCount(data.bracket_frame_count);
       setError(null);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load match');
     } finally {
-      if (showLoading) {
-        setIsLoading(false);
-      }
+      if (!signal.aborted) setIsLoading(false);
     }
-  }, []);
+  }, [accessCode, matchId]);
+  const matchRefresh = useCoalescedRefresh(fetchMatch, accessCode && matchId ? `${accessCode}:${matchId}` : null);
 
   useEffect(() => {
     const code = sessionStorage.getItem('scoring_access_code');
@@ -76,30 +75,16 @@ export default function MatchScoringPage({
       return;
     }
     setAccessCode(code);
-
-    // Get event settings
-    const fetchEvent = async () => {
-      const response = await fetch('/api/score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_code: code }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setBonusPointEnabled(data.event.bonus_point_enabled);
-        setBracketFrameCount(data.event.bracket_frame_count);
-      }
-    };
-    fetchEvent();
   }, [router]);
 
   useEffect(() => {
     if (accessCode && matchId) {
-      fetchMatch(accessCode, matchId, true);
+      setIsLoading(true);
+      matchRefresh.refresh();
     }
-  }, [accessCode, matchId, fetchMatch]);
+  }, [accessCode, matchId, matchRefresh]);
 
-  // Realtime subscription for frame_results changes
+  // Realtime subscription for frame_results changes (a frame save is one refetch)
   useEffect(() => {
     if (!matchId || !accessCode) return;
 
@@ -119,10 +104,7 @@ export default function MatchScoringPage({
           filter: `bracket_match_id=eq.${bracketMatchId}`,
         },
         () => {
-          // Skip refetch if we recently saved (realtime events from our own upsert)
-          if (Date.now() - lastSaveTimestampRef.current > SKIP_REFETCH_WINDOW_MS) {
-            fetchMatch(accessCode, matchId, false);
-          }
+          matchRefresh.request();
         }
       )
       .subscribe();
@@ -130,7 +112,7 @@ export default function MatchScoringPage({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [matchId, accessCode, fetchMatch]);
+  }, [matchId, accessCode, matchRefresh]);
 
   // Save all local scores for a frame to the server
   const saveFrameScores = useCallback(async (frameNumber: number): Promise<boolean> => {
@@ -155,7 +137,6 @@ export default function MatchScoringPage({
     if (frameScores.length === 0) return true;
 
     try {
-      lastSaveTimestampRef.current = Date.now();
       const response = await fetch(`/api/score/match/${matchId}/batch`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -172,6 +153,8 @@ export default function MatchScoringPage({
       }
 
       const updatedMatch = await response.json();
+      // A read still in flight started before this save; the save's result is newer.
+      matchRefresh.invalidate();
       setMatch(updatedMatch);
 
       // Clear local scores for this frame now that server confirmed
@@ -190,7 +173,7 @@ export default function MatchScoringPage({
       setError(err instanceof Error ? err.message : 'Failed to save scores');
       return false;
     }
-  }, [accessCode, matchId, match, localScores]);
+  }, [accessCode, matchId, match, localScores, matchRefresh]);
 
   // Simple score change - just updates local state, no API call
   const handleScoreChange = (

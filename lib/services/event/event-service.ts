@@ -12,7 +12,7 @@ import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-
 import {
   assignPoolsFromScores,
   computePfaScores,
-  computePlayerScores,
+  computePlayerScoresDb,
   type PlayerScore,
 } from '@/lib/services/event-player';
 import {
@@ -82,13 +82,16 @@ export async function getEventWithPlayers(eventId: string) {
 /**
  * Get event with players for display. The access code is included only when the
  * current user is an admin of the event's league; otherwise it is null.
+ * `viewer_is_admin` saves the client a separate permission check.
  */
 export async function getEventForViewer(eventId: string): Promise<EventWithDetails> {
   const { pg, isAdmin } = await authorizeEventView(eventId, 'event');
-  const event = await eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: isAdmin }) as EventWithDetails;
-  const accessCode = isAdmin ? await eventDb.getEventAccessCode(pg, eventId) : null;
+  const [event, accessCode] = await Promise.all([
+    eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: isAdmin }) as Promise<EventWithDetails>,
+    isAdmin ? eventDb.getEventAccessCode(pg, eventId) : Promise.resolve(null),
+  ]);
 
-  return { ...event, access_code: accessCode };
+  return { ...event, access_code: accessCode, viewer_is_admin: isAdmin };
 }
 
 /**
@@ -540,14 +543,14 @@ export async function updateEvent(
  * with scores and no teams, for the organizer to build.
  */
 export async function previewTeams(eventId: string): Promise<TeamPreview> {
-  await requireEventAdmin(eventId);
-  const event = await getEventWithPlayers(eventId);
+  const { pg } = await requireEventAdmin(eventId);
+  const event = await getEventWithPlayersForAdmin(pg, eventId);
   if (event.status !== 'pre-bracket') {
     throw new BadRequestError('Team preview is only available for events in pre-bracket status');
   }
 
   const format: TeamFormat = { teamSize: event.team_size, teamAssignment: event.team_assignment };
-  const playerScores = await computePlayerScores(eventId, event);
+  const playerScores = await computePlayerScoresDb(pg, eventId, event);
   const entrants: Array<PlayerScore & { pool: 'A' | 'B' | null }> = usesPools(format)
     ? assignPoolsFromScores(playerScores)
     : playerScores.map((player) => ({ ...player, pool: null }));
@@ -587,7 +590,39 @@ export async function transitionEventToBracket(
   options: { teamAssignment?: 'manual' } = {}
 ) {
   const { pg } = await requireEventAdmin(eventId);
+  await transitionEventToBracketDb(pg, eventId, event, providedPoolAssignments, providedTeamPairings, options);
+}
 
+/**
+ * Start bracket play (see `transitionEventToBracket`) with one permission check for
+ * the whole request: the event is loaded, started and read back on the connection
+ * that authorization returned. Returns the started event.
+ */
+export async function startBracketPlay(
+  eventId: string,
+  providedPoolAssignments?: ProvidedPoolAssignment[],
+  providedTeamPairings?: ProvidedTeamPairing[],
+  options: { teamAssignment?: 'manual' } = {}
+): Promise<EventWithDetails> {
+  const { pg } = await requireEventAdmin(eventId);
+  const event = await getEventWithPlayersForAdmin(pg, eventId);
+  await transitionEventToBracketDb(pg, eventId, event, providedPoolAssignments, providedTeamPairings, options);
+  return getEventWithPlayersForAdmin(pg, eventId);
+}
+
+/** An event with its players as its league admins see it. Callers authorize as event admin first. */
+function getEventWithPlayersForAdmin(pg: Executor, eventId: string): Promise<EventWithDetails> {
+  return eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: true }) as Promise<EventWithDetails>;
+}
+
+async function transitionEventToBracketDb(
+  pg: Executor,
+  eventId: string,
+  event: EventWithDetails,
+  providedPoolAssignments: ProvidedPoolAssignment[] | undefined,
+  providedTeamPairings: ProvidedTeamPairing[] | undefined,
+  options: { teamAssignment?: 'manual' }
+) {
   await validateEventStatusTransition(eventId, 'bracket', event, pg);
 
   const format: TeamFormat = {
@@ -606,7 +641,7 @@ export async function transitionEventToBracket(
   }
 
   // Use provided pairings if available, otherwise compute new ones
-  const playerScores = await computePlayerScores(eventId, event);
+  const playerScores = await computePlayerScoresDb(pg, eventId, event);
   const recomputedPools = usesPools(format) ? assignPoolsFromScores(playerScores) : undefined;
   const poolAssignments = recomputedPools && (providedPoolAssignments ?? recomputedPools);
   const teamPairings = providedTeamPairings ?? computeTeamPairings(format, recomputedPools ?? playerScores);

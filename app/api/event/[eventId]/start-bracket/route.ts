@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import {
-  getEventWithPlayers,
-  transitionEventToBracket,
-} from '@/lib/services/event';
+import { startBracketPlay } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 
@@ -52,17 +49,13 @@ export async function POST(
     }
 
     const { eventId } = await params;
-    const event = await getEventWithPlayers(eventId);
-
-    await transitionEventToBracket(
+    const updatedEvent = await startBracketPlay(
       eventId,
-      event,
       parsed.data.poolAssignments,
       parsed.data.teamPairings,
       { teamAssignment: parsed.data.teamAssignment }
     );
 
-    const updatedEvent = await getEventWithPlayers(eventId);
     return NextResponse.json(updatedEvent);
   } catch (error) {
     return handleError(error);

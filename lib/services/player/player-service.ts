@@ -77,25 +77,26 @@ async function searchPlayersInternal(
 ) {
   const trimmed = query.trim();
 
-  // Search by name (repository handles escaping of %, _, \)
-  let players = await playerRepo.searchPlayersByName(ex, trimmed, 10);
-
   // If numeric, also search by player number
   const numericQuery = Number(trimmed);
   // player_number is an integer column; other numbers can't match and would make Postgres error
   const isNumeric = Number.isSafeInteger(numericQuery) && numericQuery > 0 && numericQuery <= 2147483647;
 
-  if (isNumeric) {
-    const byNumber = await playerRepo.searchPlayersByNumber(ex, numericQuery, 10);
-    const seen = new Set(players.map((p) => p.id));
-    for (const p of byNumber) {
-      if (!seen.has(p.id)) players.push(p);
-    }
+  // Independent reads, run together (repository handles escaping of %, _, \ in names).
+  const [byName, byNumber, excludeIds] = await Promise.all([
+    playerRepo.searchPlayersByName(ex, trimmed, 10),
+    isNumeric ? playerRepo.searchPlayersByNumber(ex, numericQuery, 10) : Promise.resolve([]),
+    // Players already in the event are left out of the results.
+    excludeEventId ? playerRepo.getPlayerIdsInEvent(ex, excludeEventId) : Promise.resolve([]),
+  ]);
+
+  let players = byName;
+  const seen = new Set(players.map((p) => p.id));
+  for (const p of byNumber) {
+    if (!seen.has(p.id)) players.push(p);
   }
 
-  // If we need to exclude players already in an event
   if (excludeEventId) {
-    const excludeIds = await playerRepo.getPlayerIdsInEvent(ex, excludeEventId);
     const excludeSet = new Set(excludeIds);
     players = players.filter((p) => !excludeSet.has(p.id));
   }

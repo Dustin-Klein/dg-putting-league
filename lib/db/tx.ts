@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from './client';
 import { bracket_match } from './schema';
 
@@ -64,4 +64,23 @@ export async function lockMatch(
     .where(and(eq(bracket_match.id, matchId), eq(bracket_match.event_id, eventId)))
     .for('update');
   return rows[0] ?? null;
+}
+
+/**
+ * Lock several match rows in ascending id order (one statement) and return them by id.
+ * Matches outside the event are left out.
+ */
+export async function lockMatches(
+  tx: Tx,
+  matchIds: readonly number[],
+  eventId: string
+): Promise<Map<number, LockedMatch>> {
+  if (matchIds.length === 0) return new Map();
+  const rows = await tx
+    .select()
+    .from(bracket_match)
+    .where(and(inArray(bracket_match.id, [...matchIds]), eq(bracket_match.event_id, eventId)))
+    .orderBy(asc(bracket_match.id))
+    .for('update');
+  return new Map(rows.map((row) => [row.id, row]));
 }

@@ -189,6 +189,47 @@ export async function recordQualificationFrame(
   return mapFrame(frame);
 }
 
+/**
+ * Record several players' frames in one statement (insert, or overwrite the same
+ * player's frame number). The caller holds the round lock and has checked that every
+ * player belongs to the event. Returns the written frames.
+ */
+export async function recordQualificationFrames(
+  ex: Executor,
+  rows: Array<{
+    qualificationRoundId: string;
+    eventId: string;
+    eventPlayerId: string;
+    frameNumber: number;
+    puttsMade: number;
+    pointsEarned: number;
+  }>
+): Promise<QualificationFrame[]> {
+  if (rows.length === 0) return [];
+  const written = await ex.insert(qualification_frames).values(rows.map((row) => ({
+    qualification_round_id: row.qualificationRoundId,
+    event_id: row.eventId,
+    event_player_id: row.eventPlayerId,
+    frame_number: row.frameNumber,
+    putts_made: row.puttsMade,
+    points_earned: row.pointsEarned,
+    recorded_by: null,
+    recorded_at: sql`now()`,
+  }))).onConflictDoUpdate({
+    target: [qualification_frames.event_player_id, qualification_frames.frame_number],
+    set: {
+      qualification_round_id: sql`excluded.qualification_round_id`,
+      event_id: sql`excluded.event_id`,
+      putts_made: sql`excluded.putts_made`,
+      points_earned: sql`excluded.points_earned`,
+      recorded_by: sql`excluded.recorded_by`,
+      recorded_at: sql`now()`,
+    },
+  }).returning();
+  if (written.length !== rows.length) throw new InternalError('Failed to record qualification frames');
+  return written.map(mapFrame);
+}
+
 export async function getEventPlayersQualificationStatus(
   ex: Executor,
   eventId: string

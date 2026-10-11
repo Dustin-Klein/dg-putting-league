@@ -155,15 +155,59 @@ export async function getUnassignedReadyMatches(ex: Executor, stageId: number): 
  * checked the lane is idle. Returns false if the match already has a lane.
  */
 export async function assignLane(ex: Executor, eventId: string, laneId: string, matchId: number): Promise<boolean> {
-  const updated = await ex
-    .update(bracket_match)
-    .set({ lane_id: laneId, lane_assigned_at: sql`now()` })
-    .where(and(eq(bracket_match.id, matchId), eq(bracket_match.event_id, eventId), isNull(bracket_match.lane_id)))
-    .returning({ id: bracket_match.id });
-  if (updated.length === 0) return false;
+  return (await assignLanes(ex, eventId, [{ laneId, matchId }])).length > 0;
+}
 
-  await ex.update(lanes).set({ status: 'occupied' }).where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId)));
-  return true;
+/**
+ * Put each match on its paired lane: one UPDATE for the matches and one for the lanes.
+ * The caller holds the event lock and the lane row locks and has checked the lanes are
+ * idle; pairs must use distinct lanes and matches. A match that already has a lane is
+ * skipped and its lane stays as it was. Returns the pairs that were assigned.
+ */
+export async function assignLanes(
+  ex: Executor,
+  eventId: string,
+  pairs: Array<{ laneId: string; matchId: number }>
+): Promise<Array<{ laneId: string; matchId: number }>> {
+  if (pairs.length === 0) return [];
+  const values = sql.join(pairs.map((p) => sql`(${p.matchId}::integer, ${p.laneId}::uuid)`), sql`, `);
+  const assigned = await ex.execute<{ match_id: number; lane_id: string }>(sql`
+    update ${bracket_match} as m
+    set lane_id = v.lane_id, lane_assigned_at = now()
+    from (values ${values}) as v(match_id, lane_id)
+    where m.id = v.match_id and m.event_id = ${eventId} and m.lane_id is null
+    returning m.id as match_id, m.lane_id`);
+  if (assigned.length === 0) return [];
+
+  await ex
+    .update(lanes)
+    .set({ status: 'occupied' })
+    .where(and(eq(lanes.event_id, eventId), inArray(lanes.id, assigned.map((row) => row.lane_id))));
+  return assigned.map((row) => ({ laneId: row.lane_id, matchId: row.match_id }));
+}
+
+/**
+ * Take the given matches off their lanes in one statement. Each freed lane enters
+ * maintenance if it was pending, otherwise becomes idle. Caller holds the event lock.
+ */
+export async function releaseMatchLanes(ex: Executor, eventId: string, matchIds: number[]): Promise<void> {
+  if (matchIds.length === 0) return;
+  const ids = sql.join(matchIds.map((id) => sql`${id}::integer`), sql`, `);
+  await ex.execute(sql`
+    with released as (
+      update ${bracket_match} as m
+      set lane_id = null, lane_assigned_at = null
+      from (
+        select id, lane_id from ${bracket_match}
+        where event_id = ${eventId} and id in (${ids}) and lane_id is not null
+      ) as previous
+      where m.id = previous.id
+      returning previous.lane_id
+    )
+    update ${lanes}
+    set status = case when maintenance_pending then 'maintenance'::lane_status else 'idle'::lane_status end,
+        maintenance_pending = false
+    where event_id = ${eventId} and id in (select lane_id from released)`);
 }
 
 /**

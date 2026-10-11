@@ -59,6 +59,8 @@ export interface EventWithDetails {
   putt_distance_ft: number;
   /** Present only for league admins (see getEventForViewer); never readable by clients directly. */
   access_code?: string | null;
+  /** Whether the requesting user administers the event's league (see getEventForViewer). */
+  viewer_is_admin?: boolean;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
   bracket_frame_count: number | null;

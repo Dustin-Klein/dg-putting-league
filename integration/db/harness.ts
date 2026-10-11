@@ -32,3 +32,30 @@ export async function withRollback(db: Db, fn: (tx: Tx) => Promise<void>): Promi
     if (!(error instanceof Rollback)) throw error;
   }
 }
+
+/**
+ * A test Db that counts the statements the driver sends. `count()` runs `fn` and
+ * returns how many statements it issued (savepoints included).
+ */
+export function createCountingTestDb(): {
+  db: Db;
+  count: (fn: () => Promise<unknown>) => Promise<{ total: number; queries: string[] }>;
+} {
+  let recording: string[] | null = null;
+  const db = _createDbForTests(TEST_DATABASE_URL, {
+    max: 1,
+    onQuery: (query) => recording?.push(query),
+  });
+  return {
+    db,
+    async count(fn) {
+      recording = [];
+      try {
+        await fn();
+        return { total: recording.length, queries: recording };
+      } finally {
+        recording = null;
+      }
+    },
+  };
+}

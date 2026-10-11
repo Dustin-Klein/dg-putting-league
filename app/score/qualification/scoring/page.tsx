@@ -235,29 +235,28 @@ export default function QualificationScoringPage() {
     );
 
     try {
-      const responses = await Promise.all(
-        frameEntries.map(async ({ player, puttsMade }) => {
-          const response = await fetch(`/api/score/qualification/${player.event_player_id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              access_code: accessCode,
-              frame_number: frameNumber,
-              putts_made: puttsMade,
-            }),
-          });
+      // One request for the whole group: saved together or not at all.
+      const response = await fetch('/api/score/qualification/frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_code: accessCode,
+          frame_number: frameNumber,
+          scores: frameEntries.map(({ player, puttsMade }) => ({
+            event_player_id: player.event_player_id,
+            putts_made: puttsMade,
+          })),
+        }),
+      });
 
-          if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || `Failed to save score for ${player.full_name}`);
-          }
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save scores');
+      }
 
-          return response.json() as Promise<{
-            frame: FrameInfo;
-            player: Omit<PlayerInfo, 'frames'>;
-          }>;
-        })
-      );
+      const { results: responses } = (await response.json()) as {
+        results: Array<{ frame: FrameInfo; player: Omit<PlayerInfo, 'frames'> }>;
+      };
 
       setPlayers((previousPlayers) =>
         previousPlayers.map((player) => {

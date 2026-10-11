@@ -13,6 +13,7 @@ import {
   bracket_stage,
 } from '@/lib/db/schema';
 import { InternalError } from '@/lib/errors';
+import { chunks } from '@/lib/db/batch';
 
 type Row = Record<string, unknown>;
 type Opponent = Record<string, unknown> | null;
@@ -300,5 +301,136 @@ export class DrizzleBracketStorage implements Storage {
       throw new InternalError(`Expected a unique ${table} but found several`);
     }
     return (rows[0] as unknown as DataTypes[T]) ?? null;
+  }
+}
+
+/** A freshly generated bracket, as brackets-manager rows with request-local ids. */
+export type GeneratedBracket = {
+  [T in Table]: Array<DataTypes[T] & { id: number }>;
+};
+
+const SERIAL_SEQUENCES: Record<Table, string> = {
+  stage: 'public.bracket_stage',
+  participant: 'public.bracket_participant',
+  group: 'public.bracket_group',
+  round: 'public.bracket_round',
+  match: 'public.bracket_match',
+  match_game: 'public.bracket_match_game',
+};
+
+// Foreign-key order for inserts.
+const INSERT_ORDER: readonly Table[] = ['stage', 'participant', 'group', 'round', 'match', 'match_game'];
+
+/**
+ * Whether the event already has any bracket rows (a stage or participants).
+ */
+export async function bracketRowsExist(ex: Executor, eventId: string): Promise<boolean> {
+  const rows = await ex.execute<{ exists: boolean }>(sql`
+    select exists (select 1 from ${bracket_stage} where ${bracket_stage.tournament_id} = ${eventId})
+        or exists (select 1 from ${bracket_participant} where ${bracket_participant.tournament_id} = ${eventId})
+      as exists`);
+  return rows[0]?.exists === true;
+}
+
+/** Reserve `counts[table]` ids from each table's serial sequence, in one statement. */
+async function reserveIds(ex: Executor, counts: Record<Table, number>): Promise<Record<Table, number[]>> {
+  const columns = sql.join(
+    INSERT_ORDER.map((table) => sql`(
+      select coalesce(array_agg(nextval(pg_get_serial_sequence(${SERIAL_SEQUENCES[table]}, 'id'))), '{}')
+      from generate_series(1, ${counts[table]}::integer)
+    ) as ${sql.identifier(table)}`),
+    sql`, `
+  );
+  const [row] = await ex.execute<Record<Table, Array<number | string>>>(sql`select ${columns}`);
+  const reserved = {} as Record<Table, number[]>;
+  for (const table of INSERT_ORDER) {
+    const ids = (row?.[table] ?? []).map(Number).sort((a, b) => a - b);
+    if (ids.length !== counts[table]) {
+      throw new InternalError(`Could not reserve ${table} ids`);
+    }
+    reserved[table] = ids;
+  }
+  return reserved;
+}
+
+/**
+ * Write a bracket generated in memory (see MemoryBracketStorage) with one statement
+ * per table and chunk, plus one to reserve ids. Rows get real sequence ids in their
+ * generated order, every stage/group/round/parent/participant reference is remapped,
+ * participants get their `team_id` and matches the event, and `position` (structural)
+ * is kept as is. The caller holds the event lock and has checked that the event has
+ * no bracket rows yet.
+ */
+export async function insertGeneratedBracket(
+  ex: Executor,
+  eventId: string,
+  bracket: GeneratedBracket,
+  participantTeamIds: ReadonlyMap<number, string>
+): Promise<void> {
+  if (bracket.stage.length !== 1) {
+    throw new InternalError('A generated bracket must have exactly one stage');
+  }
+  const counts = Object.fromEntries(INSERT_ORDER.map((table) => [table, bracket[table].length])) as Record<Table, number>;
+  const reserved = await reserveIds(ex, counts);
+
+  const idMaps = Object.fromEntries(
+    INSERT_ORDER.map((table) => [table, new Map(bracket[table].map((row, i) => [Number(row.id), reserved[table][i]]))])
+  ) as Record<Table, Map<number, number>>;
+  const remap = (table: Table, id: unknown): number => {
+    const mapped = idMaps[table].get(Number(id));
+    if (mapped === undefined) {
+      throw new InternalError(`Generated bracket references an unknown ${table} ${String(id)}`);
+    }
+    return mapped;
+  };
+  const remapOpponent = (opponent: unknown): unknown => {
+    if (opponent === null || typeof opponent !== 'object') return opponent ?? null;
+    const value = opponent as Row;
+    return value.id == null ? { ...value } : { ...value, id: remap('participant', value.id) };
+  };
+
+  const rowsByTable: Record<Table, Row[]> = {
+    stage: bracket.stage.map((s) => ({ ...pick(s, COLUMNS.stage), id: remap('stage', s.id), tournament_id: eventId })),
+    participant: bracket.participant.map((p) => ({
+      ...pick(p, COLUMNS.participant),
+      id: remap('participant', p.id),
+      tournament_id: eventId,
+      team_id: participantTeamIds.get(Number(p.id)) ?? null,
+    })),
+    group: bracket.group.map((g) => ({
+      ...pick(g, COLUMNS.group),
+      id: remap('group', g.id),
+      stage_id: remap('stage', g.stage_id),
+    })),
+    round: bracket.round.map((r) => ({
+      ...pick(r, COLUMNS.round),
+      id: remap('round', r.id),
+      stage_id: remap('stage', r.stage_id),
+      group_id: remap('group', r.group_id),
+    })),
+    match: bracket.match.map((m) => ({
+      ...pick(m, COLUMNS.match),
+      id: remap('match', m.id),
+      stage_id: remap('stage', m.stage_id),
+      group_id: remap('group', m.group_id),
+      round_id: remap('round', m.round_id),
+      opponent1: remapOpponent(m.opponent1),
+      opponent2: remapOpponent(m.opponent2),
+      event_id: eventId,
+    })),
+    match_game: bracket.match_game.map((g) => ({
+      ...pick(g, COLUMNS.match_game),
+      id: remap('match_game', g.id),
+      stage_id: remap('stage', g.stage_id),
+      parent_id: remap('match', g.parent_id),
+      opponent1: remapOpponent(g.opponent1),
+      opponent2: remapOpponent(g.opponent2),
+    })),
+  };
+
+  for (const table of INSERT_ORDER) {
+    for (const batch of chunks(rowsByTable[table])) {
+      await ex.insert(tbl(table)).values(batch as never);
+    }
   }
 }

@@ -4,7 +4,6 @@ import {
   createBracket,
   bracketExists,
 } from '@/lib/services/bracket';
-import { getEventLanes } from '@/lib/services/lane';
 import { handleError, BadRequestError } from '@/lib/errors';
 
 export async function GET(
@@ -13,18 +12,7 @@ export async function GET(
 ) {
   try {
     const { eventId } = await params;
-    const [data, lanes] = await Promise.all([
-      getBracketWithTeams(eventId),
-      getEventLanes(eventId),
-    ]);
-
-    // Create a map of lane_id to lane label for easy lookup
-    const laneMap: Record<string, string> = {};
-    for (const lane of lanes) {
-      laneMap[lane.id] = lane.label;
-    }
-
-    return NextResponse.json({ ...data, lanes, laneMap });
+    return NextResponse.json(await getBracketWithTeams(eventId));
   } catch (error) {
     return handleError(error);
   }

@@ -3,7 +3,6 @@ import { BadRequestError, NotFoundError } from '@/lib/errors';
 import { lockMatch, withTransaction, type Executor } from '@/lib/db/tx';
 import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
 import {
-  getMatchOpponentScores,
   updateMatchStatus,
   type MatchOpponent,
 } from '@/lib/repositories/bracket-repository.db';
@@ -146,7 +145,7 @@ export async function recordFrameScores(
         points_earned: calculatePoints(s.putts_made, event.bonus_point_enabled),
       }))
     );
-    await syncMatchScores(tx, matchId);
+    const synced = await syncMatchScores(tx, matchId);
 
     if (match.status === MatchStatus.Completed || match.status === MatchStatus.Archived) {
       const originalTeam1Winner = recordedTeam1Winner(
@@ -154,12 +153,9 @@ export async function recordFrameScores(
         match.opponent2 as MatchOpponent
       );
       if (originalTeam1Winner !== null) {
-        const updatedMatch = await getMatchOpponentScores(tx, matchId);
-        if (!updatedMatch) {
-          throw new NotFoundError('Match not found');
-        }
-        const team1Score = updatedMatch.opponent1?.score ?? 0;
-        const team2Score = updatedMatch.opponent2?.score ?? 0;
+        // The scores just written (an empty slot keeps no score).
+        const team1Score = match.opponent1 === null ? 0 : synced?.team1Score ?? 0;
+        const team2Score = match.opponent2 === null ? 0 : synced?.team2Score ?? 0;
         if (team1Score === team2Score || (team1Score > team2Score) !== originalTeam1Winner) {
           throw new BadRequestError(WINNER_CHANGE_MESSAGE);
         }

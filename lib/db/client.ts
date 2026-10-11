@@ -16,7 +16,11 @@ export type Db = PostgresJsDatabase<typeof schema> & {
   readonly [dbBrand]: 'app-db';
 };
 
-function createDb(url: string, max = Number(process.env.DATABASE_POOL_MAX ?? 3)): Db {
+function createDb(
+  url: string,
+  max = Number(process.env.DATABASE_POOL_MAX ?? 3),
+  onQuery?: (query: string) => void
+): Db {
   // Supavisor transaction mode (port 6543) doesn't support prepared statements.
   // Each serverless instance keeps a small pool; the pooler multiplexes them.
   const client = postgres(url, {
@@ -24,6 +28,7 @@ function createDb(url: string, max = Number(process.env.DATABASE_POOL_MAX ?? 3))
     max,
     idle_timeout: 20,
     connect_timeout: 10,
+    ...(onQuery ? { debug: (_connection: number, query: string) => onQuery(query) } : {}),
   });
   return drizzle(client, { schema }) as unknown as Db;
 }
@@ -47,10 +52,11 @@ export function _getDb(): Db {
 
 /**
  * Create a standalone connection (integration tests and scripts). Close it with
- * `closeDb` when done.
+ * `closeDb` when done. `onQuery` sees every statement the driver sends, including
+ * transaction and savepoint commands, for query-budget tests.
  */
-export function _createDbForTests(url: string, opts: { max?: number } = {}): Db {
-  return createDb(url, opts.max);
+export function _createDbForTests(url: string, opts: { max?: number; onQuery?: (query: string) => void } = {}): Db {
+  return createDb(url, opts.max, opts.onQuery);
 }
 
 export async function closeDb(db: Db): Promise<void> {

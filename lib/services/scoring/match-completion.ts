@@ -85,11 +85,13 @@ export async function completeMatchTx(
     }
   }
 
+  let computedScores;
   if (scores) {
     await setScoreOverride(tx, matchId, scores, 'final score entered', options.scoreOverrideBy ?? null);
-    await syncMatchScores(tx, matchId);
+    computedScores = await syncMatchScores(tx, matchId);
+  } else {
+    computedScores = await computeMatchScores(tx, matchId);
   }
-  const computedScores = await computeMatchScores(tx, matchId);
   const team1Score = computedScores?.team1Score ?? 0;
   const team2Score = computedScores?.team2Score ?? 0;
   if (team1Score === team2Score) {

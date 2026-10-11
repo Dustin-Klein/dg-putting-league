@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketMatchWithDetails, PlayerInTeam } from '@/lib/types/scoring';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { createClient } from '@/lib/supabase/client';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import {
   Dialog,
   DialogContent,
@@ -56,19 +57,16 @@ export function MatchScoringDialog({
   const [isViewMode, setIsViewMode] = useState(true);
 
   // Track if we're currently saving to avoid refetch during our own updates
-  const isSavingRef = useRef(false);
 
-  const fetchMatchDetails = useCallback(async (showLoading = true) => {
+  const fetchMatchDetails = useCallback(async (signal: AbortSignal) => {
     if (!match || !eventId) return;
 
-    if (showLoading) {
-      setIsLoading(true);
-    }
     setError(null);
 
     try {
       const response = await fetch(
-        `/api/event/${eventId}/bracket/match/${match.id}/scoring`
+        `/api/event/${eventId}/bracket/match/${match.id}/scoring`,
+        { signal }
       );
 
       if (!response.ok) {
@@ -77,20 +75,26 @@ export function MatchScoringDialog({
       }
 
       const data = await response.json();
+      if (signal.aborted) return;
       setMatchDetails(data);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load match');
     } finally {
-      if (showLoading) {
-        setIsLoading(false);
-      }
+      if (!signal.aborted) setIsLoading(false);
     }
   }, [match, eventId]);
+  const matchRefresh = useCoalescedRefresh(fetchMatchDetails, open && match ? match.id : null);
+
+  const loadMatchDetails = useCallback(() => {
+    setIsLoading(true);
+    matchRefresh.refresh();
+  }, [matchRefresh]);
 
   // Initial fetch when dialog opens
   useEffect(() => {
     if (open && match) {
-      fetchMatchDetails(true);
+      loadMatchDetails();
       setIsViewMode(true);
     } else {
       setMatchDetails(null);
@@ -100,7 +104,7 @@ export function MatchScoringDialog({
       setFinalScore2('0');
       setIsViewMode(true);
     }
-  }, [open, match, fetchMatchDetails]);
+  }, [open, match, loadMatchDetails]);
 
   // Sync final score inputs with match data
   useEffect(() => {
@@ -128,9 +132,7 @@ export function MatchScoringDialog({
           filter: `bracket_match_id=eq.${bracketMatchId}`,
         },
         () => {
-          if (!isSavingRef.current) {
-            fetchMatchDetails(false);
-          }
+          matchRefresh.request();
         }
       );
     
@@ -139,7 +141,7 @@ export function MatchScoringDialog({
     return () => {
       channel.unsubscribe();
     };
-  }, [open, match, fetchMatchDetails]);
+  }, [open, match, matchRefresh]);
 
   const handleScoreChange = async (
     eventPlayerId: string,
@@ -151,7 +153,6 @@ export function MatchScoringDialog({
     const saveKey = `${eventPlayerId}-${frameNumber}`;
     setIsSaving(saveKey);
     setError(null);
-    isSavingRef.current = true;
 
     try {
       const response = await fetch(
@@ -173,13 +174,14 @@ export function MatchScoringDialog({
       }
 
       const updatedMatch = await response.json();
+      // A read still in flight started before this save; the save's result is newer.
+      matchRefresh.invalidate();
       setMatchDetails(updatedMatch);
     } catch (err) {
       console.error('Failed to save score:', err);
       setError(err instanceof Error ? err.message : 'Failed to save score');
     } finally {
       setIsSaving(null);
-      isSavingRef.current = false;
     }
   };
 
@@ -297,6 +299,7 @@ export function MatchScoringDialog({
         throw new Error(data.error || 'Failed to clear manual score');
       }
       const updatedMatch = await response.json();
+      matchRefresh.invalidate();
       setMatchDetails(updatedMatch);
       onScoreSubmit();
     } catch (err) {
@@ -720,7 +723,7 @@ export function MatchScoringDialog({
         ) : error ? (
           <div className="text-center py-8">
             <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => fetchMatchDetails(true)}>Retry</Button>
+            <Button onClick={loadMatchDetails}>Retry</Button>
           </div>
         ) : null}
       </DialogContent>

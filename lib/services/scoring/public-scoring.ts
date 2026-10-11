@@ -20,12 +20,13 @@ import type { PublicMatchDetails, OpponentData } from '@/lib/types/scoring';
 import { InternalError } from '@/lib/errors';
 import { describeError, logger } from '@/lib/utils/logger';
 import {
-  validateQualificationAccessCode,
-  getPlayersForQualification,
+  toQualificationEventInfo,
+  getPlayersForQualificationDb,
 } from '@/lib/services/qualification';
 import type {
   PublicEventInfo,
   PublicMatchInfo,
+  PublicScoringMatch,
   ScoringLane,
 } from '@/lib/types/scoring';
 import { MatchStatus } from '@/lib/types/bracket';
@@ -73,8 +74,9 @@ export async function getEventScoringContext(accessCode: string) {
 
   // Handle qualification mode
   if (eventCheck.status === 'pre-bracket' && eventCheck.qualification_round_enabled) {
-    const event = await validateQualificationAccessCode(accessCode);
-    const players = await getPlayersForQualification(accessCode);
+    // The code was just authorized for this event; don't look it up again.
+    const event = toQualificationEventInfo(eventCheck);
+    const players = await getPlayersForQualificationDb(pg, event);
 
     return {
       mode: 'qualification' as const,
@@ -180,7 +182,7 @@ async function getMatchesForScoringInternal(
 export async function getMatchForScoring(
   accessCode: string,
   bracketMatchId: number
-): Promise<PublicMatchInfo> {
+): Promise<PublicScoringMatch> {
   const { event, pg } = await authorizeBracketScorer(accessCode);
   return getMatchForScoringInternal(pg, event, bracketMatchId);
 }
@@ -189,7 +191,7 @@ async function getMatchForScoringInternal(
   pg: Db,
   event: PublicEventInfo,
   bracketMatchId: number
-): Promise<PublicMatchInfo> {
+): Promise<PublicScoringMatch> {
   // Parallel: Get lanes and bracket match simultaneously
   const [laneMap, bracketMatch] = await Promise.all([
     getLaneLabelsForEvent(pg, event.id),
@@ -232,6 +234,8 @@ async function getMatchForScoringInternal(
     team_two_score: opponent2?.score ?? 0,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     frames: ((bracketMatch.frames || []) as any[]).sort((a, b) => a.frame_number - b.frame_number),
+    bonus_point_enabled: event.bonus_point_enabled,
+    bracket_frame_count: event.bracket_frame_count,
   };
 }
 
@@ -265,7 +269,7 @@ export async function recordScoreAndGetMatch(
   frameNumber: number,
   eventPlayerId: string,
   puttsMade: number
-): Promise<PublicMatchInfo> {
+): Promise<PublicScoringMatch> {
   return batchRecordScoresAndGetMatch(accessCode, bracketMatchId, frameNumber, [
     { event_player_id: eventPlayerId, putts_made: puttsMade },
   ]);
@@ -285,7 +289,7 @@ export async function batchRecordScoresAndGetMatch(
   bracketMatchId: number,
   frameNumber: number,
   scores: BatchScoreInput[]
-): Promise<PublicMatchInfo> {
+): Promise<PublicScoringMatch> {
   const { event, pg } = await authorizeBracketScorer(accessCode);
 
   const { status } = await recordFrameScores(pg, {
