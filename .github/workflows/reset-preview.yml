@@ -1,0 +1,49 @@
+name: Reset preview DB
+
+# Rebuilds the non-prod (preview) Supabase DB from a branch's migrations. Use it after abandoning
+# or rewriting a migration PR, or when migrate-preview reports foreign migrations.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch whose migrations to apply
+        required: true
+        default: main
+
+env:
+  SUPABASE_CLI_VERSION: 2.120.0
+
+jobs:
+  reset-preview:
+    name: Reset preview DB
+    runs-on: ubuntu-latest
+    environment: Preview
+    concurrency:
+      group: migrate-preview
+      cancel-in-progress: false
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # `db reset` truncates the auth schema; keep the preview test accounts.
+      - name: Back up auth users
+        id: backup
+        run: tools/preview-db.sh backup-auth "$RUNNER_TEMP/auth"
+
+      # --no-seed: supabase/seed.sql sets a known app_server password, for local use only.
+      # The app_server role (and its real password) survives the reset.
+      - name: Reset database
+        run: supabase db reset --db-url "$SUPABASE_DB_URL" --no-seed --yes
+
+      # Also after a failed reset, which may already have truncated auth.
+      - name: Restore auth users
+        if: ${{ !cancelled() && steps.backup.outcome == 'success' }}
+        run: tools/preview-db.sh restore-auth "$RUNNER_TEMP/auth"

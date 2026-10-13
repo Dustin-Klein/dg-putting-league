@@ -9,6 +9,7 @@ on:
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  SUPABASE_CLI_VERSION: 2.120.0
 
 jobs:
   lint:
@@ -83,7 +84,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # Match production's Postgres image. 17.6.1.106 segfaults when a role calls a
       # function it lacks EXECUTE on (supautils bug), which these tests do on purpose.
@@ -123,25 +124,68 @@ jobs:
       - name: Build
         run: npm run build
 
-  # migrate:
-  #   name: Supabase Migrations
-  #   runs-on: ubuntu-latest
-  #   needs: [lint, test, build]
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   steps:
-  #     - uses: actions/checkout@v7
+  changes:
+    name: Detect migration changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      migrations: ${{ steps.filter.outputs.migrations }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            migrations:
+              - 'supabase/migrations/**'
 
-  #     - name: Setup Supabase CLI
-  #       uses: supabase/setup-cli@v3
-  #       with:
-  #         version: latest
+  # Manual: bound to the `Preview` environment, whose required reviewer must approve each run
+  # (PR checks → "Review deployments"). All PRs share one non-prod DB, so you pick which PR gets it.
+  migrate-preview:
+    name: Migrate preview DB
+    needs: [changes, database]
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    environment: Preview
+    concurrency:
+      group: migrate-preview
+      cancel-in-progress: false
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
 
-  #     - name: Link Supabase project
-  #       run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-  #       env:
-  #         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
-  #     - name: Run migrations
-  #       run: supabase db push
-  #       env:
-  #         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # Another (or an abandoned) PR's migrations on the DB → run the "Reset preview DB" workflow.
+      - name: Check for foreign migrations
+        run: tools/preview-db.sh check-drift
+
+      # --include-all: this PR's migration may predate ones already applied from main.
+      - name: Push migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all --yes
+
+  # Automatic on main. Vercel Deployment Checks wait for this job before promoting to production.
+  migrate-production:
+    name: Migrate production DB
+    needs: [lint, type-check, test, database, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: Production
+    concurrency:
+      group: migrate-production
+      cancel-in-progress: false
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Push migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
