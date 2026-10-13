@@ -188,6 +188,18 @@ Dependencies flow **downward only**. No upward or sideways dependencies.
 - Client pages refetch on Realtime changes through `useCoalescedRefresh` (`lib/hooks/use-coalesced-refresh.ts`): one read at a time per resource, a burst of changes becomes one follow-up read, and obsolete reads are aborted (after a save that returned fresher data, a resource change or unmount).
 - Local and CI Postgres must use image version `17.6.1.063` (production version). Image `17.6.1.106` has a supautils bug that segfaults the server whenever a role calls a function it lacks `EXECUTE` on. Pin it with `mkdir -p supabase/.temp && echo 17.6.1.063 > supabase/.temp/postgres-version` before `supabase start`.
 
+### Applying migrations to hosted databases (CI)
+
+Migrations reach the hosted projects only through CI (`.github/workflows/ci.yml`), never by hand. Jobs connect with `supabase ... --db-url` (no `supabase link`); the CLI version is pinned in `SUPABASE_CLI_VERSION`.
+
+- `migrate-preview` (PRs touching `supabase/migrations/**`, after `database` passes): applies the PR's migrations to the non-prod project behind the Vercel preview env. It is gated by the `Preview` environment's required reviewer, so it shows as **Waiting** in the PR checks until approved (*Review deployments → Approve*). Each new push needs another approval. Before `db push --include-all` it runs `tools/preview-db.sh check-drift`, which fails if the DB has migration versions this branch lacks (another PR's or an abandoned one).
+- `Reset preview DB` (`.github/workflows/reset-preview.yml`, manual from the Actions tab, input `ref`, default `main`): `supabase db reset --no-seed` against non-prod, rebuilding it from that branch's migrations. Use it after a drift failure or after abandoning/rewriting a migration PR. Reset truncates the `auth` schema, so the workflow backs up and restores `auth.users`/`auth.identities` (sessions are lost; testers sign in again). App data in `public` is wiped. `seed.sql` is never applied to hosted DBs; `app_server` and its password survive the reset (roles are cluster-level).
+- `migrate-production` (push to `main`, after all checks): `supabase db push` to production. Migrations are additive, so they run before the new app version goes live: Vercel **Deployment Checks** for Production require this job.
+- Setup (once, outside git):
+  - GitHub Environments `Preview` (required reviewer) and `Production` (deployment branches: `main` only; both shared with Vercel's deployments), each with secret `SUPABASE_DB_URL`: the session pooler URL (port 5432) as `postgres`, percent-encoded.
+  - Vercel → Settings → Deployment Checks: add `Migrate production DB` for Production.
+  - Before enabling, check `supabase migration list --db-url <url>` on both projects. Record hand-applied migrations with `supabase migration repair --status applied <version>`.
+
 ---
 
 ## TypeScript Standards
