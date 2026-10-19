@@ -202,7 +202,24 @@ Migrations reach the hosted projects only through CI (`.github/workflows/ci.yml`
 
 ### Backups
 
-The production project is on the Supabase Free plan, which has no backups or PITR. The homelab dumps it nightly (roles, schema, and data including `auth.users`) and keeps copies on a Longhorn volume and in encrypted Google Drive. Restore steps: [homelab `docs/restore-drill.md`](https://github.com/Dustin-Klein/homelab/blob/main/docs/restore-drill.md#supabase-dg-putting-league). Changing the production `postgres` password breaks that dump until the homelab secret `kubernetes/apps/supabase-backup/supabase-backup-secrets.sops.yaml` is updated. Auth and project settings (site URL, redirect URLs, SMTP) are not in the database, so a restore re-enters them by hand.
+The production project is on the Supabase Free plan, which has no backups or PITR. The homelab dumps it nightly (roles, schema, and data including `auth.users`) and keeps copies on a Longhorn volume and in encrypted Google Drive. Restore steps: [homelab `docs/restore-drill.md`](https://github.com/Dustin-Klein/homelab/blob/main/docs/restore-drill.md#supabase-dg-putting-league). Changing the production `postgres` password breaks that dump until the homelab secret `kubernetes/apps/supabase-backup/supabase-backup-secrets.sops.yaml` is updated. Auth settings are project config, not database rows, so a restore re-enters them by hand.
+
+Production auth settings (Dashboard → Authentication; recorded 2026-10-19 from the Management API `config/auth`). Anything not listed is the Supabase default.
+
+| Setting | Value |
+|---|---|
+| Site URL | `https://dg-putting-league-dustin-kleins-projects.vercel.app/` |
+| Redirect URLs | `https://dg-putting-league-dustin-kleins-projects.vercel.app/`, `https://dg-putting-league-dustin-kleins-projects.vercel.app/**`, `https://dg-*-putting-league-dustin-kleins-projects.vercel.app`, `https://dg-*-putting-league-dustin-kleins-projects.vercel.app/**` |
+| Providers | Email only |
+| Allow new users to sign up | On |
+| Confirm email | Off (`mailer_autoconfirm = true`); a new project defaults to on |
+| SMTP | None (Supabase built-in mailer) |
+| Email templates | Defaults |
+| Minimum password length | 6 |
+| JWT expiry | 3600 s |
+| Captcha | Off |
+
+Update this table when a dashboard auth setting changes. To compare with production: `curl -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" https://api.supabase.com/v1/projects/bhnltoseabypzxnotsye/config/auth`.
 
 ---
 
