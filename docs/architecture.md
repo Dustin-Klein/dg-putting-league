@@ -200,6 +200,10 @@ Migrations reach the hosted projects only through CI (`.github/workflows/ci.yml`
   - Vercel → Settings → Deployment Checks: add `Migrate production DB` for Production.
   - Before enabling, check `supabase migration list --db-url <url>` on both projects. Record hand-applied migrations with `supabase migration repair --status applied <version>`.
 
+### Backups
+
+The production project is on the Supabase Free plan, which has no backups or PITR. The homelab dumps it nightly (roles, schema, and data including `auth.users`) and keeps copies on a Longhorn volume and in encrypted Google Drive. Restore steps: [homelab `docs/restore-drill.md`](https://github.com/Dustin-Klein/homelab/blob/main/docs/restore-drill.md#supabase-dg-putting-league). Changing the production `postgres` password breaks that dump until the homelab secret `kubernetes/apps/supabase-backup/supabase-backup-secrets.sops.yaml` is updated. Auth and project settings (site URL, redirect URLs, SMTP) are not in the database, so a restore re-enters them by hand.
+
 ---
 
 ## TypeScript Standards
