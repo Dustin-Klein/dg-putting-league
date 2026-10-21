@@ -4,7 +4,7 @@ import { consumeRateLimit, peekRateLimit } from '@/lib/services/auth/rate-limit-
 import { InvalidAccessCodeError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 
-// Counters live in Postgres (public.rate_limits) so limits hold across serverless
+// Counters live in Postgres (putting_league.rate_limits) so limits hold across serverless
 // instances. If the store is unreachable, requests are allowed (fail open) and the
 // failure is logged: rate limiting must not take scoring down with it.
 

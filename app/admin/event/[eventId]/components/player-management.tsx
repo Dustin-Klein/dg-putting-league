@@ -88,7 +88,7 @@ export function PlayerManagement({
         'postgres_changes',
         {
           event: '*', // INSERT, UPDATE, DELETE
-          schema: 'public',
+          schema: 'putting_league',
           table: 'qualification_frames',
           filter: `event_id=eq.${event.id}`,
         },

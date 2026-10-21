@@ -24,6 +24,10 @@ jest.mock('@/lib/services/auth', () =>
   jest.requireActual('./test-utils').createAuthServiceMock()
 );
 
+jest.mock('@/lib/db/tx', () => ({
+  withTransaction: jest.fn((ex: unknown, fn: (tx: unknown) => unknown) => fn(ex)),
+}));
+
 jest.mock('@/lib/repositories/player-repository.db', () => ({
   insertPlayer: jest.fn(),
   searchPlayersByName: jest.fn(),
@@ -40,6 +44,7 @@ import {
   authorizeEventView,
   authorizePublicRead,
 } from '@/lib/services/auth';
+import { withTransaction } from '@/lib/db/tx';
 import * as playerRepo from '@/lib/repositories/player-repository.db';
 import { createPlayer, searchPlayers, searchPlayersPublic } from '../player/player-service';
 
@@ -69,6 +74,8 @@ describe('Player Service', () => {
 
       expect(result).toEqual(expectedPlayer);
       expect(authorizeAnyLeagueAdmin).toHaveBeenCalled();
+      // players and player_profiles are written together
+      expect(withTransaction).toHaveBeenCalledWith(mockSupabase, expect.any(Function));
       expect(playerRepo.insertPlayer).toHaveBeenCalledWith(mockSupabase, {
         full_name: 'John Doe',
         email: 'john@example.com',

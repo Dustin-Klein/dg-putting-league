@@ -22,6 +22,26 @@ const HEADER =
   "import { authUsers as users } from 'drizzle-orm/supabase';\n";
 
 /**
+ * drizzle-kit names objects outside `public` with a schema suffix (`eventsInPutting_league`).
+ * Each table name exists in only one schema, so drop the suffix and keep the export names
+ * the repositories import. Fails if that would make two exports share a name.
+ */
+function unsuffix(source) {
+  const schemas = [...source.matchAll(/^export const \w+ = pgSchema\("(\w+)"\)/gm)].map((m) => m[1]);
+  let text = source;
+  for (const schema of schemas) {
+    const suffix = `In${schema[0].toUpperCase()}${schema.slice(1)}`;
+    text = text.replace(new RegExp(`\\b(\\w+)${suffix}\\b`, 'g'), '$1');
+  }
+  const names = [...text.matchAll(/^export const (\w+) =/gm)].map((m) => m[1]);
+  const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+  if (dupes.length > 0) {
+    throw new Error(`Same name in more than one schema: ${[...new Set(dupes)].join(', ')}`);
+  }
+  return text;
+}
+
+/**
  * Make the output independent of the database's history. drizzle-kit emits tables and
  * their constraints in catalog order (which differs between a long-lived and a fresh
  * database), and with two policies on one table it can attach a USING clause to the
@@ -38,8 +58,8 @@ function normalize(source) {
       return `(table) => [\n${items.join('\n')}\n]);`;
     });
 
-  const isTable = (block) => /^export const \w+ = pgTable\(/.test(block);
-  const blocks = source.trim().split(/\n(?=export const )/).map((b) => b.trim());
+  const isTable = (block) => /^export const \w+ = (pgTable|\w+\.table)\(/.test(block);
+  const blocks = unsuffix(source).trim().split(/\n(?=export const )/).map((b) => b.trim());
   const head = blocks.filter((b) => !isTable(b));
   const tables = blocks.filter(isTable).map(sortItems).sort();
 
