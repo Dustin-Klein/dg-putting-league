@@ -22,13 +22,18 @@ updates:
       types:
         patterns:
           - "@types/*"
+      # react and react-dom must be the exact same version (React throws
+      # "Incompatible React versions" otherwise), so they have to land in
+      # the same PR.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
       npm-minor-patch:
         patterns:
           - "*"
         exclude-patterns:
           - "next"
-          - "react"
-          - "react-dom"
         update-types:
           - "minor"
           - "patch"
