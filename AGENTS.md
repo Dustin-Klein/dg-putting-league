@@ -29,6 +29,13 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
   remains available for explicit checks. Many routes use `lib/middleware/rate-limit.ts`.
 - Authorization is enforced in two places: service-layer checks and Postgres RLS
   policies / `SECURITY DEFINER` functions in `supabase/migrations/`.
+- Postgres schemas: `public` holds only the player identity shared by every app (`players`,
+  `player_number_seq`). This app's tables, enums and RLS helpers live in `putting_league`
+  (league-specific player data such as `default_pool` is in `putting_league.player_profiles`).
+  Future apps get their own schema that references `public.players(id)`; no app references another
+  app's schema. Raw SQL must schema-qualify league names (`putting_league.lane_status`); Drizzle
+  tables from `lib/db/schema` are qualified automatically. Realtime subscriptions use
+  `schema: 'putting_league'`. `putting_league` is not exposed through PostgREST.
 - Schema changes are additive migrations (new timestamped files in `supabase/migrations/`,
   starting with `202610070000000_security_lockdown.sql`). Do not edit existing `init_*`
   migration files (flag any edits to them). Emergency rollback SQL lives in `supabase/rollbacks/`.

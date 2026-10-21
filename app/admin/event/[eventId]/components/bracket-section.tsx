@@ -86,7 +86,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'putting_league',
           table: 'bracket_match',
           filter: `event_id=eq.${eventId}`,
         },
@@ -98,7 +98,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'putting_league',
           table: 'lanes',
           filter: `event_id=eq.${eventId}`,
         },
@@ -107,7 +107,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
       // Realtime DELETE events cannot be filtered by event_id.
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'lanes' },
+        { event: 'DELETE', schema: 'putting_league', table: 'lanes' },
         () => { bracketRefresh.request(); }
       )
       .subscribe();

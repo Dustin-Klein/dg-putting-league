@@ -1,5 +1,5 @@
 import 'server-only';
-import type { Executor } from '@/lib/db/tx';
+import { withTransaction, type Executor } from '@/lib/db/tx';
 import { BadRequestError } from '@/lib/errors';
 import {
   authorizeAnyLeagueAdmin,
@@ -35,12 +35,14 @@ export async function createPlayer(input: CreatePlayerInput) {
     throw new BadRequestError('Email is required');
   }
 
-  return playerRepo.insertPlayer(pg, {
-    full_name: name,
-    email,
-    nickname,
-    default_pool: defaultPool,
-  });
+  return withTransaction(pg, (tx) =>
+    playerRepo.insertPlayer(tx, {
+      full_name: name,
+      email,
+      nickname,
+      default_pool: defaultPool,
+    })
+  );
 }
 
 /**

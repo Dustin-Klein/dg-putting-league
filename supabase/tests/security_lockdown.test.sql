@@ -2,10 +2,12 @@
 --
 -- Clients (anon, authenticated) may only read, through RLS. They can't write any
 -- table, read access codes or emails, or execute business functions.
+--
+-- Covers both schemas: public (shared player identity) and putting_league (this app).
 
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SET search_path = public, extensions;
+SET search_path = putting_league, public, extensions;
 
 SELECT no_plan();
 
@@ -27,13 +29,13 @@ SELECT is_empty(
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role)
-    WHERE n.nspname = 'public'
+    WHERE n.nspname IN ('public', 'putting_league')
       AND has_function_privilege(r.role, p.oid, 'EXECUTE')
       AND NOT EXISTS (
         SELECT 1 FROM client_callable c WHERE c.proname = p.proname AND c.role = r.role
       )
   $$,
-  'clients can execute only allowlisted public functions'
+  'clients can execute only allowlisted functions'
 );
 
 SELECT is_empty(
@@ -42,7 +44,7 @@ SELECT is_empty(
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     JOIN client_callable c ON c.proname = p.proname
-    WHERE n.nspname = 'public'
+    WHERE n.nspname IN ('public', 'putting_league')
       AND p.prosecdef
       AND c.proname NOT IN ('is_league_admin', 'is_league_admin_for_event', 'is_tournament_admin')
   $$,
@@ -78,9 +80,28 @@ SELECT hasnt_function('public', 'trigger_sync_bracket_match_scores', ARRAY[]::te
 SELECT hasnt_function('public', 'sync_bracket_match_scores', ARRAY['integer'], 'legacy score sync function was removed');
 SELECT hasnt_function('public', 'calculate_bracket_match_scores', ARRAY['integer'], 'legacy score calculation function was removed');
 
-SELECT function_privs_are('public', 'is_league_admin', ARRAY['uuid', 'uuid'], 'anon', ARRAY['EXECUTE']);
-SELECT function_privs_are('public', 'is_league_admin_for_event', ARRAY['uuid'], 'anon', ARRAY['EXECUTE']);
-SELECT function_privs_are('public', 'is_tournament_admin', ARRAY['uuid'], 'authenticated', ARRAY['EXECUTE']);
+SELECT function_privs_are('putting_league', 'is_league_admin', ARRAY['uuid', 'uuid'], 'anon', ARRAY['EXECUTE']);
+SELECT function_privs_are('putting_league', 'is_league_admin_for_event', ARRAY['uuid'], 'anon', ARRAY['EXECUTE']);
+SELECT function_privs_are('putting_league', 'is_tournament_admin', ARRAY['uuid'], 'authenticated', ARRAY['EXECUTE']);
+
+-- The RLS helpers moved with the league tables and resolve names in their own schema
+SELECT hasnt_function('public', 'is_league_admin', ARRAY['uuid', 'uuid']);
+SELECT hasnt_function('public', 'is_league_admin_for_event', ARRAY['uuid']);
+SELECT hasnt_function('public', 'is_tournament_admin', ARRAY['uuid']);
+SELECT is_empty(
+  $$
+    SELECT p.oid::regprocedure::text
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'putting_league'
+      AND p.prosecdef
+      AND NOT EXISTS (
+        SELECT 1 FROM unnest(p.proconfig) cfg
+        WHERE cfg = 'search_path=putting_league, public, pg_temp'
+      )
+  $$,
+  'putting_league definer functions pin search_path'
+);
 
 -- The server role calls no functions: it bypasses RLS and does its own authorization
 SELECT is_empty(
@@ -88,9 +109,10 @@ SELECT is_empty(
     SELECT p.oid::regprocedure::text
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND has_function_privilege('app_server', p.oid, 'EXECUTE')
+    WHERE n.nspname IN ('public', 'putting_league')
+      AND has_function_privilege('app_server', p.oid, 'EXECUTE')
   $$,
-  'app_server can execute no public functions'
+  'app_server can execute no functions'
 );
 
 -- app_server reads account emails only through app_private.user_emails
@@ -108,9 +130,12 @@ SELECT ok(
 
 -- New functions start revoked
 CREATE FUNCTION public.zz_lockdown_probe() RETURNS int LANGUAGE sql AS 'SELECT 1';
+CREATE FUNCTION putting_league.zz_lockdown_probe() RETURNS int LANGUAGE sql AS 'SELECT 1';
 SELECT ok(
   NOT has_function_privilege('anon', 'public.zz_lockdown_probe()', 'EXECUTE')
-  AND NOT has_function_privilege('authenticated', 'public.zz_lockdown_probe()', 'EXECUTE'),
+  AND NOT has_function_privilege('authenticated', 'public.zz_lockdown_probe()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'putting_league.zz_lockdown_probe()', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'putting_league.zz_lockdown_probe()', 'EXECUTE'),
   'functions created later are not executable by clients'
 );
 
@@ -125,11 +150,11 @@ SELECT is_empty(
     JOIN pg_namespace n ON n.oid = c.relnamespace
     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role)
     CROSS JOIN unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS priv
-    WHERE n.nspname = 'public'
+    WHERE n.nspname IN ('public', 'putting_league')
       AND c.relkind IN ('r', 'p', 'v', 'm')
       AND has_table_privilege(r.role, c.oid, priv)
   $$,
-  'clients have no write privileges on any public table'
+  'clients have no write privileges on any table'
 );
 
 SELECT is_empty(
@@ -139,7 +164,7 @@ SELECT is_empty(
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role)
-    WHERE n.nspname = 'public'
+    WHERE n.nspname IN ('public', 'putting_league')
       AND (has_column_privilege(r.role, c.oid, a.attnum, 'INSERT')
         OR has_column_privilege(r.role, c.oid, a.attnum, 'UPDATE'))
   $$,
@@ -151,20 +176,21 @@ SELECT is_empty(
     SELECT c.relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity
+    WHERE n.nspname IN ('public', 'putting_league') AND c.relkind = 'r' AND NOT c.relrowsecurity
   $$,
-  'every public table has RLS enabled'
+  'every table has RLS enabled'
 );
 
-SELECT table_privs_are('public', 'bracket_match', 'anon', ARRAY['SELECT']);
-SELECT table_privs_are('public', 'frame_results', 'anon', ARRAY['SELECT']);
-SELECT table_privs_are('public', 'league_admins', 'authenticated', ARRAY['SELECT']);
-SELECT table_privs_are('public', 'rate_limits', 'anon', ARRAY[]::text[]);
-SELECT table_privs_are('public', 'rate_limits', 'authenticated', ARRAY[]::text[]);
+SELECT table_privs_are('putting_league', 'bracket_match', 'anon', ARRAY['SELECT']);
+SELECT table_privs_are('putting_league', 'frame_results', 'anon', ARRAY['SELECT']);
+SELECT table_privs_are('putting_league', 'league_admins', 'authenticated', ARRAY['SELECT']);
+SELECT table_privs_are('putting_league', 'player_profiles', 'anon', ARRAY['SELECT']);
+SELECT table_privs_are('putting_league', 'rate_limits', 'anon', ARRAY[]::text[]);
+SELECT table_privs_are('putting_league', 'rate_limits', 'authenticated', ARRAY[]::text[]);
 
 SELECT is_empty(
-  $$ SELECT tablename || ': ' || policyname FROM pg_policies
-     WHERE schemaname = 'public' AND cmd <> 'SELECT' $$,
+  $$ SELECT schemaname || '.' || tablename || ': ' || policyname FROM pg_policies
+     WHERE schemaname IN ('public', 'putting_league') AND cmd <> 'SELECT' $$,
   'no write policies remain'
 );
 
@@ -172,20 +198,48 @@ SELECT is_empty(
 CREATE TABLE public.zz_lockdown_probe (id int);
 SELECT table_privs_are('public', 'zz_lockdown_probe', 'anon', ARRAY[]::text[]);
 SELECT table_privs_are('public', 'zz_lockdown_probe', 'authenticated', ARRAY[]::text[]);
+CREATE TABLE putting_league.zz_lockdown_probe (id int);
+SELECT table_privs_are('putting_league', 'zz_lockdown_probe', 'anon', ARRAY[]::text[]);
+SELECT table_privs_are('putting_league', 'zz_lockdown_probe', 'authenticated', ARRAY[]::text[]);
+SELECT table_privs_are('putting_league', 'zz_lockdown_probe', 'app_server', ARRAY['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+
+-- ---------------------------------------------------------------------------
+-- Schemas: public is shared player identity; the league lives in putting_league
+-- ---------------------------------------------------------------------------
+
+SELECT tables_are('public', ARRAY['players', 'zz_lockdown_probe'], 'public holds only shared player identity');
+SELECT hasnt_column('public', 'players', 'default_pool', 'default_pool moved to putting_league.player_profiles');
+SELECT fk_ok('putting_league', 'player_profiles', 'player_id', 'public', 'players', 'id');
+SELECT fk_ok('putting_league', 'event_players', 'player_id', 'public', 'players', 'id');
+SELECT ok(
+  has_schema_privilege('app_server', 'putting_league', 'USAGE')
+  AND has_schema_privilege('anon', 'putting_league', 'USAGE')
+  AND has_schema_privilege('authenticated', 'putting_league', 'USAGE')
+  AND NOT has_schema_privilege('anon', 'putting_league', 'CREATE')
+  AND NOT has_schema_privilege('authenticated', 'putting_league', 'CREATE'),
+  'clients can use putting_league (for Realtime) but not create in it'
+);
+SELECT set_eq(
+  $$ SELECT schemaname || '.' || tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime' $$,
+  ARRAY['putting_league.bracket_match', 'putting_league.bracket_participant', 'putting_league.frame_results',
+        'putting_league.lanes', 'putting_league.match_frames', 'putting_league.qualification_frames'],
+  'Realtime publishes the league tables from their new schema'
+);
 
 -- ---------------------------------------------------------------------------
 -- Columns
 -- ---------------------------------------------------------------------------
 
-SELECT column_privs_are('public', 'events', 'access_code', 'anon', ARRAY[]::text[]);
-SELECT column_privs_are('public', 'events', 'access_code', 'authenticated', ARRAY[]::text[]);
-SELECT column_privs_are('public', 'events', 'status', 'anon', ARRAY['SELECT']);
+SELECT column_privs_are('putting_league', 'events', 'access_code', 'anon', ARRAY[]::text[]);
+SELECT column_privs_are('putting_league', 'events', 'access_code', 'authenticated', ARRAY[]::text[]);
+SELECT column_privs_are('putting_league', 'events', 'status', 'anon', ARRAY['SELECT']);
 SELECT column_privs_are('public', 'players', 'email', 'anon', ARRAY[]::text[]);
 SELECT column_privs_are('public', 'players', 'email', 'authenticated', ARRAY[]::text[]);
 SELECT column_privs_are('public', 'players', 'full_name', 'authenticated', ARRAY['SELECT']);
-SELECT column_privs_are('public', 'event_players', 'payment_type', 'anon', ARRAY[]::text[]);
-SELECT column_privs_are('public', 'event_players', 'payment_type', 'authenticated', ARRAY[]::text[]);
-SELECT column_privs_are('public', 'event_players', 'pool', 'authenticated', ARRAY['SELECT']);
+SELECT column_privs_are('public', 'players', 'nickname', 'anon', ARRAY['SELECT']);
+SELECT column_privs_are('putting_league', 'event_players', 'payment_type', 'anon', ARRAY[]::text[]);
+SELECT column_privs_are('putting_league', 'event_players', 'payment_type', 'authenticated', ARRAY[]::text[]);
+SELECT column_privs_are('putting_league', 'event_players', 'pool', 'authenticated', ARRAY['SELECT']);
 
 -- ---------------------------------------------------------------------------
 -- Behaviour as real client roles
@@ -197,17 +251,17 @@ VALUES
   ('00000000-0000-0000-0000-00000000a001', 'owner@lockdown.test', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000a002', 'admin@lockdown.test', 'authenticated', 'authenticated');
 
-INSERT INTO public.leagues (id, name) VALUES ('00000000-0000-0000-0000-00000000b001', 'Lockdown League');
-INSERT INTO public.league_admins (league_id, user_id, role) VALUES
+INSERT INTO putting_league.leagues (id, name) VALUES ('00000000-0000-0000-0000-00000000b001', 'Lockdown League');
+INSERT INTO putting_league.league_admins (league_id, user_id, role) VALUES
   ('00000000-0000-0000-0000-00000000b001', '00000000-0000-0000-0000-00000000a001', 'owner'),
   ('00000000-0000-0000-0000-00000000b001', '00000000-0000-0000-0000-00000000a002', 'admin');
 
-INSERT INTO public.events (id, league_id, event_date, lane_count, putt_distance_ft, access_code, status)
+INSERT INTO putting_league.events (id, league_id, event_date, lane_count, putt_distance_ft, access_code, status)
 VALUES ('00000000-0000-0000-0000-00000000c001', '00000000-0000-0000-0000-00000000b001',
         '2026-01-01', 2, 25, 'lockdown1', 'bracket');
 
 SELECT throws_ok(
-  $$ UPDATE public.events SET access_code = 'MixedCase' WHERE id = '00000000-0000-0000-0000-00000000c001' $$,
+  $$ UPDATE putting_league.events SET access_code = 'MixedCase' WHERE id = '00000000-0000-0000-0000-00000000c001' $$,
   '23514', NULL,
   'access codes must be stored normalized'
 );
@@ -217,32 +271,32 @@ SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
 
 SELECT throws_ok(
-  $$ SELECT access_code FROM public.events $$,
+  $$ SELECT access_code FROM putting_league.events $$,
   '42501', NULL, 'anon cannot read events.access_code'
 );
 SELECT throws_ok(
-  $$ SELECT id FROM public.events WHERE access_code = 'lockdown1' $$,
+  $$ SELECT id FROM putting_league.events WHERE access_code = 'lockdown1' $$,
   '42501', NULL, 'anon cannot filter on events.access_code'
 );
 SELECT ok(
-  (SELECT count(*) FROM public.events WHERE id = '00000000-0000-0000-0000-00000000c001') = 1,
+  (SELECT count(*) FROM putting_league.events WHERE id = '00000000-0000-0000-0000-00000000c001') = 1,
   'anon can still read public event columns'
 );
 SELECT ok(
-  (SELECT count(*) FROM public.leagues WHERE id = '00000000-0000-0000-0000-00000000b001') = 1,
+  (SELECT count(*) FROM putting_league.leagues WHERE id = '00000000-0000-0000-0000-00000000b001') = 1,
   'anon can read leagues'
 );
 SELECT throws_ok(
-  $$ UPDATE public.bracket_match SET status = 4 $$,
+  $$ UPDATE putting_league.bracket_match SET status = 4 $$,
   '42501', NULL, 'anon cannot update bracket_match'
 );
 SELECT throws_ok(
-  $$ INSERT INTO public.frame_results (match_frame_id, event_player_id, putts_made, points_earned)
+  $$ INSERT INTO putting_league.frame_results (match_frame_id, event_player_id, putts_made, points_earned)
      VALUES (gen_random_uuid(), gen_random_uuid(), 3, 4) $$,
   '42501', NULL, 'anon cannot insert frame_results'
 );
 SELECT lives_ok(
-  $$ SELECT id FROM public.frame_results LIMIT 1 $$,
+  $$ SELECT id FROM putting_league.frame_results LIMIT 1 $$,
   'anon can still read frame results'
 );
 RESET ROLE;
@@ -253,12 +307,12 @@ SELECT set_config('request.jwt.claims',
   '{"role":"authenticated","sub":"00000000-0000-0000-0000-00000000a002"}', true);
 
 SELECT throws_ok(
-  $$ UPDATE public.league_admins SET role = 'owner'
+  $$ UPDATE putting_league.league_admins SET role = 'owner'
      WHERE user_id = '00000000-0000-0000-0000-00000000a002' $$,
   '42501', NULL, 'an admin cannot promote themselves to owner (F7)'
 );
 SELECT throws_ok(
-  $$ DELETE FROM public.league_admins WHERE role = 'owner' $$,
+  $$ DELETE FROM putting_league.league_admins WHERE role = 'owner' $$,
   '42501', NULL, 'an admin cannot delete the owner row'
 );
 SELECT throws_ok(
@@ -266,15 +320,17 @@ SELECT throws_ok(
   '42501', NULL, 'authenticated users cannot read player emails (F8)'
 );
 SELECT throws_ok(
-  $$ SELECT access_code FROM public.events $$,
+  $$ SELECT access_code FROM putting_league.events $$,
   '42501', NULL, 'even a league admin cannot read access codes directly'
 );
 SELECT throws_ok(
-  $$ INSERT INTO public.leagues (name) VALUES ('Sneaky') $$,
+  $$ INSERT INTO putting_league.leagues (name) VALUES ('Sneaky') $$,
   '42501', NULL, 'authenticated cannot insert leagues directly'
 );
+-- The owner's row is visible only through putting_league.is_league_admin, so this
+-- also checks the moved helper resolves its tables.
 SELECT ok(
-  (SELECT count(*) FROM public.league_admins WHERE league_id = '00000000-0000-0000-0000-00000000b001') = 2,
+  (SELECT count(*) FROM putting_league.league_admins WHERE league_id = '00000000-0000-0000-0000-00000000b001') = 2,
   'admins can still read their league admins through RLS'
 );
 SELECT throws_ok(
@@ -286,19 +342,19 @@ RESET ROLE;
 -- app_server: the server's reader and writer (plan 02/04). The test runner can't
 -- SET ROLE app_server, so check its privileges directly.
 SELECT ok(
-  has_table_privilege('app_server', 'public.events', 'UPDATE')
-  AND has_table_privilege('app_server', 'public.rate_limits', 'INSERT'),
-  'app_server can write public tables'
+  has_table_privilege('app_server', 'putting_league.events', 'UPDATE')
+  AND has_table_privilege('app_server', 'putting_league.rate_limits', 'INSERT'),
+  'app_server can write league tables'
 );
 
 -- Schema cleanup (plan 05 C9/C10): one role model, no dead tables, tighter matches.
-SELECT hasnt_table('public', 'player_statistics', 'player_statistics is dropped');
-SELECT hasnt_table('public', 'league_stats', 'league_stats is dropped');
-SELECT hasnt_table('public', 'event_statistics', 'event_statistics is dropped');
-SELECT hasnt_type('public', 'stat_type', 'stat_type is dropped');
-SELECT enum_has_labels('public', 'league_admin_role', ARRAY['owner', 'admin'], 'league_admin_role has no scorer');
-SELECT col_not_null('public', 'bracket_match', 'event_id', 'bracket_match.event_id is NOT NULL');
-SELECT col_has_check('public', 'bracket_match', 'status', 'bracket_match.status has a CHECK constraint');
+SELECT hasnt_table('putting_league', 'player_statistics', 'player_statistics is dropped');
+SELECT hasnt_table('putting_league', 'league_stats', 'league_stats is dropped');
+SELECT hasnt_table('putting_league', 'event_statistics', 'event_statistics is dropped');
+SELECT hasnt_type('putting_league', 'stat_type', 'stat_type is dropped');
+SELECT enum_has_labels('putting_league', 'league_admin_role', ARRAY['owner', 'admin'], 'league_admin_role has no scorer');
+SELECT col_not_null('putting_league', 'bracket_match', 'event_id', 'bracket_match.event_id is NOT NULL');
+SELECT col_has_check('putting_league', 'bracket_match', 'status', 'bracket_match.status has a CHECK constraint');
 
 SELECT * FROM finish();
 ROLLBACK;

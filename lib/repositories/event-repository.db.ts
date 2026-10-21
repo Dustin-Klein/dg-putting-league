@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { event_players, events, league_admins, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
+import { event_players, events, league_admins, player_profiles, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import type { EventLinkType, EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
@@ -113,7 +113,7 @@ export async function getEventWithPlayers(
       full_name: players.full_name,
       nickname: players.nickname,
       player_created_at: players.created_at,
-      default_pool: players.default_pool,
+      default_pool: player_profiles.default_pool,
       player_number: players.player_number,
       ...(opts.includePaymentType ? { payment_type: event_players.payment_type } : {}),
     };
@@ -121,6 +121,7 @@ export async function getEventWithPlayers(
     .select(playerSelection)
     .from(event_players)
     .innerJoin(players, eq(players.id, event_players.player_id))
+    .leftJoin(player_profiles, eq(player_profiles.player_id, players.id))
     .where(eq(event_players.event_id, eventId));
 
   const eventPlayerById = new Map<string, EventPlayer>();

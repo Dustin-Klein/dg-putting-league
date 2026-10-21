@@ -1,7 +1,7 @@
 import 'server-only';
 import { eq, ilike } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { event_players, players } from '@/lib/db/schema';
+import { event_players, player_profiles, players } from '@/lib/db/schema';
 import type { PlayerSearchResult } from '@/lib/types/player';
 
 export interface InsertPlayerInput {
@@ -12,7 +12,8 @@ export interface InsertPlayerInput {
 }
 
 /**
- * Insert a new player
+ * Insert a new player, and their putting-league profile when they have a default pool.
+ * Two inserts: run it in the caller's transaction.
  */
 export async function insertPlayer(
   ex: Executor,
@@ -24,9 +25,15 @@ export async function insertPlayer(
       full_name: playerData.full_name,
       email: playerData.email,
       nickname: playerData.nickname,
-      default_pool: playerData.default_pool,
     })
     .returning({ id: players.id });
+
+  if (playerData.default_pool) {
+    await ex.insert(player_profiles).values({
+      player_id: newPlayer.id,
+      default_pool: playerData.default_pool,
+    });
+  }
 
   return { id: newPlayer.id };
 }

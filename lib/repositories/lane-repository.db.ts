@@ -205,7 +205,7 @@ export async function releaseMatchLanes(ex: Executor, eventId: string, matchIds:
       returning previous.lane_id
     )
     update ${lanes}
-    set status = case when maintenance_pending then 'maintenance'::lane_status else 'idle'::lane_status end,
+    set status = case when maintenance_pending then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end,
         maintenance_pending = false
     where event_id = ${eventId} and id in (select lane_id from released)`);
 }
@@ -236,7 +236,7 @@ export async function releaseMatchLane(
   await ex
     .update(lanes)
     .set({
-      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::lane_status else 'idle'::lane_status end`,
+      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end`,
       maintenance_pending: false,
     })
     .where(and(eq(lanes.id, match.lane_id), eq(lanes.event_id, eventId)));
@@ -276,7 +276,7 @@ export async function resetOccupiedLanesToIdle(ex: Executor, eventId: string): P
   await ex
     .update(lanes)
     .set({
-      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::lane_status else 'idle'::lane_status end`,
+      status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end`,
       maintenance_pending: false,
     })
     .where(and(eq(lanes.event_id, eventId), eq(lanes.status, 'occupied')));

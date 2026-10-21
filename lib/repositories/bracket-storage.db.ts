@@ -310,12 +310,12 @@ export type GeneratedBracket = {
 };
 
 const SERIAL_SEQUENCES: Record<Table, string> = {
-  stage: 'public.bracket_stage',
-  participant: 'public.bracket_participant',
-  group: 'public.bracket_group',
-  round: 'public.bracket_round',
-  match: 'public.bracket_match',
-  match_game: 'public.bracket_match_game',
+  stage: 'putting_league.bracket_stage',
+  participant: 'putting_league.bracket_participant',
+  group: 'putting_league.bracket_group',
+  round: 'putting_league.bracket_round',
+  match: 'putting_league.bracket_match',
+  match_game: 'putting_league.bracket_match_game',
 };
 
 // Foreign-key order for inserts.

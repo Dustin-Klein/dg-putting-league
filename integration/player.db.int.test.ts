@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { players } from '@/lib/db/schema';
+import { player_profiles, players } from '@/lib/db/schema';
 import {
   getPlayerIdsInEvent,
   insertPlayer,
@@ -33,8 +33,25 @@ describe('player repository (drizzle)', () => {
       expect(row.full_name).toBe('Test Disc Golfer');
       expect(row.email).toBe('test@example.com');
       expect(row.nickname).toBe('Ace');
-      expect(row.default_pool).toBe('A');
       expect(row.player_number).toBeGreaterThan(0);
+
+      // The default pool is putting-league data, kept out of the shared players table
+      const [profile] = await tx
+        .select()
+        .from(player_profiles)
+        .where(eq(player_profiles.player_id, created.id));
+      expect(profile?.default_pool).toBe('A');
+    });
+  });
+
+  it('inserts no profile for a player without a default pool', async () => {
+    await withRollback(db, async (tx) => {
+      const created = await insertPlayer(tx, { full_name: 'Poolless Player' });
+      const profiles = await tx
+        .select()
+        .from(player_profiles)
+        .where(eq(player_profiles.player_id, created.id));
+      expect(profiles).toHaveLength(0);
     });
   });
 

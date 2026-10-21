@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, count, eq, gte, inArray, sql, sum } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { event_players, frame_results, players, qualification_frames } from '@/lib/db/schema';
+import { event_players, frame_results, player_profiles, players, qualification_frames } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import { chunks } from '@/lib/db/batch';
@@ -33,7 +33,8 @@ function mapEventPlayerData(row: typeof event_players.$inferSelect): EventPlayer
 
 function mapJoinedEventPlayer(row: {
   eventPlayer: typeof event_players.$inferSelect;
-  player: Pick<typeof players.$inferSelect, 'id' | 'full_name' | 'nickname' | 'created_at' | 'default_pool' | 'player_number'>;
+  player: Pick<typeof players.$inferSelect, 'id' | 'full_name' | 'nickname' | 'created_at' | 'player_number'> &
+    Pick<typeof player_profiles.$inferSelect, 'default_pool'>;
 }): EventPlayer {
   return {
     ...mapEventPlayerData(row.eventPlayer),
@@ -46,7 +47,7 @@ const joinedPlayerColumns = {
   full_name: players.full_name,
   nickname: players.nickname,
   created_at: players.created_at,
-  default_pool: players.default_pool,
+  default_pool: player_profiles.default_pool,
   player_number: players.player_number,
 };
 
@@ -90,6 +91,7 @@ export async function getEventPlayer(ex: Executor, eventId: string, eventPlayerI
   const [row] = await ex.select({ eventPlayer: event_players, player: joinedPlayerColumns })
     .from(event_players)
     .innerJoin(players, eq(players.id, event_players.player_id))
+    .leftJoin(player_profiles, eq(player_profiles.player_id, players.id))
     .where(and(eq(event_players.id, eventPlayerId), eq(event_players.event_id, eventId)))
     .limit(1);
   if (!row) throw new InternalError('Failed to fetch event player');
@@ -105,6 +107,7 @@ export async function getEventPlayersBulk(
   const rows = await ex.select({ eventPlayer: event_players, player: joinedPlayerColumns })
     .from(event_players)
     .innerJoin(players, eq(players.id, event_players.player_id))
+    .leftJoin(player_profiles, eq(player_profiles.player_id, players.id))
     .where(and(eq(event_players.event_id, eventId), inArray(event_players.id, eventPlayerIds)));
   return rows.map(mapJoinedEventPlayer);
 }
@@ -187,7 +190,7 @@ export async function applyPlayerScores(
   const updated = new Set<string>();
   for (const batch of chunks(assignments)) {
     const values = sql.join(
-      batch.map((a) => sql`(${a.event_player_id}::uuid, ${a.pool}::public.pool_type, ${String(a.pfa_score)}::numeric, ${a.scoring_method}::text)`),
+      batch.map((a) => sql`(${a.event_player_id}::uuid, ${a.pool}::putting_league.pool_type, ${String(a.pfa_score)}::numeric, ${a.scoring_method}::text)`),
       sql`, `
     );
     const rows = await ex.execute<{ id: string }>(sql`
