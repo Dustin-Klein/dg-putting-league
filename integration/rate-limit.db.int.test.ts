@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { rate_limits } from '@/lib/db/schema';
 import { hitRateLimit } from '@/lib/repositories/rate-limit-repository.db';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 
@@ -24,7 +25,7 @@ describe('rate limit store', () => {
     await withRollback(db, async (tx) => {
       await hitRateLimit(tx, key, 1);
       // now() is fixed within a transaction, so expire the window explicitly
-      await tx.execute(sql`update rate_limits set reset_at = now() - interval '1 second' where key = ${key}`);
+      await tx.execute(sql`update ${rate_limits} set reset_at = now() - interval '1 second' where key = ${key}`);
       await expect(hitRateLimit(tx, key, 60_000)).resolves.toMatchObject({ count: 1 });
     });
   });
@@ -35,7 +36,7 @@ describe('rate limit store', () => {
       const results = await Promise.all(Array.from({ length: 10 }, () => hitRateLimit(db, key, 60_000)));
       expect(results.map((r) => r.count).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     } finally {
-      await db.execute(sql`delete from rate_limits where key = ${key}`);
+      await db.execute(sql`delete from ${rate_limits} where key = ${key}`);
     }
   });
 });

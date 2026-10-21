@@ -2,26 +2,28 @@
 // Do not edit by hand: change the schema with a migration in supabase/migrations, then re-run.
 /* eslint-disable */
 import { authUsers as users } from 'drizzle-orm/supabase';
-import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgSequence, pgTable, primaryKey, serial, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
+import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgSchema, pgSequence, pgTable, primaryKey, serial, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
-export const event_link_type = pgEnum("event_link_type", ['second_chance', 'side', 'makeup'])
+export const putting_league = pgSchema("putting_league");
 
-export const event_status = pgEnum("event_status", ['created', 'pre-bracket', 'bracket', 'completed'])
+export const event_link_type = putting_league.enum("event_link_type", ['second_chance', 'side', 'makeup'])
 
-export const lane_status = pgEnum("lane_status", ['idle', 'occupied', 'maintenance'])
+export const event_status = putting_league.enum("event_status", ['created', 'pre-bracket', 'bracket', 'completed'])
 
-export const league_admin_role = pgEnum("league_admin_role", ['owner', 'admin'])
+export const lane_status = putting_league.enum("lane_status", ['idle', 'occupied', 'maintenance'])
 
-export const pool_type = pgEnum("pool_type", ['A', 'B'])
+export const league_admin_role = putting_league.enum("league_admin_role", ['owner', 'admin'])
 
-export const qualification_status = pgEnum("qualification_status", ['not_started', 'in_progress', 'completed'])
+export const pool_type = putting_league.enum("pool_type", ['A', 'B'])
 
-export const team_assignment_type = pgEnum("team_assignment_type", ['random_pairing', 'random_flat', 'manual'])
+export const qualification_status = putting_league.enum("qualification_status", ['not_started', 'in_progress', 'completed'])
+
+export const team_assignment_type = putting_league.enum("team_assignment_type", ['random_pairing', 'random_flat', 'manual'])
 
 export const player_number_seq = pgSequence("player_number_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 
-export const bracket_group = pgTable("bracket_group", {
+export const bracket_group = putting_league.table("bracket_group", {
 	id: serial().primaryKey().notNull(),
 	stage_id: integer().notNull(),
 	number: integer().notNull(),
@@ -35,7 +37,7 @@ export const bracket_group = pgTable("bracket_group", {
 	index("idx_bracket_group_stage").using("btree", table.stage_id.asc().nullsLast().op("int4_ops")),
 ]);
 
-export const bracket_match = pgTable("bracket_match", {
+export const bracket_match = putting_league.table("bracket_match", {
 	id: serial().primaryKey().notNull(),
 	stage_id: integer().notNull(),
 	group_id: integer().notNull(),
@@ -95,7 +97,7 @@ export const bracket_match = pgTable("bracket_match", {
 	index("idx_bracket_match_status").using("btree", table.status.asc().nullsLast().op("int4_ops")),
 ]);
 
-export const bracket_match_game = pgTable("bracket_match_game", {
+export const bracket_match_game = putting_league.table("bracket_match_game", {
 	id: serial().primaryKey().notNull(),
 	stage_id: integer().notNull(),
 	parent_id: integer().notNull(),
@@ -118,7 +120,7 @@ export const bracket_match_game = pgTable("bracket_match_game", {
 	index("idx_bracket_match_game_parent").using("btree", table.parent_id.asc().nullsLast().op("int4_ops")),
 ]);
 
-export const bracket_participant = pgTable("bracket_participant", {
+export const bracket_participant = putting_league.table("bracket_participant", {
 	id: serial().primaryKey().notNull(),
 	tournament_id: uuid().notNull(),
 	name: text().notNull(),
@@ -139,7 +141,7 @@ export const bracket_participant = pgTable("bracket_participant", {
 	index("idx_bracket_participant_tournament").using("btree", table.tournament_id.asc().nullsLast().op("uuid_ops")),
 ]);
 
-export const bracket_round = pgTable("bracket_round", {
+export const bracket_round = putting_league.table("bracket_round", {
 	id: serial().primaryKey().notNull(),
 	stage_id: integer().notNull(),
 	group_id: integer().notNull(),
@@ -160,7 +162,7 @@ export const bracket_round = pgTable("bracket_round", {
 	index("idx_bracket_round_stage").using("btree", table.stage_id.asc().nullsLast().op("int4_ops")),
 ]);
 
-export const bracket_stage = pgTable("bracket_stage", {
+export const bracket_stage = putting_league.table("bracket_stage", {
 	id: serial().primaryKey().notNull(),
 	tournament_id: uuid().notNull(),
 	name: text().notNull(),
@@ -178,7 +180,7 @@ export const bracket_stage = pgTable("bracket_stage", {
 	index("idx_bracket_stage_tournament").using("btree", table.tournament_id.asc().nullsLast().op("uuid_ops")),
 ]);
 
-export const event_placements = pgTable("event_placements", {
+export const event_placements = putting_league.table("event_placements", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),
 	team_id: uuid().notNull(),
@@ -201,7 +203,7 @@ export const event_placements = pgTable("event_placements", {
 	unique("event_placements_event_id_team_id_key").on(table.event_id, table.team_id),
 ]);
 
-export const event_players = pgTable("event_players", {
+export const event_players = putting_league.table("event_players", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),
 	player_id: uuid().notNull(),
@@ -229,7 +231,7 @@ export const event_players = pgTable("event_players", {
 	unique("event_players_event_id_player_id_key").on(table.event_id, table.player_id),
 ]);
 
-export const events = pgTable("events", {
+export const events = putting_league.table("events", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	league_id: uuid().notNull(),
 	event_date: date().notNull(),
@@ -276,7 +278,7 @@ export const events = pgTable("events", {
 	unique("events_access_code_key").on(table.access_code),
 ]);
 
-export const frame_results = pgTable("frame_results", {
+export const frame_results = putting_league.table("frame_results", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	match_frame_id: uuid().notNull(),
 	event_player_id: uuid().notNull(),
@@ -311,7 +313,7 @@ export const frame_results = pgTable("frame_results", {
 	unique("frame_results_match_frame_id_event_player_id_key").on(table.match_frame_id, table.event_player_id),
 ]);
 
-export const lanes = pgTable("lanes", {
+export const lanes = putting_league.table("lanes", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),
 	label: text().notNull(),
@@ -326,7 +328,7 @@ export const lanes = pgTable("lanes", {
 	unique("lanes_event_id_label_key").on(table.event_id, table.label),
 ]);
 
-export const league_admins = pgTable("league_admins", {
+export const league_admins = putting_league.table("league_admins", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	league_id: uuid().notNull(),
 	user_id: uuid().notNull(),
@@ -348,7 +350,7 @@ export const league_admins = pgTable("league_admins", {
 	unique("league_admins_league_id_user_id_key").on(table.league_id, table.user_id),
 ]);
 
-export const leagues = pgTable("leagues", {
+export const leagues = putting_league.table("leagues", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: text().notNull(),
 	city: text(),
@@ -358,7 +360,7 @@ export const leagues = pgTable("leagues", {
 	unique("leagues_name_city_key").on(table.name, table.city),
 ]);
 
-export const match_frames = pgTable("match_frames", {
+export const match_frames = putting_league.table("match_frames", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	bracket_match_id: integer(),
 	frame_number: integer().notNull(),
@@ -374,6 +376,17 @@ export const match_frames = pgTable("match_frames", {
 	unique("match_frames_bracket_match_id_frame_number_key").on(table.bracket_match_id, table.frame_number),
 ]);
 
+export const player_profiles = putting_league.table("player_profiles", {
+	player_id: uuid().primaryKey().notNull(),
+	default_pool: pool_type(),
+}, (table) => [
+	foreignKey({
+			columns: [table.player_id],
+			foreignColumns: [players.id],
+			name: "player_profiles_player_id_fkey"
+		}).onDelete("cascade"),
+]);
+
 export const players = pgTable("players", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	player_number: integer().default(sql`nextval('player_number_seq'::regclass)`).notNull(),
@@ -381,13 +394,12 @@ export const players = pgTable("players", {
 	nickname: text(),
 	email: text(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	default_pool: pool_type(),
 }, (table) => [
 	index("idx_players_full_name").using("gin", table.full_name.asc().nullsLast().op("gin_trgm_ops")),
 	unique("players_player_number_key").on(table.player_number),
 ]);
 
-export const qualification_frames = pgTable("qualification_frames", {
+export const qualification_frames = putting_league.table("qualification_frames", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	qualification_round_id: uuid().notNull(),
 	event_id: uuid().notNull(),
@@ -427,7 +439,7 @@ export const qualification_frames = pgTable("qualification_frames", {
 	unique("qualification_frames_event_player_id_frame_number_key").on(table.event_player_id, table.frame_number),
 ]);
 
-export const qualification_rounds = pgTable("qualification_rounds", {
+export const qualification_rounds = putting_league.table("qualification_rounds", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),
 	frame_count: integer().default(5).notNull(),
@@ -448,7 +460,7 @@ export const qualification_rounds = pgTable("qualification_rounds", {
 	index("idx_qualification_rounds_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
 ]);
 
-export const rate_limits = pgTable("rate_limits", {
+export const rate_limits = putting_league.table("rate_limits", {
 	key: text().primaryKey().notNull(),
 	count: integer().notNull(),
 	reset_at: timestamp({ withTimezone: true, mode: 'string' }).notNull(),
@@ -456,7 +468,7 @@ export const rate_limits = pgTable("rate_limits", {
 	index("idx_rate_limits_reset_at").using("btree", table.reset_at.asc().nullsLast().op("timestamptz_ops")),
 ]);
 
-export const team_members = pgTable("team_members", {
+export const team_members = putting_league.table("team_members", {
 	team_id: uuid().notNull(),
 	event_player_id: uuid().notNull(),
 	role: text(),
@@ -481,7 +493,7 @@ export const team_members = pgTable("team_members", {
 	uniqueIndex("team_members_team_slot_key").using("btree", table.team_id.asc().nullsLast().op("int2_ops"), table.slot.asc().nullsLast().op("int2_ops")),
 ]);
 
-export const teams = pgTable("teams", {
+export const teams = putting_league.table("teams", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),
 	seed: integer(),

@@ -4,6 +4,11 @@
  * Talks to a local Supabase stack with the publishable key only, i.e. exactly what
  * anyone can do from a browser. Defaults match `supabase start`; override with
  * SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.
+ *
+ * The putting league's tables live in the `putting_league` schema, which PostgREST
+ * doesn't expose: the API can't reach them at all. Only the shared `players` table
+ * is in `public`. (Grants and RLS on putting_league, which Realtime relies on, are
+ * covered by supabase/tests/security_lockdown.test.sql.)
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
@@ -24,6 +29,14 @@ function expectDenied(error: { code?: string; message: string } | null) {
   // 42501 = insufficient_privilege
   expect(error?.code).toBe('42501');
 }
+
+function expectUnreachable(error: { code?: string; message: string } | null) {
+  expect(error).not.toBeNull();
+  // PGRST205 = table not in the schema cache; PGRST106 = schema not exposed
+  expect(['PGRST205', 'PGRST106']).toContain(error?.code);
+}
+
+const LEAGUE_TABLES = ['leagues', 'events', 'event_players', 'bracket_match', 'frame_results', 'rate_limits'];
 
 describe.each([
   ['anon', async () => newClient()],
@@ -56,29 +69,17 @@ describe.each([
     expect(['PGRST202', '42501']).toContain(error?.code);
   });
 
-  it('cannot update bracket matches', async () => {
-    const { error } = await client.from('bracket_match').update({ status: 4 }).eq('id', 1);
-    expectDenied(error);
+  it.each(LEAGUE_TABLES)('cannot reach putting_league.%s through the API', async (table) => {
+    expectUnreachable((await client.from(table).select('*').limit(1)).error);
+    expectUnreachable((await client.schema('putting_league').from(table).select('*').limit(1)).error);
   });
 
-  it('cannot write frame results', async () => {
-    const { error } = await client.from('frame_results').insert({
-      match_frame_id: SOME_EVENT_ID,
-      event_player_id: SOME_EVENT_ID,
-      putts_made: 3,
-      points_earned: 4,
-    });
-    expectDenied(error);
-  });
-
-  it('cannot read access codes', async () => {
-    const { error } = await client.from('events').select('access_code').limit(1);
-    expectDenied(error);
-  });
-
-  it('cannot look up an event by access code', async () => {
-    const { error } = await client.from('events').select('id').eq('access_code', 'abc123');
-    expectDenied(error);
+  it('cannot write league tables through the API', async () => {
+    expectUnreachable((await client.from('bracket_match').update({ status: 4 }).eq('id', 1)).error);
+    expectUnreachable((await client.from('leagues').insert({ name: 'Sneaky' })).error);
+    expectUnreachable(
+      (await client.schema('putting_league').from('leagues').insert({ name: 'Sneaky' })).error
+    );
   });
 
   it('cannot read player emails', async () => {
@@ -86,29 +87,13 @@ describe.each([
     expectDenied(error);
   });
 
-  it('cannot read payment status', async () => {
-    const { error } = await client.from('event_players').select('payment_type').limit(1);
+  it('cannot write players', async () => {
+    const { error } = await client.from('players').insert({ full_name: 'Sneaky' });
     expectDenied(error);
   });
 
-  it('cannot touch the rate limit store', async () => {
-    const { error } = await client.from('rate_limits').select('key').limit(1);
-    expectDenied(error);
-  });
-
-  it('cannot create a league directly', async () => {
-    const { error } = await client.from('leagues').insert({ name: 'Sneaky' });
-    expectDenied(error);
-  });
-
-  it('can still read public data', async () => {
-    const leagues = await client.from('leagues').select('id, name').limit(1);
-    expect(leagues.error).toBeNull();
-
-    const events = await client.from('events').select('id, status').limit(1);
-    expect(events.error).toBeNull();
-
-    const frames = await client.from('frame_results').select('id').limit(1);
-    expect(frames.error).toBeNull();
+  it('can still read public player identity', async () => {
+    const players = await client.from('players').select('id, player_number, full_name, nickname').limit(1);
+    expect(players.error).toBeNull();
   });
 });

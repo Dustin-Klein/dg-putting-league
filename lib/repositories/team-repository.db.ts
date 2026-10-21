@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { chunks } from '@/lib/db/batch';
-import { bracket_participant, event_players, players, team_members, teams } from '@/lib/db/schema';
+import { bracket_participant, event_players, player_profiles, players, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import type { Team } from '@/lib/types/team';
 
@@ -173,12 +173,13 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
       full_name: players.full_name,
       nickname: players.nickname,
       player_created_at: players.created_at,
-      default_pool: players.default_pool,
+      default_pool: player_profiles.default_pool,
     })
     .from(teams)
     .leftJoin(team_members, eq(team_members.team_id, teams.id))
     .leftJoin(event_players, eq(event_players.id, team_members.event_player_id))
     .leftJoin(players, eq(players.id, event_players.player_id))
+    .leftJoin(player_profiles, eq(player_profiles.player_id, players.id))
     .where(eq(teams.event_id, eventId))
     .orderBy(asc(teams.seed), asc(team_members.slot));
 

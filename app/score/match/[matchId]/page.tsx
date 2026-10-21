@@ -99,7 +99,7 @@ export default function MatchScoringPage({
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'putting_league',
           table: 'frame_results',
           filter: `bracket_match_id=eq.${bracketMatchId}`,
         },

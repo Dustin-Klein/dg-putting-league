@@ -15,6 +15,7 @@ import {
   league_admins,
   leagues,
   match_frames,
+  player_profiles,
   players,
   team_members,
   teams,
@@ -32,9 +33,10 @@ export async function getPlayerByNumber(
       full_name: players.full_name,
       nickname: players.nickname,
       created_at: players.created_at,
-      default_pool: players.default_pool,
+      default_pool: player_profiles.default_pool,
     })
     .from(players)
+    .leftJoin(player_profiles, eq(player_profiles.player_id, players.id))
     .where(eq(players.player_number, playerNumber))
     .limit(1);
 
