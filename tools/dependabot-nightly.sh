@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Nightly unattended run of the dependabot-merge skill (.claude/skills/dependabot-merge).
 #
-# crontab (3am, outside league nights; every merge deploys to production):
-#   0 3 * * * /path/to/dg-putting-league/tools/dependabot-nightly.sh >> ~/logs/dependabot-nightly.log 2>&1
-#
-# Use a dedicated clone: the script detaches it at origin/main every run.
+# Scheduled at 3am Central (after league nights; every merge deploys to
+# production) by the devbox crontab: homelab kubernetes/apps/devbox/crontab.yaml,
+# setup in homelab docs/devbox.md#scheduled-jobs. Runs from its own clone,
+# ~/code/dg-putting-league-nightly, which it detaches at origin/main every run.
 #
 # Needs a fine-grained GitHub token for this repo only, with Pull requests:
 # read/write, Contents: read/write (merging), Actions: read/write (logs,
-# artifacts, re-runs) and Checks/Commit statuses: read. Put it in
-# ~/.config/dg-putting-league/gh-token (chmod 600).
+# artifacts, re-runs) and Checks/Commit statuses: read. On the devbox it is the
+# `dependabot-gh-token` key of the devbox-credentials Secret.
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-token_file="${DEPENDABOT_NIGHTLY_TOKEN_FILE:-$HOME/.config/dg-putting-league/gh-token}"
+token_file="${DEPENDABOT_NIGHTLY_TOKEN_FILE:-/run/devbox/dependabot-gh-token}"
 
 GH_TOKEN="$(<"$token_file")"
 export GH_TOKEN
