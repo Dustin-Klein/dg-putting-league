@@ -41,7 +41,7 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
 - Schema changes are additive migrations (new timestamped files in `supabase/migrations/`,
   starting with `202610070000000_security_lockdown.sql`). Do not edit existing `init_*`
   migration files (flag any edits to them). Emergency rollback SQL lives in `supabase/rollbacks/`.
-- Checks: `npm run lint`, `npm run type-check`, `npm test` (Jest), `npm run test:int` (integration tests, needs `supabase start`), `npm run db:check`, `npm run build`.
+- Checks: `npm run lint`, `npm run type-check`, `npm test` (Jest), `npm run test:int` (integration tests, needs `supabase start`), `npm run test:visual` (screenshot tests; see `playwright.config.ts`, baselines come from the Visual workflow), `npm run db:check`, `npm run build`.
 
 # Code Review Instructions
 

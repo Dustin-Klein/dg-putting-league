@@ -6,6 +6,13 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
 
+    # Wait before proposing a fresh release: a compromised or broken publish is
+    # usually yanked within days, and these PRs are merged by a nightly agent
+    # (.claude/skills/dependabot-merge).
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+
     # Minor and patch bumps are grouped so they stay easy to merge in bulk.
     # Major bumps are deliberately left ungrouped so each arrives as its own
     # PR: the previous single catch-all group mixed majors with patches, which
@@ -55,6 +62,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+    cooldown:
+      default-days: 3
 
     groups:
       all-github-actions:

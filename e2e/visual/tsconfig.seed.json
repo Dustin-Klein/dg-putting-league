@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../../*"],
+      "server-only": ["../../lib/services/__tests__/__mocks__/server-only.ts"]
+    }
+  }
+}
