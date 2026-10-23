@@ -9,6 +9,7 @@ import { ArrowLeft, RefreshCw, CheckCircle2, Users } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
+import { ZoneBadge } from '@/components/zone-badge';
 
 interface PlayerInfo {
   event_player_id: string;
@@ -16,6 +17,9 @@ interface PlayerInfo {
   full_name: string;
   nickname: string | null;
   player_number: number | null;
+  /** Handicap zone; null when the event has no handicaps. */
+  zone?: number | null;
+  putt_distance_ft?: number;
   frames_completed: number;
   total_frames_required: number;
   total_points: number;
@@ -251,6 +255,7 @@ export default function QualificationPage() {
                         <div className="text-xs text-muted-foreground">
                           {player.player_number ? `#${player.player_number}` : ''}
                         </div>
+                        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
                       </div>
 
                       <div className="text-right shrink-0">

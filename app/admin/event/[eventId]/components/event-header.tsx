@@ -55,7 +55,9 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
 
           <div>
             <h3 className="text-sm font-medium text-muted-foreground">Putt Distance</h3>
-            <p className="text-lg font-medium">{event.putt_distance_ft} ft</p>
+            <p className="text-lg font-medium">
+              {event.handicap_enabled ? 'By handicap zone' : `${event.putt_distance_ft} ft`}
+            </p>
           </div>
 
           <div>

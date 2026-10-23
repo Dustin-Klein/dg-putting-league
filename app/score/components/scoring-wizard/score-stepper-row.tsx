@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils/utils';
@@ -9,6 +9,8 @@ import { MAX_PUTTS, MIN_PUTTS, calculatePoints } from './scoring-utils';
 interface ScoreStepperRowProps {
   label: string;
   subtitle?: string;
+  /** Shown under the name, e.g. the player's handicap zone. */
+  badge?: ReactNode;
   score: number | null;
   bonusPointEnabled: boolean;
   disabled?: boolean;
@@ -18,6 +20,7 @@ interface ScoreStepperRowProps {
 export function ScoreStepperRow({
   label,
   subtitle,
+  badge,
   score,
   bonusPointEnabled,
   disabled = false,
@@ -45,6 +48,7 @@ export function ScoreStepperRow({
     <div className="flex items-center justify-between bg-background/80 rounded-lg p-2">
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm truncate">{label}</div>
+        {badge && <div className="mt-0.5">{badge}</div>}
         <div className="text-xs text-muted-foreground">
           {subtitle}
           {points !== null && (

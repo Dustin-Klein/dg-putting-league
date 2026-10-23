@@ -289,14 +289,18 @@ export async function getEventPlayersQualificationStatus(
 export async function getPaidEventPlayers(ex: Executor, eventId: string): Promise<Array<{
   id: string;
   player_id: string;
+  zone: number | null;
+  putt_distance_ft: number;
   player: { id: string; full_name: string; nickname: string | null; player_number: number | null };
 }>> {
   const rows = await ex.select({
     id: event_players.id,
     player_id: event_players.player_id,
+    zone: event_players.zone,
+    putt_distance_ft: event_players.putt_distance_ft,
     player: { id: players.id, full_name: players.full_name, nickname: players.nickname, player_number: players.player_number },
   }).from(event_players)
     .innerJoin(players, eq(players.id, event_players.player_id))
     .where(and(eq(event_players.event_id, eventId), isNotNull(event_players.payment_type)));
-  return rows;
+  return rows.map((row) => ({ ...row, putt_distance_ft: Number(row.putt_distance_ft) }));
 }

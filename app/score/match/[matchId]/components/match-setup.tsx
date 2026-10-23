@@ -7,6 +7,7 @@ import { ArrowLeft, Play, Users } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { MatchStatus, getStatusLabel } from '@/lib/types/bracket';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
+import { ZoneBadge } from '@/components/zone-badge';
 import type { MatchInfo, PlayerInfo, TeamInfo } from './wizard-types';
 
 interface MatchSetupProps {
@@ -149,6 +150,7 @@ function PlayerDisplay({ player }: { player: PlayerInfo }) {
         {player.nickname && (
           <div className="text-xs text-muted-foreground">&quot;{player.nickname}&quot;</div>
         )}
+        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="lg" className="mt-1" />
       </div>
       {player.pool && (
         <Badge variant="secondary" className="text-xs">

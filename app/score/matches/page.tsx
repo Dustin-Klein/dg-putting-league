@@ -10,7 +10,8 @@ import { ArrowLeft, RefreshCw, LayoutGrid, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { MatchStatus } from '@/lib/types/bracket';
-import type { PublicMatchInfo, ScoringLane } from '@/lib/types/scoring';
+import type { PublicMatchInfo, PublicPlayerInfo, ScoringLane } from '@/lib/types/scoring';
+import { ZoneBadge } from '@/components/zone-badge';
 
 interface EventInfo {
   id: string;
@@ -269,6 +270,7 @@ export default function MatchesPage() {
                         <div className="text-xs text-muted-foreground">
                           {match.team_one.players.map(p => p.full_name).join(' & ')}
                         </div>
+                        <TeamZoneBadges players={match.team_one.players} />
                       </div>
                       <span className="text-2xl font-mono font-bold">
                         {match.team_one_score}
@@ -291,6 +293,7 @@ export default function MatchesPage() {
                         <div className="text-xs text-muted-foreground">
                           {match.team_two.players.map(p => p.full_name).join(' & ')}
                         </div>
+                        <TeamZoneBadges players={match.team_two.players} />
                       </div>
                       <span className="text-2xl font-mono font-bold">
                         {match.team_two_score}
@@ -341,6 +344,23 @@ export default function MatchesPage() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Each player's zone on a match card; nothing for an event without handicaps. */
+function TeamZoneBadges({ players }: { players: PublicPlayerInfo[] }) {
+  if (!players.some((player) => player.zone !== null)) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {players.map((player) => (
+        <ZoneBadge
+          key={player.event_player_id}
+          zone={player.zone}
+          distanceFt={player.putt_distance_ft}
+          size="sm"
+        />
+      ))}
     </div>
   );
 }

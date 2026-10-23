@@ -230,6 +230,9 @@ export function EventForm({
                     </span>
                   </div>
                 </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  If the league uses handicaps, players putt from their zone&apos;s distance instead.
+                </p>
                 <FormMessage />
               </FormItem>
             )}

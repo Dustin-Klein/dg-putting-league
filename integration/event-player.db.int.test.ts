@@ -14,6 +14,7 @@ describe('event-player Drizzle repository', () => {
       const [secondEntry] = await tx.insert(event_players).values({
         event_id: second.eventId,
         player_id: first.playerIds[0],
+        putt_distance_ft: '25',
       }).returning({ id: event_players.id });
 
       const [historicalFrame] = await tx.insert(match_frames).values({

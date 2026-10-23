@@ -36,6 +36,10 @@ import * as laneDb from '@/lib/repositories/lane-repository.db';
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import * as eventPlacementDb from '@/lib/repositories/event-placement-repository.db';
 import * as frameDb from '@/lib/repositories/frame-repository.db';
+import * as handicapDb from '@/lib/repositories/handicap-repository.db';
+import { evaluateEventHandicaps } from '@/lib/services/handicap/evaluate';
+import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
+import type { EvaluationSummary } from '@/lib/types/handicap';
 import { getDefaultPayoutStructure, calculatePayouts, PayoutBreakdown } from './payout-calculator';
 import { logger } from '@/lib/utils/logger';
 import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
@@ -166,6 +170,10 @@ export async function createEvent(data: {
         }
       }
 
+      // Handicaps are snapshotted from the league: changing the league setting later
+      // doesn't change an event that was set up (and maybe played) under it.
+      const handicap = await handicapDb.getLeagueHandicapSettings(tx, data.league_id);
+      const handicapEnabled = handicap?.settings.enabled ?? false;
       const created = await eventDb.createEvent(tx, {
         ...eventData,
         access_code: accessCode,
@@ -173,11 +181,17 @@ export async function createEvent(data: {
         entry_fee_per_player: entry_fee_per_player ?? null,
         admin_fees: admin_fees ?? null,
         admin_fee_per_player: admin_fee_per_player ?? null,
+        handicap_enabled: handicapEnabled,
         status: 'created',
       });
       attemptedEventId = created.id;
+      if (handicapEnabled) {
+        // Tonight's distances start from the league ladder; organizers adjust from there.
+        await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getLeagueZones(tx, data.league_id));
+      }
       if (copy_players_from_event_id) {
-        await eventDb.copyEventPlayers(tx, copy_players_from_event_id, created.id);
+        await eventDb.copyEventPlayers(tx, copy_players_from_event_id, created.id, created.putt_distance_ft);
+        await refreshEntrySnapshots(tx, created.id);
       }
       return created;
     });
@@ -268,8 +282,11 @@ export async function createSecondChanceEvent(
         throw new BadRequestError('No players are eligible for a second-chance event');
       }
 
+      // A second-chance event continues the parent's night: it inherits the parent's
+      // handicap flag and distances, not the league's current setting.
       const created = await eventDb.createEvent(tx, {
         league_id: link.league_id,
+        handicap_enabled: parent.handicap_enabled,
         parent_event_id: parentEventId,
         link_type: 'second_chance',
         access_code: accessCode,
@@ -289,11 +306,16 @@ export async function createSecondChanceEvent(
         status: 'created',
       });
 
+      if (parent.handicap_enabled) {
+        await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getEventZoneDistances(tx, parentEventId));
+      }
+
       const pfaScores = await computePfaScores(tx, playerIds);
       await eventPlayerDb.insertScoredEventPlayers(tx, created.id, playerIds.map((playerId) => {
         const { score, scoringMethod } = pfaScores.get(playerId)!;
         return { player_id: playerId, pfa_score: score, scoring_method: scoringMethod };
-      }));
+      }), created.putt_distance_ft);
+      await refreshEntrySnapshots(tx, created.id);
       return created;
     });
   } catch (error) {
@@ -324,6 +346,9 @@ export async function createSecondChanceEvent(
  * Linked events still in 'created' status go with it; once one has moved past
  * 'created' (players paying a second entry, a bracket, results) the delete is refused.
  * The parent_event_id FK is ON DELETE RESTRICT as the backstop.
+ *
+ * An event that has contributed to handicaps can't be deleted: its evaluations are the
+ * evidence for zone changes that stand, and its putts are part of open periods.
  */
 export async function deleteEvent(eventId: string) {
   const { pg } = await requireEventAdmin(eventId);
@@ -337,6 +362,11 @@ export async function deleteEvent(eventId: string) {
     if (children.some((child) => child.status !== 'created')) {
       throw new ConflictError(
         'This event has a linked event (such as a second-chance tournament) that has already started. Delete the linked event first.'
+      );
+    }
+    if (await handicapDb.hasEvaluationsForEvent(tx, eventId)) {
+      throw new ConflictError(
+        'This event has been counted toward player handicaps and can no longer be deleted.'
       );
     }
 
@@ -424,11 +454,13 @@ export interface UpdateEventSettingsPatch {
 
 /**
  * Authorize first, then atomically reconcile bracket settings, placements and status.
+ * Completing a handicap event evaluates its players in the same transaction; the
+ * result comes back as `handicap_summary`.
  */
 export async function updateEventSettings(
   eventId: string,
   patch: UpdateEventSettingsPatch
-) {
+): Promise<eventDb.EventData & { handicap_summary: EvaluationSummary | null }> {
   const { pg } = await requireEventAdmin(eventId);
   const before = await eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: true }) as EventWithDetails;
 
@@ -436,24 +468,34 @@ export async function updateEventSettings(
     await validateEventStatusTransition(eventId, patch.status, before, pg);
   }
 
-  await withTransaction(pg, (tx) => updateEventSettingsTx(tx, eventId, patch));
+  const { handicapSummary } = await withTransaction(pg, (tx) => updateEventSettingsTx(tx, eventId, patch));
 
   const updated = await eventDb.getEventById(pg, eventId);
   if (!updated) throw new NotFoundError('Event not found');
-  return updated;
+  return { ...updated, handicap_summary: handicapSummary };
 }
 
 export async function updateEventSettingsTx(
   tx: Tx,
   eventId: string,
   patch: UpdateEventSettingsPatch
-): Promise<void> {
+): Promise<{ handicapSummary: EvaluationSummary | null }> {
   await lockEvent(tx, eventId);
   const current = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
   if (!current) throw new NotFoundError('Event not found');
 
   if (patch.status) {
     validateStatusFlow(current.status, patch.status);
+  }
+
+  // A completed night's results are final: re-opening its grand final would change
+  // the matches its handicap evaluation (and placements) were computed from.
+  if (
+    current.status === 'completed' &&
+    patch.double_grand_final !== undefined &&
+    patch.double_grand_final !== current.double_grand_final
+  ) {
+    throw new BadRequestError('The grand final format cannot be changed after the event is completed');
   }
 
   if (patch.team_size !== undefined || patch.team_assignment !== undefined) {
@@ -524,6 +566,16 @@ export async function updateEventSettingsTx(
     ...(patch.team_size !== undefined ? { team_size: patch.team_size } : {}),
     ...(patch.team_assignment !== undefined ? { team_assignment: patch.team_assignment } : {}),
   });
+
+  // Last in the transaction: both take the league handicap lock, which comes after
+  // every event, match and lane lock.
+  if (current.status === 'created' && patch.status === 'pre-bracket') {
+    // The authoritative refresh: qualification runs in pre-bracket, so this is the
+    // last moment before any putt can be recorded.
+    await refreshEntrySnapshots(tx, eventId);
+  }
+  const handicapSummary = patch.status === 'completed' ? await evaluateEventHandicaps(tx, eventId) : null;
+  return { handicapSummary };
 }
 
 /**
@@ -767,6 +819,9 @@ export async function startBracket(
     await eventDb.setEventStatus(tx, eventId, 'bracket');
     await createBracketTx(tx, eventId, current.double_grand_final);
     await autoAssignLanesTx(tx, eventId);
+    // Best effort, for entries still without frames (e.g. a zone change during a
+    // pre-bracket with no qualification). Last: it takes the league handicap lock.
+    await refreshEntrySnapshots(tx, eventId);
   });
 }
 

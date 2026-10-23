@@ -39,6 +39,9 @@ export interface PublicQualificationPlayerInfo {
   full_name: string;
   nickname: string | null;
   player_number: number | null;
+  /** Handicap zone this entry putts from; null when the event has no handicaps. */
+  zone: number | null;
+  putt_distance_ft: number;
   frames_completed: number;
   total_frames_required: number;
   total_points: number;
@@ -131,6 +134,8 @@ export async function getPlayersForQualificationDb(
       full_name: ep.player.full_name,
       nickname: ep.player.nickname,
       player_number: ep.player.player_number,
+      zone: ep.zone,
+      putt_distance_ft: ep.putt_distance_ft,
       frames_completed: playerData.count,
       total_frames_required: round.frame_count,
       total_points: playerData.totalPoints,
@@ -182,6 +187,8 @@ export async function getPlayerQualificationData(
       full_name: eventPlayer.player.full_name,
       nickname: eventPlayer.player.nickname ?? null,
       player_number: eventPlayer.player.player_number ?? null,
+      zone: eventPlayer.zone ?? null,
+      putt_distance_ft: eventPlayer.putt_distance_ft ?? 0,
       frames_completed: framesCompleted,
       total_frames_required: round.frame_count,
       total_points: totalPoints,
@@ -276,6 +283,8 @@ export async function recordQualificationScoreDb(
       full_name: eventPlayer.player.full_name,
       nickname: eventPlayer.player.nickname ?? null,
       player_number: eventPlayer.player.player_number ?? null,
+      zone: eventPlayer.zone ?? null,
+      putt_distance_ft: eventPlayer.putt_distance_ft ?? 0,
       frames_completed: framesCompleted,
       total_frames_required: round.frame_count,
       total_points: totalPoints,
@@ -381,6 +390,8 @@ export async function recordQualificationScoresDb(
           full_name: eventPlayer.player.full_name,
           nickname: eventPlayer.player.nickname ?? null,
           player_number: eventPlayer.player.player_number ?? null,
+          zone: eventPlayer.zone ?? null,
+          putt_distance_ft: eventPlayer.putt_distance_ft ?? 0,
           frames_completed: framesCompleted,
           total_frames_required: round.frame_count,
           total_points: playerFrames.reduce((sum, f) => sum + f.points_earned, 0),
@@ -471,6 +482,8 @@ export async function getBatchPlayerQualificationData(
       full_name: eventPlayer.player.full_name,
       nickname: eventPlayer.player.nickname ?? null,
       player_number: eventPlayer.player.player_number ?? null,
+      zone: eventPlayer.zone ?? null,
+      putt_distance_ft: eventPlayer.putt_distance_ft ?? 0,
       frames_completed: framesCompleted,
       total_frames_required: round.frame_count,
       total_points: totalPoints,

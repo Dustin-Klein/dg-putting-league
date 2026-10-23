@@ -21,6 +21,12 @@ export const qualification_status = putting_league.enum("qualification_status", 
 
 export const team_assignment_type = putting_league.enum("team_assignment_type", ['random_pairing', 'random_flat', 'manual'])
 
+export const zone_change_reason = putting_league.enum("zone_change_reason", ['initial', 'auto_promote', 'auto_demote', 'manual', 'admin_demote', 'correction'])
+
+export const zone_decision = putting_league.enum("zone_decision", ['stay', 'promote', 'demote'])
+
+export const zone_suggestion_resolution = putting_league.enum("zone_suggestion_resolution", ['applied', 'dismissed', 'superseded'])
+
 export const player_number_seq = pgSequence("player_number_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 
 export const bracket_group = putting_league.table("bracket_group", {
@@ -213,8 +219,15 @@ export const event_players = putting_league.table("event_players", {
 	pfa_score: numeric({ precision: 5, scale:  2 }),
 	scoring_method: text(),
 	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	zone: smallint(),
+	putt_distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
+	zone_period_id: uuid(),
+	exclude_from_handicap: boolean().default(false).notNull(),
+	handicap_note: text(),
+	distance_override: boolean().default(false).notNull(),
 }, (table) => [
 	check("event_players_payment_type_check", sql`payment_type = ANY (ARRAY['cash'::text, 'electronic'::text])`),
+	check("event_players_putt_distance_ft_check", sql`putt_distance_ft > (0)::numeric`),
 	check("event_players_scoring_method_check", sql`scoring_method = ANY (ARRAY['qualification'::text, 'pfa'::text, 'default'::text])`),
 	foreignKey({
 			columns: [table.event_id],
@@ -226,9 +239,30 @@ export const event_players = putting_league.table("event_players", {
 			foreignColumns: [players.id],
 			name: "event_players_player_id_fkey"
 		}),
+	foreignKey({
+			columns: [table.zone_period_id],
+			foreignColumns: [player_zone_periods.id],
+			name: "event_players_zone_period_id_fkey"
+		}).onDelete("set null"),
 	index("idx_event_players_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
 	index("idx_event_players_player").using("btree", table.player_id.asc().nullsLast().op("uuid_ops")),
+	index("idx_event_players_zone_period").using("btree", table.zone_period_id.asc().nullsLast().op("uuid_ops")).where(sql`(zone_period_id IS NOT NULL)`),
 	unique("event_players_event_id_player_id_key").on(table.event_id, table.player_id),
+]);
+
+export const event_zone_distances = putting_league.table("event_zone_distances", {
+	event_id: uuid().notNull(),
+	zone: smallint().notNull(),
+	distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
+}, (table) => [
+	check("event_zone_distances_distance_ft_check", sql`distance_ft > (0)::numeric`),
+	check("event_zone_distances_zone_check", sql`(zone >= 1) AND (zone <= 9)`),
+	foreignKey({
+			columns: [table.event_id],
+			foreignColumns: [events.id],
+			name: "event_zone_distances_event_id_fkey"
+		}).onDelete("cascade"),
+	primaryKey({ columns: [table.event_id, table.zone], name: "event_zone_distances_pkey"}),
 ]);
 
 export const events = putting_league.table("events", {
@@ -255,6 +289,7 @@ export const events = putting_league.table("events", {
 	team_assignment: team_assignment_type().default('random_pairing').notNull(),
 	parent_event_id: uuid(),
 	link_type: event_link_type(),
+	handicap_enabled: boolean().default(false).notNull(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),
@@ -350,6 +385,54 @@ export const league_admins = putting_league.table("league_admins", {
 	unique("league_admins_league_id_user_id_key").on(table.league_id, table.user_id),
 ]);
 
+export const league_handicap_settings = putting_league.table("league_handicap_settings", {
+	league_id: uuid().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	default_zone: smallint().default(2).notNull(),
+	demote_below_pct: numeric({ precision: 5, scale:  2 }).default('50.00').notNull(),
+	promote_above_pct: numeric({ precision: 5, scale:  2 }).default('75.00').notNull(),
+	min_putts: integer().default(50).notNull(),
+	min_matches: integer().default(3).notNull(),
+	window_putts: integer().default(150),
+	count_qualification_putts: boolean().default(true).notNull(),
+	auto_demote_enabled: boolean().default(false).notNull(),
+	updated_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updated_by: uuid(),
+}, (table) => [
+	check("league_handicap_settings_band_check", sql`demote_below_pct < promote_above_pct`),
+	check("league_handicap_settings_demote_below_pct_check", sql`(demote_below_pct >= (0)::numeric) AND (demote_below_pct <= (100)::numeric)`),
+	check("league_handicap_settings_min_matches_check", sql`min_matches >= 0`),
+	check("league_handicap_settings_min_putts_check", sql`min_putts >= 0`),
+	check("league_handicap_settings_minimum_check", sql`(min_putts > 0) OR (min_matches > 0)`),
+	check("league_handicap_settings_promote_above_pct_check", sql`(promote_above_pct >= (0)::numeric) AND (promote_above_pct <= (100)::numeric)`),
+	check("league_handicap_settings_window_putts_check", sql`(window_putts IS NULL) OR (window_putts > 0)`),
+	foreignKey({
+			columns: [table.league_id],
+			foreignColumns: [leagues.id],
+			name: "league_handicap_settings_league_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.updated_by],
+			foreignColumns: [users.id],
+			name: "league_handicap_settings_updated_by_fkey"
+		}).onDelete("set null"),
+]);
+
+export const league_handicap_zones = putting_league.table("league_handicap_zones", {
+	league_id: uuid().notNull(),
+	zone: smallint().notNull(),
+	distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
+}, (table) => [
+	check("league_handicap_zones_distance_ft_check", sql`distance_ft > (0)::numeric`),
+	check("league_handicap_zones_zone_check", sql`(zone >= 1) AND (zone <= 9)`),
+	foreignKey({
+			columns: [table.league_id],
+			foreignColumns: [leagues.id],
+			name: "league_handicap_zones_league_id_fkey"
+		}).onDelete("cascade"),
+	primaryKey({ columns: [table.league_id, table.zone], name: "league_handicap_zones_pkey"}),
+]);
+
 export const leagues = putting_league.table("leagues", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: text().notNull(),
@@ -385,6 +468,97 @@ export const player_profiles = putting_league.table("player_profiles", {
 			foreignColumns: [players.id],
 			name: "player_profiles_player_id_fkey"
 		}).onDelete("cascade"),
+]);
+
+export const player_zone_evaluations = putting_league.table("player_zone_evaluations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	event_id: uuid().notNull(),
+	player_id: uuid().notNull(),
+	league_id: uuid().notNull(),
+	zone_period_id: uuid().notNull(),
+	zone: smallint().notNull(),
+	stats: jsonb().notNull(),
+	decision: zone_decision().notNull(),
+	eligible: boolean().notNull(),
+	applied: boolean().notNull(),
+	resolution: zone_suggestion_resolution(),
+	resolved_at: timestamp({ withTimezone: true, mode: 'string' }),
+	resolved_by: uuid(),
+	resolution_note: text(),
+	skip_reason: text(),
+	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	check("player_zone_evaluations_skip_check", sql`(skip_reason IS NULL) OR ((NOT eligible) AND (NOT applied) AND (decision = 'stay'::putting_league.zone_decision))`),
+	check("player_zone_evaluations_skip_reason_check", sql`skip_reason = ANY (ARRAY['period_changed'::text, 'excluded'::text])`),
+	foreignKey({
+			columns: [table.event_id],
+			foreignColumns: [events.id],
+			name: "player_zone_evaluations_event_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.league_id],
+			foreignColumns: [leagues.id],
+			name: "player_zone_evaluations_league_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.player_id],
+			foreignColumns: [players.id],
+			name: "player_zone_evaluations_player_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.resolved_by],
+			foreignColumns: [users.id],
+			name: "player_zone_evaluations_resolved_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.zone_period_id],
+			foreignColumns: [player_zone_periods.id],
+			name: "player_zone_evaluations_zone_period_id_fkey"
+		}).onDelete("cascade"),
+	index("idx_zone_evals_open_demote").using("btree", table.league_id.asc().nullsLast().op("uuid_ops")).where(sql`((decision = 'demote'::putting_league.zone_decision) AND (applied = false) AND (resolution IS NULL))`),
+	index("idx_zone_evals_player").using("btree", table.player_id.asc().nullsLast().op("uuid_ops")),
+	unique("player_zone_evaluations_event_player_key").on(table.event_id, table.player_id),
+]);
+
+export const player_zone_periods = putting_league.table("player_zone_periods", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	player_id: uuid().notNull(),
+	league_id: uuid().notNull(),
+	zone: smallint().notNull(),
+	distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
+	started_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	start_reason: zone_change_reason().notNull(),
+	started_by_event_id: uuid(),
+	started_by_user: uuid(),
+	ended_at: timestamp({ withTimezone: true, mode: 'string' }),
+	end_stats: jsonb(),
+	note: text(),
+}, (table) => [
+	check("player_zone_periods_distance_ft_check", sql`distance_ft > (0)::numeric`),
+	check("player_zone_periods_zone_check", sql`(zone >= 1) AND (zone <= 9)`),
+	foreignKey({
+			columns: [table.league_id],
+			foreignColumns: [leagues.id],
+			name: "player_zone_periods_league_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.player_id],
+			foreignColumns: [players.id],
+			name: "player_zone_periods_player_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.started_by_event_id],
+			foreignColumns: [events.id],
+			name: "player_zone_periods_started_by_event_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.started_by_user],
+			foreignColumns: [users.id],
+			name: "player_zone_periods_started_by_user_fkey"
+		}).onDelete("set null"),
+	index("idx_zone_periods_league_open").using("btree", table.league_id.asc().nullsLast().op("uuid_ops")).where(sql`(ended_at IS NULL)`),
+	index("idx_zone_periods_player").using("btree", table.player_id.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("one_open_zone_period").using("btree", table.player_id.asc().nullsLast().op("uuid_ops"), table.league_id.asc().nullsLast().op("uuid_ops")).where(sql`(ended_at IS NULL)`),
 ]);
 
 export const players = pgTable("players", {

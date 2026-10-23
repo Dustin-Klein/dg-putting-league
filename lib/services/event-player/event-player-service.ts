@@ -8,6 +8,7 @@ import { PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
 import { withTransaction, type Executor } from '@/lib/db/tx';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
+import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
 
 /** Number of months of historical frame data used for PFA scoring */
 export const PFA_LOOKBACK_MONTHS = 18;
@@ -54,7 +55,9 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
   return withTransaction(pg, async (tx) => {
     const existingPlayer = await eventPlayerRepo.getEventPlayerByPlayerAndEvent(tx, eventId, playerId);
     if (existingPlayer) throw new BadRequestError('Player is already in this event');
-    const insertedId = await eventPlayerRepo.insertEventPlayer(tx, eventId, playerId);
+    const insertedId = await eventPlayerRepo.insertEventPlayer(tx, eventId, playerId, event.putt_distance_ft);
+    // A handicap entry gets the player's zone (opening their first period if needed).
+    await refreshEntrySnapshots(tx, eventId, { entryIds: [insertedId] });
     return eventPlayerRepo.getEventPlayer(tx, eventId, insertedId);
   });
 }

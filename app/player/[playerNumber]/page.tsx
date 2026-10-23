@@ -9,6 +9,7 @@ import { PlayerHeader } from './components/player-header';
 import { StatsOverview } from './components/stats-overview';
 import { OngoingEvents } from './components/ongoing-events';
 import { EventHistory } from './components/event-history';
+import { HandicapCard } from './components/handicap-card';
 import type { PlayerProfile } from '@/lib/types/player-statistics';
 
 export default function PlayerProfilePage() {
@@ -90,6 +91,7 @@ export default function PlayerProfilePage() {
 
       <PlayerHeader player={profile.player} />
       <StatsOverview statistics={profile.statistics} />
+      <HandicapCard playerNumber={String(playerNumber)} />
       <OngoingEvents ongoingEvents={profile.ongoingEvents} />
       <EventHistory eventHistory={profile.eventHistory} />
     </div>

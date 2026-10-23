@@ -28,6 +28,9 @@ export interface PlayerInfo {
   event_player_id: string;
   slot: number;
   pool: 'A' | 'B' | null;
+  /** Handicap zone; null when the event has no handicaps. */
+  zone?: number | null;
+  putt_distance_ft?: number;
   full_name: string;
   nickname: string | null;
 }

@@ -5,6 +5,7 @@ import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketMatchWithDetails, PlayerInTeam } from '@/lib/types/scoring';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
+import { ZoneBadge } from '@/components/zone-badge';
 import { WINNER_CHANGE_MESSAGE } from '@/lib/types/scoring';
 import { createClient } from '@/lib/supabase/client';
 import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
@@ -758,6 +759,7 @@ function PlayerRow({
     <tr className="border-b">
       <td className="p-3">
         <div className="font-medium">{player.player.full_name}</div>
+        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
         {player.pool && (
           <div className="text-xs text-muted-foreground">
             {poolLabel(player.pool)}
