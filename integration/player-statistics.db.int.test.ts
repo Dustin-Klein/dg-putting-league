@@ -75,6 +75,7 @@ describe('player statistics profile', () => {
         event_id: privateEvent.eventId,
         player_id: event.playerIds[0],
         payment_type: 'cash',
+        putt_distance_ft: '25',
       });
       await tx
         .update(players)

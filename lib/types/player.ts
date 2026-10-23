@@ -26,6 +26,16 @@ export interface EventPlayer {
   pool?: 'A' | 'B' | null;
   pfa_score?: number | null;
   scoring_method?: 'qualification' | 'pfa' | 'default' | null;
+  /** Handicap zone this entry putts from (snapshot); null when the event has no handicaps. */
+  zone?: number | null;
+  /** Distance this entry putts from: the zone's distance at this event, or the event distance. */
+  putt_distance_ft?: number;
+  /** Admin-only: the organizer decided this entry doesn't count toward the handicap. */
+  exclude_from_handicap?: boolean;
+  /** Admin-only. */
+  handicap_note?: string | null;
+  /** Admin-only: the distance was set by hand for this entry. */
+  distance_override?: boolean;
   created_at: string;
   player: Player;
 }

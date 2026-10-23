@@ -9,3 +9,4 @@ export * from './player-statistics';
 export * from './qualification';
 export * from './scoring';
 export * from './team';
+export * from './handicap';

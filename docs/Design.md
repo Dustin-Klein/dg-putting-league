@@ -26,7 +26,7 @@ Web app to be used to manage and score disc golf putting league.
         - A date
         - A location
         - Number of lanes
-        - Distance of putt for those lanes (1 value, same across all lanes)
+        - Distance of putt for those lanes (1 value, same across all lanes; in a handicap league each zone has its own distance, see Handicaps)
         - Zero to many players
         - Custom access code
         - Bonus point (y/n) - defaults to yes
@@ -55,6 +55,20 @@ A player can be looked up by name or unique identifier.
 A player will have a page that shows statistics:
  - previously played league events
  - averages and performances from those events
+
+## Handicaps
+
+A league can opt into distance-based handicaps (Admin → league → Handicaps). Scoring does not change: 3 putts per frame, 1 point per make, +1 bonus for 3/3 when enabled. The handicap is the distance.
+
+- **Zones.** Each league has a ladder of zones, by default Zone 1 = 21 ft, Zone 2 = 27 ft, Zone 3 = 33 ft. New players start in Zone 2. The ladder is the default every new event starts from; organizers can set an event's distances for the night (a tight venue, indoor winter nights) until the first frame is recorded. A player's record is kept against the *zone*: Zone 1 at 19 ft one week and 21 ft the next is the same evidence. Adjacent zones must be at least 3 ft apart, and an event distance more than 2 ft from the ladder gets a warning.
+- **When a zone changes.** Only when an event the player played in is **completed**, or when a **league admin** changes it. Nothing during a live event moves anyone, and every change applies from the next event.
+- **The rule.** Once a player has enough evidence in their current zone (default 50 putts **or** 3 completed matches; either minimum can be set to 0 to switch it off, not both), their make % in the zone decides: above 75% → move up one zone (farther); otherwise stay. By default the sample is the player's most recent 150 putts in the zone (whole events, newest first); the league can count the whole period instead. Qualification putts count by default, qualification rounds never count as matches, and a match counts only if the player recorded at least one frame in it.
+- **This league never moves you closer automatically** — unless its admins turn on automatic demotion, in which case the league must tell its players. Below 50%, the player is flagged for an organizer, who either moves them one zone closer or dismisses the flag with a note. A player never sees a pending flag; if an organizer moves them, their history says "Moved to Zone 2 by an organizer" and nothing more (the note is for organizers only).
+- **Not representative nights.** An organizer can mark one player's entry "don't count" (for example, putting from 15 ft with an injured shoulder). That night is left out of the zone decision but still appears in the player's career stats.
+- **History.** Every zone change is kept with its date and the stats that caused it. Career stats are kept per actual distance putted and never reset.
+- **Pools** stay as they are: handicaps are opt-in per league and per event, and a converged handicap league can choose the flat random draw (`random_flat`) instead.
+
+Each lane needs a marked putting line for every zone (21, 27 and 33 ft by default); communicate this before the first handicap night.
 
 ## Bracket
 

@@ -75,7 +75,7 @@ describe('startBracket', () => {
       const event = await seedEvent(tx, { players: 4 });
       const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
       const [player] = await tx.insert(players).values({ full_name: 'Late Player' }).returning({ id: players.id });
-      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash' });
+      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash', putt_distance_ft: '25' });
 
       await expect(startBracket(tx, event.eventId, poolAssignments, teamPairings)).rejects.toMatchObject({
         name: 'ConflictError',

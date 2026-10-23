@@ -17,8 +17,11 @@ import { closeDb, createCountingTestDb, createTestDb, withRollback } from './db/
 import { buildDeterministicPairings, seedEvent } from './db/seed';
 
 const db = createTestDb();
-// Statements startBracket sends, its savepoint included.
-const START_BRACKET_STATEMENT_BUDGET = 24;
+// Statements startBracket sends, its savepoint included. The last two are the entry
+// snapshot refresh (event context + entry states); a handicap event adds a few more
+// for the league handicap lock and zone reads, none of them per player.
+const START_BRACKET_STATEMENT_BUDGET = 26;
+
 const counting = createCountingTestDb();
 afterAll(async () => {
   await closeDb(db);

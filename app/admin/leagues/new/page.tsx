@@ -9,7 +9,7 @@ export default async function CreateLeaguePage() {
   const { data: { user }, error: userError } = await (await supabase).auth.getUser();
   
   if (userError || !user) {
-    redirect('/auth/sign-in');
+    redirect('/auth/login');
   }
 
   return (
@@ -22,7 +22,7 @@ export default async function CreateLeaguePage() {
           </p>
         </div>
         
-        <CreateLeagueForm userId={user.id} />
+        <CreateLeagueForm />
       </div>
     </div>
   );

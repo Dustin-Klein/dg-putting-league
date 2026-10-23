@@ -43,6 +43,8 @@ export interface Event {
   /** Set on a linked event (e.g. a second-chance tournament); links are one level deep. */
   parent_event_id: string | null;
   link_type: EventLinkType | null;
+  /** Players putt from their handicap zone's distance (snapshotted from the league at creation). */
+  handicap_enabled: boolean;
   created_at: string;
   participant_count?: number;
 }
@@ -75,6 +77,7 @@ export interface EventWithDetails {
   team_assignment: TeamAssignment;
   parent_event_id: string | null;
   link_type: EventLinkType | null;
+  handicap_enabled: boolean;
   created_at: string;
   players: import('./player').EventPlayer[];
   teams?: import('./team').Team[];

@@ -31,6 +31,7 @@ export interface EventData {
   team_assignment: TeamAssignment;
   parent_event_id: string | null;
   link_type: EventLinkType | null;
+  handicap_enabled: boolean;
   created_at: string;
 }
 
@@ -73,6 +74,7 @@ const eventSelection = {
   team_assignment: events.team_assignment,
   parent_event_id: events.parent_event_id,
   link_type: events.link_type,
+  handicap_enabled: events.handicap_enabled,
   created_at: events.created_at,
 };
 
@@ -109,13 +111,23 @@ export async function getEventWithPlayers(
       pfa_score: event_players.pfa_score,
       scoring_method: event_players.scoring_method,
       created_at: event_players.created_at,
+      zone: event_players.zone,
+      putt_distance_ft: event_players.putt_distance_ft,
       player_id_joined: players.id,
       full_name: players.full_name,
       nickname: players.nickname,
       player_created_at: players.created_at,
       default_pool: player_profiles.default_pool,
       player_number: players.player_number,
-      ...(opts.includePaymentType ? { payment_type: event_players.payment_type } : {}),
+      // Admin-only: payment and the handicap bookkeeping behind the public zone/distance.
+      ...(opts.includePaymentType
+        ? {
+            payment_type: event_players.payment_type,
+            exclude_from_handicap: event_players.exclude_from_handicap,
+            handicap_note: event_players.handicap_note,
+            distance_override: event_players.distance_override,
+          }
+        : {}),
     };
   const playerRows = await ex
     .select(playerSelection)
@@ -131,9 +143,16 @@ export async function getEventWithPlayers(
       event_id: row.event_id,
       player_id: row.player_id,
       ...(opts.includePaymentType
-        ? { payment_type: (row.payment_type ?? null) as PaymentType | null }
+        ? {
+            payment_type: (row.payment_type ?? null) as PaymentType | null,
+            exclude_from_handicap: row.exclude_from_handicap,
+            handicap_note: row.handicap_note ?? null,
+            distance_override: row.distance_override,
+          }
         : {}),
       pool: row.pool,
+      zone: row.zone,
+      putt_distance_ft: toNumber(row.putt_distance_ft),
       pfa_score: toNumber(row.pfa_score),
       scoring_method: row.scoring_method as EventPlayer['scoring_method'],
       created_at: toIsoTimestamp(row.created_at),
@@ -299,6 +318,7 @@ export interface CreateEventData {
   team_assignment?: TeamAssignment;
   parent_event_id?: string;
   link_type?: EventLinkType;
+  handicap_enabled?: boolean;
   status: EventStatus;
 }
 
@@ -317,11 +337,25 @@ export async function createEvent(ex: Executor, data: CreateEventData): Promise<
   return mapEvent(rows[0]);
 }
 
-export async function copyEventPlayers(ex: Executor, sourceEventId: string, destinationEventId: string): Promise<void> {
+/**
+ * Enter the source event's players into the destination event, putting from
+ * `puttDistanceFt` (the destination's event distance; a handicap event's entries are
+ * then snapshotted to their zones).
+ */
+export async function copyEventPlayers(
+  ex: Executor,
+  sourceEventId: string,
+  destinationEventId: string,
+  puttDistanceFt: number
+): Promise<void> {
   const rows = await ex.select({ player_id: event_players.player_id }).from(event_players)
     .where(eq(event_players.event_id, sourceEventId));
   if (rows.length > 0) {
-    await ex.insert(event_players).values(rows.map(({ player_id }) => ({ event_id: destinationEventId, player_id })));
+    await ex.insert(event_players).values(rows.map(({ player_id }) => ({
+      event_id: destinationEventId,
+      player_id,
+      putt_distance_ft: String(puttDistanceFt),
+    })));
   }
 }
 

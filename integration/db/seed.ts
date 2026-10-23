@@ -98,7 +98,7 @@ export async function seedEvent(ex: Executor, opts: SeedEventOptions): Promise<S
       ? []
       : await ex
           .insert(event_players)
-          .values(playerIds.map((player_id) => ({ event_id: event.id, player_id, payment_type: 'cash' })))
+          .values(playerIds.map((player_id) => ({ event_id: event.id, player_id, payment_type: 'cash', putt_distance_ft: '25' })))
           .returning({ id: event_players.id, player_id: event_players.player_id });
   const entryByPlayer = new Map(insertedEntries.map((e) => [e.player_id, e.id]));
 

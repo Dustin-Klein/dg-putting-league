@@ -145,7 +145,7 @@ describe('team formats end to end', () => {
   it.each([
     ['added', async (tx: Executor, event: SeededEvent) => {
       const [player] = await tx.insert(players).values({ full_name: 'Late Player' }).returning({ id: players.id });
-      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash' });
+      await tx.insert(event_players).values({ event_id: event.eventId, player_id: player.id, payment_type: 'cash', putt_distance_ft: '25' });
     }],
     ['removed', async (tx: Executor, event: SeededEvent) => {
       await tx.delete(event_players).where(eq(event_players.id, event.eventPlayerIds[3]));

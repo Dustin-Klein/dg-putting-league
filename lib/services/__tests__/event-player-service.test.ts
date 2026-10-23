@@ -38,6 +38,10 @@ jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (ex, fn) => fn(ex)),
 }));
 
+jest.mock('@/lib/services/handicap/snapshot', () => ({
+  refreshEntrySnapshots: jest.fn(),
+}));
+
 jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   getEventPlayerByPlayerAndEvent: jest.fn(),
   insertEventPlayer: jest.fn(),
@@ -51,6 +55,7 @@ jest.mock('@/lib/repositories/event-player-repository.db', () => ({
 // Import after mocking
 import { createClient } from '@/lib/supabase/server';
 import { requireEventAdmin, getEventWithPlayers } from '@/lib/services/event';
+import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
 import {
   addPlayerToEvent,
@@ -96,8 +101,10 @@ describe('Event Player Service', () => {
       expect(eventPlayerRepo.insertEventPlayer).toHaveBeenCalledWith(
         mockSupabase,
         eventId,
-        playerId
+        playerId,
+        event.putt_distance_ft
       );
+      expect(refreshEntrySnapshots).toHaveBeenCalledWith(mockSupabase, eventId, { entryIds: ['ep-123'] });
     });
 
     it('should throw BadRequestError when event is not in pre-bracket status', async () => {

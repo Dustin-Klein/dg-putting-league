@@ -18,6 +18,7 @@ import {
 } from '@/app/score/components/scoring-wizard/scoring-utils';
 import { useWizardActionState } from '@/app/score/components/scoring-wizard/use-wizard-action-state';
 import { QualificationReviewSubmit } from './components/review-submit';
+import { ZoneBadge } from '@/components/zone-badge';
 
 interface FrameInfo {
   id: string;
@@ -32,6 +33,9 @@ interface PlayerInfo {
   full_name: string;
   nickname: string | null;
   player_number: number | null;
+  /** Handicap zone; null when the event has no handicaps. */
+  zone?: number | null;
+  putt_distance_ft?: number;
   frames_completed: number;
   total_frames_required: number;
   total_points: number;
@@ -404,6 +408,7 @@ export default function QualificationScoringPage() {
               <ScoreStepperRow
                 key={player.event_player_id}
                 label={player.full_name}
+                badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} /> : undefined}
                 subtitle={
                   player.player_number
                     ? `#${player.player_number} • ${player.total_points} pts total`

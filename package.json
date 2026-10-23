@@ -12,7 +12,8 @@
     "test:int": "jest --config jest.integration.config.js",
     "test:db": "supabase test db",
     "db:pull": "node tools/db-pull.mjs",
-    "db:check": "node tools/db-pull.mjs --check"
+    "db:check": "node tools/db-pull.mjs --check",
+    "simulate:handicap": "tsx tools/simulate-handicap.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",

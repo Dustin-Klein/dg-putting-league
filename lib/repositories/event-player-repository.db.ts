@@ -16,6 +16,8 @@ export interface EventPlayerData {
   pool: 'A' | 'B' | null;
   pfa_score: number | null;
   scoring_method: 'qualification' | 'pfa' | 'default' | null;
+  zone: number | null;
+  putt_distance_ft: number;
 }
 
 function mapEventPlayerData(row: typeof event_players.$inferSelect): EventPlayerData {
@@ -28,6 +30,8 @@ function mapEventPlayerData(row: typeof event_players.$inferSelect): EventPlayer
     pool: row.pool,
     pfa_score: toNumber(row.pfa_score),
     scoring_method: row.scoring_method as EventPlayerData['scoring_method'],
+    zone: row.zone,
+    putt_distance_ft: toNumber(row.putt_distance_ft),
   };
 }
 
@@ -62,8 +66,15 @@ export async function getEventPlayerByPlayerAndEvent(
   return row ? mapEventPlayerData(row) : null;
 }
 
-export async function insertEventPlayer(ex: Executor, eventId: string, playerId: string): Promise<string> {
-  const [row] = await ex.insert(event_players).values({ event_id: eventId, player_id: playerId })
+/** Enter a player putting from `puttDistanceFt`; handicap events then snapshot the entry's zone. */
+export async function insertEventPlayer(
+  ex: Executor,
+  eventId: string,
+  playerId: string,
+  puttDistanceFt: number
+): Promise<string> {
+  const [row] = await ex.insert(event_players)
+    .values({ event_id: eventId, player_id: playerId, putt_distance_ft: String(puttDistanceFt) })
     .returning({ id: event_players.id });
   if (!row) throw new InternalError('Failed to add player to event');
   return row.id;
@@ -76,12 +87,14 @@ export async function insertEventPlayer(ex: Executor, eventId: string, playerId:
 export async function insertScoredEventPlayers(
   ex: Executor,
   eventId: string,
-  entrants: Array<{ player_id: string; pfa_score: number; scoring_method: 'pfa' | 'default' }>
+  entrants: Array<{ player_id: string; pfa_score: number; scoring_method: 'pfa' | 'default' }>,
+  puttDistanceFt: number
 ): Promise<void> {
   if (entrants.length === 0) return;
   await ex.insert(event_players).values(entrants.map((entrant) => ({
     event_id: eventId,
     player_id: entrant.player_id,
+    putt_distance_ft: String(puttDistanceFt),
     pfa_score: String(entrant.pfa_score),
     scoring_method: entrant.scoring_method,
   })));

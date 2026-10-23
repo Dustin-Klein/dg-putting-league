@@ -17,6 +17,8 @@ export interface TeamPlayerInfo {
   event_player_id: string;
   slot: number;
   pool: 'A' | 'B' | null;
+  zone: number | null;
+  putt_distance_ft: number;
   player: { id: string; full_name: string; nickname: string | null };
 }
 
@@ -28,6 +30,8 @@ export interface PublicTeamPlayerInfo {
   event_player_id: string;
   slot: number;
   pool: 'A' | 'B' | null;
+  zone: number | null;
+  putt_distance_ft: number;
   full_name: string;
   nickname: string | null;
 }
@@ -44,6 +48,8 @@ type ParticipantTeamRow = {
   event_player_id: string | null;
   slot: number | null;
   pool: 'A' | 'B' | null;
+  zone: number | null;
+  putt_distance_ft: string | null;
   player_id: string | null;
   full_name: string | null;
   nickname: string | null;
@@ -64,6 +70,8 @@ async function getParticipantTeamRows(
       event_player_id: team_members.event_player_id,
       slot: team_members.slot,
       pool: event_players.pool,
+      zone: event_players.zone,
+      putt_distance_ft: event_players.putt_distance_ft,
       player_id: players.id,
       full_name: players.full_name,
       nickname: players.nickname,
@@ -101,6 +109,8 @@ export async function getTeamsByParticipantIds(
         event_player_id: row.event_player_id,
         slot: row.slot,
         pool: row.pool,
+        zone: row.zone,
+        putt_distance_ft: toNumber(row.putt_distance_ft ?? '0'),
         player: { id: row.player_id, full_name: row.full_name, nickname: row.nickname },
       });
     }
@@ -126,6 +136,8 @@ export async function getPublicTeamsByParticipantIds(
         event_player_id: row.event_player_id,
         slot: row.slot,
         pool: row.pool,
+        zone: row.zone,
+        putt_distance_ft: toNumber(row.putt_distance_ft ?? '0'),
         full_name: row.full_name ?? 'Unknown',
         nickname: row.nickname,
       });

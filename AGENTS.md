@@ -22,8 +22,10 @@ assignment, live scoring, and double-elimination brackets (`brackets-manager`).
 - Services own transactions (`withTransaction`); repositories never open transactions. Repositories
   using Drizzle use `.db.ts` suffix and take `ex: Executor` (`Db | Tx`) as their first parameter.
 - Lock order (prevents deadlocks): event advisory lock (`lockEvent`) → event row (`FOR SHARE`, or
-  `FOR UPDATE` when changing it) → match rows (`lockMatch`, ascending id) → lane rows (ascending id). Mutating bracket structure/progression or lanes takes the
-  event lock first; score submission locks only the match row.
+  `FOR UPDATE` when changing it) → match rows (`lockMatch`, ascending id) → lane rows (ascending id)
+  → league handicap lock (`lockLeagueHandicap`, always last). Mutating bracket structure/progression or lanes takes the
+  event lock first; score submission locks only the match row. Every writer of zone periods,
+  zone evaluations or a league's handicap settings/ladder takes the league handicap lock.
 - CSRF protection is enforced centrally in `lib/supabase/proxy.ts` (rejects non-GET/HEAD/OPTIONS
   `/api/**` requests where Origin does not match Host). `validateCsrfOrigin` (`lib/utils/csrf.ts`)
   remains available for explicit checks. Many routes use `lib/middleware/rate-limit.ts`.
