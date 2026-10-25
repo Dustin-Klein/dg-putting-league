@@ -30,7 +30,13 @@ import {
 } from '@/lib/services/event/event-service';
 import { evaluateEventHandicaps } from '@/lib/services/handicap/evaluate';
 import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
-import { updateEntryHandicap, updateEventZoneDistances } from '@/lib/services/handicap/settings-service';
+import {
+  getEventHandicap,
+  updateEntryHandicap,
+  updateEventZoneDistances,
+  updateHandicapSettings,
+} from '@/lib/services/handicap/settings-service';
+import { lockQualificationEvent } from '@/lib/repositories/qualification-repository.db';
 import { getPlayerHandicap, resolveZoneSuggestion, setPlayerZone } from '@/lib/services/handicap/zone-service';
 import { BadRequestError, ConflictError } from '@/lib/errors';
 import { DEFAULT_HANDICAP_SETTINGS, type HandicapSettings } from '@/lib/types/handicap';
@@ -358,6 +364,37 @@ describe('event zone distances', () => {
       await expect(updateEventZoneDistances(created.id, [
         { zone: 1, distance_ft: 21 }, { zone: 2, distance_ft: 27 }, { zone: 3, distance_ft: 33 },
       ])).rejects.toThrow(ConflictError);
+    });
+  });
+
+  it('follow ladder changes made after the event was created, until the first frame', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const event = await handicapEvent(tx, leagueId, await newPlayers(tx, 2), { distances: [20, 26, 32] });
+
+      await updateHandicapSettings(leagueId, {
+        settings: TEST_SETTINGS,
+        zones: [{ zone: 1, distance_ft: 21 }, { zone: 2, distance_ft: 27 }, { zone: 3, distance_ft: 33 }, { zone: 4, distance_ft: 39 }],
+      });
+      const grown = await getEventHandicap(event.eventId);
+      expect(grown.zones.map((z) => [z.zone, z.distance_ft])).toEqual([[1, 20], [2, 26], [3, 32], [4, 39]]);
+      await updateEventZoneDistances(event.eventId, grown.zones.map(({ zone, distance_ft }) => ({ zone, distance_ft })));
+
+      await updateHandicapSettings(leagueId, {
+        settings: TEST_SETTINGS,
+        zones: [{ zone: 1, distance_ft: 21 }, { zone: 2, distance_ft: 27 }, { zone: 3, distance_ft: 33 }],
+      });
+      const shrunk = await getEventHandicap(event.eventId);
+      expect(shrunk.zones.map((z) => [z.zone, z.distance_ft])).toEqual([[1, 20], [2, 26], [3, 32]]);
+      const saved = await updateEventZoneDistances(event.eventId, shrunk.zones.map(({ zone, distance_ft }) => ({ zone, distance_ft })));
+      expect(saved.zones.map((z) => z.zone)).toEqual([1, 2, 3]);
+
+      // Once fixed, the view is what the event used, whatever the ladder says now.
+      await addQualificationFrame(tx, event.eventId, event.eventPlayerIds[0]);
+      await tx.insert(league_handicap_zones).values({ league_id: leagueId, zone: 4, distance_ft: '39' });
+      expect((await getEventHandicap(event.eventId)).zones.map((z) => z.zone)).toEqual([1, 2, 3]);
     });
   });
 });
@@ -731,6 +768,37 @@ describe('race: handicap writers in one league', () => {
     const open = await db.select().from(player_zone_periods)
       .where(and(eq(player_zone_periods.league_id, leagueId), isNull(player_zone_periods.ended_at)));
     expect(open).toHaveLength(8);
+  });
+
+  it('a distance override waits for an in-flight first qualification frame, then refuses', async () => {
+    const { leagueId } = await seedLeague(db);
+    const [playerId] = await newPlayers(db, 1);
+    committed.push({ leagueId, playerIds: [playerId] });
+    await enableHandicaps(db, leagueId);
+    const event = await handicapEvent(db, leagueId, [playerId]);
+    const [entryId] = event.eventPlayerIds;
+    mockAuth.pg = db;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let framed!: () => void;
+    const frameWritten = new Promise<void>((resolve) => { framed = resolve; });
+    // Like qualification scoring: event row FOR SHARE, no event lock, frame written, not yet committed.
+    const scorer = withTransaction(db, async (tx) => {
+      await lockQualificationEvent(tx, event.eventId);
+      await addQualificationFrame(tx, event.eventId, entryId);
+      framed();
+      await gate;
+    });
+    await frameWritten;
+
+    const edit = updateEntryHandicap(event.eventId, entryId, { putt_distance_ft: 25 }).then(() => 'applied', (error) => error);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await scorer;
+
+    expect(await edit).toBeInstanceOf(ConflictError);
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ putt_distance_ft: '27.00', distance_override: false });
   });
 
   it('two entries racing for a player without a period open one period', async () => {

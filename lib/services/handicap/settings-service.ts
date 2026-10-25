@@ -78,12 +78,31 @@ export interface EventHandicapView extends EventZoneDistances {
   summary: EvaluationSummary | null;
 }
 
-async function readEventDistances(ex: Executor, eventId: string, leagueId: string): Promise<EventHandicapView['zones']> {
+/**
+ * An event's distances. While they are still editable they follow the league's current
+ * zone set (a zone added to the ladder since the event was created starts at the league
+ * distance; a removed one is dropped), since saving requires exactly the league's zones.
+ * Once fixed, they are what the event actually used.
+ */
+async function readEventDistances(
+  ex: Executor,
+  eventId: string,
+  leagueId: string,
+  editable: boolean
+): Promise<EventHandicapView['zones']> {
   const [eventZones, leagueZones] = await Promise.all([
     handicapDb.getEventZoneDistances(ex, eventId),
     handicapDb.getLeagueZones(ex, leagueId),
   ]);
   const league = new Map(leagueZones.map((zone) => [zone.zone, zone.distance_ft]));
+  if (editable) {
+    const event = new Map(eventZones.map((zone) => [zone.zone, zone.distance_ft]));
+    return leagueZones.map((zone) => ({
+      zone: zone.zone,
+      distance_ft: event.get(zone.zone) ?? zone.distance_ft,
+      league_distance_ft: zone.distance_ft,
+    }));
+  }
   return eventZones.map((zone) => ({ ...zone, league_distance_ft: league.get(zone.zone) ?? null }));
 }
 
@@ -92,16 +111,16 @@ export async function getEventHandicap(eventId: string): Promise<EventHandicapVi
   const { pg } = await authorizeEventAdmin(eventId);
   const event = await handicapDb.getEventHandicapContext(pg, eventId);
   if (!event) throw new NotFoundError('Event not found');
-  const [zones, hasFrames, summary] = await Promise.all([
-    readEventDistances(pg, eventId, event.league_id),
+  const [hasFrames, summary] = await Promise.all([
     handicapDb.eventHasFrames(pg, eventId),
     event.status === 'completed' && event.handicap_enabled ? getEvaluationSummary(pg, eventId) : Promise.resolve(null),
   ]);
+  const editable = event.handicap_enabled && isBeforeBracket(event.status) && !hasFrames;
   return {
     event_id: eventId,
     handicap_enabled: event.handicap_enabled,
-    zones,
-    editable: event.handicap_enabled && isBeforeBracket(event.status) && !hasFrames,
+    zones: await readEventDistances(pg, eventId, event.league_id, editable),
+    editable,
     summary,
   };
 }
@@ -158,7 +177,11 @@ export async function updateEntryHandicap(
 
   await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-    const config = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'share' });
+    // A distance change must not race a first qualification frame: scoring holds the
+    // event row FOR SHARE without the event lock, and an uncommitted frame is invisible
+    // to the has-frames check. FOR UPDATE waits for in-flight scoring to commit.
+    const lock = patch.putt_distance_ft !== undefined ? 'update' : 'share';
+    const config = await eventDb.getEventBracketConfig(tx, eventId, { lock });
     const event = await handicapDb.getEventHandicapContext(tx, eventId);
     if (!config || !event) throw new NotFoundError('Event not found');
     const [entry] = await handicapDb.getEntrySnapshotStates(tx, eventId, [eventPlayerId]);
