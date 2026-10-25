@@ -49,6 +49,8 @@ test('bracket', async ({ page }) => {
 
 test('players', async ({ page }) => {
   await page.goto('/players');
+  // The page lists nothing until a search.
+  await page.getByPlaceholder('Search players...').fill('Avery');
   await expect(page.getByText('Avery Lund').first()).toBeVisible();
   await snap(page, 'players');
 });
