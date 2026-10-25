@@ -30,7 +30,7 @@ jobs:
     name: Visual Regression
     runs-on: ubuntu-latest
     permissions:
-      contents: ${{ inputs.update_baselines && 'write' || 'read' }}
+      contents: read
     env:
       DATABASE_URL: postgresql://app_server:app_server@127.0.0.1:54322/postgres
     steps:
@@ -83,8 +83,31 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-      - name: Commit updated baselines
+      - name: Upload updated baselines
         if: inputs.update_baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/visual/__screenshots__/
+          retention-days: 7
+
+  # Separate job so only the commit step holds a write token.
+  commit-baselines:
+    name: Commit visual baselines
+    needs: visual
+    if: inputs.update_baselines
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/visual/__screenshots__/
+
+      - name: Commit updated baselines
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
