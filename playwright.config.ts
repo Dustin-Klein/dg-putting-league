@@ -10,7 +10,9 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{arg}{ext}',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // No retries: a missing baseline is written on the first attempt, so a retry
+  // would pass and hide it.
+  retries: 0,
   reporter: process.env.CI ? [['html', { open: 'never' }], ['github']] : 'list',
   expect: {
     toHaveScreenshot: {

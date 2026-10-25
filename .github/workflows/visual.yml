@@ -7,8 +7,8 @@ name: Visual
 # Baselines are rendered here, never locally (fonts and anti-aliasing differ by
 # machine). After an intended UI change, run this workflow on the PR branch with
 # "Update baselines" ticked: it commits the new screenshots to that branch.
-# Commits pushed with GITHUB_TOKEN don't trigger new runs, so re-run the PR's
-# checks afterwards.
+# Commits pushed with GITHUB_TOKEN don't trigger new runs, so the PR's new head
+# has no checks until the next push; close and reopen the PR to run them.
 
 on:
   push:
@@ -81,6 +81,17 @@ jobs:
         with:
           name: visual-report
           path: playwright-report/
+          retention-days: 14
+
+      # A test without a baseline writes one from this run and fails. These are
+      # the files to commit when the baseline is new.
+      - name: Upload new baselines
+        if: failure() && !inputs.update_baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-new-baselines
+          path: e2e/visual/__screenshots__/
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload updated baselines
