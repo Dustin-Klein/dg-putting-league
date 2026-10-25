@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils/utils';
 import { sortBySlot } from '@/lib/utils/team-utils';
 import { Badge } from '@/components/ui/badge';
 import { ScoreStepperRow } from '@/app/score/components/scoring-wizard/score-stepper-row';
+import { ZoneBadge } from '@/components/zone-badge';
 import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-utils';
 import {
   calculatePoints,
@@ -115,6 +116,7 @@ function MatchPlayerScoreRow({
     <ScoreStepperRow
       label={player.full_name}
       subtitle={player.pool ?? undefined}
+      badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} /> : undefined}
       score={currentScore}
       bonusPointEnabled={bonusPointEnabled}
       onChange={(puttsMade) => onScoreChange(player.event_player_id, frameNumber, puttsMade)}

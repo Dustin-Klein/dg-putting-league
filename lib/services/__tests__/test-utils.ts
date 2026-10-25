@@ -209,6 +209,7 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     team_assignment: 'random_pairing',
     parent_event_id: null,
     link_type: null,
+    handicap_enabled: false,
     created_at: '2024-01-01T00:00:00Z',
     putt_distance_ft: 15,
     ...overrides,
@@ -237,6 +238,7 @@ export interface MockEvent {
   team_assignment: 'random_pairing' | 'random_flat' | 'manual';
   parent_event_id: string | null;
   link_type: 'second_chance' | 'side' | 'makeup' | null;
+  handicap_enabled: boolean;
   created_at: string;
   putt_distance_ft: number;
   participant_count?: number;

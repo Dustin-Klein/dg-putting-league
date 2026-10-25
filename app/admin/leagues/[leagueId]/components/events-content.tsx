@@ -2,6 +2,8 @@
 
 import { EventsList } from './events-list';
 import { AdminManagement } from './admin-management';
+import { HandicapManagement } from './handicap-management';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import type { EventData } from '@/lib/repositories/event-repository.db';
@@ -35,13 +37,26 @@ export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: Ev
           )}
         </div>
 
-        <EventsList
-          events={events}
-          leagueId={leagueId}
-          isAdmin={isAdmin}
-        />
+        <Tabs defaultValue="events">
+          <TabsList className="mb-4">
+            <TabsTrigger value="events">Events</TabsTrigger>
+            {isAdmin && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
+          </TabsList>
+          <TabsContent value="events">
+            <EventsList
+              events={events}
+              leagueId={leagueId}
+              isAdmin={isAdmin}
+            />
 
-        {isOwner && <AdminManagement leagueId={leagueId} />}
+            {isOwner && <AdminManagement leagueId={leagueId} />}
+          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="handicaps">
+              <HandicapManagement leagueId={leagueId} />
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
     </div>
   );

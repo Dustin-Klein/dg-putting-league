@@ -8,21 +8,27 @@ import { ChevronLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { EventHandicapPanel } from './components/event-handicap-panel';
 
 function EventContent({
   event,
   isAdmin,
-  onPlayersUpdate
+  onPlayersUpdate,
+  onRefresh,
 }: {
   event: EventWithDetails;
   isAdmin: boolean;
   onPlayersUpdate: (players: EventWithDetails['players']) => void;
+  onRefresh: () => void;
 }) {
   const hasEntryFee = event.entry_fee_per_player != null;
+  const showHandicaps = isAdmin && event.handicap_enabled;
+  const handicapPanel = showHandicaps ? <EventHandicapPanel event={event} onPlayersChanged={onRefresh} /> : null;
 
   if (event.status === 'completed') {
     return (
       <div className="space-y-8">
+        {handicapPanel}
         <ResultsDisplay eventId={event.id} />
         {hasEntryFee && (
           <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
@@ -38,6 +44,7 @@ function EventContent({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
+            {showHandicaps && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -48,11 +55,18 @@ function EventContent({
         <TabsContent value="teams">
           <TeamDisplay event={event} isAdmin={isAdmin} />
         </TabsContent>
+
+        {showHandicaps && <TabsContent value="handicaps">{handicapPanel}</TabsContent>}
       </Tabs>
     );
   }
 
-  return <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={onPlayersUpdate} />;
+  return (
+    <div className="space-y-8">
+      {handicapPanel}
+      <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={onPlayersUpdate} />
+    </div>
+  );
 }
 
 export default function EventPage({
@@ -111,6 +125,16 @@ export default function EventPage({
     setEvent(prev => prev ? { ...prev, players } : null);
   }, []);
 
+  // Quiet re-fetch (no loading skeleton), e.g. after a handicap edit on one entry.
+  const handleRefresh = useCallback(async () => {
+    if (!eventIdRef.current) return;
+    try {
+      setEvent(await fetchEvent(eventIdRef.current));
+    } catch (error) {
+      console.error('Failed to refresh event:', error);
+    }
+  }, [fetchEvent]);
+
   if (loading || !event) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -168,7 +192,7 @@ export default function EventPage({
       </Link>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       <div className="mt-8">
-        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
+        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} onRefresh={handleRefresh} />
       </div>
     </div>
   );

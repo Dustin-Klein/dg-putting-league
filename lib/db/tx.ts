@@ -15,7 +15,8 @@ export type Executor = Db | Tx;
  *
  * Lock order (prevents deadlocks): event advisory lock (several events: ascending
  * event id, see lockEvents) → event row (FOR SHARE / FOR UPDATE) → match rows
- * (ascending id) → lane rows (ascending id).
+ * (ascending id) → lane rows (ascending id) → league handicap lock (lockLeagueHandicap,
+ * always last: never take an event, match or lane lock after it).
  */
 export function withTransaction<T>(
   ex: Executor,
@@ -45,6 +46,17 @@ export async function lockEvents(tx: Tx, eventIds: readonly string[]): Promise<v
   for (const eventId of [...new Set(eventIds)].sort()) {
     await lockEvent(tx, eventId);
   }
+}
+
+/**
+ * Serialize every writer of a league's handicap state (zone periods, evaluations,
+ * handicap settings and zone ladder) until the transaction ends. A key that can't be
+ * deleted: `FOR UPDATE` on the open period doesn't work, because the row it targets
+ * is the one being replaced (a waiter re-checks `ended_at IS NULL`, finds it false and
+ * gets no row at all). Taken after any event lock the caller needs, never before one.
+ */
+export async function lockLeagueHandicap(tx: Tx, leagueId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'handicap:' + leagueId}, 0))`);
 }
 
 export type LockedMatch = typeof bracket_match.$inferSelect;

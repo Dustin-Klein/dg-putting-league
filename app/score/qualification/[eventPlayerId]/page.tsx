@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/components/ui/use-toast';
+import { ZoneBadge } from '@/components/zone-badge';
 
 interface PlayerInfo {
   event_player_id: string;
@@ -15,6 +16,9 @@ interface PlayerInfo {
   full_name: string;
   nickname: string | null;
   player_number: number | null;
+  /** Handicap zone; null when the event has no handicaps. */
+  zone?: number | null;
+  putt_distance_ft?: number;
   frames_completed: number;
   total_frames_required: number;
   total_points: number;
@@ -194,6 +198,7 @@ export default function QualificationScoringPage() {
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
                   )}
                 </CardTitle>
+                <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="lg" className="w-fit" />
                 <CardDescription>
                   {player.player_number ? `#${player.player_number}` : 'Qualification Round'}
                 </CardDescription>

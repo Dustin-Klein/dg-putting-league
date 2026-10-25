@@ -28,6 +28,11 @@ A web application for managing disc golf putting leagues, tracking scores, and r
   - Loser's bracket
   - Grand finals
 - **Final Results** - View complete standings after event completion
+- **Distance Handicaps** (opt-in per league) - Players putt from their zone's distance (default 21/27/33 ft):
+  - Zones are evaluated when an event is completed; strong players move up automatically
+  - Players below the demotion threshold are flagged for an organizer to review (automatic demotion is opt-in)
+  - Per-event zone distances, manual zone changes with notes, zone history and career stats by distance
+  - `npm run simulate:handicap -- --league <id>` replays a league's history to tune thresholds
 
 ## Tech Stack
 

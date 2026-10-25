@@ -18,6 +18,15 @@ jest.mock('@/lib/repositories/frame-repository.db', () => ({
   getUnlinkedMatchFrameIdsForEvent: jest.fn(async () => []),
   deleteEmptyUnlinkedMatchFrames: jest.fn(),
 }));
+jest.mock('@/lib/repositories/handicap-repository.db', () => ({
+  getLeagueHandicapSettings: jest.fn(async () => null),
+  getLeagueZones: jest.fn(async () => []),
+  getEventZoneDistances: jest.fn(async () => []),
+  replaceEventZoneDistances: jest.fn(),
+  hasEvaluationsForEvent: jest.fn(async () => false),
+}));
+jest.mock('@/lib/services/handicap/snapshot', () => ({ refreshEntrySnapshots: jest.fn() }));
+jest.mock('@/lib/services/handicap/evaluate', () => ({ evaluateEventHandicaps: jest.fn(async () => null) }));
 jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (pg, fn) => fn(pg)),
   lockEvent: jest.fn(),
@@ -120,7 +129,7 @@ describe('event service Drizzle port', () => {
       expect(eventDb.createEvent).toHaveBeenCalledWith(pg, expect.objectContaining({
         access_code: 'code12', entry_fee_per_player: null, admin_fees: null, admin_fee_per_player: null,
       }));
-      expect(eventDb.copyEventPlayers).toHaveBeenCalledWith(pg, 'source-event', 'new-event');
+      expect(eventDb.copyEventPlayers).toHaveBeenCalledWith(pg, 'source-event', 'new-event', 15);
     });
 
     it('rejects a source event from another league before inserting', async () => {

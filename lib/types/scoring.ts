@@ -48,6 +48,10 @@ export interface PublicPlayerInfo {
   slot: number;
   /** Set only when the event drew teams from Pool A/B. */
   pool: 'A' | 'B' | null;
+  /** Handicap zone this entry putts from; null when the event has no handicaps. */
+  zone: number | null;
+  /** Distance this entry putts from. */
+  putt_distance_ft: number;
   full_name: string;
   nickname: string | null;
 }
@@ -125,6 +129,10 @@ export interface PlayerInTeam {
   slot: number;
   /** Set only when the event drew teams from Pool A/B. */
   pool: 'A' | 'B' | null;
+  /** Handicap zone this entry putts from; null when the event has no handicaps. */
+  zone: number | null;
+  /** Distance this entry putts from. */
+  putt_distance_ft: number;
   player: {
     id: string;
     full_name: string;
