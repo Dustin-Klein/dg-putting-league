@@ -1,0 +1,131 @@
+name: Visual
+
+# Screenshot tests of the main public and scoring pages (e2e/visual), against a
+# seeded local Supabase stack and a production build. On failure the HTML report
+# with expected/actual/diff images is uploaded as the `visual-report` artifact.
+#
+# Baselines are rendered here, never locally (fonts and anti-aliasing differ by
+# machine). After an intended UI change, run this workflow on the PR branch with
+# "Update baselines" ticked: it commits the new screenshots to that branch.
+# Commits pushed with GITHUB_TOKEN don't trigger new runs, so the PR's new head
+# has no checks until the next push; close and reopen the PR to run them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: Update baselines and commit them to this branch
+        type: boolean
+        default: false
+
+env:
+  SUPABASE_CLI_VERSION: 2.120.0
+
+jobs:
+  visual:
+    name: Visual Regression
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: postgresql://app_server:app_server@127.0.0.1:54322/postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # Same pin as the database job in ci.yml.
+      - name: Pin Postgres image to production version
+        run: mkdir -p supabase/.temp && echo 17.6.1.063 > supabase/.temp/postgres-version
+
+      - name: Start local Supabase
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit
+
+      - name: Export local Supabase env
+        run: |
+          eval "$(supabase status -o env)"
+          echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}" >> "$GITHUB_ENV"
+
+      - name: Seed visual test data
+        run: npm run test:visual:seed
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run visual tests
+        run: npm run test:visual -- ${{ inputs.update_baselines && '--update-snapshots' || '' }}
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: playwright-report/
+          retention-days: 14
+
+      # A test without a baseline writes one from this run and fails. These are
+      # the files to commit when the baseline is new.
+      - name: Upload new baselines
+        if: failure() && !inputs.update_baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-new-baselines
+          path: e2e/visual/__screenshots__/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload updated baselines
+        if: inputs.update_baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/visual/__screenshots__/
+          retention-days: 7
+
+  # Separate job so only the commit step holds a write token.
+  commit-baselines:
+    name: Commit visual baselines
+    needs: visual
+    if: inputs.update_baselines
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/visual/__screenshots__/
+
+      - name: Commit updated baselines
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add e2e/visual/__screenshots__
+          if git diff --cached --quiet; then
+            echo "Baselines unchanged."
+          else
+            git commit -m "Update visual baselines"
+            git push
+          fi

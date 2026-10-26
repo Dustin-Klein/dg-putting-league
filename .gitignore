@@ -56,7 +56,8 @@ supabase/.temp/rest-version
 supabase/.temp/storage-migration
 supabase/.temp/storage-version
 
-.claude/
+**/.claude/*
+!/.claude/skills/
 
 # Claude Code temp files
 nul
@@ -70,3 +71,8 @@ supabase/snippets/
 # should no longer be generated, but keep it ignored in case it is.
 CLAUDE.md
 .codex/drizzle/
+
+# playwright visual tests
+/e2e/visual/.seed.json
+/test-results/
+/playwright-report/
