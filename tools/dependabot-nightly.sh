@@ -8,7 +8,9 @@
 #
 # Needs a fine-grained GitHub token for this repo only, with Pull requests:
 # read/write, Contents: read/write (merging), Actions: read/write (logs,
-# artifacts, re-runs) and Checks/Commit statuses: read. On the devbox it is the
+# artifacts, re-runs), Workflows: read/write (merging GitHub Actions bumps) and
+# Commit statuses: read. Fine-grained tokens have no Checks permission; Actions
+# covers reading the checks. On the devbox it is the
 # `dependabot-gh-token` key of the devbox-credentials Secret.
 set -euo pipefail
 
