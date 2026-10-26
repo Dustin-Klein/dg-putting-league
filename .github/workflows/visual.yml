@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-report
           path: playwright-report/
@@ -87,7 +87,7 @@ jobs:
       # the files to commit when the baseline is new.
       - name: Upload new baselines
         if: failure() && !inputs.update_baselines
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-new-baselines
           path: e2e/visual/__screenshots__/
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload updated baselines
         if: inputs.update_baselines
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-baselines
           path: e2e/visual/__screenshots__/
@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: visual-baselines
           path: e2e/visual/__screenshots__/
