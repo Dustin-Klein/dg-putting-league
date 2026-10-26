@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Nightly unattended run of the dependabot-merge skill (.claude/skills/dependabot-merge).
 #
-# Scheduled at 3am Central (after league nights; every merge deploys to
-# production) by the devbox crontab: homelab kubernetes/apps/devbox/crontab.yaml,
-# setup in homelab docs/devbox.md#scheduled-jobs. Runs from its own clone,
+# Scheduled at 3am Central Monday to Wednesday, after Dependabot's Monday 1am
+# run (after league nights; every merge deploys to production), by the devbox
+# crontab: homelab kubernetes/apps/devbox/crontab.yaml, setup in homelab
+# docs/devbox.md#scheduled-jobs. Runs from its own clone,
 # ~/code/dg-putting-league-nightly, which it detaches at origin/main every run.
 #
 # Needs a fine-grained GitHub token for this repo only, with Pull requests:

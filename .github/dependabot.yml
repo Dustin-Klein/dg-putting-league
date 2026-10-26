@@ -2,8 +2,14 @@ version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    # Two hours ahead of the devbox job that merges these PRs (03:00 Central,
+    # Monday to Wednesday: homelab kubernetes/apps/devbox/crontab.yaml), so CI
+    # has finished by then. Unpinned, the weekly run drifts across the day.
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "01:00"
+      timezone: "America/Chicago"
     open-pull-requests-limit: 10
 
     # Wait before proposing a fresh release: a compromised or broken publish is
@@ -62,6 +68,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "01:00"
+      timezone: "America/Chicago"
 
     cooldown:
       default-days: 3
