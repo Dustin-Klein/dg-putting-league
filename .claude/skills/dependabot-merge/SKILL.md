@@ -102,8 +102,11 @@ rebased PR's checks before merging it:
 gh pr checks <N> --watch --fail-fast
 ```
 
-If waiting on rebases would push the run past ~2 hours, stop and leave the rest
-for tomorrow.
+Waiting is where a run spends its budget. Run each wait as one Bash call with
+the maximum timeout (600000 ms) rather than polling in short calls, and wait
+for at most three rebases per run. The run is killed at 90 minutes; if more PRs
+are still waiting, stop, report them as "waiting on rebase", and leave them for
+tomorrow.
 
 ## Step 6 — watch production
 
