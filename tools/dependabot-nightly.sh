@@ -36,14 +36,25 @@ git checkout --quiet --detach origin/main
 # No Edit/Write and no command runners (timeout, xargs, sed -i, find -exec): the
 # run only reads code and talks to GitHub through gh. Nothing here can stop
 # `gh pr merge --admin`; keep the main ruleset's bypass list empty.
+#
+# Bounds: 90 minutes wall clock (SIGKILL 5 minutes after SIGTERM if it hangs),
+# and an estimated-cost cap per run, checked between turns, so a run can
+# overshoot by one turn and then ends with subtype error_max_budget_usd. Sonnet
+# at medium effort is enough for reading changelogs and CI logs. The JSON result
+# carries the run's turns and estimated cost, so each night's usage is in the log.
 mkdir -p /tmp/dependabot-nightly
-timeout 2h claude -p "/dependabot-merge" \
+timeout -k 5m 90m claude -p "/dependabot-merge" \
+  --model sonnet --effort medium \
+  --max-budget-usd 5 \
+  --output-format json \
   --permission-mode dontAsk \
   --allowedTools \
     "Bash(gh pr:*)" "Bash(gh run:*)" \
     "Bash(git fetch:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git diff:*)" \
     "Bash(npm view:*)" "Bash(grep:*)" "Bash(head:*)" \
     "Read" "Grep" "Glob" "WebFetch" \
-  --disallowedTools "Bash(gh pr close:*)"
+  --disallowedTools "Bash(gh pr close:*)" \
+  | jq -r '.result, "--- turns: \(.num_turns)  est. cost: $\(.total_cost_usd)  subtype: \(.subtype)"' \
+  || echo "=== $(date -Is) run failed or hit the time limit (exit $?); no report"
 
 echo "=== $(date -Is) done"
