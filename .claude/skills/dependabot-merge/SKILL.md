@@ -23,6 +23,11 @@ cooldowns. Read it first.
 - **Never** close a PR, change repo settings, rulesets or `dependabot.yml`.
   Suggest config changes in the final report instead.
 - **Merge one PR at a time.** Confirm `MERGED`, then take the next.
+- **One command per Bash call.** The nightly run allows only the commands
+  listed in `tools/dependabot-nightly.sh`, and every part of a compound command
+  must be on that list, so a `for` loop, `echo`, `;` or `&&` gets the whole call
+  denied. Pipes between allowed commands (`gh run view … | grep …`) work. If a
+  call is denied, retry it as separate allowed calls before giving up.
 - PR comments: short, factual, no AI attribution footer. Start every comment
   with `**Nightly dependabot triage:**` so they're easy to find, and don't post
   a new one if your last comment on that PR already says the same thing.
