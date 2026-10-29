@@ -686,7 +686,7 @@ export function PlayerManagement({
                         }}
                         disabled={!isAdmin || event.status !== 'pre-bracket' || updatingPayment.has(eventPlayer.id)}
                       >
-                        <SelectTrigger className={`w-[130px] h-8 ${eventPlayer.payment_type ? 'ring-2 ring-green-600/60' : ''} ${updatingPayment.has(eventPlayer.id) ? 'opacity-50' : ''}`}>
+                        <SelectTrigger className={`w-[130px] h-8 ${eventPlayer.payment_type ? 'ring-2 ring-success/60' : ''} ${updatingPayment.has(eventPlayer.id) ? 'opacity-50' : ''}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -711,7 +711,7 @@ export function PlayerManagement({
                           return (
                             <div className="flex items-center gap-2">
                               {status.is_complete ? (
-                                <Trophy className="h-4 w-4 text-yellow-500" />
+                                <Trophy className="h-4 w-4 text-gold" />
                               ) : null}
                               <div className="flex flex-col gap-1 min-w-[80px]">
                                 <div className="flex items-center justify-between text-xs">

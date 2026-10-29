@@ -279,14 +279,14 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
       </div>
 
       {isEditBracketMode && (
-        <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-400 rounded-lg px-4 py-2">
+        <div className="flex items-center justify-between bg-warning/15 border border-warning/25 text-warning rounded-lg px-4 py-2">
           <span className="text-sm font-medium">
             Edit Mode - Click matches to advance/remove teams, edit non-winner score corrections, or reset when winner/progression must change
           </span>
           <Button
               variant="ghost"
               size="sm"
-              className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
+              className="text-warning hover:text-warning/80"
               onClick={() => setIsEditBracketMode(false)}
             >
               <X className="mr-1 h-4 w-4" />

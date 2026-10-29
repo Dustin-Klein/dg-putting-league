@@ -69,16 +69,16 @@ export function FrameWizard({
         />
 
         {isOvertime && (
-          <div className="mb-2 p-2 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-center">
-            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+          <div className="mb-2 p-2 bg-warning/10 border border-warning/30 rounded-lg text-center">
+            <p className="text-sm font-medium text-warning">
               Overtime – Continue until there&apos;s a winner
             </p>
           </div>
         )}
 
         {showOvertimePrompt && (
-          <div className="mb-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
-            <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+          <div className="mb-2 p-2 bg-warning/10 border border-warning/30 rounded-lg text-center">
+            <p className="text-sm font-medium text-warning">
               Tied! Continue to overtime
             </p>
           </div>

@@ -25,7 +25,7 @@ export default async function LeaguePage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">My Leagues</h1>
         </div>
-        <div className="text-red-500">
+        <div className="text-destructive">
           Error loading leagues. Please try again later.
         </div>
       </div>

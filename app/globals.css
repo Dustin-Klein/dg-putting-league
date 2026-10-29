@@ -33,6 +33,32 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  --color-control: hsl(var(--control));
+  --color-board: hsl(var(--board));
+
+  /*
+    Status, team and zone colors. Their values are full colors (Tailwind palette
+    shades), not HSL triplets. Tints are opacity modifiers (bg-success/10), not
+    separate tokens.
+  */
+  --color-team-1: var(--team-1);
+  --color-team-1-ink: var(--team-1-ink);
+  --color-team-2: var(--team-2);
+  --color-team-2-ink: var(--team-2-ink);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-on-deck: var(--on-deck);
+  --color-gold: var(--gold);
+  --color-zone-1: var(--zone-1);
+  --color-zone-1-foreground: var(--zone-1-foreground);
+  --color-zone-2: var(--zone-2);
+  --color-zone-2-foreground: var(--zone-2-foreground);
+  --color-zone-3: var(--zone-3);
+  --color-zone-3-foreground: var(--zone-3-foreground);
+  --color-zone-4: var(--zone-4);
+  --color-zone-4-foreground: var(--zone-4-foreground);
+
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -83,6 +109,25 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --control: 0 0% 100%;
+    --board: 0 0% 9%;
+    --team-1: var(--color-blue-400);
+    --team-1-ink: var(--color-blue-600);
+    --team-2: var(--color-red-400);
+    --team-2-ink: var(--color-red-600);
+    --success: var(--color-green-600);
+    --warning: var(--color-amber-600);
+    --info: var(--color-blue-500);
+    --on-deck: var(--color-violet-500);
+    --gold: var(--color-yellow-500);
+    --zone-1: var(--color-emerald-600);
+    --zone-1-foreground: var(--color-white);
+    --zone-2: var(--color-amber-500);
+    --zone-2-foreground: var(--color-black);
+    --zone-3: var(--color-rose-600);
+    --zone-3-foreground: var(--color-white);
+    --zone-4: var(--color-violet-600);
+    --zone-4-foreground: var(--color-white);
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -109,6 +154,25 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --control: 0 0% 3.9%;
+    --board: 0 0% 3.9%;
+    --team-1: var(--color-blue-500);
+    --team-1-ink: var(--color-blue-300);
+    --team-2: var(--color-red-500);
+    --team-2-ink: var(--color-red-300);
+    --success: var(--color-green-400);
+    --warning: var(--color-amber-400);
+    --info: var(--color-blue-400);
+    --on-deck: var(--color-violet-500);
+    --gold: var(--color-yellow-500);
+    --zone-1: var(--color-emerald-600);
+    --zone-1-foreground: var(--color-white);
+    --zone-2: var(--color-amber-500);
+    --zone-2-foreground: var(--color-black);
+    --zone-3: var(--color-rose-600);
+    --zone-3-foreground: var(--color-white);
+    --zone-4: var(--color-violet-600);
+    --zone-4-foreground: var(--color-white);
   }
 }
 

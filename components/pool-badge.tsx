@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/utils';
 export function PoolBadge({ pool, className }: { pool: 'A' | 'B' | null | undefined; className?: string }) {
   if (!pool) return null;
   return (
-    <Badge className={cn(pool === 'B' && 'bg-blue-500 hover:bg-blue-600', className)}>
+    <Badge className={cn(pool === 'B' && 'bg-info hover:bg-info/90', className)}>
       {pool}
     </Badge>
   );

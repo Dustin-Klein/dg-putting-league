@@ -38,17 +38,17 @@ export function FrameWizardHeader({
         )}
         <div className="flex items-center gap-2 font-mono">
           <div className="flex items-center gap-1">
-            <span className="text-xs font-sans font-semibold text-blue-500 dark:text-blue-400" aria-hidden="true">
+            <span className="text-xs font-sans font-semibold text-team-1-ink" aria-hidden="true">
               T1
             </span>
             <span className="sr-only">Team 1:</span>
-            <span className="text-2xl font-bold text-blue-600 dark:text-blue-300">{teamOneTotal}</span>
+            <span className="text-2xl font-bold text-team-1-ink">{teamOneTotal}</span>
           </div>
           <span className="text-muted-foreground text-lg">-</span>
           <div className="flex items-center gap-1">
             <span className="sr-only">Team 2:</span>
-            <span className="text-2xl font-bold text-red-600 dark:text-red-300">{teamTwoTotal}</span>
-            <span className="text-xs font-sans font-semibold text-red-500 dark:text-red-400" aria-hidden="true">
+            <span className="text-2xl font-bold text-team-2-ink">{teamTwoTotal}</span>
+            <span className="text-xs font-sans font-semibold text-team-2-ink" aria-hidden="true">
               T2
             </span>
           </div>

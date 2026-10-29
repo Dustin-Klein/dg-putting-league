@@ -36,12 +36,12 @@ export function TeamScoringSection({
 }: TeamScoringSectionProps) {
   const bgColor =
     teamNumber === 1
-      ? 'bg-blue-50/50 dark:bg-blue-950/20 border-l-4 border-blue-400 dark:border-blue-500'
-      : 'bg-red-50/50 dark:bg-red-950/20 border-l-4 border-red-400 dark:border-red-500';
+      ? 'bg-team-1/5 border-l-4 border-team-1'
+      : 'bg-team-2/5 border-l-4 border-team-2';
   const headerBorder =
     teamNumber === 1
-      ? 'border-b border-blue-200 dark:border-blue-800'
-      : 'border-b border-red-200 dark:border-red-800';
+      ? 'border-b border-team-1/40'
+      : 'border-b border-team-2/40';
 
   const frame = match.frames.find((item) => item.frame_number === frameNumber);
   let frameScore = 0;
@@ -63,7 +63,7 @@ export function TeamScoringSection({
         <span
           className={cn(
             'text-xs font-semibold',
-            teamNumber === 1 ? 'text-blue-500 dark:text-blue-400' : 'text-red-500 dark:text-red-400'
+            teamNumber === 1 ? 'text-team-1-ink' : 'text-team-2-ink'
           )}
         >
           Team {teamNumber}

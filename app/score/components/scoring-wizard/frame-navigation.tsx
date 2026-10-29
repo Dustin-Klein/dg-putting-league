@@ -29,7 +29,7 @@ export function FrameNavigation({
             frameNumber === currentFrame
               ? 'bg-primary text-primary-foreground scale-110'
               : frameNumber > standardFrames
-                ? 'bg-yellow-200 dark:bg-yellow-900'
+                ? 'bg-warning/30'
                 : 'bg-muted hover:bg-muted/80'
           )}
           aria-label={`Go to frame ${frameNumber}`}

@@ -231,7 +231,7 @@ export default function QualificationPage() {
                   key={player.event_player_id}
                   className={`cursor-pointer transition-colors ${
                     player.is_complete
-                      ? 'opacity-60 cursor-not-allowed border-green-200'
+                      ? 'opacity-60 cursor-not-allowed border-success/30'
                       : selectedPlayers.has(player.event_player_id)
                       ? 'border-primary ring-1 ring-primary'
                       : 'hover:border-primary/50'
@@ -241,7 +241,7 @@ export default function QualificationPage() {
                   <CardContent className="py-3">
                     <div className="flex items-center gap-3">
                       {player.is_complete ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                        <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
                       ) : (
                         <Checkbox
                           checked={selectedPlayers.has(player.event_player_id)}
@@ -261,7 +261,7 @@ export default function QualificationPage() {
                       <div className="text-right shrink-0">
                         <Badge
                           variant={player.is_complete ? 'default' : 'secondary'}
-                          className={player.is_complete ? 'bg-green-500' : ''}
+                          className={player.is_complete ? 'bg-success' : ''}
                         >
                           {player.frames_completed}/{player.total_frames_required}
                         </Badge>
