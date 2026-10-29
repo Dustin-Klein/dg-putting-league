@@ -123,7 +123,7 @@ export function MatchResultsDialog({
                     </div>
                     <div className={cn(
                       "text-4xl font-mono font-bold",
-                      team1Score > team2Score && "text-green-600"
+                      team1Score > team2Score && "text-success"
                     )}>
                       {team1Score}
                     </div>
@@ -135,7 +135,7 @@ export function MatchResultsDialog({
                     </div>
                     <div className={cn(
                       "text-4xl font-mono font-bold",
-                      team2Score > team1Score && "text-green-600"
+                      team2Score > team1Score && "text-success"
                     )}>
                       {team2Score}
                     </div>
@@ -163,7 +163,7 @@ export function MatchResultsDialog({
                               key={num}
                               className={cn(
                                 "text-center p-3 font-medium min-w-[60px]",
-                                num > standardFrames && "bg-yellow-50 dark:bg-yellow-950/20"
+                                num > standardFrames && "bg-warning/10"
                               )}
                             >
                               {num > standardFrames ? `OT${num - standardFrames}` : num}
@@ -177,7 +177,7 @@ export function MatchResultsDialog({
                       <tbody>
                         {matchDetails.team_one && (
                           <>
-                            <tr className="bg-blue-50/50 dark:bg-blue-950/20">
+                            <tr className="bg-team-1/5">
                               <td
                                 colSpan={frameNumbers.length + 2}
                                 className="p-2 text-xs font-semibold text-muted-foreground"
@@ -202,7 +202,7 @@ export function MatchResultsDialog({
                                       key={frameNum}
                                       className={cn(
                                         "text-center p-3 font-mono",
-                                        frameNum > standardFrames && "bg-yellow-50/50 dark:bg-yellow-950/10"
+                                        frameNum > standardFrames && "bg-warning/5"
                                       )}
                                     >
                                       {score ?? '—'}
@@ -219,7 +219,7 @@ export function MatchResultsDialog({
 
                         {matchDetails.team_two && (
                           <>
-                            <tr className="bg-orange-50/50 dark:bg-orange-950/20">
+                            <tr className="bg-team-2/5">
                               <td
                                 colSpan={frameNumbers.length + 2}
                                 className="p-2 text-xs font-semibold text-muted-foreground"
@@ -244,7 +244,7 @@ export function MatchResultsDialog({
                                       key={frameNum}
                                       className={cn(
                                         "text-center p-3 font-mono",
-                                        frameNum > standardFrames && "bg-yellow-50/50 dark:bg-yellow-950/10"
+                                        frameNum > standardFrames && "bg-warning/5"
                                       )}
                                     >
                                       {score ?? '—'}

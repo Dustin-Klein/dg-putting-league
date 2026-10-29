@@ -123,7 +123,7 @@ export function EventHandicapPanel({
                 {zone.league_distance_ft !== null && ` · league default ${formatDistanceFt(zone.league_distance_ft)} ft`}
               </span>
               {warnings.has(zone.zone) && (
-                <span className="flex items-center gap-1 text-xs text-amber-600">
+                <span className="flex items-center gap-1 text-xs text-warning">
                   <AlertTriangle className="h-3 w-3" />
                   More than {ZONE_DISTANCE_WARN_FT} ft from the league default
                 </span>

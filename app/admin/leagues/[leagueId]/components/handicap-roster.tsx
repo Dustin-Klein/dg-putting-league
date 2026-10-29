@@ -84,7 +84,7 @@ export function ZoneReviewQueue({
   };
 
   return (
-    <Card className="border-amber-500/60">
+    <Card className="border-warning/60">
       <CardHeader>
         <CardTitle>
           {suggestions.length} {suggestions.length === 1 ? 'player' : 'players'} below {demoteBelowPct}% at their zone
@@ -229,7 +229,7 @@ export function HandicapRoster({
                       {entry.player_name}
                     </Link>
                     {entry.has_open_suggestion && (
-                      <span className="ml-2 text-xs text-amber-600">flagged</span>
+                      <span className="ml-2 text-xs text-warning">flagged</span>
                     )}
                   </TableCell>
                   <TableCell>

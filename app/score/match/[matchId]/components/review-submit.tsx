@@ -58,19 +58,19 @@ export function ReviewSubmit({
             <div className="flex items-center justify-around text-center py-6 bg-muted/30 rounded-lg mb-4">
               <div className={cn(
                 'px-4 py-2 rounded-lg',
-                team1Wins && 'bg-green-100 dark:bg-green-900/30'
+                team1Wins && 'bg-success/10'
               )}>
                 <div className="text-sm text-muted-foreground mb-1">
                   #{match.team_one.seed} {match.team_one.pool_combo}
                 </div>
                 <div className={cn(
                   "text-5xl font-mono font-bold",
-                  team1Wins && "text-green-600"
+                  team1Wins && "text-success"
                 )}>
                   {match.team_one_score}
                 </div>
                 {team1Wins && (
-                  <div className="flex items-center justify-center mt-1 text-green-600">
+                  <div className="flex items-center justify-center mt-1 text-success">
                     <Trophy className="h-4 w-4 mr-1" />
                     <span className="text-xs font-medium">Winner</span>
                   </div>
@@ -81,19 +81,19 @@ export function ReviewSubmit({
 
               <div className={cn(
                 'px-4 py-2 rounded-lg',
-                team2Wins && 'bg-green-100 dark:bg-green-900/30'
+                team2Wins && 'bg-success/10'
               )}>
                 <div className="text-sm text-muted-foreground mb-1">
                   #{match.team_two.seed} {match.team_two.pool_combo}
                 </div>
                 <div className={cn(
                   "text-5xl font-mono font-bold",
-                  team2Wins && "text-green-600"
+                  team2Wins && "text-success"
                 )}>
                   {match.team_two_score}
                 </div>
                 {team2Wins && (
-                  <div className="flex items-center justify-center mt-1 text-green-600">
+                  <div className="flex items-center justify-center mt-1 text-success">
                     <Trophy className="h-4 w-4 mr-1" />
                     <span className="text-xs font-medium">Winner</span>
                   </div>
@@ -103,11 +103,11 @@ export function ReviewSubmit({
 
             {/* Tied Warning */}
             {isTied && (
-              <div className="mb-4 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-center">
-                <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+              <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-center">
+                <p className="text-sm font-medium text-warning">
                   Scores are tied
                 </p>
-                <p className="text-xs text-orange-700 dark:text-orange-300">
+                <p className="text-xs text-warning">
                   Go back and complete overtime frames until there&apos;s a winner
                 </p>
               </div>
@@ -131,7 +131,7 @@ export function ReviewSubmit({
                         key={num}
                         className={cn(
                           "text-center p-2 font-medium min-w-[40px]",
-                          num > standardFrames && "bg-yellow-50 dark:bg-yellow-950/20"
+                          num > standardFrames && "bg-warning/10"
                         )}
                       >
                         <button
@@ -151,7 +151,7 @@ export function ReviewSubmit({
                 </thead>
                 <tbody>
                   {/* Team 1 */}
-                  <tr className="bg-blue-50/50 dark:bg-blue-950/20">
+                  <tr className="bg-team-1/5">
                     <td
                       colSpan={frameNumbers.length + 2}
                       className="p-1.5 text-xs font-semibold text-muted-foreground"
@@ -170,7 +170,7 @@ export function ReviewSubmit({
                   ))}
 
                   {/* Team 2 */}
-                  <tr className="bg-orange-50/50 dark:bg-orange-950/20">
+                  <tr className="bg-team-2/5">
                     <td
                       colSpan={frameNumbers.length + 2}
                       className="p-1.5 text-xs font-semibold text-muted-foreground"
@@ -264,8 +264,8 @@ function PlayerScoreRow({ player, match, frameNumbers, standardFrames }: PlayerS
             key={frameNum}
             className={cn(
               "text-center p-2 font-mono",
-              frameNum > standardFrames && "bg-yellow-50/50 dark:bg-yellow-950/10",
-              putts === 3 && "text-green-600 font-bold"
+              frameNum > standardFrames && "bg-warning/5",
+              putts === 3 && "text-success font-bold"
             )}
           >
             {putts ?? '-'}

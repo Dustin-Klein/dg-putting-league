@@ -195,7 +195,7 @@ export default function QualificationScoringPage() {
                 <CardTitle className="flex items-center gap-2">
                   {player.full_name}
                   {player.is_complete && (
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    <CheckCircle2 className="h-5 w-5 text-success" />
                   )}
                 </CardTitle>
                 <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="lg" className="w-fit" />
@@ -273,13 +273,13 @@ export default function QualificationScoringPage() {
 
         {/* Completed Message */}
         {player.is_complete && (
-          <Card className="mb-6 border-green-200 bg-green-50 dark:bg-green-950/20">
+          <Card className="mb-6 border-success/30 bg-success/5">
             <CardContent className="pt-6 text-center">
-              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
-              <h3 className="text-xl font-semibold text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
+              <h3 className="text-xl font-semibold text-success">
                 Qualification Complete!
               </h3>
-              <p className="text-green-600 dark:text-green-500 mt-1">
+              <p className="text-success mt-1">
                 Total Score: {player.total_points} points
               </p>
               <Button className="mt-4" onClick={handleBack}>

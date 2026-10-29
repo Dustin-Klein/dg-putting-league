@@ -33,7 +33,7 @@ export function ScoreInput({ value, onChange, disabled, isSaving, bonusPointEnab
           "bg-background focus:ring-2 focus:ring-primary focus:border-primary",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           value !== null && "font-bold",
-          isMax && "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+          isMax && "bg-success/10 text-success"
         )}
       >
         <option value="">-</option>

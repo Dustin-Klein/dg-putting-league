@@ -208,11 +208,11 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   const statusBadge = (status: string) => {
     switch (status) {
       case 'idle':
-        return <Badge className="bg-green-100 text-green-700 border-green-200">Idle</Badge>;
+        return <Badge className="bg-success/15 text-success border-success/30">Idle</Badge>;
       case 'occupied':
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Occupied</Badge>;
+        return <Badge className="bg-info/15 text-info border-info/30">Occupied</Badge>;
       case 'maintenance':
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">Maintenance</Badge>;
+        return <Badge className="bg-warning/15 text-warning border-warning/30">Maintenance</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -246,13 +246,13 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{lanes.length} total</span>
           <span>·</span>
-          <span className="text-green-600">{idleCount} idle</span>
+          <span className="text-success">{idleCount} idle</span>
           <span>·</span>
-          <span className="text-blue-600">{occupiedCount} occupied</span>
+          <span className="text-info">{occupiedCount} occupied</span>
           {maintenanceCount > 0 && (
             <>
               <span>·</span>
-              <span className="text-yellow-600">{maintenanceCount} maintenance</span>
+              <span className="text-warning">{maintenanceCount} maintenance</span>
             </>
           )}
         </div>
@@ -314,7 +314,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
               <span className="font-medium text-sm w-16 shrink-0">{lane.label}</span>
               {statusBadge(lane.status)}
               {lane.maintenance_pending && (
-                <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                <Badge className="bg-warning/15 text-warning border-warning/30">
                   Maintenance pending
                 </Badge>
               )}

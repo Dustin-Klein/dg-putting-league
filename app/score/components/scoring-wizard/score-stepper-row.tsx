@@ -75,7 +75,7 @@ export function ScoreStepperRow({
           className={cn(
             'w-12 h-12 flex items-center justify-center text-xl font-mono font-bold rounded-lg border-2',
             score === null && 'text-muted-foreground border-dashed',
-            score === MAX_PUTTS && 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300',
+            score === MAX_PUTTS && 'bg-success/10 text-success border-success/40',
             score !== null && score < MAX_PUTTS && 'border-primary'
           )}
         >

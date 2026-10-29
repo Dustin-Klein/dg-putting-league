@@ -6,14 +6,14 @@ import { cn } from '@/lib/utils/utils';
  * only signal).
  */
 const ZONE_COLORS: Record<number, string> = {
-  1: 'bg-emerald-600 text-white border-emerald-700',
-  2: 'bg-amber-500 text-black border-amber-600',
-  3: 'bg-rose-600 text-white border-rose-700',
-  4: 'bg-violet-600 text-white border-violet-700',
+  1: 'bg-zone-1 text-zone-1-foreground border-zone-1',
+  2: 'bg-zone-2 text-zone-2-foreground border-zone-2',
+  3: 'bg-zone-3 text-zone-3-foreground border-zone-3',
+  4: 'bg-zone-4 text-zone-4-foreground border-zone-4',
 };
 
 export function zoneColorClass(zone: number): string {
-  return ZONE_COLORS[zone] ?? 'bg-slate-700 text-white border-slate-800';
+  return ZONE_COLORS[zone] ?? 'bg-muted-foreground text-background border-muted-foreground';
 }
 
 export function formatDistanceFt(distance: number): string {

@@ -244,11 +244,11 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
   const getPlaceIcon = (place: number) => {
     switch (place) {
       case 1:
-        return <Trophy className="h-5 w-5 text-yellow-500" />;
+        return <Trophy className="h-5 w-5 text-gold" />;
       case 2:
-        return <Medal className="h-5 w-5 text-gray-400" />;
+        return <Medal className="h-5 w-5 text-muted-foreground" />;
       case 3:
-        return <Award className="h-5 w-5 text-amber-600" />;
+        return <Award className="h-5 w-5 text-warning" />;
       default:
         return null;
     }
@@ -330,7 +330,7 @@ export function ResultsDisplay({ eventId }: ResultsDisplayProps) {
                   {Object.keys(payoutsByPlace).length > 0 && (
                     <TableCell className="text-right pr-6">
                       {payoutsByPlace[placement.place] != null && (
-                        <span className="font-semibold text-green-600">
+                        <span className="font-semibold text-success">
                           ${payoutsByPlace[placement.place].toFixed(2)}
                         </span>
                       )}
