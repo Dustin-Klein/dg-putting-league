@@ -31,7 +31,7 @@ export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: Ev
         </Link>
 
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">{league.name}</h1>
+          <h1 className="font-score text-[44px] leading-none font-bold">{league.name}</h1>
           {league.city && (
             <p className="text-muted-foreground">{league.city}</p>
           )}

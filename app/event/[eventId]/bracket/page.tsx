@@ -275,7 +275,7 @@ export default function PublicBracketPage({
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-2xl font-bold">
+          <h1 className="font-score text-[44px] leading-none font-bold">
             {bracketData.bracket.stage.name}
           </h1>
         </div>

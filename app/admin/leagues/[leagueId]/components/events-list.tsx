@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { EventData } from '@/lib/repositories/event-repository.db';
 import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
+import { EventStatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
@@ -96,15 +97,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  event.status === 'completed' 
-                    ? 'bg-success/15 text-success' 
-                    : event.status === 'created' 
-                      ? 'bg-info/15 text-info' 
-                      : 'bg-warning/15 text-warning'
-                }`}>
-                  {event.status === 'pre-bracket' ? 'Pre-Bracket' : event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                </span>
+                <EventStatusBadge status={event.status} />
                 {event.qualification_round_enabled && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
                     Qualification Round

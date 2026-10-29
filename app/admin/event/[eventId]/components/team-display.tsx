@@ -70,7 +70,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
 
               return (
                 <div key={team.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded border bg-card text-card-foreground text-sm">
-                  <span className="font-bold text-primary w-7 shrink-0">#{team.seed}</span>
+                  <span className="font-score text-base font-bold text-primary tabular-nums w-7 shrink-0">#{team.seed}</span>
                   {members.map((member) => (
                     <div key={member.event_player_id} className="flex items-center gap-1 min-w-0 flex-1">
                       <PoolBadge
@@ -85,7 +85,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                       </span>
                     </div>
                   ))}
-                  <span className="font-mono font-bold text-xs shrink-0 w-10 text-right">
+                  <span className="font-score tabular-nums font-bold text-xs shrink-0 w-10 text-right">
                     {members.every(hasScore) ? (
                       combinedScore.toFixed(2)
                     ) : (

@@ -13,7 +13,7 @@ export default function Home() {
               <Target className="h-16 w-16 text-primary" />
             </div>
           </div>
-          <h1 className="text-4xl font-bold mb-4">DG Putting League</h1>
+          <h1 className="font-score text-[44px] leading-none font-bold mb-4">DG Putting League</h1>
           <p className="text-xl text-muted-foreground mb-8">
             Playing in a league today? Jump right in and start tracking your scores.
           </p>

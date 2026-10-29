@@ -473,7 +473,7 @@ export function MatchScoringDialog({
                         #{matchDetails.team_one?.seed} {matchDetails.team_one?.pool_combo}
                       </div>
                       <div className={cn(
-                        "text-4xl font-mono font-bold",
+                        "text-4xl font-score tabular-nums font-bold",
                         team1Score > team2Score && "text-success"
                       )}>
                         {team1Score}
@@ -485,7 +485,7 @@ export function MatchScoringDialog({
                         #{matchDetails.team_two?.seed} {matchDetails.team_two?.pool_combo}
                       </div>
                       <div className={cn(
-                        "text-4xl font-mono font-bold",
+                        "text-4xl font-score tabular-nums font-bold",
                         team2Score > team1Score && "text-success"
                       )}>
                         {team2Score}
@@ -653,7 +653,7 @@ export function MatchScoringDialog({
                   min="0"
                   value={finalScore1}
                   onChange={(e) => setFinalScore1(e.target.value)}
-                  className="text-2xl font-mono text-center h-14"
+                  className="text-2xl font-score tabular-nums text-center h-14"
                   disabled={isViewMode || isEditingLocked || isCompleting}
                 />
               </div>
@@ -676,7 +676,7 @@ export function MatchScoringDialog({
                   min="0"
                   value={finalScore2}
                   onChange={(e) => setFinalScore2(e.target.value)}
-                  className="text-2xl font-mono text-center h-14"
+                  className="text-2xl font-score tabular-nums text-center h-14"
                   disabled={isViewMode || isEditingLocked || isCompleting}
                 />
               </div>
@@ -789,7 +789,7 @@ function PlayerRow({
           </td>
         );
       })}
-      <td className="text-center p-3 bg-muted font-mono font-bold text-lg">
+      <td className="text-center p-3 bg-muted font-score tabular-nums font-bold text-lg">
         {getTotalPoints(player.event_player_id)}
       </td>
     </tr>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getPublicLeagueWithEvents } from '@/lib/services/league/league-service';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { EventStatusBadge } from '@/components/status-badge';
 import { ChevronLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -22,28 +22,6 @@ export default async function PublicLeaguePage({
     notFound();
   }
 
-  const getStatusBadgeStyle = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-success/15 text-success';
-      case 'bracket':
-        return 'bg-info/15 text-info';
-      case 'pre-bracket':
-        return 'bg-warning/15 text-warning';
-      default:
-        return 'bg-muted text-foreground';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'pre-bracket':
-        return 'Pre-Bracket';
-      default:
-        return status.charAt(0).toUpperCase() + status.slice(1);
-    }
-  };
-
   return (
     <div className="container mx-auto px-4 py-8">
       <Link
@@ -55,7 +33,7 @@ export default async function PublicLeaguePage({
       </Link>
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">{league.name}</h1>
+        <h1 className="font-score text-[44px] leading-none font-bold">{league.name}</h1>
       </div>
 
       <h2 className="text-xl font-semibold mb-4">Events</h2>
@@ -79,9 +57,7 @@ export default async function PublicLeaguePage({
                     <CardTitle className="text-lg">
                       {formatDisplayDate(event.event_date)}
                     </CardTitle>
-                    <Badge className={getStatusBadgeStyle(event.status)}>
-                      {getStatusLabel(event.status)}
-                    </Badge>
+                    <EventStatusBadge status={event.status} />
                   </div>
                 </CardHeader>
                 <CardContent>

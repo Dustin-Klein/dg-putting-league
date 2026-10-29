@@ -716,7 +716,7 @@ export function PlayerManagement({
                               <div className="flex flex-col gap-1 min-w-[80px]">
                                 <div className="flex items-center justify-between text-xs">
                                   <span>{status.frames_completed}/{status.total_frames_required}</span>
-                                  <span className="font-mono font-medium">{status.total_points}pts</span>
+                                  <span className="font-score tabular-nums font-medium">{status.total_points}pts</span>
                                 </div>
                                 <Progress
                                   value={status.total_frames_required > 0 ? (status.frames_completed / status.total_frames_required) * 100 : 0}

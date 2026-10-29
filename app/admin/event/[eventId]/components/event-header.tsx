@@ -15,7 +15,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <div>
-            <CardTitle className="text-2xl font-bold">
+            <CardTitle className="font-score text-[44px] leading-none font-bold">
               {formatDisplayDate(event.event_date)}
             </CardTitle>
             <p className="text-muted-foreground">

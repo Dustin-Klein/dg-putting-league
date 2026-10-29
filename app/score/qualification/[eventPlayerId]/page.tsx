@@ -204,7 +204,7 @@ export default function QualificationScoringPage() {
                 </CardDescription>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-bold font-mono">{player.total_points}</div>
+                <div className="text-3xl font-bold font-score tabular-nums">{player.total_points}</div>
                 <div className="text-sm text-muted-foreground">points</div>
               </div>
             </div>
@@ -240,7 +240,7 @@ export default function QualificationScoringPage() {
                     key={putts}
                     variant={selectedPutts === putts ? 'default' : 'outline'}
                     size="lg"
-                    className="h-16 text-2xl font-bold"
+                    className="h-16 font-score text-3xl font-bold"
                     onClick={() => setSelectedPutts(putts)}
                     disabled={isSaving}
                   >
@@ -308,7 +308,7 @@ export default function QualificationScoringPage() {
                         {frame.putts_made} putt{frame.putts_made !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <div className="font-mono font-semibold">
+                    <div className="font-score tabular-nums font-semibold">
                       {frame.points_earned} pt{frame.points_earned !== 1 ? 's' : ''}
                     </div>
                   </div>

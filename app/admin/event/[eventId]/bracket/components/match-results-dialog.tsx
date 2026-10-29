@@ -122,7 +122,7 @@ export function MatchResultsDialog({
                       #{matchDetails.team_one?.seed} {matchDetails.team_one?.pool_combo}
                     </div>
                     <div className={cn(
-                      "text-4xl font-mono font-bold",
+                      "text-4xl font-score tabular-nums font-bold",
                       team1Score > team2Score && "text-success"
                     )}>
                       {team1Score}
@@ -134,7 +134,7 @@ export function MatchResultsDialog({
                       #{matchDetails.team_two?.seed} {matchDetails.team_two?.pool_combo}
                     </div>
                     <div className={cn(
-                      "text-4xl font-mono font-bold",
+                      "text-4xl font-score tabular-nums font-bold",
                       team2Score > team1Score && "text-success"
                     )}>
                       {team2Score}
@@ -201,7 +201,7 @@ export function MatchResultsDialog({
                                     <td
                                       key={frameNum}
                                       className={cn(
-                                        "text-center p-3 font-mono",
+                                        "text-center p-3 font-score tabular-nums",
                                         frameNum > standardFrames && "bg-warning/5"
                                       )}
                                     >
@@ -209,7 +209,7 @@ export function MatchResultsDialog({
                                     </td>
                                   );
                                 })}
-                                <td className="text-center p-3 bg-muted font-mono font-bold text-lg">
+                                <td className="text-center p-3 bg-muted font-score tabular-nums font-bold text-lg">
                                   {getPlayerTotalPoints(player.event_player_id)}
                                 </td>
                               </tr>
@@ -243,7 +243,7 @@ export function MatchResultsDialog({
                                     <td
                                       key={frameNum}
                                       className={cn(
-                                        "text-center p-3 font-mono",
+                                        "text-center p-3 font-score tabular-nums",
                                         frameNum > standardFrames && "bg-warning/5"
                                       )}
                                     >
@@ -251,7 +251,7 @@ export function MatchResultsDialog({
                                     </td>
                                   );
                                 })}
-                                <td className="text-center p-3 bg-muted font-mono font-bold text-lg">
+                                <td className="text-center p-3 bg-muted font-score tabular-nums font-bold text-lg">
                                   {getPlayerTotalPoints(player.event_player_id)}
                                 </td>
                               </tr>

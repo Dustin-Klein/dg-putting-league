@@ -71,7 +71,7 @@ function StatCard({ title, value, subtitle }: StatCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="font-score text-4xl font-bold leading-none tabular-nums">{value}</div>
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         )}

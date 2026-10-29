@@ -69,7 +69,7 @@ export default function PlayersPage() {
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold">Players</h1>
+        <h1 className="font-score text-[44px] leading-none font-bold">Players</h1>
         <p className="text-muted-foreground">
           Search for players by name or player number
         </p>

@@ -95,12 +95,12 @@ export function QualificationReviewSubmit({
                         const frame = player.frames.find((item) => item.frame_number === frameNumber);
 
                         return (
-                          <td key={frameNumber} className="text-center p-2 font-mono">
+                          <td key={frameNumber} className="text-center p-2 font-score tabular-nums">
                             {frame?.putts_made ?? '-'}
                           </td>
                         );
                       })}
-                      <td className="text-center p-2 bg-muted font-mono font-bold">{player.total_points}</td>
+                      <td className="text-center p-2 bg-muted font-score tabular-nums font-bold">{player.total_points}</td>
                     </tr>
                   ))}
                 </tbody>

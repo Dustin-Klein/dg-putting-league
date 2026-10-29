@@ -29,7 +29,7 @@ export function ScoreInput({ value, onChange, disabled, isSaving, bonusPointEnab
         }}
         disabled={disabled}
         className={cn(
-          "w-12 h-10 text-center text-lg font-mono rounded border",
+          "w-12 h-10 text-center text-lg font-score tabular-nums rounded border",
           "bg-background focus:ring-2 focus:ring-primary focus:border-primary",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           value !== null && "font-bold",

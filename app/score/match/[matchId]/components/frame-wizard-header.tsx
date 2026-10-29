@@ -36,7 +36,7 @@ export function FrameWizardHeader({
             {match.lane_label}
           </Badge>
         )}
-        <div className="flex items-center gap-2 font-mono">
+        <div className="flex items-center gap-2 font-score tabular-nums">
           <div className="flex items-center gap-1">
             <span className="text-xs font-sans font-semibold text-team-1-ink" aria-hidden="true">
               T1
