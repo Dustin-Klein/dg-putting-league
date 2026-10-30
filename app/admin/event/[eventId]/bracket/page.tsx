@@ -6,10 +6,10 @@ import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketView, MatchScoringDialog, PresentationOverlay } from './components';
+import { BracketLegend, BracketToolbar, BracketView, MatchScoringDialog, PresentationOverlay } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 
@@ -303,85 +303,20 @@ export default function BracketPage({
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-          <h1 className="font-score text-[44px] leading-none font-bold">
-            {bracketData.bracket.stage.name}
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* Zoom controls */}
-          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              aria-label="Zoom out"
-              onClick={() => setScale(Math.max(25, scale - 10))}
-              disabled={scale <= 25}
-            >
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <input
-              type="range"
-              value={scale}
-              onChange={(e) => setScale(Number(e.target.value))}
-              min={25}
-              max={150}
-              step={5}
-              className="w-32 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setScale(Math.min(150, scale + 10))}
-              disabled={scale >= 150}
-            >
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground w-12 text-center">
-              {scale}%
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setScale(100)}
-              disabled={scale === 100}
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={bracketRefresh.refresh}
-            disabled={loading}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={enterPresentationMode}
-          >
-            <Presentation className="mr-2 h-4 w-4" />
-            Present
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 pt-6 pb-12 md:px-6">
+      <BracketToolbar
+        title={bracketData.bracket.stage.name}
+        scale={scale}
+        onScaleChange={setScale}
+        onBack={() => router.back()}
+        onRefresh={bracketRefresh.refresh}
+        isRefreshing={loading}
+        onPresent={enterPresentationMode}
+      />
 
-      <div className="overflow-auto">
+      <BracketLegend />
+
+      <div className="overflow-auto rounded-[18px] border bg-card p-6">
         <div
           style={{
             transform: `scale(${scale / 100})`,

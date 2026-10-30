@@ -37,7 +37,7 @@ describe('QualificationReviewSubmit', () => {
       />
     );
 
-    const backButton = screen.getByRole('button', { name: /back to scoring/i });
+    const backButton = screen.getByRole('button', { name: 'Frames' });
     const editButton = screen.getByTitle('Edit frame 1');
     const submitButton = screen.getByRole('button', { name: /submitting/i });
 

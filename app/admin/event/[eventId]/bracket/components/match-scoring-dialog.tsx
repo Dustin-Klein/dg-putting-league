@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Check } from 'lucide-react';
+import { AlertTriangle, Loader2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { ScoreInput } from '@/components/ui/score-input';
 
@@ -36,6 +36,25 @@ interface MatchScoringDialogProps {
   onScoreSubmit: () => void;
   isCorrectionMode?: boolean;
   onRequestReset?: () => void;
+}
+
+/**
+ * True when the given scores pick a different winner than the one recorded on a
+ * completed match. Equal or invalid scores never count as a flip.
+ */
+export function flipsRecordedWinner(
+  details: BracketMatchWithDetails,
+  score1: number,
+  score2: number
+): boolean {
+  if (!Number.isFinite(score1) || !Number.isFinite(score2) || score1 === score2) return false;
+  const recordedTeam1Won =
+    details.opponent1?.result === 'win' && details.opponent2?.result === 'loss'
+      ? true
+      : details.opponent1?.result === 'loss' && details.opponent2?.result === 'win'
+        ? false
+        : null;
+  return recordedTeam1Won !== null && (score1 > score2) !== recordedTeam1Won;
 }
 
 export function MatchScoringDialog({
@@ -244,13 +263,7 @@ export function MatchScoringDialog({
       return;
     }
 
-    const storedTeam1Won =
-      matchDetails.opponent1?.result === 'win' && matchDetails.opponent2?.result === 'loss'
-        ? true
-        : matchDetails.opponent1?.result === 'loss' && matchDetails.opponent2?.result === 'win'
-          ? false
-          : null;
-    if (isCorrectionMode && storedTeam1Won !== null && (score1 > score2) !== storedTeam1Won) {
+    if (isCorrectionMode && flipsRecordedWinner(matchDetails, score1, score2)) {
       setError(WINNER_CHANGE_MESSAGE);
       return;
     }
@@ -333,6 +346,25 @@ export function MatchScoringDialog({
   const team2Score = matchDetails?.opponent2?.score ?? 0;
   const isCompleted = matchDetails?.status === 4 || matchDetails?.status === 5;
   const isEditingLocked = isCompleted && !isCorrectionMode;
+  // Warn before saving when a correction would hand the match to the other team.
+  const enteredScore1 = parseInt(finalScore1, 10);
+  const enteredScore2 = parseInt(finalScore2, 10);
+  const correctionFlipsWinner =
+    isCorrectionMode &&
+    isCompleted &&
+    !!matchDetails &&
+    (scoringMode === 'final'
+      ? !isViewMode && flipsRecordedWinner(matchDetails, enteredScore1, enteredScore2)
+      : flipsRecordedWinner(matchDetails, team1Score, team2Score));
+  const winnerFlipWarning = correctionFlipsWinner ? (
+    <div role="alert" className="flex gap-2.5 rounded-xl bg-warning/15 p-3 text-sm text-warning">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div className="flex flex-col gap-0.5">
+        <strong>This change flips the winner of M{match.number}.</strong>
+        <span>{WINNER_CHANGE_MESSAGE}</span>
+      </div>
+    </div>
+  ) : null;
   const errorMessage = error ? (
     <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm text-center space-y-2">
       <p>{error}</p>
@@ -584,6 +616,7 @@ export function MatchScoringDialog({
                 </CardContent>
               </Card>
 
+              {winnerFlipWarning}
               {errorMessage}
 
               {/* Action area */}
@@ -681,6 +714,7 @@ export function MatchScoringDialog({
                 />
               </div>
 
+              {winnerFlipWarning}
               {errorMessage}
 
               {/* Save/Edit Button */}

@@ -2,17 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Search, User } from 'lucide-react';
+import { ChevronRight, Search, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import type { PlayerSearchResult } from '@/lib/types/player';
 
 export default function PlayersPage() {
@@ -67,22 +58,24 @@ export default function PlayersPage() {
   }, [searchQuery, searchPlayers]);
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-score text-[44px] leading-none font-bold">Players</h1>
-        <p className="text-muted-foreground">
+    <div className="max-w-[880px] mx-auto px-4 pt-10 pb-14 md:px-6 flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="font-score text-5xl leading-none font-bold">Players</h1>
+        <p className="text-base text-muted-foreground">
           Search for players by name or player number
         </p>
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <label htmlFor="player-search" className="sr-only">Search players</label>
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" aria-hidden="true" />
         <Input
-          type="text"
+          id="player-search"
+          type="search"
           placeholder="Search players..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+          className="h-14 rounded-[14px] pl-12 text-[17px] md:text-[17px]"
         />
       </div>
 
@@ -102,44 +95,40 @@ export default function PlayersPage() {
       )}
 
       {!loading && results.length > 0 && (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Player Number</TableHead>
-                <TableHead>Name</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {results.map((player) => (
-                <TableRow
-                  key={player.id}
-                  className={`relative group ${player.player_number ? 'cursor-pointer' : ''}`}
-                >
-                  <TableCell>
-                    {player.player_number ? (
-                      <Badge variant="secondary">#{player.player_number}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {player.player_number ? (
-                      <Link
-                        href={`/player/${player.player_number}`}
-                        className="font-medium group-hover:underline after:absolute after:inset-0"
-                      >
-                        {player.full_name}
-                      </Link>
-                    ) : (
-                      <span className="font-medium">{player.full_name}</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          <span className="text-[13px] text-muted-foreground" aria-live="polite">
+            {results.length} {results.length === 1 ? 'player matches' : 'players match'} “{searchQuery.trim()}”
+          </span>
+          <ul className="bg-card rounded-2xl border divide-y divide-muted overflow-hidden">
+            {results.map((player) => {
+              const content = (
+                <>
+                  <span className="w-14 shrink-0 font-score text-[22px] font-bold text-muted-foreground tabular-nums">
+                    {player.player_number ? `#${player.player_number}` : '–'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-base font-semibold">{player.full_name}</span>
+                  {player.player_number && (
+                    <ChevronRight className="size-[18px] shrink-0 text-muted-foreground" aria-hidden="true" />
+                  )}
+                </>
+              );
+              return (
+                <li key={player.id}>
+                  {player.player_number ? (
+                    <Link
+                      href={`/player/${player.player_number}`}
+                      className="flex min-h-14 items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/60"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div className="flex min-h-14 items-center gap-4 px-5 py-3.5">{content}</div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
 
       {!loading && !hasSearched && (

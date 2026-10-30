@@ -1,13 +1,15 @@
 'use client';
 
-import { ArrowRight, ChevronLeft, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { FrameNavigation } from '@/app/score/components/scoring-wizard/frame-navigation';
+import { cn } from '@/lib/utils/utils';
+import { FrameNavigation, frameLabel } from '@/app/score/components/scoring-wizard/frame-navigation';
+import { ScoringFooter } from '@/app/score/components/scoring-wizard/scoring-board';
+import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-utils';
 import { FrameWizardHeader } from './frame-wizard-header';
 import { TeamScoringSection } from './team-scoring-section';
 import { useMatchFrameWizard } from './use-match-frame-wizard';
-import type { MatchInfo, ScoreState } from './wizard-types';
+import { getAllPlayers, type MatchInfo, type ScoreState } from './wizard-types';
 
 interface FrameWizardProps {
   match: MatchInfo;
@@ -55,65 +57,34 @@ export function FrameWizard({
     currentFrame,
   });
 
+  const scoredFrames = new Set(
+    frameNumbers.filter((frameNumber) =>
+      getAllPlayers(match).every(
+        (player) => getResolvedScore(player.event_player_id, frameNumber, localScores, match.frames) !== null
+      )
+    )
+  );
+  const remaining = getAllPlayers(match).filter(
+    (player) => getResolvedScore(player.event_player_id, currentFrame, localScores, match.frames) === null
+  ).length;
+  const currentLabel = frameLabel(currentFrame, standardFrames);
+
   return (
-    <div className="h-full flex flex-col overflow-y-auto bg-background p-3">
-      <div className="flex-1 flex flex-col max-w-lg mx-auto w-full">
-        <FrameWizardHeader
-          match={match}
-          currentFrame={currentFrame}
-          standardFrames={standardFrames}
-          isOvertime={isOvertime}
-          teamOneTotal={teamOneTotal}
-          teamTwoTotal={teamTwoTotal}
-          onBack={onBack}
-        />
-
-        {isOvertime && (
-          <div className="mb-2 p-2 bg-warning/10 border border-warning/30 rounded-lg text-center">
-            <p className="text-sm font-medium text-warning">
-              Overtime – Continue until there&apos;s a winner
-            </p>
-          </div>
-        )}
-
-        {showOvertimePrompt && (
-          <div className="mb-2 p-2 bg-warning/10 border border-warning/30 rounded-lg text-center">
-            <p className="text-sm font-medium text-warning">
-              Tied! Continue to overtime
-            </p>
-          </div>
-        )}
-
-        <Card className="mb-2">
-          <CardContent className="p-3">
-            <TeamScoringSection
-              team={match.team_one}
-              teamNumber={1}
-              frameNumber={currentFrame}
-              match={match}
-              localScores={localScores}
-              bonusPointEnabled={bonusPointEnabled}
-              onScoreChange={onScoreChange}
-            />
-
-            <div className="my-2 border-t" />
-
-            <TeamScoringSection
-              team={match.team_two}
-              teamNumber={2}
-              frameNumber={currentFrame}
-              match={match}
-              localScores={localScores}
-              bonusPointEnabled={bonusPointEnabled}
-              onScoreChange={onScoreChange}
-            />
-          </CardContent>
-        </Card>
-
+    <div className="min-h-full flex flex-col bg-background">
+      <FrameWizardHeader
+        match={match}
+        currentFrame={currentFrame}
+        standardFrames={standardFrames}
+        isOvertime={isOvertime}
+        teamOneTotal={teamOneTotal}
+        teamTwoTotal={teamTwoTotal}
+        onBack={onBack}
+      >
         <FrameNavigation
           frameNumbers={frameNumbers}
           currentFrame={currentFrame}
           standardFrames={standardFrames}
+          scoredFrames={scoredFrames}
           disabled={isSaving}
           onGoToFrame={(frameNumber) => {
             if (frameNumber === currentFrame) {
@@ -123,38 +94,81 @@ export function FrameWizard({
             void runAction(() => onGoToFrame(frameNumber));
           }}
         />
+      </FrameWizardHeader>
 
-        <div className="flex gap-2 sticky bottom-0 mt-auto pt-2 pb-1 bg-background">
+      <div className="flex-1 w-full max-w-lg mx-auto px-4 py-3 flex flex-col gap-3">
+        {isOvertime && (
+          <div role="status" className="rounded-[10px] bg-warning/15 px-3 py-2.5 text-center text-sm font-semibold text-warning">
+            Overtime – Continue until there&apos;s a winner
+          </div>
+        )}
+
+        {showOvertimePrompt && (
+          <div role="status" className="rounded-[10px] bg-warning/15 px-3 py-2.5 text-center text-sm font-semibold text-warning">
+            Tied! Continue to overtime
+          </div>
+        )}
+
+        <TeamScoringSection
+          team={match.team_one}
+          teamNumber={1}
+          frameNumber={currentFrame}
+          match={match}
+          localScores={localScores}
+          bonusPointEnabled={bonusPointEnabled}
+          onScoreChange={onScoreChange}
+        />
+
+        <TeamScoringSection
+          team={match.team_two}
+          teamNumber={2}
+          frameNumber={currentFrame}
+          match={match}
+          localScores={localScores}
+          bonusPointEnabled={bonusPointEnabled}
+          onScoreChange={onScoreChange}
+        />
+      </div>
+
+      <ScoringFooter>
+        <p
+          className={cn(
+            'text-center text-[13px] font-medium',
+            frameComplete ? 'text-success' : 'text-muted-foreground'
+          )}
+        >
+          {frameComplete
+            ? `Frame ${currentLabel} complete`
+            : `Enter scores for all players to continue · ${remaining} left`}
+        </p>
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            className="flex-1 h-12"
+            className="flex-1 h-[54px] rounded-[14px] text-base"
             onClick={() => void runAction(onPrevFrame)}
             disabled={currentFrame === 1 || isSaving}
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <>
-                <ChevronLeft className="mr-1 h-4 w-4" />
-                Prev
-              </>
+              'Prev'
             )}
           </Button>
 
           {canFinish ? (
-            <Button className="flex-1 h-12" onClick={() => void runAction(onFinish)} disabled={isSaving}>
+            <Button className="flex-[2] h-[54px] rounded-[14px] text-base" onClick={() => void runAction(onFinish)} disabled={isSaving}>
               {isSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  Review
-                  <ArrowRight className="ml-1 h-4 w-4" />
+                  Review match
+                  <ArrowRight className="size-[18px]" />
                 </>
               )}
             </Button>
           ) : (
             <Button
-              className="flex-1 h-12"
+              className="flex-[2] h-[54px] rounded-[14px] text-base"
               onClick={() => void runAction(onNextFrame)}
               disabled={!frameComplete || isSaving}
             >
@@ -163,24 +177,18 @@ export function FrameWizard({
               ) : isTied && currentFrame === Math.max(...frameNumbers) ? (
                 <>
                   Overtime
-                  <ArrowRight className="ml-1 h-4 w-4" />
+                  <ArrowRight className="size-[18px]" />
                 </>
               ) : (
                 <>
-                  Next
-                  <ArrowRight className="ml-1 h-4 w-4" />
+                  Next frame
+                  <ArrowRight className="size-[18px]" />
                 </>
               )}
             </Button>
           )}
         </div>
-
-        {!frameComplete && (
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Enter scores for all players to continue
-          </p>
-        )}
-      </div>
+      </ScoringFooter>
     </div>
   );
 }

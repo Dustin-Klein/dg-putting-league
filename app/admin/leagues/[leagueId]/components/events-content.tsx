@@ -20,44 +20,54 @@ interface EventsContentProps {
 
 export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: EventsContentProps) {
   return (
-    <div className="container mx-auto p-4">
-      <div className="mb-6">
-        <Link
-          href={`/admin/leagues`}
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
-        >
-          <ChevronLeft className="w-4 h-4 mr-1" />
-          Back to my leagues
-        </Link>
-
-        <div className="mb-6">
-          <h1 className="font-score text-[44px] leading-none font-bold">{league.name}</h1>
-          {league.city && (
-            <p className="text-muted-foreground">{league.city}</p>
-          )}
+    <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-8 pb-14 md:px-6">
+      <div className="flex flex-col gap-2.5">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link href="/admin/leagues" className="inline-flex min-h-8 items-center gap-1 hover:text-foreground">
+            <ChevronLeft className="size-4" aria-hidden="true" />
+            My Leagues
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page" className="truncate text-foreground">{league.name}</span>
+        </nav>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-score text-5xl leading-none font-bold">{league.name}</h1>
+          <p className="text-[15px] text-muted-foreground">
+            {league.city && <>{league.city} · </>}
+            <Link href={`/leagues/${leagueId}`} className="text-info hover:underline">
+              View public page
+            </Link>
+          </p>
         </div>
-
-        <Tabs defaultValue="events">
-          <TabsList className="mb-4">
-            <TabsTrigger value="events">Events</TabsTrigger>
-            {isAdmin && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
-          </TabsList>
-          <TabsContent value="events">
-            <EventsList
-              events={events}
-              leagueId={leagueId}
-              isAdmin={isAdmin}
-            />
-
-            {isOwner && <AdminManagement leagueId={leagueId} />}
-          </TabsContent>
-          {isAdmin && (
-            <TabsContent value="handicaps">
-              <HandicapManagement leagueId={leagueId} />
-            </TabsContent>
-          )}
-        </Tabs>
       </div>
+
+      <Tabs defaultValue="events">
+        <TabsList className="mb-2">
+          <TabsTrigger value="events">Events</TabsTrigger>
+          {isAdmin && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="events">
+          <div className="flex flex-wrap items-start gap-6">
+            <div className="min-w-0 flex-[999_1_560px]">
+              <EventsList
+                events={events}
+                leagueId={leagueId}
+                isAdmin={isAdmin}
+              />
+            </div>
+            {isOwner && (
+              <div className="min-w-0 flex-[1_1_320px]">
+                <AdminManagement leagueId={leagueId} />
+              </div>
+            )}
+          </div>
+        </TabsContent>
+        {isAdmin && (
+          <TabsContent value="handicaps">
+            <HandicapManagement leagueId={leagueId} />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

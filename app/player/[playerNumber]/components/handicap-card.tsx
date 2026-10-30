@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ZoneBadge, formatDistanceFt } from '@/components/zone-badge';
 import { eligibilityText, formatPct, formatPeriodStats, formatTimestampDate, zoneChangeLabel } from '@/lib/utils/handicap-format';
@@ -47,91 +46,100 @@ export function HandicapCard({ playerNumber }: { playerNumber: string }) {
   const atTop = handicap.current_zone >= handicap.max_zone;
 
   return (
-    <Card>
-      <CardHeader className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Handicap</CardTitle>
-            {/* Players are global, zones are per league: always name the league. */}
-            <CardDescription>{handicap.league_name}</CardDescription>
-          </div>
-          {leagues.length > 1 && (
-            <Select value={selected ?? undefined} onValueChange={setSelected}>
-              <SelectTrigger className="w-[200px]" aria-label="League">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {leagues.map((league) => (
-                  <SelectItem key={league.league_id} value={league.league_id}>
-                    {league.league_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+    <section aria-labelledby="handicap-heading" className="flex flex-col gap-4 rounded-2xl border bg-card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="handicap-heading" className="text-lg font-bold">Handicap</h2>
+          {/* Players are global, zones are per league: always name the league. */}
+          <p className="text-[13px] text-muted-foreground">{handicap.league_name}</p>
         </div>
-        <ZoneBadge zone={handicap.current_zone} distanceFt={handicap.distance_ft} size="lg" className="w-fit" />
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <section className="space-y-1">
-          <h3 className="text-sm font-semibold">Current period</h3>
-          <p className="text-sm">
-            {stats.putts_attempted > 0 ? formatPeriodStats(stats) : 'No putts in this zone yet'}
-          </p>
-          <p className="text-xs text-muted-foreground">In Zone {handicap.current_zone} since {formatTimestampDate(since)}</p>
-          {remaining && <p className="text-xs text-muted-foreground">{remaining}</p>}
-          <p className="text-xs text-muted-foreground">
-            {atTop
-              ? `Zone ${handicap.current_zone} is the farthest zone.`
-              : `Move up to Zone ${handicap.current_zone + 1}${
-                  handicap.next_zone_distance_ft !== null ? ` (${formatDistanceFt(handicap.next_zone_distance_ft)} ft)` : ''
-                } above ${handicap.promote_above_pct}%.`}
-          </p>
-        </section>
-
-        {handicap.career.length > 0 && (
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Career by distance</h3>
-            <table className="w-full text-sm">
-              <tbody>
-                {handicap.career.map((row) => (
-                  <tr key={row.distance_ft} className="border-b last:border-0">
-                    <td className="py-1 pr-4 font-medium tabular-nums">{formatDistanceFt(row.distance_ft)} ft</td>
-                    <td className="py-1 pr-4 tabular-nums text-muted-foreground">
-                      {row.putts_made}/{row.putts_attempted}
-                    </td>
-                    <td className="py-1 text-right tabular-nums">{formatPct(row.make_pct)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+        {leagues.length > 1 && (
+          <Select value={selected ?? undefined} onValueChange={setSelected}>
+            <SelectTrigger className="w-[200px]" aria-label="League">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {leagues.map((league) => (
+                <SelectItem key={league.league_id} value={league.league_id}>
+                  {league.league_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
+      </div>
 
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">History</h3>
-          <ol className="space-y-2 border-l pl-4">
-            {[...handicap.history].reverse().map((period, index, list) => {
-              const previous = list[index + 1] ?? null;
-              const adminNote = isAdminView(handicap) ? (period as ZonePeriodAdmin).note : null;
-              return (
-                <li key={`${period.started_at}-${period.zone}`} className="text-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{zoneChangeLabel(period.start_reason, period.zone, previous?.zone ?? null)}</span>
-                    <span className="text-xs text-muted-foreground">{formatTimestampDate(period.started_at)}</span>
-                  </div>
-                  {previous?.make_pct != null && (
-                    <div className="text-xs text-muted-foreground">
-                      After {formatPct(previous.make_pct)} in Zone {previous.zone}
-                    </div>
-                  )}
-                  {adminNote && <div className="text-xs italic text-muted-foreground">Note (admins only): {adminNote}</div>}
-                </li>
-              );
-            })}
-          </ol>
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col">
+          <span className="font-score text-5xl leading-none font-bold tabular-nums">
+            {stats.putts_attempted > 0 ? formatPct(stats.make_pct) : '–'}
+          </span>
+          <span className="text-[13px] text-muted-foreground">
+            {stats.putts_attempted > 0 ? formatPeriodStats(stats) : 'No putts in this zone yet'}
+          </span>
+        </div>
+        <ZoneBadge zone={handicap.current_zone} distanceFt={handicap.distance_ft} className="shrink-0" />
+      </div>
+      {stats.make_pct !== null && stats.putts_attempted > 0 && (
+        <div role="img" aria-label={`${formatPct(stats.make_pct)} made this period`} className="h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-foreground" style={{ width: `${Math.min(100, stats.make_pct)}%` }} />
+        </div>
+      )}
+      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+        <span>In Zone {handicap.current_zone} since {formatTimestampDate(since)}</span>
+        {remaining && <span>{remaining}</span>}
+        <span>
+          {atTop
+            ? `Zone ${handicap.current_zone} is the farthest zone.`
+            : `Move up to Zone ${handicap.current_zone + 1}${
+                handicap.next_zone_distance_ft !== null ? ` (${formatDistanceFt(handicap.next_zone_distance_ft)} ft)` : ''
+              } above ${handicap.promote_above_pct}%.`}
+        </span>
+      </div>
+
+      {handicap.career.length > 0 && (
+        <section className="flex flex-col gap-2 border-t border-muted pt-3">
+          <h3 className="text-sm font-bold">Career by distance</h3>
+          {handicap.career.map((row) => (
+            <div key={row.distance_ft} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 py-0.5">
+              <span className="text-sm font-semibold tabular-nums">{formatDistanceFt(row.distance_ft)} ft</span>
+              <div className="h-2.5 overflow-hidden rounded-full bg-muted" title={`${row.putts_made}/${row.putts_attempted}`}>
+                <div className="h-full rounded-full bg-foreground" style={{ width: `${Math.min(100, row.make_pct ?? 0)}%` }} />
+              </div>
+              <span className="text-right">
+                <span className="font-score text-[22px] font-bold tabular-nums">{formatPct(row.make_pct)}</span>
+                <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">
+                  {row.putts_made}/{row.putts_attempted}
+                </span>
+              </span>
+            </div>
+          ))}
         </section>
-      </CardContent>
-    </Card>
+      )}
+
+      <section className="flex flex-col gap-2 border-t border-muted pt-3">
+        <h3 className="text-sm font-bold">History</h3>
+        <ol className="flex flex-col gap-2">
+          {[...handicap.history].reverse().map((period, index, list) => {
+            const previous = list[index + 1] ?? null;
+            const adminNote = isAdminView(handicap) ? (period as ZonePeriodAdmin).note : null;
+            return (
+              <li key={`${period.started_at}-${period.zone}`} className="flex gap-2.5 text-sm">
+                <span className="w-24 shrink-0 text-muted-foreground">{formatTimestampDate(period.started_at)}</span>
+                <span className="flex flex-col">
+                  <span className="font-medium">{zoneChangeLabel(period.start_reason, period.zone, previous?.zone ?? null)}</span>
+                  {previous?.make_pct != null && (
+                    <span className="text-xs text-muted-foreground">
+                      After {formatPct(previous.make_pct)} in Zone {previous.zone}
+                    </span>
+                  )}
+                  {adminNote && <span className="text-xs italic text-muted-foreground">Note (admins only): {adminNote}</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    </section>
   );
 }

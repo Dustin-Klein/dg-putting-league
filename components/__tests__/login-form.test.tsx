@@ -26,18 +26,16 @@ describe('LoginForm', () => {
   it('renders the login form with all fields', () => {
     render(<LoginForm />);
 
-    // Card title is rendered as a div, check it exists along with button
-    const loginElements = screen.getAllByText('Login');
-    expect(loginElements).toHaveLength(2); // Title and button
-    expect(screen.getByText('Enter your email below to login to your account')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByText(/players don't need an account/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /forgot your password/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /forgot password/i })).toHaveAttribute(
       'href',
       '/auth/forgot-password'
     );
-    expect(screen.getByRole('link', { name: /sign up/i })).toHaveAttribute('href', '/auth/sign-up');
+    expect(screen.getByRole('link', { name: /create an account/i })).toHaveAttribute('href', '/auth/sign-up');
   });
 
   it('shows loading state while submitting', async () => {
@@ -48,9 +46,9 @@ describe('LoginForm', () => {
 
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
-    expect(await screen.findByRole('button', { name: /logging in/i })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /signing in/i })).toBeDisabled();
   });
 
   it('redirects to admin leagues page on successful login', async () => {
@@ -61,7 +59,7 @@ describe('LoginForm', () => {
 
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/admin/leagues');
@@ -78,7 +76,7 @@ describe('LoginForm', () => {
 
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     expect(await screen.findByText(/invalid login credentials/i)).toBeInTheDocument();
   });
@@ -91,7 +89,7 @@ describe('LoginForm', () => {
 
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'password123');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(mockSignInWithPassword).toHaveBeenCalledWith({
@@ -112,14 +110,14 @@ describe('LoginForm', () => {
     // First attempt - failure
     await user.type(screen.getByLabelText(/email/i), 'test@example.com');
     await user.type(screen.getByLabelText(/password/i), 'wrongpassword');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     expect(await screen.findByText(/invalid login credentials/i)).toBeInTheDocument();
 
     // Second attempt - should clear error during submission
     await user.clear(screen.getByLabelText(/password/i));
     await user.type(screen.getByLabelText(/password/i), 'correctpassword');
-    await user.click(screen.getByRole('button', { name: /^login$/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.queryByText(/invalid login credentials/i)).not.toBeInTheDocument();

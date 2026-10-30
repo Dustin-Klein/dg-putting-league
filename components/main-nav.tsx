@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { AuthButton } from "@/components/auth-button";
 import { MobileNav } from "@/components/mobile-nav";
+import { NavLinks } from "@/components/nav-links";
 
 function LeagueMark() {
   return (
@@ -22,7 +23,7 @@ function LeagueMark() {
 export function MainNav() {
   return (
     <nav aria-label="Main" className="w-full bg-board border-b border-board dark:border-border">
-      <div className="dark text-foreground max-w-5xl mx-auto flex justify-between items-center h-16 px-4">
+      <div className="dark text-foreground max-w-[1200px] mx-auto flex items-center gap-7 h-16 px-4 md:px-6">
         <Link href="/" className="inline-flex items-center gap-2.5">
           <LeagueMark />
           <span className="font-score text-[22px] font-bold uppercase tracking-[0.03em] leading-none">
@@ -31,17 +32,18 @@ export function MainNav() {
         </Link>
 
         {/* Desktop navigation */}
-        <div className="hidden md:flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <ThemeSwitcher />
-            <Suspense>
-              <AuthButton />
-            </Suspense>
-          </div>
+        <div className="hidden lg:flex">
+          <NavLinks />
+        </div>
+        <div className="hidden lg:flex ml-auto items-center gap-2">
+          <ThemeSwitcher />
+          <Suspense>
+            <AuthButton />
+          </Suspense>
         </div>
 
         {/* Mobile navigation */}
-        <div className="flex md:hidden">
+        <div className="flex lg:hidden ml-auto">
           <MobileNav />
         </div>
       </div>

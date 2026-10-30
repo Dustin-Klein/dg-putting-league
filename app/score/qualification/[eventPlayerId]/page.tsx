@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { Card, CardContent } from '@/components/ui/card';
+import { Check, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils/utils';
+import { ScoringBoard } from '@/app/score/components/scoring-wizard/scoring-board';
+import { PuttScoreRow } from '@/app/score/components/scoring-wizard/putt-score-row';
+import { MAX_PUTTS } from '@/app/score/components/scoring-wizard/scoring-utils';
 import { useToast } from '@/components/ui/use-toast';
 import { ZoneBadge } from '@/components/zone-badge';
 
@@ -167,155 +169,133 @@ export default function QualificationScoringPage() {
     return null;
   }
 
-  const puttOptions = [0, 1, 2, 3];
+  const bonusPointEnabled = event?.bonus_point_enabled ?? false;
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+    <div className="min-h-screen flex flex-col bg-background">
+      <ScoringBoard
+        backLabel="Players"
+        onBack={handleBack}
+        className="max-w-2xl pb-5 gap-3"
+        meta={
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
+            className="size-10"
+            aria-label="Refresh"
             onClick={() => accessCode && fetchPlayerData(accessCode)}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            <RefreshCw className="size-4" />
           </Button>
-        </div>
-
-        {/* Player Info Card */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  {player.full_name}
-                  {player.is_complete && (
-                    <CheckCircle2 className="h-5 w-5 text-success" />
-                  )}
-                </CardTitle>
-                <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="lg" className="w-fit" />
-                <CardDescription>
-                  {player.player_number ? `#${player.player_number}` : 'Qualification Round'}
-                </CardDescription>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold font-score tabular-nums">{player.total_points}</div>
-                <div className="text-sm text-muted-foreground">points</div>
-              </div>
+        }
+      >
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <h1 className="font-score text-[38px] leading-[0.95] font-bold">{player.full_name}</h1>
+            <div className="flex items-center gap-2">
+              <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} className="w-fit" />
+              <span className="text-[13px] text-muted-foreground">
+                {player.player_number ? `#${player.player_number}` : 'Qualification Round'}
+              </span>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Frames</span>
-                <span>
-                  {player.frames_completed} / {player.total_frames_required}
+          </div>
+          <div className="flex shrink-0 flex-col items-end">
+            <span className="font-score text-[56px] leading-[0.9] font-bold tabular-nums">{player.total_points}</span>
+            <span className="text-xs text-muted-foreground">points</span>
+          </div>
+        </div>
+      </ScoringBoard>
+
+      <div className="flex-1 w-full max-w-2xl mx-auto p-4 flex flex-col gap-4">
+        {player.is_complete ? (
+          <div role="status" className="flex items-center gap-2.5 rounded-[14px] bg-success/15 px-3.5 py-3 text-[15px] font-bold text-success">
+            <Check className="size-5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+            Qualification Complete! · {player.frames_completed} of {player.total_frames_required} frames
+          </div>
+        ) : (
+          <section aria-label={`Frame ${nextFrameNumber}`} className="bg-card rounded-2xl border p-3.5 flex flex-col gap-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-base font-bold">Frame {nextFrameNumber}</h2>
+              <span className="text-[13px] text-muted-foreground">
+                {player.frames_completed} / {player.total_frames_required} frames
+              </span>
+            </div>
+            <PuttScoreRow
+              label="How many putts were made?"
+              groupLabel={`Putts made by ${player.full_name}`}
+              aside={
+                <span className="text-[13px] font-semibold text-muted-foreground">
+                  {selectedPutts === null
+                    ? ''
+                    : selectedPutts === 3
+                      ? bonusPointEnabled
+                        ? '4 points (3 putts + bonus)'
+                        : '3 points'
+                      : `${selectedPutts} point${selectedPutts === 1 ? '' : 's'}`}
+                </span>
+              }
+              score={selectedPutts}
+              bonusPointEnabled={bonusPointEnabled}
+              frameNumber={nextFrameNumber}
+              disabled={isSaving}
+              onChange={setSelectedPutts}
+            />
+            <Button
+              className="h-14 w-full rounded-[14px] text-[17px]"
+              onClick={handleRecordScore}
+              disabled={selectedPutts === null || isSaving}
+            >
+              {isSaving ? 'Recording...' : 'Record Score'}
+            </Button>
+          </section>
+        )}
+
+        {frames.length > 0 && (
+          <section aria-labelledby="frame-history" className="bg-card rounded-2xl border flex flex-col">
+            <h2 id="frame-history" className="px-4 pt-3.5 pb-2 text-base font-bold">Frame History</h2>
+            {frames.map((frame) => (
+              <div key={frame.id} className="flex items-center gap-3.5 border-t border-muted px-4 py-3">
+                <span className="w-16 shrink-0 text-sm font-semibold text-muted-foreground">
+                  Frame {frame.frame_number}
+                </span>
+                <span
+                  className="flex flex-1 gap-1.5"
+                  role="img"
+                  aria-label={`${frame.putts_made} of ${MAX_PUTTS} made`}
+                >
+                  {Array.from({ length: MAX_PUTTS }, (_, i) => (
+                    <span
+                      key={i}
+                      className={cn(
+                        'size-[22px] rounded-full border-2',
+                        i < frame.putts_made ? 'border-foreground bg-foreground' : 'border-input'
+                      )}
+                    />
+                  ))}
+                </span>
+                <span
+                  className={cn(
+                    'font-score text-2xl font-bold tabular-nums',
+                    frame.putts_made === MAX_PUTTS && 'text-success'
+                  )}
+                >
+                  {frame.points_earned} pt{frame.points_earned !== 1 ? 's' : ''}
                 </span>
               </div>
-              <Progress
-                value={(player.frames_completed / player.total_frames_required) * 100}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Scoring Section */}
-        {!player.is_complete && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Frame {nextFrameNumber}</CardTitle>
-              <CardDescription>
-                How many putts were made?
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 gap-3 mb-4">
-                {puttOptions.map((putts) => (
-                  <Button
-                    key={putts}
-                    variant={selectedPutts === putts ? 'default' : 'outline'}
-                    size="lg"
-                    className="h-16 font-score text-3xl font-bold"
-                    onClick={() => setSelectedPutts(putts)}
-                    disabled={isSaving}
-                  >
-                    {putts}
-                  </Button>
-                ))}
-              </div>
-
-              {selectedPutts !== null && (
-                <div className="text-center text-sm text-muted-foreground mb-4">
-                  {selectedPutts === 3
-                    ? event?.bonus_point_enabled
-                      ? '4 points (3 putts + bonus)'
-                      : '3 points'
-                    : `${selectedPutts} point${selectedPutts === 1 ? '' : 's'}`}
-                </div>
-              )}
-
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleRecordScore}
-                disabled={selectedPutts === null || isSaving}
-              >
-                {isSaving ? 'Recording...' : 'Record Score'}
-              </Button>
-            </CardContent>
-          </Card>
+            ))}
+          </section>
         )}
 
-        {/* Completed Message */}
-        {player.is_complete && (
-          <Card className="mb-6 border-success/30 bg-success/5">
-            <CardContent className="pt-6 text-center">
-              <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
-              <h3 className="text-xl font-semibold text-success">
-                Qualification Complete!
-              </h3>
-              <p className="text-success mt-1">
-                Total Score: {player.total_points} points
-              </p>
-              <Button className="mt-4" onClick={handleBack}>
-                Back to Players
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Frame History */}
         {frames.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Frame History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {frames.map((frame) => (
-                  <div
-                    key={frame.id}
-                    className="flex items-center justify-between py-2 border-b last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline">Frame {frame.frame_number}</Badge>
-                      <span className="text-muted-foreground">
-                        {frame.putts_made} putt{frame.putts_made !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <div className="font-score tabular-nums font-semibold">
-                      {frame.points_earned} pt{frame.points_earned !== 1 ? 's' : ''}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <p className="text-center text-[13px] text-muted-foreground">
+            Filled circle = putt made. 3 of 3 earns the bonus point.
+          </p>
+        )}
+
+        {player.is_complete && (
+          <Button variant="outline" className="w-full" onClick={handleBack}>
+            Back to Players
+          </Button>
         )}
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
 import {
   Dialog,
@@ -117,36 +117,36 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
 
   if (isLoading) {
     return (
-      <div className="border rounded-lg p-4 mt-6">
-        <h2 className="text-lg font-semibold mb-4">League Admins</h2>
+      <aside className="rounded-2xl border bg-card p-5">
+        <h2 className="text-lg font-bold mb-4">League Admins</h2>
         <div className="flex items-center justify-center py-4">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      </div>
+      </aside>
     );
   }
 
   return (
-    <div className="border rounded-lg p-4 mt-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">League Admins</h2>
+    <aside className="rounded-2xl border bg-card p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-bold">League Admins</h2>
         <Button size="sm" onClick={() => setDialogOpen(true)}>
           <UserPlus className="h-4 w-4 mr-1" />
           Add Admin
         </Button>
       </div>
 
-      <div className="space-y-2">
+      <div className="flex flex-col divide-y divide-muted">
         {admins.map((admin) => (
           <div
             key={admin.userId}
-            className="flex items-center justify-between py-2 px-3 bg-muted/50 rounded-md"
+            className="flex min-h-12 items-center justify-between gap-2 py-2"
           >
-            <div className="flex items-center gap-2">
-              <span className="text-sm">{admin.email}</span>
-              <Badge variant={admin.role === 'owner' ? 'default' : 'secondary'}>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm">{admin.email}</span>
+              <StatusBadge tone={admin.role === 'owner' ? 'neutral' : 'outline'} className="capitalize">
                 {admin.role}
-              </Badge>
+              </StatusBadge>
             </div>
             {admin.role !== 'owner' && (
               <Button
@@ -207,6 +207,6 @@ export function AdminManagement({ leagueId }: AdminManagementProps) {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </aside>
   );
 }

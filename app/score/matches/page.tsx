@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { StatusBadge } from '@/components/status-badge';
+import { cn } from '@/lib/utils/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, RefreshCw, LayoutGrid, MapPin } from 'lucide-react';
 import Link from 'next/link';
@@ -172,50 +173,80 @@ export default function MatchesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Exit
-          </Button>
-          <div className="flex items-center gap-2">
-            {event && (
+    <div className="min-h-screen bg-background">
+      {/* Scoreboard band: dark in both themes, like the site header. */}
+      <header className="bg-board border-b border-board dark:border-border">
+        <div className="dark text-foreground max-w-2xl mx-auto px-4 pt-2 pb-[18px] flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={handleBack} className="-ml-3 px-3 font-medium">
+              <ArrowLeft className="size-5" />
+              Exit
+            </Button>
+            <div className="flex items-center gap-1.5">
+              {event && (
+                <Button variant="outline" asChild className="h-10 px-3">
+                  <Link href={`/event/${event.id}/bracket`}>
+                    <LayoutGrid className="size-4" />
+                    Bracket
+                  </Link>
+                </Button>
+              )}
               <Button
                 variant="outline"
-                size="sm"
-                asChild
+                size="icon"
+                className="size-10"
+                aria-label="Refresh"
+                onClick={() => accessCode && fetchMatches(accessCode)}
               >
-                <Link href={`/event/${event.id}/bracket`}>
-                  <LayoutGrid className="mr-2 h-4 w-4" />
-                  View Bracket
-                </Link>
+                <RefreshCw className="size-4" />
               </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => accessCode && fetchMatches(accessCode)}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
+            </div>
           </div>
-        </div>
 
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Available Matches</CardTitle>
-            <CardDescription>
-              {event?.location && `${event.location} - `}
-              {event?.event_date && formatDisplayDate(event.event_date)}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+          <div className="flex flex-col gap-0.5">
+            <h1 className="font-score text-3xl leading-tight font-bold">Matches</h1>
+            <p className="text-sm text-muted-foreground">
+              {[event?.location, event?.event_date && formatDisplayDate(event.event_date)]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
+
+          {lanes.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="device-lane" className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground/85">
+                <MapPin className="size-3.5" aria-hidden="true" />
+                This device scores
+              </label>
+              <Select
+                value={selectedLaneId ?? 'all'}
+                onValueChange={handleLaneSelect}
+              >
+                <SelectTrigger id="device-lane" className="w-full data-[size=default]:h-12 rounded-xl text-base font-semibold">
+                  <SelectValue placeholder="All lanes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All lanes</SelectItem>
+                  {lanes.map(lane => (
+                    <SelectItem key={lane.id} value={lane.id}>
+                      {lane.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="max-w-2xl mx-auto p-4 flex flex-col gap-3">
+        <h2 className="text-[15px] font-bold">
+          {selectedLane ? `Matches on ${selectedLane.label}` : 'Matches on the lanes'}
+        </h2>
 
         {displayedMatches.length === 0 ? (
           <Card>
-            <CardContent className="pt-6 text-center text-muted-foreground">
+            <CardContent className="py-6 text-center text-muted-foreground">
               {selectedLane ? (
                 <>
                   Waiting for match on {selectedLane.label}...
@@ -232,118 +263,77 @@ export default function MatchesPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {displayedMatches.map((match) => (
-              <Card
+          displayedMatches.map((match) => {
+            const running = match.status === MatchStatus.Running;
+            return (
+              <div
                 key={match.id}
-                className="cursor-pointer hover:border-primary/50 transition-colors"
+                data-state={running ? 'running' : 'ready'}
+                className={cn(
+                  'bg-card rounded-2xl border p-3.5 flex flex-col gap-3 cursor-pointer transition-colors',
+                  running ? 'border-success ring-[0.5px] ring-success' : 'hover:border-input'
+                )}
                 onClick={() => handleSelectMatch(match.id)}
               >
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      {match.lane_label && (
-                        <Badge variant="outline" className="bg-info/15 text-info border-info/30">
-                          {match.lane_label}
-                        </Badge>
-                      )}
-                    </div>
-                    <Badge
-                      variant={match.status === MatchStatus.Running ? 'default' : 'secondary'}
-                    >
-                      {match.status === MatchStatus.Running ? 'In Progress' : 'Ready'}
-                    </Badge>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone={running ? 'success' : 'warning'}>
+                    {match.lane_label && `${match.lane_label} · `}
+                    {running ? 'In Progress' : 'Ready'}
+                  </StatusBadge>
+                </div>
 
-                  <div className="space-y-3">
-                    {/* Team 1 */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-score text-sm font-semibold text-muted-foreground tabular-nums">
-                            #{match.team_one.seed}
-                          </span>
-                          <span className="font-medium">
-                            {match.team_one.pool_combo}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {match.team_one.players.map(p => p.full_name).join(' & ')}
-                        </div>
-                        <TeamZoneBadges players={match.team_one.players} />
-                      </div>
-                      <span className="text-2xl font-score tabular-nums font-bold">
-                        {match.team_one_score}
-                      </span>
-                    </div>
+                <TeamRow team={match.team_one} score={match.team_one_score} side="one" showScore={running} />
+                <TeamRow team={match.team_two} score={match.team_two_score} side="two" showScore={running} />
 
-                    <div className="text-center text-xs text-muted-foreground">vs</div>
-
-                    {/* Team 2 */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-score text-sm font-semibold text-muted-foreground tabular-nums">
-                            #{match.team_two.seed}
-                          </span>
-                          <span className="font-medium">
-                            {match.team_two.pool_combo}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {match.team_two.players.map(p => p.full_name).join(' & ')}
-                        </div>
-                        <TeamZoneBadges players={match.team_two.players} />
-                      </div>
-                      <span className="text-2xl font-score tabular-nums font-bold">
-                        {match.team_two_score}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 text-center">
-                    <Button size="sm">Score This Match</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                <Button className="h-[50px] rounded-xl">
+                  {running ? 'Continue scoring' : 'Score this match'}
+                </Button>
+              </div>
+            );
+          })
         )}
 
         {lanes.length > 0 && (
-          <Card className="mt-4">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium mb-1.5">This Device&apos;s Lane</p>
-                  <Select
-                    value={selectedLaneId ?? 'all'}
-                    onValueChange={handleLaneSelect}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="All Lanes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Lanes</SelectItem>
-                      {lanes.map(lane => (
-                        <SelectItem key={lane.id} value={lane.id}>
-                          {lane.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {selectedLane && (
-                <p className="text-xs text-muted-foreground mt-2 ml-7">
-                  Showing matches for {selectedLane.label}
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <p className="mt-1 text-center text-[13px] text-muted-foreground">
+            {selectedLane
+              ? `Showing matches for ${selectedLane.label}. Its next match opens automatically.`
+              : 'Pick a lane above and its next match opens automatically.'}
+          </p>
         )}
       </div>
+    </div>
+  );
+}
+
+function TeamRow({
+  team,
+  score,
+  side,
+  showScore,
+}: {
+  team: PublicMatchInfo['team_one'];
+  score: number;
+  side: 'one' | 'two';
+  showScore: boolean;
+}) {
+  const names = team.players.map(p => p.full_name).join(' & ');
+  return (
+    <div className="flex items-center gap-2.5">
+      <span
+        aria-hidden="true"
+        className={cn('w-[5px] self-stretch rounded-[3px]', side === 'one' ? 'bg-team-1' : 'bg-team-2')}
+      />
+      <span className="w-6 shrink-0 font-score text-sm font-semibold text-muted-foreground tabular-nums">
+        #{team.seed}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] font-semibold leading-snug">{team.pool_combo}</div>
+        {names !== team.pool_combo && <div className="text-xs text-muted-foreground">{names}</div>}
+        <TeamZoneBadges players={team.players} />
+      </div>
+      <span className="font-score text-[28px] leading-none font-bold tabular-nums">
+        {showScore ? score : ''}
+      </span>
     </div>
   );
 }

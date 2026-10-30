@@ -198,18 +198,18 @@ describe('QualificationScoringPage', () => {
     const user = userEvent.setup();
     render(<QualificationScoringPage />);
 
-    expect(await screen.findByText('Frame 1 of 1')).toBeInTheDocument();
+    expect(await screen.findByText('1 / 1')).toBeInTheDocument();
 
-    const increaseButtons = screen.getAllByRole('button', { name: /increase score/i });
-    await user.click(increaseButtons[0]);
-    await user.click(increaseButtons[1]);
+    const oneButtons = screen.getAllByRole('radio', { name: /^1 putts made/ });
+    await user.click(oneButtons[0]);
+    await user.click(oneButtons[1]);
     await user.click(screen.getByRole('button', { name: /review/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Qualification Review')).toBeInTheDocument();
+      expect(screen.getByText('Review scores')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: /submit qualification scores/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit scores/i })).toBeInTheDocument();
     expect(screen.getByTitle('Edit frame 1')).toBeInTheDocument();
 
     // Both players' scores went in one request.
@@ -235,9 +235,9 @@ describe('QualificationScoringPage', () => {
 
     render(<QualificationScoringPage />);
 
-    expect(await screen.findByText('Frame 1 of 3')).toBeInTheDocument();
-    expect(screen.getByText(/#18 • 2 pts total/)).toBeInTheDocument();
-    expect(screen.getByText(/→ 2pt/)).toBeInTheDocument();
+    expect(await screen.findByText('1 / 3')).toBeInTheDocument();
+    expect(screen.getByText('#18')).toBeInTheDocument();
+    expect(screen.getAllByRole('radio', { name: /^2 putts made/, checked: true })).toHaveLength(1);
   });
 
   it('returns to scoring when editing a frame from review', async () => {
@@ -286,10 +286,10 @@ describe('QualificationScoringPage', () => {
     expect(await screen.findByRole('button', { name: /review/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /review/i }));
 
-    expect(await screen.findByText('Qualification Review')).toBeInTheDocument();
+    expect(await screen.findByText('Review scores')).toBeInTheDocument();
     await user.click(screen.getByTitle('Edit frame 1'));
 
-    expect(await screen.findByText('Frame 1 of 1')).toBeInTheDocument();
+    expect(await screen.findByText('1 / 1')).toBeInTheDocument();
   });
 
   it('preserves newer local scores when clearing saved frame entries', () => {
@@ -386,20 +386,20 @@ describe('QualificationScoringPage', () => {
     const user = userEvent.setup();
     render(<QualificationScoringPage />);
 
-    expect(await screen.findByText('Frame 1 of 1')).toBeInTheDocument();
+    expect(await screen.findByText('1 / 1')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /increase score/i }));
+    await user.click(screen.getByRole('radio', { name: /^1 putts made/ }));
     await user.click(screen.getByRole('button', { name: /review/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /increase score/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /decrease score/i })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /^1 putts made/ })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /^0 putts made/ })).toBeDisabled();
     });
 
     resolvePlayerOneSave?.();
 
     await waitFor(() => {
-      expect(screen.getByText('Qualification Review')).toBeInTheDocument();
+      expect(screen.getByText('Review scores')).toBeInTheDocument();
     });
   });
 

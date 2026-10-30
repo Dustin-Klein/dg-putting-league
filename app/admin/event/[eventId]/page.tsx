@@ -137,7 +137,7 @@ export default function EventPage({
 
   if (loading || !event) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="mx-auto max-w-[1200px] px-4 pt-8 pb-14 md:px-6">
         {/* Back link skeleton */}
         <Skeleton className="h-5 w-28 mb-4" />
 
@@ -182,12 +182,12 @@ export default function EventPage({
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="mx-auto max-w-[1200px] px-4 pt-8 pb-14 md:px-6">
       <Link
         href={`/admin/leagues/${event.league_id}`}
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
+        className="inline-flex min-h-8 items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3"
       >
-        <ChevronLeft className="w-4 h-4 mr-1" />
+        <ChevronLeft className="size-4" aria-hidden="true" />
         Back to league
       </Link>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />

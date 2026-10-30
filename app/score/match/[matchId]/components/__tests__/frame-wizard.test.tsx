@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FrameWizard } from '../frame-wizard';
 import { MatchStatus } from '@/lib/types/bracket';
@@ -92,13 +92,14 @@ describe('FrameWizard', () => {
     it('renders frame indicator correctly', () => {
       render(<FrameWizard {...defaultProps} />);
 
-      expect(screen.getByText('F1')).toBeInTheDocument();
+      expect(screen.getByText('1 / 5')).toBeInTheDocument();
     });
 
     it('renders overtime frame indicator correctly', () => {
       render(<FrameWizard {...defaultProps} currentFrame={6} />);
 
-      expect(screen.getByText('OT1')).toBeInTheDocument();
+      expect(screen.getByText('OVERTIME')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /go to frame 6/i })).toHaveTextContent('OT1');
     });
 
     it('displays all players from both teams', () => {
@@ -128,19 +129,18 @@ describe('FrameWizard', () => {
     });
   });
 
-  describe('Score increment/decrement', () => {
-    it('increments score when clicking plus button', async () => {
+  describe('Putt buttons', () => {
+    it('sets the score from an empty frame', async () => {
       const user = userEvent.setup();
       const onScoreChange = jest.fn();
       render(<FrameWizard {...defaultProps} onScoreChange={onScoreChange} />);
 
-      const increaseButtons = screen.getAllByRole('button', { name: /increase score/i });
-      await user.click(increaseButtons[0]);
+      await user.click(screen.getAllByRole('radio', { name: /^1 putts made/ })[0]);
 
       expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 1);
     });
 
-    it('increments from existing score', async () => {
+    it('changes an existing score', async () => {
       const user = userEvent.setup();
       const onScoreChange = jest.fn();
       const localScores = new Map([['p1a-1', 1]]);
@@ -148,51 +148,38 @@ describe('FrameWizard', () => {
         <FrameWizard {...defaultProps} localScores={localScores} onScoreChange={onScoreChange} />
       );
 
-      const increaseButtons = screen.getAllByRole('button', { name: /increase score/i });
-      await user.click(increaseButtons[0]);
+      await user.click(screen.getAllByRole('radio', { name: /^2 putts made/ })[0]);
 
       expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 2);
     });
 
-    it('does not exceed MAX_PUTTS when incrementing', () => {
-      const localScores = new Map([['p1a-1', MAX_PUTTS]]);
-      render(<FrameWizard {...defaultProps} localScores={localScores} />);
-
-      const increaseButtons = screen.getAllByRole('button', { name: /increase score/i });
-      expect(increaseButtons[0]).toBeDisabled();
-    });
-
-    it('decrements score when clicking minus button', async () => {
-      const user = userEvent.setup();
-      const onScoreChange = jest.fn();
-      const localScores = new Map([['p1a-1', 2]]);
-      render(
-        <FrameWizard {...defaultProps} localScores={localScores} onScoreChange={onScoreChange} />
-      );
-
-      const decreaseButtons = screen.getAllByRole('button', { name: /decrease score/i });
-      await user.click(decreaseButtons[0]);
-
-      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 1);
-    });
-
-    it('does not go below MIN_PUTTS when decrementing', () => {
-      const localScores = new Map([['p1a-1', MIN_PUTTS]]);
-      render(<FrameWizard {...defaultProps} localScores={localScores} />);
-
-      const decreaseButtons = screen.getAllByRole('button', { name: /decrease score/i });
-      expect(decreaseButtons[0]).toBeDisabled();
-    });
-
-    it('decrements from null to 0', async () => {
+    it('can set MIN_PUTTS', async () => {
       const user = userEvent.setup();
       const onScoreChange = jest.fn();
       render(<FrameWizard {...defaultProps} onScoreChange={onScoreChange} />);
 
-      const decreaseButtons = screen.getAllByRole('button', { name: /decrease score/i });
-      await user.click(decreaseButtons[0]);
+      await user.click(screen.getAllByRole('radio', { name: new RegExp(`^${MIN_PUTTS} putts made`) })[0]);
 
-      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 0);
+      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, MIN_PUTTS);
+    });
+
+    it('marks the current score as checked', () => {
+      const localScores = new Map([['p1a-1', MAX_PUTTS]]);
+      render(<FrameWizard {...defaultProps} localScores={localScores} />);
+
+      const group = screen.getByRole('radiogroup', { name: /putts made by team1 playera/i });
+      expect(within(group).getByRole('radio', { checked: true })).toHaveAccessibleName(
+        new RegExp(`^${MAX_PUTTS} putts made`)
+      );
+    });
+
+    it('shows the bonus on the top button only when enabled', () => {
+      const { unmount } = render(<FrameWizard {...defaultProps} bonusPointEnabled={true} />);
+      expect(screen.getAllByText('+1 BONUS')).toHaveLength(4);
+      unmount();
+
+      render(<FrameWizard {...defaultProps} bonusPointEnabled={false} />);
+      expect(screen.queryByText('+1 BONUS')).not.toBeInTheDocument();
     });
   });
 
@@ -322,13 +309,13 @@ describe('FrameWizard', () => {
       expect(screen.getByText(/overtime – continue until there's a winner/i)).toBeInTheDocument();
     });
 
-    it('shows overtime frame in navigation with O prefix', () => {
+    it('shows overtime frame in navigation with OT prefix', () => {
       const match = createMatch({
         frames: [createFrame(6)],
       });
       render(<FrameWizard {...defaultProps} match={match} currentFrame={6} />);
 
-      expect(screen.getByText('O1')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /go to frame 6/i })).toHaveTextContent('OT1');
     });
   });
 
@@ -346,8 +333,8 @@ describe('FrameWizard', () => {
       );
 
       // Team 1: 4+4=8 pts, Team 2: 2+2=4 pts for frame
-      expect(screen.getByText('8 pts')).toBeInTheDocument();
-      expect(screen.getByText('4 pts')).toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Team 1' })).getByText('8')).toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Team 2' })).getByText('4')).toBeInTheDocument();
     });
 
     it('calculates points correctly without bonus point', () => {
@@ -363,8 +350,8 @@ describe('FrameWizard', () => {
       );
 
       // Team 1: 3+3=6 pts, Team 2: 2+2=4 pts for frame
-      expect(screen.getByText('6 pts')).toBeInTheDocument();
-      expect(screen.getByText('4 pts')).toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Team 1' })).getByText('6')).toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Team 2' })).getByText('4')).toBeInTheDocument();
     });
 
     it('shows individual player points conversion', () => {
@@ -372,7 +359,7 @@ describe('FrameWizard', () => {
       render(<FrameWizard {...defaultProps} localScores={localScores} bonusPointEnabled={true} />);
 
       // Score of 2 = 2 points
-      expect(screen.getByText(/→ 2pt/)).toBeInTheDocument();
+      expect(screen.getByText('2 pts')).toBeInTheDocument();
     });
   });
 

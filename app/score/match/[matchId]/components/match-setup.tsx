@@ -1,13 +1,14 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Play, Users } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { MatchStatus, getStatusLabel } from '@/lib/types/bracket';
-import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
+import { sortBySlot } from '@/lib/utils/team-utils';
 import { ZoneBadge } from '@/components/zone-badge';
+import { PoolBadge } from '@/components/pool-badge';
+import { ScoringBoard, ScoringFooter } from '@/app/score/components/scoring-wizard/scoring-board';
+import { MatchMeta } from './frame-wizard-header';
 import type { MatchInfo, PlayerInfo, TeamInfo } from './wizard-types';
 
 interface MatchSetupProps {
@@ -19,91 +20,55 @@ interface MatchSetupProps {
 export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
   const isCompleted = match.status === MatchStatus.Completed;
   const isRunning = match.status === MatchStatus.Running;
-  const statusLabel = isRunning ? getStatusLabel(match.status) : match.round_name;
+  const scoredFrames = match.frames.length;
 
   return (
-    <div className="min-h-full bg-background p-4 pb-8">
-      <div className="max-w-lg mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-          <div className="flex items-center gap-2">
-            {match.lane_label && (
-              <Badge variant="secondary" className="text-base px-3 py-1">
-                {match.lane_label}
-              </Badge>
-            )}
-            <Badge variant={isCompleted ? 'secondary' : 'default'}>
-              {isCompleted ? getStatusLabel(match.status) : statusLabel}
-            </Badge>
+    <div className="min-h-full flex flex-col bg-background">
+      <ScoringBoard backLabel="Matches" onBack={onBack} meta={<MatchMeta match={match} />} className="pb-[18px] gap-3">
+        <div className="flex flex-col items-center gap-1 py-1">
+          <span className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">
+            {getStatusLabel(match.status)}
+            {isRunning && scoredFrames > 0 && ` · ${scoredFrames} ${scoredFrames === 1 ? 'frame' : 'frames'} scored`}
+          </span>
+          <div className="flex items-baseline gap-4 font-score font-bold tabular-nums">
+            <span className="text-[60px] leading-[0.9]">
+              <span className="sr-only">Team 1: </span>
+              {match.team_one_score}
+            </span>
+            <span className="text-[26px] text-muted-foreground" aria-hidden="true">–</span>
+            <span className="text-[60px] leading-[0.9]">
+              <span className="sr-only">Team 2: </span>
+              {match.team_two_score}
+            </span>
           </div>
         </div>
+      </ScoringBoard>
 
-        {/* Match Info Card */}
-        <Card className="mb-6">
-          <CardHeader className="text-center pb-2">
-            <CardTitle className="text-xl">Match Setup</CardTitle>
-            <CardDescription>
-              Verify the teams before starting
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Score Display */}
-            <div className="flex items-center justify-around text-center mb-6 py-4 bg-muted/30 rounded-lg">
-              <div>
-                <div className="text-sm font-semibold text-team-1-ink mb-1">
-                  Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed} {match.team_one.pool_combo}</span>
-                </div>
-                <div className={cn(
-                  "text-4xl font-score tabular-nums font-bold",
-                  match.team_one_score > match.team_two_score ? "text-success" : "text-team-1-ink"
-                )}>
-                  {match.team_one_score}
-                </div>
-              </div>
-              <div className="text-2xl text-muted-foreground">vs</div>
-              <div>
-                <div className="text-sm font-semibold text-team-2-ink mb-1">
-                  Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed} {match.team_two.pool_combo}</span>
-                </div>
-                <div className={cn(
-                  "text-4xl font-score tabular-nums font-bold",
-                  match.team_two_score > match.team_one_score ? "text-success" : "text-team-2-ink"
-                )}>
-                  {match.team_two_score}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Team 1 */}
-        <TeamCard team={match.team_one} teamNumber={1} />
-
-        {/* Team 2 */}
-        <TeamCard team={match.team_two} teamNumber={2} />
-
-        {/* Begin Scoring Button */}
-        <div className="mt-8">
-          <Button
-            size="lg"
-            className="w-full h-14 text-lg"
-            onClick={onBeginScoring}
-            disabled={isCompleted}
-          >
-            <Play className="mr-2 h-5 w-5" />
-            {isCompleted ? 'Match Completed' : 'Begin Scoring'}
-          </Button>
-          {!isCompleted && (
-            <p className="text-sm text-muted-foreground text-center mt-3">
-              You&apos;ll score one frame at a time
-            </p>
-          )}
+      <div className="flex-1 w-full max-w-lg mx-auto p-4 flex flex-col gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-lg font-bold">Check the teams</h1>
+          <p className="text-sm text-muted-foreground">Make sure everyone on the lane is in this match.</p>
         </div>
+
+        <TeamCard team={match.team_one} teamNumber={1} />
+        <TeamCard team={match.team_two} teamNumber={2} />
       </div>
+
+      <ScoringFooter>
+        <Button
+          className="w-full h-14 rounded-[14px] text-[17px]"
+          onClick={onBeginScoring}
+          disabled={isCompleted}
+        >
+          {isCompleted ? 'Match Completed' : isRunning && scoredFrames > 0 ? 'Resume scoring' : 'Begin Scoring'}
+          {!isCompleted && <ArrowRight className="size-[18px]" />}
+        </Button>
+        {!isCompleted && (
+          <p className="text-[13px] text-muted-foreground text-center">
+            You&apos;ll score one frame at a time.
+          </p>
+        )}
+      </ScoringFooter>
     </div>
   );
 }
@@ -114,49 +79,50 @@ interface TeamCardProps {
 }
 
 function TeamCard({ team, teamNumber }: TeamCardProps) {
-  const bgColor = teamNumber === 1
-    ? 'bg-team-1/5 border-l-4 border-team-1'
-    : 'bg-team-2/5 border-l-4 border-team-2';
-
   return (
-    <Card className={cn('mb-4', bgColor)}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Team {teamNumber}
-          </CardTitle>
-          <Badge variant="outline">
-            #{team.seed} {team.pool_combo}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-2">
-          {sortBySlot(team.players).map((player) => (
-            <PlayerDisplay key={player.event_player_id} player={player} />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <section
+      aria-label={`Team ${teamNumber}`}
+      className={cn(
+        'bg-card rounded-2xl border border-t-4 px-3.5 pt-2.5 pb-1 flex flex-col',
+        teamNumber === 1 ? 'border-t-team-1' : 'border-t-team-2'
+      )}
+    >
+      <div className="flex items-center justify-between pt-1 pb-1.5">
+        <span
+          className={cn(
+            'inline-flex items-center gap-2 text-sm font-bold',
+            teamNumber === 1 ? 'text-team-1-ink' : 'text-team-2-ink'
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn('size-2.5 rounded-full', teamNumber === 1 ? 'bg-team-1' : 'bg-team-2')}
+          />
+          Team {teamNumber}
+        </span>
+        <span className="truncate pl-2 text-[13px] text-muted-foreground">
+          Seed {team.seed}
+          {team.pool_combo !== team.players.map((p) => p.full_name).join(' & ') && ` · ${team.pool_combo}`}
+        </span>
+      </div>
+      {sortBySlot(team.players).map((player) => (
+        <PlayerDisplay key={player.event_player_id} player={player} />
+      ))}
+    </section>
   );
 }
 
 function PlayerDisplay({ player }: { player: PlayerInfo }) {
   return (
-    <div className="flex items-center justify-between py-2 px-3 bg-background/60 rounded-md">
-      <div>
-        <div className="font-medium">{player.full_name}</div>
+    <div className="flex items-center gap-2 border-t border-muted py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="text-base font-semibold">{player.full_name}</div>
         {player.nickname && (
           <div className="text-xs text-muted-foreground">&quot;{player.nickname}&quot;</div>
         )}
-        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="lg" className="mt-1" />
       </div>
-      {player.pool && (
-        <Badge variant="secondary" className="text-xs">
-          {poolLabel(player.pool)}
-        </Badge>
-      )}
+      <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+      <PoolBadge pool={player.pool} />
     </div>
   );
 }

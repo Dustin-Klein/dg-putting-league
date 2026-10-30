@@ -19,7 +19,7 @@ async function snap(page: Page, name: string) {
 
 test('home', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'DG Putting League' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Keep score from your phone.' })).toBeVisible();
   await snap(page, 'home');
 });
 

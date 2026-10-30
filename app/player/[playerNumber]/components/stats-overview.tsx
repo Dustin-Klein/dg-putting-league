@@ -1,6 +1,5 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PlayerStatistics } from '@/lib/types/player-statistics';
 
 interface StatsOverviewProps {
@@ -18,10 +17,10 @@ export function StatsOverview({ statistics }: StatsOverviewProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Statistics</h2>
+    <section aria-labelledby="stats-heading" className="flex flex-col gap-3">
+      <h2 id="stats-heading" className="text-xl font-bold">Statistics</h2>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
         <StatCard
           title="Events Played"
           value={statistics.eventsPlayed.toString()}
@@ -40,9 +39,6 @@ export function StatsOverview({ statistics }: StatsOverviewProps) {
           value={statistics.perfectMatches.toString()}
           subtitle="All 3-putt frames"
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <StatCard
           title="1st Place Finishes"
           value={statistics.firstPlaceFinishes.toString()}
@@ -52,7 +48,7 @@ export function StatsOverview({ statistics }: StatsOverviewProps) {
           value={statistics.topThreeFinishes.toString()}
         />
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -64,18 +60,10 @@ interface StatCardProps {
 
 function StatCard({ title, value, subtitle }: StatCardProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="font-score text-4xl font-bold leading-none tabular-nums">{value}</div>
-        {subtitle && (
-          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-1 rounded-[14px] border bg-card p-4">
+      <span className="text-[13px] font-semibold text-muted-foreground">{title}</span>
+      <span className="font-score text-[38px] leading-none font-bold tabular-nums">{value}</span>
+      {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+    </div>
   );
 }

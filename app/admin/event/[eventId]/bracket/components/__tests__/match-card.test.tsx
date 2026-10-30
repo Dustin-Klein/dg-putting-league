@@ -25,7 +25,7 @@ it('shows a steady on-deck indicator in the match-number column and removes it w
   expect(container.querySelector('.border-warning.animate-pulse-ring')).toBeInTheDocument();
   rerender(<MatchCard match={{ ...match, status: Status.Running }} matchNumber={1} onDeckPosition={1} />);
   expect(screen.queryByLabelText('On deck #1')).toBeNull();
-  expect(container.querySelector('[data-state="running"]')).toHaveClass('border-info');
+  expect(container.querySelector('[data-state="running"]')).toHaveClass('border-success');
   rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={1} isIdle />);
   expect(screen.queryByLabelText('On deck #1')).toBeNull();
   expect(container.querySelector('[data-state="idle"]')).toBeInTheDocument();
