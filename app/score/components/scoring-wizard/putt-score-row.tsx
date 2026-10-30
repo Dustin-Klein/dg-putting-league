@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils/utils';
 import { MAX_PUTTS, MIN_PUTTS, calculatePoints } from './scoring-utils';
 
@@ -52,6 +52,24 @@ export function PuttScoreRow({
   onChange,
 }: PuttScoreRowProps) {
   const points = score !== null ? calculatePoints(score, bonusPointEnabled) : null;
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  // Radio-group keyboard pattern: one Tab stop (the chosen score, else the first),
+  // and the arrow keys move to and pick the next or previous score.
+  const tabStop = score !== null && PUTT_OPTIONS.includes(score) ? score : PUTT_OPTIONS[0];
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = PUTT_OPTIONS.length - 1;
+    const target =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (index === last ? 0 : index + 1)
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (index === 0 ? last : index - 1)
+      : event.key === 'Home' ? 0
+      : event.key === 'End' ? last
+      : null;
+    if (target === null) return;
+    event.preventDefault();
+    buttons.current[target]?.focus();
+    onChange(PUTT_OPTIONS[target]);
+  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -73,18 +91,21 @@ export function PuttScoreRow({
         aria-label={`${groupLabel ?? `Putts made by ${label}`}${frameNumber ? `, frame ${frameNumber}` : ''}`}
         className="grid grid-cols-4 gap-1.5"
       >
-        {PUTT_OPTIONS.map((putts) => {
+        {PUTT_OPTIONS.map((putts, index) => {
           const selected = score === putts;
           const bonus = putts === MAX_PUTTS && bonusPointEnabled;
           return (
             <button
               key={putts}
+              ref={(element) => { buttons.current[index] = element; }}
               type="button"
               role="radio"
               aria-checked={selected}
+              tabIndex={putts === tabStop ? 0 : -1}
               aria-label={`${putts} putts made${bonus ? ', plus bonus point' : ''}`}
               disabled={disabled}
               onClick={() => onChange(putts)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
               className={cn(
                 'flex h-14 flex-col items-center justify-center rounded-xl border-[1.5px] font-score text-[28px] leading-none font-bold transition-colors touch-manipulation outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50',
                 selected ? SELECTED[tone] : 'border-input bg-control text-foreground hover:border-foreground/40'
