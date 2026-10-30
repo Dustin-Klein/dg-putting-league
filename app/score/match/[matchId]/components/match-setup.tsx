@@ -100,8 +100,9 @@ function TeamCard({ team, teamNumber }: TeamCardProps) {
           />
           Team {teamNumber}
         </span>
-        <span className="text-[13px] text-muted-foreground">
-          Seed {team.seed} · {team.pool_combo}
+        <span className="truncate pl-2 text-[13px] text-muted-foreground">
+          Seed {team.seed}
+          {team.pool_combo !== team.players.map((p) => p.full_name).join(' & ') && ` · ${team.pool_combo}`}
         </span>
       </div>
       {sortBySlot(team.players).map((player) => (

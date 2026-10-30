@@ -6,3 +6,4 @@ export { PresentationOverlay } from './presentation-overlay';
 export { AdvanceTeamDialog } from './advance-team-dialog';
 export { LaneManagement } from './lane-management';
 export { BracketLegend } from './bracket-legend';
+export { BracketToolbar } from './bracket-toolbar';

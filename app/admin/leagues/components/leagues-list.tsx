@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { LeagueWithRole } from '@/lib/types/league';
 import { CreateLeagueDialog } from './create-league-dialog';
 import { Trash2 } from 'lucide-react';
+import { StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
 
 interface LeaguesListProps {
@@ -54,13 +55,17 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end mb-4">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-score text-5xl leading-none font-bold">My Leagues</h1>
+          <p className="text-base text-muted-foreground">Leagues you organize.</p>
+        </div>
         <CreateLeagueDialog />
       </div>
 
       {leagues.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+        <div className="text-center py-12 border-2 border-dashed rounded-2xl">
           <h3 className="text-lg font-medium">No leagues found</h3>
           <p className="text-muted-foreground mt-2 mb-4">
             You don&apos;t have access to any leagues yet.
@@ -68,28 +73,26 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
           <CreateLeagueDialog />
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-4">
           {leagues.map((league) => (
-            <div
+            <article
               key={league.id}
               onClick={() => handleCardClick(league.id)}
-              className="border rounded-lg p-4 hover:shadow-md transition-shadow hover:border-primary cursor-pointer"
+              className="flex cursor-pointer flex-col gap-4 rounded-2xl border bg-card p-[22px] transition-colors hover:border-input"
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-semibold text-lg">{league.name}</h3>
-                  {league.city && <p className="text-muted-foreground">{league.city}</p>}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h2 className="text-[19px] font-bold">{league.name}</h2>
+                  {league.city && <p className="text-sm text-muted-foreground">{league.city}</p>}
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-info/15 text-info">
-                    {league.role}
-                  </span>
+                <div className="flex shrink-0 items-start gap-2">
+                  <StatusBadge tone="outline" className="capitalize">{league.role}</StatusBadge>
                   {league.role === 'owner' && (
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                      size="icon-sm"
+                      className="text-destructive hover:bg-destructive/10"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleDeleteLeague(league.id);
@@ -103,34 +106,36 @@ export default function LeaguesList({ leagues }: LeaguesListProps) {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Total Events</p>
-                  <p className="font-medium">{league.eventCount}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Active Events</p>
-                  <p className="font-medium">{league.activeEventCount}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground">Last Event</p>
-                  <p className="font-medium">
-                    {league.lastEventDate
-                      ? formatShortDate(league.lastEventDate)
-                      : 'No events yet'}
-                  </p>
-                </div>
+              <div className="grid grid-cols-3 gap-4 border-t border-muted pt-3.5">
+                <Stat value={league.eventCount} label="Total Events" />
+                <Stat value={league.activeEventCount} label="Active Events" />
+                <Stat
+                  value={league.lastEventDate ? formatShortDate(league.lastEventDate) : '—'}
+                  label={league.lastEventDate ? 'Last Event' : 'No events yet'}
+                />
               </div>
 
-              <div className="mt-4" onClick={(e) => e.stopPropagation()}>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/admin/leagues/${league.id}`}>View Details</Link>
-                </Button>
+              <div onClick={(e) => e.stopPropagation()}>
+                <Link
+                  href={`/admin/leagues/${league.id}`}
+                  className="text-[15px] font-semibold text-info hover:underline"
+                >
+                  View Details →
+                </Link>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function Stat({ value, label }: { value: React.ReactNode; label: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-score text-[26px] leading-none font-bold tabular-nums">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }

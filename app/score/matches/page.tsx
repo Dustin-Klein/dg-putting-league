@@ -275,10 +275,7 @@ export default function MatchesPage() {
                 )}
                 onClick={() => handleSelectMatch(match.id)}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-score text-base font-bold tracking-[0.04em] text-muted-foreground">
-                    M{match.number}
-                  </span>
+                <div className="flex items-center gap-2">
                   <StatusBadge tone={running ? 'success' : 'warning'}>
                     {match.lane_label && `${match.lane_label} · `}
                     {running ? 'In Progress' : 'Ready'}
@@ -319,6 +316,7 @@ function TeamRow({
   side: 'one' | 'two';
   showScore: boolean;
 }) {
+  const names = team.players.map(p => p.full_name).join(' & ');
   return (
     <div className="flex items-center gap-2.5">
       <span
@@ -329,10 +327,8 @@ function TeamRow({
         #{team.seed}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-semibold leading-snug">
-          {team.players.map(p => p.full_name).join(' & ')}
-        </div>
-        <div className="text-xs text-muted-foreground">{team.pool_combo}</div>
+        <div className="text-[15px] font-semibold leading-snug">{team.pool_combo}</div>
+        {names !== team.pool_combo && <div className="text-xs text-muted-foreground">{names}</div>}
         <TeamZoneBadges players={team.players} />
       </div>
       <span className="font-score text-[28px] leading-none font-bold tabular-nums">

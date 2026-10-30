@@ -1,120 +1,152 @@
 'use client';
 
+import Link from 'next/link';
+import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils/utils';
 import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
-import { EventWithDetails } from '@/lib/types/event';
+import type { EventStatus, EventWithDetails } from '@/lib/types/event';
 import { describeTeamFormat } from '@/lib/utils/team-utils';
+
+const STEPS: { status: EventStatus; label: string }[] = [
+  { status: 'created', label: 'Created' },
+  { status: 'pre-bracket', label: 'Pre-Bracket' },
+  { status: 'bracket', label: 'Bracket' },
+  { status: 'completed', label: 'Completed' },
+];
+
+function StatusSteps({ status }: { status: EventStatus }) {
+  const currentIndex = STEPS.findIndex((step) => step.status === status);
+  return (
+    <ol aria-label="Event status" className="flex flex-wrap items-center gap-1 text-[13px] font-semibold">
+      {STEPS.map((step, index) => {
+        const done = index < currentIndex;
+        const current = index === currentIndex;
+        return (
+          <li
+            key={step.status}
+            aria-current={current ? 'step' : undefined}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1',
+              current && 'bg-foreground text-background',
+              done && 'text-foreground',
+              !done && !current && 'text-muted-foreground'
+            )}
+          >
+            {done && <Check className="size-3.5" aria-hidden="true" />}
+            {step.label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-[14px] border bg-card p-4">
+      <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
+}
 
 export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: () => void }) {
   // Use the event prop directly since state is now managed by parent
+  const players = Array.isArray(event.players) ? event.players : [];
+  const entryFee = event.entry_fee_per_player != null ? Number(event.entry_fee_per_player) : null;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="font-score text-[44px] leading-none font-bold">
-              {formatDisplayDate(event.event_date)}
-            </CardTitle>
-            <p className="text-muted-foreground">
-              {event.location || 'Location not specified'}
-            </p>
-          </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-score text-5xl leading-none font-bold">
+            {formatDisplayDate(event.event_date)}
+          </h1>
+          <p className="text-[15px] text-muted-foreground">
+            {event.location || 'Location not specified'}
+            {(event.status === 'bracket' || event.status === 'completed') && (
+              <>
+                {' · '}
+                <Link href={`/event/${event.id}/bracket`} className="text-info hover:underline">
+                  Public bracket page
+                </Link>
+              </>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusSteps status={event.status} />
           <NextStatusButton
             event={event}
             onStatusUpdate={onStatusUpdate}
           />
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {event.access_code && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground">Access Code</h3>
-              <div className="flex items-center mt-1">
-                <code className="font-mono bg-muted px-2 py-1 rounded">
-                  {event.access_code}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-2"
-                  onClick={() => {
-                    if (event.access_code) {
-                      navigator.clipboard.writeText(event.access_code);
-                    }
-                  }}
-                >
-                  Copy
-                </Button>
-              </div>
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
+        {event.access_code && (
+          <Stat label="Access Code">
+            <div className="flex items-center gap-1">
+              <code className="font-score text-[28px] leading-none font-bold tracking-[0.08em]">
+                {event.access_code}
+              </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (event.access_code) {
+                    navigator.clipboard.writeText(event.access_code);
+                  }
+                }}
+              >
+                Copy
+              </Button>
             </div>
-          )}
+          </Stat>
+        )}
 
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Putt Distance</h3>
-            <p className="text-lg font-medium">
-              {event.handicap_enabled ? 'By handicap zone' : `${event.putt_distance_ft} ft`}
-            </p>
-          </div>
+        <Stat label="Putt Distance">
+          <span className="font-score text-[28px] leading-none font-bold">
+            {event.handicap_enabled ? 'By zone' : `${event.putt_distance_ft} ft`}
+          </span>
+          {event.handicap_enabled && <span className="text-xs text-muted-foreground">By handicap zone</span>}
+        </Stat>
 
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Lanes</h3>
-            <p className="text-lg font-medium">{event.lane_count}</p>
-          </div>
+        <Stat label="Lanes">
+          <span className="font-score text-[28px] leading-none font-bold tabular-nums">{event.lane_count}</span>
+        </Stat>
 
-          {event.entry_fee_per_player != null && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground">Entry Fee</h3>
-              <p className="text-lg font-medium">${Number(event.entry_fee_per_player).toFixed(2)}</p>
-            </div>
-          )}
+        <Stat label="Participants">
+          <span className="font-score text-[28px] leading-none font-bold tabular-nums">
+            {players.filter(p => p.payment_type !== null).length}/{players.length}
+          </span>
+          <span className="text-xs text-muted-foreground">paid</span>
+        </Stat>
 
-          {event.entry_fee_per_player != null && (() => {
-            const entryFee = Number(event.entry_fee_per_player);
-            const players = Array.isArray(event.players) ? event.players : [];
-            const cashCount = players.filter(p => p.payment_type === 'cash').length;
-            const electronicCount = players.filter(p => p.payment_type === 'electronic').length;
-            return (
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Entry Fees Collected</h3>
-                <p className="text-sm">Cash: ${(cashCount * entryFee).toFixed(2)}</p>
-                <p className="text-sm">Electronic: ${(electronicCount * entryFee).toFixed(2)}</p>
-              </div>
-            );
-          })()}
+        {entryFee !== null && (
+          <Stat label="Entry Fee">
+            <span className="font-score text-[28px] leading-none font-bold tabular-nums">${entryFee.toFixed(2)}</span>
+            <span className="text-xs text-muted-foreground">
+              Cash ${(players.filter(p => p.payment_type === 'cash').length * entryFee).toFixed(2)} · Electronic $
+              {(players.filter(p => p.payment_type === 'electronic').length * entryFee).toFixed(2)}
+            </span>
+          </Stat>
+        )}
 
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Participants</h3>
-            <p className="text-lg font-medium">
-              {event.players?.filter(p => p.payment_type !== null).length || 0}/{event.players?.length || 0} paid
-            </p>
-          </div>
+        <Stat label="Teams">
+          <span className="text-base font-bold">{describeTeamFormat(event.team_size, event.team_assignment)}</span>
+        </Stat>
 
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Teams</h3>
-            <p className="text-lg font-medium">
-              {describeTeamFormat(event.team_size, event.team_assignment)}
-            </p>
-          </div>
+        <Stat label="Bonus Points">
+          <span className="text-base font-bold">{event.bonus_point_enabled ? 'Enabled' : 'Disabled'}</span>
+        </Stat>
 
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Bonus Points</h3>
-            <p className="text-lg font-medium">
-              {event.bonus_point_enabled ? 'Enabled' : 'Disabled'}
-            </p>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground">Qualification Round</h3>
-            <p className="text-lg font-medium">
-              {event.qualification_round_enabled ? 'Enabled' : 'Disabled'}
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        <Stat label="Qualification Round">
+          <span className="text-base font-bold">{event.qualification_round_enabled ? 'Enabled' : 'Disabled'}</span>
+        </Stat>
+      </div>
+    </div>
   );
 }

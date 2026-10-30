@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { EventData } from '@/lib/repositories/event-repository.db';
 import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
-import { EventStatusBadge } from '@/components/status-badge';
+import { EventStatusBadge, StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
@@ -61,7 +61,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
 
   if (!events || events.length === 0) {
     return (
-      <div className="text-center py-12 border-2 border-dashed rounded-lg">
+      <div className="text-center py-12 border-2 border-dashed rounded-2xl">
         <h3 className="text-lg font-medium">No events scheduled yet</h3>
         <p className="text-muted-foreground mt-2 mb-4">
           This league doesn&apos;t have any events yet. {isAdmin && 'Create one to get started.'}
@@ -72,79 +72,73 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
   }
 
   return (
-    <div className="space-y-4">
-      {isAdmin && (
-        <div className="flex justify-end">
+    <section aria-labelledby="events-heading" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="events-heading" className="text-xl font-bold">Events</h2>
+        {isAdmin && (
           <CreateEventDialog
             leagueId={leagueId}
             completedEvents={(events ?? []).filter(e => e.status === 'completed')}
           />
-        </div>
-      )}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {events.map((event) => (
-          <div 
-            key={event.id} 
-            className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-lg">
-                  {formatDisplayDate(event.event_date)}
-                </h3>
-                {event.location && (
-                  <p className="text-muted-foreground">{event.location}</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <EventStatusBadge status={event.status} />
-                {event.qualification_round_enabled && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
-                    Qualification Round
-                  </span>
-                )}
-              </div>
-            </div>
-            
-            <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Lanes</p>
-                <p className="font-medium">{event.lane_count}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Distance</p>
-                <p className="font-medium">{event.putt_distance_ft} ft</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Participants</p>
-                <p className="font-medium">
-                  {event.participant_count || 0} registered
-                </p>
-              </div>
-            </div>
-            
-            <div className="mt-4 flex justify-between items-center">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/admin/event/${event.id}`}>
-                  View Details
-                </Link>
-              </Button>
-              {isAdmin && (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="text-destructive hover:bg-destructive/10"
-                  onClick={() => handleDeleteEvent(event.id)}
-                  disabled={deletingEventId === event.id}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span className="sr-only">Delete event</span>
-                </Button>
+        )}
+      </div>
+      {events.map((event) => (
+        <article
+          key={event.id}
+          className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border bg-card px-5 py-[18px]"
+        >
+          <div className="flex min-w-[200px] flex-[1_1_220px] flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Link
+                href={`/admin/event/${event.id}`}
+                className="font-score text-2xl leading-none font-bold hover:underline"
+              >
+                {formatDisplayDate(event.event_date)}
+              </Link>
+              <EventStatusBadge status={event.status} />
+              {event.qualification_round_enabled && (
+                <StatusBadge tone="outline">Qualification Round</StatusBadge>
               )}
             </div>
+            {event.location && (
+              <span className="text-sm text-muted-foreground">{event.location}</span>
+            )}
           </div>
-        ))}
-      </div>
+          <div className="flex gap-6">
+            <EventStat value={event.participant_count || 0} label="Participants" />
+            <EventStat value={event.lane_count} label="Lanes" />
+            <EventStat value={`${event.putt_distance_ft} ft`} label="Distance" />
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button variant="outline" asChild>
+              <Link href={`/admin/event/${event.id}`}>
+                View Details
+              </Link>
+            </Button>
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:bg-destructive/10"
+                onClick={() => handleDeleteEvent(event.id)}
+                disabled={deletingEventId === event.id}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="sr-only">Delete event</span>
+              </Button>
+            )}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function EventStat({ value, label }: { value: React.ReactNode; label: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-score text-[22px] leading-none font-bold tabular-nums">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }

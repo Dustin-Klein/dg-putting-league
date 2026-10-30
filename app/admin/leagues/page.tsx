@@ -10,10 +10,7 @@ export default async function LeaguePage() {
     const leagues = await getUserAdminLeagues();
 
     return (
-      <div className="container mx-auto p-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="font-score text-[44px] leading-none font-bold">My Leagues</h1>
-        </div>
+      <div className="mx-auto max-w-[1200px] px-4 pt-10 pb-14 md:px-6">
         <LeaguesList leagues={leagues} />
       </div>
     );
@@ -21,9 +18,9 @@ export default async function LeaguePage() {
     logger.error('Error loading leagues', { requestId: await getRequestId(), ...describeError(error) });
 
     return (
-      <div className="container mx-auto p-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="font-score text-[44px] leading-none font-bold">My Leagues</h1>
+      <div className="mx-auto max-w-[1200px] px-4 pt-10 pb-14 md:px-6">
+        <div className="mb-6">
+          <h1 className="font-score text-5xl leading-none font-bold">My Leagues</h1>
         </div>
         <div className="text-destructive">
           Error loading leagues. Please try again later.

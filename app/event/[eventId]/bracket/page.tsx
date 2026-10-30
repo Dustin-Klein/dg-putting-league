@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import { createClient } from '@/lib/supabase/client';
-import { BracketLegend, BracketView, MatchResultsDialog, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
+import { BracketLegend, BracketToolbar, BracketView, MatchResultsDialog, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ChevronLeft, RefreshCw, ZoomIn, ZoomOut, RotateCcw, Presentation } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAutoScale } from '@/lib/hooks/use-auto-scale';
 import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 
@@ -266,73 +266,15 @@ export default function PublicBracketPage({
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 pt-6 pb-12 md:px-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Back"
-          onClick={() => router.back()}
-        >
-          <ChevronLeft className="size-[18px]" />
-        </Button>
-        <h1 className="mr-auto font-score text-4xl leading-none font-bold">
-          {bracketData.bracket.stage.name}
-        </h1>
-        <div role="group" aria-label="Zoom" className="flex h-11 items-center gap-0.5 rounded-[10px] border bg-card px-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Zoom out"
-            onClick={() => setScale(Math.max(25, scale - 10))}
-            disabled={scale <= 25}
-          >
-            <ZoomOut className="size-4" />
-          </Button>
-          <input
-            type="range"
-            aria-label="Zoom level"
-            value={scale}
-            onChange={(e) => setScale(Number(e.target.value))}
-            min={25}
-            max={150}
-            step={5}
-            className="hidden w-24 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary sm:block"
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Zoom in"
-            onClick={() => setScale(Math.min(150, scale + 10))}
-            disabled={scale >= 150}
-          >
-            <ZoomIn className="size-4" />
-          </Button>
-          <span className="w-[52px] text-center font-score text-lg font-bold tabular-nums">
-            {scale}%
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Reset zoom"
-            onClick={() => setScale(100)}
-            disabled={scale === 100}
-          >
-            <RotateCcw className="size-4" />
-          </Button>
-        </div>
-        <Button
-          variant="outline"
-          onClick={bracketRefresh.refresh}
-          disabled={loading}
-        >
-          <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-        <Button onClick={enterPresentationMode}>
-          <Presentation className="size-4" />
-          Present on TV
-        </Button>
-      </div>
+      <BracketToolbar
+        title={bracketData.bracket.stage.name}
+        scale={scale}
+        onScaleChange={setScale}
+        onBack={() => router.back()}
+        onRefresh={bracketRefresh.refresh}
+        isRefreshing={loading}
+        onPresent={enterPresentationMode}
+      />
 
       <BracketLegend showAdminEdits={false} />
 
