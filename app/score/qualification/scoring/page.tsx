@@ -2,15 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Check, ChevronLeft, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils/utils';
+import { ScoringBoard, ScoringFooter } from '@/app/score/components/scoring-wizard/scoring-board';
 import { useToast } from '@/components/ui/use-toast';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { FrameNavigation } from '@/app/score/components/scoring-wizard/frame-navigation';
-import { ScoreStepperRow } from '@/app/score/components/scoring-wizard/score-stepper-row';
+import { PuttScoreRow } from '@/app/score/components/scoring-wizard/putt-score-row';
 import {
+  calculatePoints,
   getResolvedScore,
   getScoreKey,
   getSequentialFrameNumbers,
@@ -371,62 +373,41 @@ export default function QualificationScoringPage() {
     );
   }
 
+  const scoredFrames = new Set(
+    frameNumbers.filter((frameNumber) => players.every((player) => getPlayerScore(player, frameNumber) !== null))
+  );
+  const bonusPointEnabled = event?.bonus_point_enabled ?? false;
+
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-          <Badge>Qualification</Badge>
+    <div className="min-h-screen flex flex-col bg-background">
+      <ScoringBoard
+        backLabel="Players"
+        onBack={handleBack}
+        meta={<span className="text-muted-foreground">Qualification</span>}
+      >
+        <div className="flex items-end justify-between">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-bold tracking-[0.08em] text-muted-foreground">FRAME</span>
+            <span className="font-score text-[40px] leading-[0.95] font-bold tabular-nums">
+              {currentFrame} / {round.frame_count}
+            </span>
+          </div>
+          <div className="flex flex-col items-end text-[13px] text-muted-foreground">
+            <span>
+              Scoring {players.length} Player{players.length !== 1 ? 's' : ''}
+            </span>
+            <span>
+              {[event?.location, event?.event_date && formatDisplayDate(event.event_date)]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </div>
         </div>
-
-        <Card className="mb-4">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-sm text-muted-foreground mb-1">
-                {event?.location && `${event.location} - `}
-                {event?.event_date && formatDisplayDate(event.event_date)}
-              </div>
-              <div className="text-lg font-semibold">
-                Frame {currentFrame} of {round.frame_count}
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Scoring {players.length} Player{players.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Qualification Scores</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {players.map((player) => (
-              <ScoreStepperRow
-                key={player.event_player_id}
-                label={player.full_name}
-                badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} /> : undefined}
-                subtitle={
-                  player.player_number
-                    ? `#${player.player_number} • ${player.total_points} pts total`
-                    : `${player.total_points} pts total`
-                }
-                score={getPlayerScore(player, currentFrame)}
-                bonusPointEnabled={event?.bonus_point_enabled ?? false}
-                disabled={isSaving}
-                onChange={(puttsMade) => handleScoreChange(player.event_player_id, currentFrame, puttsMade)}
-              />
-            ))}
-          </CardContent>
-        </Card>
-
         <FrameNavigation
           frameNumbers={frameNumbers}
           currentFrame={currentFrame}
           standardFrames={round.frame_count}
+          scoredFrames={scoredFrames}
           disabled={isSaving}
           onGoToFrame={(frameNumber) => {
             if (frameNumber === currentFrame) {
@@ -443,11 +424,71 @@ export default function QualificationScoringPage() {
             });
           }}
         />
+      </ScoringBoard>
 
-        <div className="flex gap-2 sticky bottom-0 mt-auto pt-2 pb-1 bg-background">
+      <div className="flex-1 w-full max-w-lg mx-auto px-4 py-3.5 flex flex-col gap-3">
+        {players.map((player) => {
+          const history = frameNumbers.filter(
+            (frameNumber) => frameNumber !== currentFrame && getPlayerScore(player, frameNumber) !== null
+          );
+          return (
+            <section
+              key={player.event_player_id}
+              aria-label={player.full_name}
+              className="bg-card rounded-2xl border p-3.5"
+            >
+              <PuttScoreRow
+                label={player.full_name}
+                badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" /> : undefined}
+                subtitle={player.player_number ? `#${player.player_number}` : undefined}
+                aside={
+                  <span className="flex flex-col items-end">
+                    <span className="font-score text-2xl leading-none font-bold tabular-nums">{player.total_points}</span>
+                    <span className="text-[11px] text-muted-foreground">pts total</span>
+                  </span>
+                }
+                score={getPlayerScore(player, currentFrame)}
+                bonusPointEnabled={bonusPointEnabled}
+                frameNumber={currentFrame}
+                disabled={isSaving}
+                onChange={(puttsMade) => handleScoreChange(player.event_player_id, currentFrame, puttsMade)}
+              >
+                {history.length > 0 && (
+                  <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                    {history.map((frameNumber) => {
+                      const putts = getPlayerScore(player, frameNumber) ?? 0;
+                      return (
+                        <span key={frameNumber} className="rounded-md bg-muted px-2 py-0.5">
+                          F{frameNumber}{' '}
+                          <strong className="font-score text-sm text-foreground tabular-nums">
+                            {calculatePoints(putts, bonusPointEnabled)}
+                          </strong>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </PuttScoreRow>
+            </section>
+          );
+        })}
+      </div>
+
+      <ScoringFooter>
+        <p
+          className={cn(
+            'text-center text-[13px] font-medium',
+            frameComplete ? 'text-success' : 'text-muted-foreground'
+          )}
+        >
+          {frameComplete
+            ? `Frame ${currentFrame} complete`
+            : 'Enter scores for all selected players to continue'}
+        </p>
+        <div className="flex gap-2">
           <Button
             variant="outline"
-            className="flex-1 h-12"
+            className="flex-1 h-[54px] rounded-[14px] text-base"
             onClick={() =>
               void runAction(async () => {
                 const saved = await saveFrameScores(currentFrame);
@@ -460,19 +501,12 @@ export default function QualificationScoringPage() {
             }
             disabled={currentFrame === 1 || isSaving}
           >
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <ChevronLeft className="mr-1 h-4 w-4" />
-                Prev
-              </>
-            )}
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Prev'}
           </Button>
 
           {allFramesComplete ? (
             <Button
-              className="flex-1 h-12"
+              className="flex-[2] h-[54px] rounded-[14px] text-base"
               onClick={() =>
                 void runAction(async () => {
                   const saved = await saveFrameScores(currentFrame);
@@ -490,13 +524,13 @@ export default function QualificationScoringPage() {
               ) : (
                 <>
                   Review
-                  <Check className="ml-1 h-4 w-4" />
+                  <ArrowRight className="size-[18px]" />
                 </>
               )}
             </Button>
           ) : (
             <Button
-              className="flex-1 h-12"
+              className="flex-[2] h-[54px] rounded-[14px] text-base"
               onClick={() =>
                 void runAction(async () => {
                   const saved = await saveFrameScores(currentFrame);
@@ -515,20 +549,14 @@ export default function QualificationScoringPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  Next
-                  <ArrowRight className="ml-1 h-4 w-4" />
+                  Next frame
+                  <ArrowRight className="size-[18px]" />
                 </>
               )}
             </Button>
           )}
         </div>
-
-        {!frameComplete && (
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Enter scores for all selected players to continue
-          </p>
-        )}
-      </div>
+      </ScoringFooter>
     </div>
   );
 }

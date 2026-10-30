@@ -1,8 +1,7 @@
 'use client';
 
-import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { ScoringBoard, LaneChip } from '@/app/score/components/scoring-wizard/scoring-board';
+import type { ReactNode } from 'react';
 import type { MatchInfo } from './wizard-types';
 
 interface FrameWizardHeaderProps {
@@ -13,6 +12,17 @@ interface FrameWizardHeaderProps {
   teamOneTotal: number;
   teamTwoTotal: number;
   onBack: () => void;
+  /** The frame pips. */
+  children?: ReactNode;
+}
+
+export function MatchMeta({ match }: { match: MatchInfo }) {
+  return (
+    <>
+      <span className="truncate text-muted-foreground">{match.round_name}</span>
+      {match.lane_label && <LaneChip label={match.lane_label} />}
+    </>
+  );
 }
 
 export function FrameWizardHeader({
@@ -23,40 +33,39 @@ export function FrameWizardHeader({
   teamOneTotal,
   teamTwoTotal,
   onBack,
+  children,
 }: FrameWizardHeaderProps) {
   return (
-    <div className="flex items-center justify-between mb-2">
-      <Button variant="ghost" size="sm" onClick={onBack} className="h-8 px-2">
-        <ArrowLeft className="mr-1 h-4 w-4" />
-        Setup
-      </Button>
-      <div className="flex items-center gap-3">
-        {match.lane_label && (
-          <Badge variant="secondary" className="text-sm">
-            {match.lane_label}
-          </Badge>
-        )}
-        <div className="flex items-center gap-2 font-score tabular-nums">
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-sans font-semibold text-team-1-ink" aria-hidden="true">
-              T1
-            </span>
-            <span className="sr-only">Team 1:</span>
-            <span className="text-2xl font-bold text-team-1-ink">{teamOneTotal}</span>
-          </div>
-          <span className="text-muted-foreground text-lg">-</span>
-          <div className="flex items-center gap-1">
-            <span className="sr-only">Team 2:</span>
-            <span className="text-2xl font-bold text-team-2-ink">{teamTwoTotal}</span>
-            <span className="text-xs font-sans font-semibold text-team-2-ink" aria-hidden="true">
-              T2
-            </span>
-          </div>
+    <ScoringBoard backLabel="Setup" onBack={onBack} meta={<MatchMeta match={match} />}>
+      <div className="grid grid-cols-3 items-end">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold tracking-[0.06em] text-team-1-ink uppercase">
+            Team 1 · #{match.team_one.seed}
+          </span>
+          <span className="font-score text-[56px] leading-[0.9] font-bold tabular-nums">
+            <span className="sr-only">Team 1: </span>
+            {teamOneTotal}
+          </span>
         </div>
-        <Badge variant={isOvertime ? 'destructive' : 'default'} className="text-sm">
-          {isOvertime ? `OT${currentFrame - standardFrames}` : `F${currentFrame}`}
-        </Badge>
+        <div className="flex flex-col items-center gap-0.5 pb-1.5">
+          <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">
+            {isOvertime ? 'OVERTIME' : 'FRAME'}
+          </span>
+          <span className="font-score text-[28px] leading-none font-bold tabular-nums">
+            {isOvertime ? `OT${currentFrame - standardFrames}` : `${currentFrame} / ${standardFrames}`}
+          </span>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-xs font-semibold tracking-[0.06em] text-team-2-ink uppercase">
+            #{match.team_two.seed} · Team 2
+          </span>
+          <span className="font-score text-[56px] leading-[0.9] font-bold tabular-nums">
+            <span className="sr-only">Team 2: </span>
+            {teamTwoTotal}
+          </span>
+        </div>
       </div>
-    </div>
+      {children}
+    </ScoringBoard>
   );
 }

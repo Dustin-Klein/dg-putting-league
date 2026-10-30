@@ -2,8 +2,7 @@
 
 import { cn } from '@/lib/utils/utils';
 import { sortBySlot } from '@/lib/utils/team-utils';
-import { Badge } from '@/components/ui/badge';
-import { ScoreStepperRow } from '@/app/score/components/scoring-wizard/score-stepper-row';
+import { PuttScoreRow } from '@/app/score/components/scoring-wizard/putt-score-row';
 import { ZoneBadge } from '@/components/zone-badge';
 import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-utils';
 import {
@@ -34,15 +33,6 @@ export function TeamScoringSection({
   bonusPointEnabled,
   onScoreChange,
 }: TeamScoringSectionProps) {
-  const bgColor =
-    teamNumber === 1
-      ? 'bg-team-1/5 border-l-4 border-team-1'
-      : 'bg-team-2/5 border-l-4 border-team-2';
-  const headerBorder =
-    teamNumber === 1
-      ? 'border-b border-team-1/40'
-      : 'border-b border-team-2/40';
-
   const frame = match.frames.find((item) => item.frame_number === frameNumber);
   let frameScore = 0;
 
@@ -58,43 +48,50 @@ export function TeamScoringSection({
   }
 
   return (
-    <div className={cn('rounded-lg p-2', bgColor)}>
-      <div className={cn('flex items-center justify-between pb-2 mb-2', headerBorder)}>
-        <span
-          className={cn(
-            'text-xs font-semibold',
-            teamNumber === 1 ? 'text-team-1-ink' : 'text-team-2-ink'
-          )}
-        >
-          Team {teamNumber}
-          <span className="mx-1.5 font-light opacity-40">|</span>
-          <span className="font-normal text-muted-foreground">
+    <section
+      aria-label={`Team ${teamNumber}`}
+      className={cn(
+        'bg-card rounded-2xl border border-t-4 p-3 flex flex-col gap-3',
+        teamNumber === 1 ? 'border-t-team-1' : 'border-t-team-2'
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={cn('size-2.5 shrink-0 rounded-full', teamNumber === 1 ? 'bg-team-1' : 'bg-team-2')}
+          />
+          <span className={cn('text-sm font-bold', teamNumber === 1 ? 'text-team-1-ink' : 'text-team-2-ink')}>
+            Team {teamNumber}
+          </span>
+          <span className="truncate text-[13px] text-muted-foreground">
             #{team.seed} {team.pool_combo}
           </span>
+        </div>
+        <span className="shrink-0 text-[13px] font-semibold text-muted-foreground">
+          This frame{' '}
+          <span className="font-score text-xl font-bold text-foreground tabular-nums">{frameScore}</span>
         </span>
-        <Badge variant="secondary" className="font-score tabular-nums text-xs h-5">
-          {frameScore} pts
-        </Badge>
       </div>
-      <div className="space-y-2">
-        {sortBySlot(team.players).map((player) => (
-          <MatchPlayerScoreRow
-            key={player.event_player_id}
-            player={player}
-            frameNumber={frameNumber}
-            match={match}
-            localScores={localScores}
-            bonusPointEnabled={bonusPointEnabled}
-            onScoreChange={onScoreChange}
-          />
-        ))}
-      </div>
-    </div>
+      {sortBySlot(team.players).map((player) => (
+        <MatchPlayerScoreRow
+          key={player.event_player_id}
+          player={player}
+          teamNumber={teamNumber}
+          frameNumber={frameNumber}
+          match={match}
+          localScores={localScores}
+          bonusPointEnabled={bonusPointEnabled}
+          onScoreChange={onScoreChange}
+        />
+      ))}
+    </section>
   );
 }
 
 interface MatchPlayerScoreRowProps {
   player: PlayerInfo;
+  teamNumber: 1 | 2;
   frameNumber: number;
   match: MatchInfo;
   localScores: ScoreState;
@@ -104,6 +101,7 @@ interface MatchPlayerScoreRowProps {
 
 function MatchPlayerScoreRow({
   player,
+  teamNumber,
   frameNumber,
   match,
   localScores,
@@ -113,11 +111,13 @@ function MatchPlayerScoreRow({
   const currentScore = getResolvedScore(player.event_player_id, frameNumber, localScores, match.frames);
 
   return (
-    <ScoreStepperRow
+    <PuttScoreRow
       label={player.full_name}
-      subtitle={player.pool ?? undefined}
-      badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} /> : undefined}
+      subtitle={player.pool ? `Pool ${player.pool}` : undefined}
+      badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" /> : undefined}
       score={currentScore}
+      tone={teamNumber === 1 ? 'team-1' : 'team-2'}
+      frameNumber={frameNumber}
       bonusPointEnabled={bonusPointEnabled}
       onChange={(puttsMade) => onScoreChange(player.event_player_id, frameNumber, puttsMade)}
     />

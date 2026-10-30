@@ -3,11 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, RefreshCw, CheckCircle2, Users } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
+import { ArrowRight, Check, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils/utils';
+import { ScoringBoard, ScoringFooter } from '@/app/score/components/scoring-wizard/scoring-board';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { ZoneBadge } from '@/components/zone-badge';
 
@@ -168,48 +167,58 @@ export default function QualificationPage() {
   const totalPlayers = players.length;
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Exit
-          </Button>
+    <div className="min-h-screen flex flex-col bg-background">
+      <ScoringBoard
+        backLabel="Exit"
+        onBack={handleBack}
+        className="max-w-2xl pb-[18px] gap-3"
+        meta={
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
+            className="size-10"
+            aria-label="Refresh"
             onClick={() => accessCode && fetchPlayers(accessCode)}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            <RefreshCw className="size-4" />
           </Button>
+        }
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-bold tracking-[0.08em] text-muted-foreground">QUALIFICATION ROUND</span>
+          <h1 className="font-score text-3xl leading-tight font-bold">Qualification Round</h1>
+          <p className="text-sm text-muted-foreground">
+            {[event?.location, event?.event_date && formatDisplayDate(event.event_date)]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
         </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between text-[13px] font-semibold">
+            <span className="text-foreground/85">Progress</span>
+            <span>{completedCount} / {totalPlayers} players complete</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Players complete"
+            aria-valuemin={0}
+            aria-valuemax={totalPlayers}
+            aria-valuenow={completedCount}
+            className="h-2 overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full rounded-full bg-success transition-all duration-300"
+              style={{ width: `${(completedCount / Math.max(totalPlayers, 1)) * 100}%` }}
+            />
+          </div>
+        </div>
+      </ScoringBoard>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Qualification Round</CardTitle>
-            <CardDescription>
-              {event?.location && `${event.location} - `}
-              {event?.event_date && formatDisplayDate(event.event_date)}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Progress</span>
-                <span>{completedCount} / {totalPlayers} players complete</span>
-              </div>
-              <Progress value={(completedCount / Math.max(totalPlayers, 1)) * 100} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Select players to score
-          </h3>
+      <div className="flex-1 w-full max-w-2xl mx-auto px-4 py-3.5 flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-bold">Who&apos;s putting on your lane?</h2>
           {incompletePlayers.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={handleSelectAll}>
+            <Button variant="ghost" className="h-9 px-2" onClick={handleSelectAll}>
               {selectedPlayers.size === incompletePlayers.length ? 'Deselect All' : 'Select All'}
             </Button>
           )}
@@ -217,80 +226,91 @@ export default function QualificationPage() {
 
         {players.length === 0 ? (
           <Card>
-            <CardContent className="pt-6 text-center text-muted-foreground">
+            <CardContent className="py-6 text-center text-muted-foreground">
               No paid players found for qualification.
               <br />
               Players must be marked as paid to participate.
             </CardContent>
           </Card>
         ) : (
-          <>
-            <div className="space-y-2 mb-6">
-              {sortedPlayers.map((player) => (
-                <Card
+          <div className="bg-card rounded-2xl border overflow-hidden flex flex-col divide-y divide-muted">
+            {sortedPlayers.map((player) => {
+              const selected = selectedPlayers.has(player.event_player_id);
+              return (
+                <button
                   key={player.event_player_id}
-                  className={`cursor-pointer transition-colors ${
-                    player.is_complete
-                      ? 'opacity-60 cursor-not-allowed border-success/30'
-                      : selectedPlayers.has(player.event_player_id)
-                      ? 'border-primary ring-1 ring-primary'
-                      : 'hover:border-primary/50'
-                  }`}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={player.is_complete || selected}
+                  aria-disabled={player.is_complete || undefined}
                   onClick={() => !player.is_complete && handleTogglePlayer(player.event_player_id)}
+                  className={cn(
+                    'flex min-h-[60px] w-full items-center gap-3 px-3.5 py-3 text-left transition-colors outline-none focus-visible:bg-muted',
+                    player.is_complete ? 'cursor-not-allowed' : 'hover:bg-muted/60',
+                    selected && 'bg-foreground/[0.06]'
+                  )}
                 >
-                  <CardContent className="py-3">
-                    <div className="flex items-center gap-3">
-                      {player.is_complete ? (
-                        <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
-                      ) : (
-                        <Checkbox
-                          checked={selectedPlayers.has(player.event_player_id)}
-                          onCheckedChange={() => handleTogglePlayer(player.event_player_id)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'flex size-[26px] shrink-0 items-center justify-center rounded-lg border-2',
+                      player.is_complete
+                        ? 'border-transparent bg-success/15 text-success'
+                        : selected
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input'
+                    )}
+                  >
+                    {(player.is_complete || selected) && <Check className="size-4" strokeWidth={3} />}
+                  </span>
+
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className={cn('truncate text-base font-semibold', player.is_complete && 'text-muted-foreground')}>
+                      {player.full_name}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+                      {player.player_number && (
+                        <span className="text-xs text-muted-foreground">#{player.player_number}</span>
                       )}
+                    </span>
+                  </span>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{player.full_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {player.player_number ? `#${player.player_number}` : ''}
-                        </div>
-                        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <Badge
-                          variant={player.is_complete ? 'default' : 'secondary'}
-                          className={player.is_complete ? 'bg-success' : ''}
-                        >
-                          {player.frames_completed}/{player.total_frames_required}
-                        </Badge>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {player.total_points} pts
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Start Scoring Button */}
-            {selectedPlayers.size > 0 && (
-              <div className="sticky bottom-4">
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={handleStartScoring}
-                >
-                  <Users className="mr-2 h-4 w-4" />
-                  Score {selectedPlayers.size} Player{selectedPlayers.size !== 1 ? 's' : ''}
-                </Button>
-              </div>
-            )}
-          </>
+                  <span className="flex shrink-0 flex-col items-end">
+                    <span className="font-score text-[22px] leading-none font-bold tabular-nums">
+                      {player.total_points} pts
+                    </span>
+                    <span className={cn('text-xs font-semibold', player.is_complete ? 'text-success' : 'text-muted-foreground')}>
+                      {player.is_complete
+                        ? 'Done'
+                        : `${player.frames_completed}/${player.total_frames_required} frames`}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
+
+      {players.length > 0 && (
+        <ScoringFooter className="max-w-2xl pt-3">
+          <Button
+            className="w-full h-14 rounded-[14px] text-[17px]"
+            onClick={handleStartScoring}
+            disabled={selectedPlayers.size === 0}
+          >
+            {selectedPlayers.size === 0 ? (
+              'Select the players on your lane'
+            ) : (
+              <>
+                Score {selectedPlayers.size} Player{selectedPlayers.size !== 1 ? 's' : ''}
+                <ArrowRight className="size-[18px]" />
+              </>
+            )}
+          </Button>
+        </ScoringFooter>
+      )}
     </div>
   );
 }
