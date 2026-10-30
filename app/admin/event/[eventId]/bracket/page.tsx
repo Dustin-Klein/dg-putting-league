@@ -16,6 +16,7 @@ import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
   team2?: Team;
+  displayNumber?: number;
 }
 
 export default function BracketPage({
@@ -178,7 +179,7 @@ export default function BracketPage({
     setIsPresentationMode(false);
   };
 
-  const handleMatchClick = (match: Match) => {
+  const handleMatchClick = (match: Match, displayNumber?: number) => {
     if (!bracketData) return;
 
     const opp1 = match.opponent1 as { id: number | null } | null;
@@ -187,7 +188,7 @@ export default function BracketPage({
     const team1 = bracketData.participantTeamMap[opp1?.id ?? -1];
     const team2 = bracketData.participantTeamMap[opp2?.id ?? -1];
 
-    setSelectedMatch({ ...match, team1, team2 });
+    setSelectedMatch({ ...match, team1, team2, displayNumber });
     setIsDialogOpen(true);
   };
 
@@ -285,6 +286,7 @@ export default function BracketPage({
         {eventId && (
           <MatchScoringDialog
             match={selectedMatch}
+            displayNumber={selectedMatch?.displayNumber}
             team1={selectedMatch?.team1}
             team2={selectedMatch?.team2}
             eventId={eventId}
@@ -334,6 +336,7 @@ export default function BracketPage({
       {eventId && (
         <MatchScoringDialog
           match={selectedMatch}
+          displayNumber={selectedMatch?.displayNumber}
           team1={selectedMatch?.team1}
           team2={selectedMatch?.team2}
           eventId={eventId}

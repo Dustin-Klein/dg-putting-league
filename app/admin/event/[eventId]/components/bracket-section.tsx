@@ -20,6 +20,7 @@ import Link from 'next/link';
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
   team2?: Team;
+  displayNumber?: number;
 }
 
 interface BracketSectionProps {
@@ -33,6 +34,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
+  const [lastDisplayNumber, setLastDisplayNumber] = useState<number | undefined>(undefined);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLaneDialogOpen, setIsLaneDialogOpen] = useState(false);
   const [isPayoutsDialogOpen, setIsPayoutsDialogOpen] = useState(false);
@@ -117,8 +119,9 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
     };
   }, [eventId, bracketRefresh]);
 
-  const handleMatchClick = (match: Match) => {
+  const handleMatchClick = (match: Match, displayNumber?: number) => {
     if (!bracketData) return;
+    setLastDisplayNumber(displayNumber);
 
     const opp1 = match.opponent1 as { id: number | null } | null;
     const opp2 = match.opponent2 as { id: number | null } | null;
@@ -141,7 +144,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
       ? bracketData.participantTeamMap[opp2.id]
       : undefined;
 
-    setSelectedMatch({ ...match, team1, team2 });
+    setSelectedMatch({ ...match, team1, team2, displayNumber });
     setIsDialogOpen(true);
   };
 
@@ -162,7 +165,8 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
       ? bracketData.participantTeamMap[opp2.id]
       : undefined;
 
-    setSelectedMatch({ ...match, team1, team2 });
+    // Reached from the advance dialog, which was opened by clicking this match.
+    setSelectedMatch({ ...match, team1, team2, displayNumber: lastDisplayNumber });
     setIsDialogOpen(true);
   };
 
@@ -338,6 +342,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
 
       <MatchScoringDialog
         match={selectedMatch}
+        displayNumber={selectedMatch?.displayNumber}
         team1={selectedMatch?.team1}
         team2={selectedMatch?.team2}
         eventId={eventId}
@@ -385,6 +390,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
             eventId={eventId}
             eventStatus={bracketData?.eventStatus ?? 'bracket'}
             isAdmin={true}
+            showHeading={false}
           />
         </DialogContent>
       </Dialog>

@@ -28,11 +28,13 @@ function EventContent({
   if (event.status === 'completed') {
     return (
       <div className="space-y-8">
+        <ResultsDisplay
+          eventId={event.id}
+          aside={hasEntryFee ? (
+            <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
+          ) : null}
+        />
         {handicapPanel}
-        <ResultsDisplay eventId={event.id} />
-        {hasEntryFee && (
-          <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
-        )}
       </div>
     );
   }

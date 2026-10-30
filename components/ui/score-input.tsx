@@ -7,9 +7,11 @@ interface ScoreInputProps {
   disabled: boolean;
   isSaving: boolean;
   bonusPointEnabled: boolean;
+  /** Accessible name, e.g. "Avery Lund frame 3". */
+  label?: string;
 }
 
-export function ScoreInput({ value, onChange, disabled, isSaving, bonusPointEnabled }: ScoreInputProps) {
+export function ScoreInput({ value, onChange, disabled, isSaving, bonusPointEnabled, label }: ScoreInputProps) {
   const displayOptions = bonusPointEnabled ? [0, 1, 2, 4] : [0, 1, 2, 3];
   const displayValue = value !== null
     ? (bonusPointEnabled && value === 3 ? 4 : value)
@@ -28,12 +30,13 @@ export function ScoreInput({ value, onChange, disabled, isSaving, bonusPointEnab
           }
         }}
         disabled={disabled}
+        aria-label={label}
         className={cn(
-          "w-12 h-10 text-center text-lg font-score tabular-nums rounded border",
-          "bg-background focus:ring-2 focus:ring-primary focus:border-primary",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
+          "h-[38px] w-11 appearance-none rounded-lg border-[1.5px] border-input bg-control text-center font-score text-xl tabular-nums",
+          "focus-visible:border-foreground focus-visible:ring-[3px] focus-visible:ring-ring/30 focus-visible:outline-hidden",
+          "disabled:cursor-not-allowed disabled:opacity-60",
           value !== null && "font-bold",
-          isMax && "bg-success/10 text-success"
+          isMax && "border-success/60 bg-success/10 text-success"
         )}
       >
         <option value="">-</option>
