@@ -58,7 +58,7 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
                   Team 1 <span className="font-normal text-muted-foreground">#{match.team_one.seed} {match.team_one.pool_combo}</span>
                 </div>
                 <div className={cn(
-                  "text-4xl font-mono font-bold",
+                  "text-4xl font-score tabular-nums font-bold",
                   match.team_one_score > match.team_two_score ? "text-success" : "text-team-1-ink"
                 )}>
                   {match.team_one_score}
@@ -70,7 +70,7 @@ export function MatchSetup({ match, onBeginScoring, onBack }: MatchSetupProps) {
                   Team 2 <span className="font-normal text-muted-foreground">#{match.team_two.seed} {match.team_two.pool_combo}</span>
                 </div>
                 <div className={cn(
-                  "text-4xl font-mono font-bold",
+                  "text-4xl font-score tabular-nums font-bold",
                   match.team_two_score > match.team_one_score ? "text-success" : "text-team-2-ink"
                 )}>
                   {match.team_two_score}

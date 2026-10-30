@@ -9,7 +9,7 @@ export default async function PublicLeaguesPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Leagues</h1>
+      <h1 className="font-score text-[44px] leading-none font-bold mb-8">Leagues</h1>
 
       {leagues.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed rounded-lg">

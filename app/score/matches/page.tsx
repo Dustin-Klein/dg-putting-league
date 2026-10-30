@@ -260,7 +260,7 @@ export default function MatchesPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
+                          <span className="font-score text-sm font-semibold text-muted-foreground tabular-nums">
                             #{match.team_one.seed}
                           </span>
                           <span className="font-medium">
@@ -272,7 +272,7 @@ export default function MatchesPage() {
                         </div>
                         <TeamZoneBadges players={match.team_one.players} />
                       </div>
-                      <span className="text-2xl font-mono font-bold">
+                      <span className="text-2xl font-score tabular-nums font-bold">
                         {match.team_one_score}
                       </span>
                     </div>
@@ -283,7 +283,7 @@ export default function MatchesPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
+                          <span className="font-score text-sm font-semibold text-muted-foreground tabular-nums">
                             #{match.team_two.seed}
                           </span>
                           <span className="font-medium">
@@ -295,7 +295,7 @@ export default function MatchesPage() {
                         </div>
                         <TeamZoneBadges players={match.team_two.players} />
                       </div>
-                      <span className="text-2xl font-mono font-bold">
+                      <span className="text-2xl font-score tabular-nums font-bold">
                         {match.team_two_score}
                       </span>
                     </div>

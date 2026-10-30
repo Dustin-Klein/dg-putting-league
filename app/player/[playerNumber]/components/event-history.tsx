@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { PoolBadge } from '@/components/pool-badge';
 import { formatPlacement } from '@/lib/utils/format-utils';
 import { formatShortDate, parseLocalDate } from '@/lib/utils/date-utils';
 import { EventsTable, type EventColumn } from './events-table';
@@ -57,7 +58,7 @@ const columns: EventColumn<PlayerEventHistory>[] = [
   {
     header: 'Pool',
     cell: (event) =>
-      event.pool ? <Badge variant="outline">{event.pool}</Badge> : '-',
+      event.pool ? <PoolBadge pool={event.pool} /> : '-',
   },
   {
     header: 'Teammate',

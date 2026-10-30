@@ -64,7 +64,7 @@ export function ReviewSubmit({
                   #{match.team_one.seed} {match.team_one.pool_combo}
                 </div>
                 <div className={cn(
-                  "text-5xl font-mono font-bold",
+                  "text-5xl font-score tabular-nums font-bold",
                   team1Wins && "text-success"
                 )}>
                   {match.team_one_score}
@@ -87,7 +87,7 @@ export function ReviewSubmit({
                   #{match.team_two.seed} {match.team_two.pool_combo}
                 </div>
                 <div className={cn(
-                  "text-5xl font-mono font-bold",
+                  "text-5xl font-score tabular-nums font-bold",
                   team2Wins && "text-success"
                 )}>
                   {match.team_two_score}
@@ -263,7 +263,7 @@ function PlayerScoreRow({ player, match, frameNumbers, standardFrames }: PlayerS
           <td
             key={frameNum}
             className={cn(
-              "text-center p-2 font-mono",
+              "text-center p-2 font-score tabular-nums",
               frameNum > standardFrames && "bg-warning/5",
               putts === 3 && "text-success font-bold"
             )}
@@ -272,7 +272,7 @@ function PlayerScoreRow({ player, match, frameNumbers, standardFrames }: PlayerS
           </td>
         );
       })}
-      <td className="text-center p-2 bg-muted font-mono font-bold">
+      <td className="text-center p-2 bg-muted font-score tabular-nums font-bold">
         {totalPoints}
       </td>
     </tr>

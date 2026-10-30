@@ -11,7 +11,7 @@ export function PlayerHeader({ player }: PlayerHeaderProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
-        <h1 className="text-3xl font-bold">{player.full_name}</h1>
+        <h1 className="font-score text-[44px] leading-none font-bold">{player.full_name}</h1>
         {player.player_number && (
           <Badge variant="secondary" className="text-lg px-3 py-1">
             #{player.player_number}

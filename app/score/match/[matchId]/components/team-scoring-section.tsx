@@ -72,7 +72,7 @@ export function TeamScoringSection({
             #{team.seed} {team.pool_combo}
           </span>
         </span>
-        <Badge variant="secondary" className="font-mono text-xs h-5">
+        <Badge variant="secondary" className="font-score tabular-nums text-xs h-5">
           {frameScore} pts
         </Badge>
       </div>

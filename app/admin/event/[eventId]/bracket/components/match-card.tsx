@@ -109,7 +109,7 @@ function OpponentRow({
     >
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {team?.seed && (
-          <span className="text-xs text-muted-foreground font-medium shrink-0">
+          <span className="font-score text-sm text-muted-foreground font-semibold tabular-nums shrink-0">
             #{team.seed}
           </span>
         )}
@@ -121,7 +121,7 @@ function OpponentRow({
       {showScore && opponent.score !== undefined && (
         <span
           className={cn(
-            'font-mono font-medium shrink-0',
+            'font-score tabular-nums font-medium shrink-0',
             isWinner && 'text-success'
           )}
         >
@@ -210,7 +210,7 @@ export function MatchCard({
       )}
       <div className="flex">
         <div className="flex flex-col items-center justify-center px-1.5 py-1 bg-muted/50 border-r min-w-[40px]">
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="font-score text-base font-bold text-muted-foreground tabular-nums">
             M{matchNumber}
           </span>
           {showOnDeck && (

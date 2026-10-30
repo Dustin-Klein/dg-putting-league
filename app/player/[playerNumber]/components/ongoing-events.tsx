@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
+import { PoolBadge } from '@/components/pool-badge';
+import { EventStatusBadge } from '@/components/status-badge';
 import { EventsTable, type EventColumn } from './events-table';
 import { formatShortDate } from '@/lib/utils/date-utils';
 import type { PlayerOngoingEvent } from '@/lib/types/player-statistics';
@@ -20,19 +21,6 @@ function getStatusLabel(status: PlayerOngoingEvent['eventStatus']): string {
       return 'In Progress';
     default:
       return status.charAt(0).toUpperCase() + status.slice(1);
-  }
-}
-
-function getStatusVariant(
-  status: PlayerOngoingEvent['eventStatus']
-): 'default' | 'secondary' | 'outline' {
-  switch (status) {
-    case 'bracket':
-      return 'default';
-    case 'pre-bracket':
-      return 'secondary';
-    default:
-      return 'outline';
   }
 }
 
@@ -69,15 +57,13 @@ const columns: EventColumn<PlayerOngoingEvent>[] = [
   {
     header: 'Status',
     cell: (event) => (
-      <Badge variant={getStatusVariant(event.eventStatus)}>
-        {getStatusLabel(event.eventStatus)}
-      </Badge>
+      <EventStatusBadge status={event.eventStatus} label={getStatusLabel(event.eventStatus)} />
     ),
   },
   {
     header: 'Pool',
     cell: (event) =>
-      event.pool ? <Badge variant="outline">{event.pool}</Badge> : '-',
+      event.pool ? <PoolBadge pool={event.pool} /> : '-',
   },
   {
     header: 'Teammate',
