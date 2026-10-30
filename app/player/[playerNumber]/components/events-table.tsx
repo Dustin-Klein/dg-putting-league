@@ -9,9 +9,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils/utils';
 
 export interface EventColumn<T> {
   header: string;
+  align?: 'right';
   cell: (event: T) => ReactNode;
 }
 
@@ -31,25 +33,30 @@ export function EventsTable<T extends { eventId: string }>({
   if (events.length === 0) {
     if (emptyMessage) {
       return (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">{title}</h2>
+        <section className="flex flex-col gap-3">
+          <h2 className="text-xl font-bold">{title}</h2>
           <p className="text-muted-foreground">{emptyMessage}</p>
-        </div>
+        </section>
       );
     }
     return null;
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">{title}</h2>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-xl font-bold">{title}</h2>
 
-      <div className="rounded-md border">
-        <Table>
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        <Table className="min-w-[560px] text-[15px]">
           <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHead key={column.header}>{column.header}</TableHead>
+                <TableHead
+                  key={column.header}
+                  className={cn('px-2 first:pl-5 last:pr-5', column.align === 'right' && 'text-right')}
+                >
+                  {column.header}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -57,13 +64,18 @@ export function EventsTable<T extends { eventId: string }>({
             {events.map((event) => (
               <TableRow key={event.eventId}>
                 {columns.map((column) => (
-                  <TableCell key={column.header}>{column.cell(event)}</TableCell>
+                  <TableCell
+                    key={column.header}
+                    className={cn('px-2 py-3 first:pl-5 last:pr-5', column.align === 'right' && 'text-right')}
+                  >
+                    {column.cell(event)}
+                  </TableCell>
                 ))}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-    </div>
+    </section>
   );
 }

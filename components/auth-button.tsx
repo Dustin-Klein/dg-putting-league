@@ -1,28 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { LogoutButton } from "./logout-button";
 import { useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  const pathname = usePathname();
-  const current = pathname === href || pathname.startsWith(`${href}/`);
-  return (
-    <Button
-      asChild
-      variant="ghost"
-      className={current ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:text-foreground"}
-    >
-      <Link href={href} aria-current={current ? "page" : undefined}>
-        {children}
-      </Link>
-    </Button>
-  );
-}
 
 export function AuthButton() {
   const [user, setUser] = useState<User | null>(null);
@@ -60,15 +43,13 @@ export function AuthButton() {
   }
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex items-center gap-1">
-        <NavLink href="/score">Score</NavLink>
-        <NavLink href="/players">Players</NavLink>
-        {user && <NavLink href="/admin/leagues">My Leagues</NavLink>}
-      </div>
+    <div className="flex items-center gap-2">
       {user ? (
         <>
-          <span className="text-sm text-muted-foreground">Hey, {user.email}!</span>
+          <Button asChild variant="outline" className="h-10 px-3.5">
+            <Link href="/admin/leagues">My Leagues</Link>
+          </Button>
+          <span className="max-w-48 truncate text-sm text-muted-foreground">{user.email}</span>
           <LogoutButton />
         </>
       ) : (

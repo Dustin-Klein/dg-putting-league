@@ -81,19 +81,20 @@ export default function PlayerProfilePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
-      <Link href="/players">
-        <Button variant="ghost" className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Players
-        </Button>
-      </Link>
-
-      <PlayerHeader player={profile.player} />
-      <StatsOverview statistics={profile.statistics} />
-      <HandicapCard playerNumber={String(playerNumber)} />
-      <OngoingEvents ongoingEvents={profile.ongoingEvents} />
-      <EventHistory eventHistory={profile.eventHistory} />
+    <div className="flex flex-col">
+      <PlayerHeader player={profile.player} ongoingEvents={profile.ongoingEvents} />
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-7 px-4 pt-7 pb-14 md:px-6">
+        <StatsOverview statistics={profile.statistics} />
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7">
+            <OngoingEvents ongoingEvents={profile.ongoingEvents} />
+            <EventHistory eventHistory={profile.eventHistory} />
+          </div>
+          <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-4">
+            <HandicapCard playerNumber={String(playerNumber)} />
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }

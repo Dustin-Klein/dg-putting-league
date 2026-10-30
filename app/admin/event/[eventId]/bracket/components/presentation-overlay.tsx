@@ -98,11 +98,12 @@ export function PresentationOverlay({
       {/* Score entry info in top right */}
       {accessCode && (
         <div className="fixed top-4 right-4 z-40 text-right">
-          <div className="bg-background/80 backdrop-blur-xs rounded-lg px-4 py-3 border">
-            <p className="text-sm text-muted-foreground">Submit scores at</p>
+          {/* Scoreboard panel: dark in both themes so it reads from across the room. */}
+          <div className="dark bg-board text-foreground rounded-[18px] border px-5 py-4">
+            <p className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Submit scores at</p>
             <p className="font-mono font-semibold text-base">dg-putting-league.vercel.app/score</p>
-            <p className="text-sm text-muted-foreground mt-1">Access Code</p>
-            <p className="font-mono font-bold text-lg tracking-wider">{accessCode}</p>
+            <p className="mt-2 text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Access Code</p>
+            <p className="font-score text-4xl leading-none font-bold tracking-[0.12em]">{accessCode}</p>
           </div>
         </div>
       )}

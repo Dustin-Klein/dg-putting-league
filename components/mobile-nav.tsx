@@ -7,6 +7,7 @@ import { User } from "@supabase/supabase-js";
 import { Menu, Sun, Moon, Laptop, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
+import { PUBLIC_NAV_LINKS } from "@/components/nav-links";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -51,7 +52,7 @@ export function MobileNav() {
   };
 
   if (loading || !mounted) {
-    return <div className="h-9 w-9" />;
+    return <div className="size-11" />;
   }
 
   const ICON_SIZE = 16;
@@ -59,22 +60,21 @@ export function MobileNav() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <Menu size={20} />
+        <Button variant="ghost" size="icon" aria-label="Open menu">
+          <Menu size={22} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem asChild>
-          <Link href="/score">Score</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/players">Players</Link>
-        </DropdownMenuItem>
+        {PUBLIC_NAV_LINKS.map((link) => (
+          <DropdownMenuItem key={link.href} asChild>
+            <Link href={link.href}>{link.label}</Link>
+          </DropdownMenuItem>
+        ))}
 
         {user ? (
           <>
             <DropdownMenuItem asChild>
-              <Link href="/leagues">My Leagues</Link>
+              <Link href="/admin/leagues">My Leagues</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-xs text-muted-foreground truncate">

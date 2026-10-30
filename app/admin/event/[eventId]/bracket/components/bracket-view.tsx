@@ -47,7 +47,7 @@ interface RoundLayout {
   height: number;
 }
 
-const MATCH_HEIGHT = 66;
+const MATCH_HEIGHT = 80;
 const MATCH_GAP = 16;
 const BYE_GAP = 20;
 const IDLE_THRESHOLD_MS = 120_000;
@@ -593,7 +593,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
 
     return (
       <div key={group.id} className={compact ? 'space-y-1' : 'space-y-4'}>
-        <h2 className={`font-semibold text-foreground ${compact ? 'text-base' : 'text-lg'}`}>
+        <h2 className={`font-bold text-foreground ${compact ? 'text-base' : 'text-lg'}`}>
           {GROUP_NAMES[group.number] || `Group ${group.number}`}
         </h2>
 
@@ -602,7 +602,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
           <div className={`flex min-w-max ${compact ? 'mb-2' : 'mb-4'}`}>
             {roundLayouts.map((layout, idx) => (
               <Fragment key={layout.round.id}>
-                <div className="w-64 text-sm font-medium text-muted-foreground text-center">
+                <div className="w-64 text-[11px] font-bold tracking-[0.08em] text-muted-foreground uppercase">
                   {getRoundName(group, layout.round)}
                 </div>
                 {idx < roundLayouts.length - 1 && (
@@ -676,7 +676,8 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
       <button
         type="button"
         onClick={() => setHideFinished(prev => !prev)}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        aria-pressed={hideFinished}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-input px-3 text-sm font-semibold transition-colors hover:bg-muted"
       >
         {hideFinished ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         {hideFinished ? 'Show finished' : 'Hide finished'}
