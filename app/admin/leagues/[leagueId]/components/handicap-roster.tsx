@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -19,8 +18,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { ZoneBadge } from '@/components/zone-badge';
+import { StatusBadge } from '@/components/status-badge';
+import { cn } from '@/lib/utils/utils';
 import { eligibilityText, formatPct, formatPeriodStats, formatTimestampDate } from '@/lib/utils/handicap-format';
-import type { LeagueRosterEntry, ZoneDefinition, ZoneSuggestion } from '@/lib/types/handicap';
+import type { LeagueRosterEntry, PeriodStats, ZoneDefinition, ZoneSuggestion } from '@/lib/types/handicap';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const response = await fetch(url, {
@@ -84,32 +85,34 @@ export function ZoneReviewQueue({
   };
 
   return (
-    <Card className="border-warning/60">
-      <CardHeader>
-        <CardTitle>
+    <section aria-labelledby="review-queue-heading" className="rounded-2xl border border-warning/50 bg-warning/10 p-5">
+      <div className="mb-3 flex flex-col gap-1">
+        <h2 id="review-queue-heading" className="text-lg font-bold">
           {suggestions.length} {suggestions.length === 1 ? 'player' : 'players'} below {demoteBelowPct}% at their zone
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-sm text-muted-foreground">
           Nobody is moved closer automatically. Move them, or dismiss with a note; a player who stays low is flagged
           again after their next event.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
         {suggestions.map((suggestion) => (
           <div
             key={suggestion.evaluation_id}
-            className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/player/${suggestion.player_number}`} className="font-medium hover:underline">
+                <Link href={`/player/${suggestion.player_number}`} className="font-semibold hover:underline">
                   {suggestion.player_name}
                 </Link>
                 <ZoneBadge zone={suggestion.zone} distanceFt={suggestion.distance_ft} size="sm" />
               </div>
               <p className="text-sm">
-                {formatPct(suggestion.stats.make_pct)} over {suggestion.stats.putts_attempted} putts since{' '}
-                {formatTimestampDate(suggestion.period_started_at)}
+                <span className="font-score text-lg leading-none font-bold tabular-nums text-warning">
+                  {formatPct(suggestion.stats.make_pct)}
+                </span>{' '}
+                over {suggestion.stats.putts_attempted} putts since {formatTimestampDate(suggestion.period_started_at)}
               </p>
               {suggestion.previous_flags > 0 && (
                 <p className="text-xs text-muted-foreground">
@@ -132,7 +135,7 @@ export function ZoneReviewQueue({
             </div>
           </div>
         ))}
-      </CardContent>
+      </div>
 
       <Dialog open={dismissing !== null} onOpenChange={(open) => !open && setDismissing(null)}>
         <DialogContent>
@@ -152,7 +155,7 @@ export function ZoneReviewQueue({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </section>
   );
 }
 
@@ -199,63 +202,79 @@ export function HandicapRoster({
     }
   };
 
+  const flagged = roster.filter((entry) => entry.has_open_suggestion).length;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Players</CardTitle>
-        <CardDescription>
-          Everyone who has played in this league. A zone change applies from the next event the player plays.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        {roster.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No players have played in this league yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Player</TableHead>
-                <TableHead>Zone</TableHead>
-                <TableHead>Current period</TableHead>
-                <TableHead>Eligibility</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+    <section aria-labelledby="roster-heading" className="rounded-2xl border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4">
+        <div>
+          <h2 id="roster-heading" className="text-lg font-bold">
+            Players <span className="font-medium text-muted-foreground">{roster.length}</span>
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Everyone who has played in this league. A zone change applies from the next event the player plays.
+          </p>
+        </div>
+        {flagged > 0 && <StatusBadge tone="warning">{flagged} flagged</StatusBadge>}
+      </div>
+      {roster.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-muted-foreground">No players have played in this league yet.</p>
+      ) : (
+        <Table className="min-w-[620px]">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="pl-5">Player</TableHead>
+              <TableHead>Zone</TableHead>
+              <TableHead>Current period</TableHead>
+              <TableHead>Eligibility</TableHead>
+              <TableHead className="pr-5 text-right"><span className="sr-only">Actions</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {roster.map((entry) => (
+              <TableRow
+                key={entry.player_id}
+                className={cn('border-muted', entry.has_open_suggestion && 'bg-warning/10 hover:bg-warning/15')}
+              >
+                <TableCell className="py-3 pl-5">
+                  <Link href={`/player/${entry.player_number}`} className="font-semibold hover:underline">
+                    {entry.player_name}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  {entry.zone !== null ? (
+                    <ZoneBadge zone={entry.zone} distanceFt={entry.distance_ft} size="sm" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No zone yet</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {entry.stats && entry.stats.putts_attempted > 0 ? (
+                    <PeriodBar stats={entry.stats} />
+                  ) : (
+                    <span className="text-muted-foreground">–</span>
+                  )}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'text-xs font-bold',
+                    entry.has_open_suggestion ? 'text-warning' : 'text-muted-foreground'
+                  )}
+                >
+                  {entry.has_open_suggestion
+                    ? 'Flagged for review'
+                    : entry.progress ? eligibilityText(entry.progress) ?? 'Eligible' : '–'}
+                </TableCell>
+                <TableCell className="pr-5 text-right">
+                  <Button size="sm" variant="outline" onClick={() => openEditor(entry)}>
+                    Change zone
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {roster.map((entry) => (
-                <TableRow key={entry.player_id}>
-                  <TableCell>
-                    <Link href={`/player/${entry.player_number}`} className="font-medium hover:underline">
-                      {entry.player_name}
-                    </Link>
-                    {entry.has_open_suggestion && (
-                      <span className="ml-2 text-xs text-warning">flagged</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {entry.zone !== null ? (
-                      <ZoneBadge zone={entry.zone} distanceFt={entry.distance_ft} size="sm" />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No zone yet</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums">
-                    {entry.stats && entry.stats.putts_attempted > 0 ? formatPeriodStats(entry.stats) : '–'}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {entry.progress ? eligibilityText(entry.progress) ?? 'Eligible' : '–'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => openEditor(entry)}>
-                      Change zone
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
+            ))}
+          </TableBody>
+        </Table>
+      )}
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
@@ -299,6 +318,22 @@ export function HandicapRoster({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </section>
+  );
+}
+
+/** Make % in the current period as a bar, with the sample size beside it. */
+function PeriodBar({ stats }: { stats: PeriodStats }) {
+  const pct = stats.make_pct ?? 0;
+  return (
+    <div className="flex items-center gap-2.5" title={formatPeriodStats(stats)}>
+      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <div className="h-full bg-foreground" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+      </div>
+      <span className="font-score text-lg leading-none font-bold tabular-nums">{formatPct(stats.make_pct)}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {stats.putts_made}/{stats.putts_attempted} putts · {stats.matches} {stats.matches === 1 ? 'match' : 'matches'}
+      </span>
+    </div>
   );
 }

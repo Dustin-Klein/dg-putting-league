@@ -122,12 +122,15 @@ export function EventForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-col">
+        <div className="flex min-h-0 flex-col gap-[26px] overflow-y-auto px-5 py-6 sm:px-7">
+      <FormGroup title="When & where">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
         <FormField
           control={form.control}
           name="event_date"
           render={({ field }) => (
-            <FormItem className="flex flex-col">
+            <FormItem>
               <FormLabel>Event Date</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
@@ -159,9 +162,6 @@ export function EventForm({
                   />
                 </PopoverContent>
               </Popover>
-              <FormDescription>
-                Select the date for this event.
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -181,15 +181,11 @@ export function EventForm({
                   disabled={isLoading}
                 />
               </FormControl>
-              <FormDescription>
-                Where will this event take place?
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="lane_count"
@@ -209,6 +205,42 @@ export function EventForm({
             )}
           />
 
+        <FormField
+          control={form.control}
+          name="access_code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Access Code</FormLabel>
+              <div className="flex gap-2">
+                <FormControl>
+                  <Input
+                    placeholder="e.g., ABC123"
+                    {...field}
+                    disabled={isLoading}
+                    className="flex-1 font-score text-lg tracking-wider"
+                  />
+                </FormControl>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleGenerateCode}
+                  disabled={isLoading}
+                >
+                  Generate
+                </Button>
+              </div>
+              <FormDescription className="text-xs">
+                Players type this to score.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        </div>
+      </FormGroup>
+
+      <FormGroup title="Scoring">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="putt_distance_ft"
@@ -237,9 +269,80 @@ export function EventForm({
               </FormItem>
             )}
           />
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="bracket_frame_count"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Bracket Frames</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  {...field}
+                  disabled={isLoading}
+                />
+              </FormControl>
+              <FormDescription className="text-xs">
+                Frames per match in bracket play (1-10)
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        </div>
+        <FormField
+          control={form.control}
+          name="qualification_round_enabled"
+          render={({ field }) => (
+            <FormItem className="flex items-center justify-between gap-3 space-y-0 rounded-xl bg-muted px-3.5 py-3">
+              <div className="flex flex-col gap-0.5">
+                <FormLabel>Qualification Round</FormLabel>
+                <FormDescription className="text-xs">
+                  Include a qualification round to seed players (and set A/B pools for random doubles)
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  className="data-[state=checked]:bg-success"
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        {qualificationRoundEnabled && (
+          <FormField
+            control={form.control}
+            name="qualification_frame_count"
+            render={({ field }) => (
+              <FormItem className="sm:max-w-[calc(50%-0.5rem)]">
+                <FormLabel>Qualification Frames</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    {...field}
+                    disabled={isLoading}
+                  />
+                </FormControl>
+                <FormDescription className="text-xs">
+                  Frames per player in the qualification round (1-10)
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+      </FormGroup>
+
+      <FormGroup title="Teams & bracket">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="team_size"
@@ -269,7 +372,7 @@ export function EventForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <FormDescription>Players per bracket entrant</FormDescription>
+                <FormDescription className="text-xs">Players per bracket entrant</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -294,38 +397,38 @@ export function EventForm({
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormDescription>How teams are formed when bracket play starts</FormDescription>
+                  <FormDescription className="text-xs">How teams are formed when bracket play starts</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
           )}
         </div>
-
         <FormField
           control={form.control}
-          name="bracket_frame_count"
+          name="double_grand_final"
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>Bracket Frames</FormLabel>
+            <FormItem className="flex items-center justify-between gap-3 space-y-0 rounded-xl bg-muted px-3.5 py-3">
+              <div className="flex flex-col gap-0.5">
+                <FormLabel>Grand Final Reset</FormLabel>
+                <FormDescription className="text-xs">
+                  WB champion must lose twice in the grand final
+                </FormDescription>
+              </div>
               <FormControl>
-                <Input
-                  type="number"
-                  min="1"
-                  max="10"
-                  {...field}
-                  disabled={isLoading}
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  className="data-[state=checked]:bg-success"
                 />
               </FormControl>
-              <FormDescription>
-                Number of frames per match in bracket play (1-10)
-              </FormDescription>
-              <FormMessage />
             </FormItem>
           )}
         />
+      </FormGroup>
 
-        <div className="grid grid-cols-3 gap-4">
+      <FormGroup title="Money">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="entry_fee_per_player"
@@ -394,7 +497,7 @@ export function EventForm({
             control={form.control}
             name="admin_fees"
             render={({ field }) => (
-              <FormItem>
+              <FormItem className="sm:col-span-2">
                 <FormLabel>Admin Fee per Event</FormLabel>
                 <FormControl>
                   <div className="relative">
@@ -422,139 +525,44 @@ export function EventForm({
             )}
           />
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="qualification_round_enabled"
-            render={({ field }) => (
-              <FormItem>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Qualification Round</FormLabel>
-                      <FormDescription>
-                        Include a qualification round to seed players (and set A/B pools for random doubles)
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </div>
-                </div>
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="double_grand_final"
-            render={({ field }) => (
-              <FormItem>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Grand Final Reset</FormLabel>
-                      <FormDescription>
-                        WB champion must lose twice in the grand final
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </div>
-                </div>
-              </FormItem>
-            )}
-          />
-        </div>
-
-        {qualificationRoundEnabled && (
-          <FormField
-            control={form.control}
-            name="qualification_frame_count"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Qualification Frames</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="10"
-                    {...field}
-                    disabled={isLoading}
-                  />
-                </FormControl>
-                <FormDescription>
-                  Number of frames per player in qualification round (1-10)
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-
-        <FormField
-          control={form.control}
-          name="access_code"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Access Code</FormLabel>
-              <div className="flex gap-2">
-                <FormControl>
-                  <Input
-                    placeholder="e.g., ABC123"
-                    {...field}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                </FormControl>
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={handleGenerateCode}
-                  disabled={isLoading}
-                >
-                  Generate
-                </Button>
-              </div>
-              <FormDescription>
-                This code will be used by participants to join the event.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      </FormGroup>
 
         {extraContent}
+        </div>
 
-        {error && (
-          <div className="text-sm font-medium text-destructive text-right mb-2">
-            {error}
-          </div>
-        )}
-
-        <div className="flex justify-end space-x-4">
-          {showCancelButton && onCancel && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
+        <div className="flex flex-col gap-2 border-t px-5 py-[18px] sm:px-7">
+          {error && (
+            <div className="text-sm font-medium text-destructive sm:text-right">
+              {error}
+            </div>
           )}
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Saving...' : submitButtonText}
-          </Button>
+          <div className="flex justify-end gap-2.5">
+            {showCancelButton && onCancel && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={onCancel}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" size="lg" disabled={isLoading}>
+              {isLoading ? 'Saving...' : submitButtonText}
+            </Button>
+          </div>
         </div>
       </form>
     </Form>
+  );
+}
+
+function FormGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0">
+      <legend className="pb-3 text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">{title}</legend>
+      {children}
+    </fieldset>
   );
 }

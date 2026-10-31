@@ -4,15 +4,23 @@ import { useState } from 'react';
 import { formatForDatabase, formatDisplayDate } from '@/lib/utils/date-utils';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EventForm, type EventFormValues } from './event-form';
 import type { EventData } from '@/lib/repositories/event-repository.db';
 
 interface CreateEventDialogProps {
   leagueId: string;
+  leagueName?: string;
   completedEvents?: EventData[];
 }
 
-export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEventDialogProps) {
+export function CreateEventDialog({ leagueId, leagueName, completedEvents = [] }: CreateEventDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,23 +83,27 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
         setError(null);
         setCopyFromEventId('');
       }}>Create Event</Button>
-      {open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Event</h2>
-            <p className="text-muted-foreground mb-6">
-              Fill in the details below to create a new event for this league.
-            </p>
+      <Dialog open={open} onOpenChange={(next) => !isLoading && setOpen(next)}>
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-[720px]">
+          <DialogHeader className="gap-0.5 border-b px-5 py-[22px] pr-14 text-left sm:px-7">
+            <DialogTitle className="font-score text-[32px] leading-none">New event</DialogTitle>
+            <DialogDescription>
+              {leagueName ?? 'Fill in the details below to create a new event for this league.'}
+            </DialogDescription>
+          </DialogHeader>
 
             <EventForm
               onSubmit={handleSubmit}
               onCancel={() => setOpen(false)}
               isLoading={isLoading}
-              submitButtonText="Create Event"
+              submitButtonText="Create event"
               error={error}
               extraContent={completedEvents.length > 0 ? (
-                <div>
-                  <label htmlFor="copy-players" className="block text-sm font-medium mb-1">
+                <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
+                  <legend className="pb-3 text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">
+                    Players
+                  </legend>
+                  <label htmlFor="copy-players" className="text-sm font-semibold">
                     Copy players from
                   </label>
                   <select
@@ -99,7 +111,7 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
                     value={copyFromEventId}
                     onChange={(e) => setCopyFromEventId(e.target.value)}
                     disabled={isLoading}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="h-11 w-full rounded-lg border-[1.5px] border-input bg-control px-3 text-base md:text-[15px]"
                   >
                     <option value="">None</option>
                     {completedEvents.map((event) => (
@@ -109,12 +121,11 @@ export function CreateEventDialog({ leagueId, completedEvents = [] }: CreateEven
                       </option>
                     ))}
                   </select>
-                </div>
+                </fieldset>
               ) : undefined}
             />
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

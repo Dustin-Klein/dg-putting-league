@@ -13,7 +13,7 @@ import {
 import type { TeamPreviewPlayer } from '@/lib/types/team';
 import type { TeamDraft } from '@/lib/utils/team-utils';
 
-function formatScore(player: TeamPreviewPlayer): string {
+export function formatScore(player: TeamPreviewPlayer): string {
   return player.scoringMethod === 'default' ? 'X' : player.pfaScore.toFixed(2);
 }
 

@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
-import { ZoneBadge } from '@/components/zone-badge';
+import { zoneColorClass } from '@/components/zone-badge';
+import { cn } from '@/lib/utils/utils';
 import { MAX_ZONES, type LeagueHandicapConfig, type ZoneDefinition } from '@/lib/types/handicap';
 import { handicapSettingsError, zoneLadderError } from '@/lib/services/handicap/validation';
 
@@ -75,171 +75,195 @@ export function HandicapSettingsForm({ leagueId, config, onSaved }: HandicapSett
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Handicap settings</CardTitle>
-        <CardDescription>
+    <section aria-labelledby="handicap-settings-heading" className="flex flex-col gap-4 rounded-2xl border bg-card p-5">
+      <div className="flex flex-col gap-1">
+        <h2 id="handicap-settings-heading" className="text-lg font-bold">Handicap settings</h2>
+        <p className="text-xs text-muted-foreground">
           Players putt from their zone&apos;s distance. Zones change only when an event is completed or an
           organizer changes them. {settings.auto_demote_enabled
             ? 'This league moves players closer automatically below the demotion threshold.'
             : 'This league never moves anyone closer automatically: players below the demotion threshold are flagged for review.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label htmlFor="handicap-enabled">Use handicaps for new events</Label>
-            <p className="text-xs text-muted-foreground">
-              Applies to events created from now on. Events already created keep the setting they started with.
-            </p>
-          </div>
-          <Switch
-            id="handicap-enabled"
-            checked={settings.enabled}
-            onCheckedChange={(checked) => update('enabled', checked)}
-          />
-        </div>
+        </p>
+      </div>
 
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">Zones</h3>
-          <p className="text-xs text-muted-foreground">
-            The default distances each new event starts from. Organizers can adjust an event&apos;s distances for
-            the night; the zone is what a player&apos;s record is kept against.
-          </p>
-          <div className="space-y-2">
-            {zones.map((zone) => (
-              <div key={zone.zone} className="flex items-center gap-3">
-                <ZoneBadge zone={zone.zone} distanceFt={null} className="w-20 justify-center" />
+      <SettingSwitch
+        id="handicap-enabled"
+        label="Use handicaps for new events"
+        help="Applies to events created from now on. Events already created keep the setting they started with."
+        checked={settings.enabled}
+        onCheckedChange={(checked) => update('enabled', checked)}
+      />
+      <SettingSwitch
+        id="auto-demote"
+        label="Move players closer automatically"
+        help="Off: players below the threshold are flagged for an organizer to review. If you turn this on, tell your players."
+        checked={settings.auto_demote_enabled}
+        onCheckedChange={(checked) => update('auto_demote_enabled', checked)}
+      />
+      <SettingSwitch
+        id="count-qualification"
+        label="Count qualification putts"
+        help="Qualification rounds never count as matches."
+        checked={settings.count_qualification_putts}
+        onCheckedChange={(checked) => update('count_qualification_putts', checked)}
+      />
+
+      <div className="flex flex-col gap-2 border-t border-muted pt-3">
+        <h3 className="text-sm font-semibold">Zones</h3>
+        <p className="text-xs text-muted-foreground">
+          The default distances each new event starts from. Organizers can adjust an event&apos;s distances for
+          the night; the zone is what a player&apos;s record is kept against.
+        </p>
+        <div className="grid grid-cols-4 gap-1.5">
+          {zones.map((zone) => (
+            <label key={zone.zone} className="flex min-w-0 flex-col gap-1 text-xs font-bold">
+              <span className={cn('w-fit rounded-[5px] px-1.5 py-0.5', zoneColorClass(zone.zone))}>Z{zone.zone}</span>
+              <div className="relative">
                 <Input
                   type="number"
                   inputMode="decimal"
                   step="0.5"
                   min="1"
-                  className="w-28"
+                  className="h-10 pr-6 pl-2 text-sm md:text-sm"
                   aria-label={`Zone ${zone.zone} distance in feet`}
                   value={Number.isFinite(zone.distance_ft) ? zone.distance_ft : ''}
                   onChange={(e) => setZoneDistance(zone.zone, e.target.value)}
                 />
-                <span className="text-sm text-muted-foreground">ft</span>
+                <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs font-normal text-muted-foreground">
+                  ft
+                </span>
               </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addZone} disabled={zones.length >= MAX_ZONES}>
-              <Plus className="mr-1 h-4 w-4" /> Add zone
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={removeLastZone} disabled={zones.length <= 2}>
-              <Trash2 className="mr-1 h-4 w-4" /> Remove last zone
-            </Button>
-          </div>
-        </section>
-
-        <section className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="default-zone">Starting zone for new players</Label>
-            <Input
-              id="default-zone"
-              type="number"
-              min={1}
-              max={zones.length}
-              value={settings.default_zone}
-              onChange={(e) => update('default_zone', Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="promote-above">Move up above (%)</Label>
-            <Input
-              id="promote-above"
-              type="number"
-              min={0}
-              max={100}
-              step="0.5"
-              value={settings.promote_above_pct}
-              onChange={(e) => update('promote_above_pct', Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="demote-below">Flag for moving closer below (%)</Label>
-            <Input
-              id="demote-below"
-              type="number"
-              min={0}
-              max={100}
-              step="0.5"
-              value={settings.demote_below_pct}
-              onChange={(e) => update('demote_below_pct', Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="window-putts">Count only the most recent putts</Label>
-            <Input
-              id="window-putts"
-              type="number"
-              min={1}
-              placeholder="All putts in the zone"
-              value={settings.window_putts ?? ''}
-              onChange={(e) => update('window_putts', numberOrNull(e.target.value))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Whole events, newest first. Leave empty to use every putt since the player entered the zone.
-            </p>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="min-putts">Minimum putts before a move (0 = off)</Label>
-            <Input
-              id="min-putts"
-              type="number"
-              min={0}
-              value={settings.min_putts}
-              onChange={(e) => update('min_putts', Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="min-matches">…or minimum matches (0 = off)</Label>
-            <Input
-              id="min-matches"
-              type="number"
-              min={0}
-              value={settings.min_matches}
-              onChange={(e) => update('min_matches', Number(e.target.value))}
-            />
-          </div>
-        </section>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label htmlFor="count-qualification">Count qualification putts</Label>
-            <p className="text-xs text-muted-foreground">Qualification rounds never count as matches.</p>
-          </div>
-          <Switch
-            id="count-qualification"
-            checked={settings.count_qualification_putts}
-            onCheckedChange={(checked) => update('count_qualification_putts', checked)}
-          />
+            </label>
+          ))}
         </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label htmlFor="auto-demote">Move players closer automatically</Label>
-            <p className="text-xs text-muted-foreground">
-              Off: players below the threshold are flagged for an organizer to review. If you turn this on, tell
-              your players.
-            </p>
-          </div>
-          <Switch
-            id="auto-demote"
-            checked={settings.auto_demote_enabled}
-            onCheckedChange={(checked) => update('auto_demote_enabled', checked)}
-          />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={addZone} disabled={zones.length >= MAX_ZONES}>
+            <Plus className="mr-1 h-4 w-4" /> Add zone
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={removeLastZone} disabled={zones.length <= 2}>
+            <Trash2 className="mr-1 h-4 w-4" /> Remove last zone
+          </Button>
         </div>
+      </div>
 
-        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+      <div className="grid grid-cols-2 items-end gap-3">
+        <SettingField id="promote-above" label="Move up above (%)">
+          <Input
+            id="promote-above"
+            type="number"
+            min={0}
+            max={100}
+            step="0.5"
+            className="h-10"
+            value={settings.promote_above_pct}
+            onChange={(e) => update('promote_above_pct', Number(e.target.value))}
+          />
+        </SettingField>
+        <SettingField id="demote-below" label="Flag below (%)">
+          <Input
+            id="demote-below"
+            type="number"
+            min={0}
+            max={100}
+            step="0.5"
+            className="h-10"
+            value={settings.demote_below_pct}
+            onChange={(e) => update('demote_below_pct', Number(e.target.value))}
+          />
+        </SettingField>
+        <SettingField id="min-putts" label="Minimum putts (0 = off)">
+          <Input
+            id="min-putts"
+            type="number"
+            min={0}
+            className="h-10"
+            value={settings.min_putts}
+            onChange={(e) => update('min_putts', Number(e.target.value))}
+          />
+        </SettingField>
+        <SettingField id="min-matches" label="…or minimum matches (0 = off)">
+          <Input
+            id="min-matches"
+            type="number"
+            min={0}
+            className="h-10"
+            value={settings.min_matches}
+            onChange={(e) => update('min_matches', Number(e.target.value))}
+          />
+        </SettingField>
+        <SettingField id="default-zone" label="Starting zone">
+          <Input
+            id="default-zone"
+            type="number"
+            min={1}
+            max={zones.length}
+            className="h-10"
+            value={settings.default_zone}
+            onChange={(e) => update('default_zone', Number(e.target.value))}
+          />
+        </SettingField>
+        <SettingField id="window-putts" label="Most recent putts">
+          <Input
+            id="window-putts"
+            type="number"
+            min={1}
+            placeholder="All"
+            className="h-10"
+            aria-describedby="window-putts-help"
+            value={settings.window_putts ?? ''}
+            onChange={(e) => update('window_putts', numberOrNull(e.target.value))}
+          />
+        </SettingField>
+        <p id="window-putts-help" className="col-span-2 text-xs text-muted-foreground">
+          The zone decision counts only the most recent putts: whole events, newest first. Leave it empty to use
+          every putt since the player entered the zone.
+        </p>
+      </div>
 
-        <Button onClick={save} disabled={saving || validationError !== null}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save handicap settings
-        </Button>
-      </CardContent>
-    </Card>
+      {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+
+      <Button onClick={save} disabled={saving || validationError !== null} className="w-full">
+        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Save settings
+      </Button>
+    </section>
+  );
+}
+
+function SettingSwitch({
+  id,
+  label,
+  help,
+  checked,
+  onCheckedChange,
+}: {
+  id: string;
+  label: string;
+  help: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-0.5">
+        <Label htmlFor={id} className="text-sm font-semibold">{label}</Label>
+        <p className="text-xs text-muted-foreground">{help}</p>
+      </div>
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        className="mt-0.5 data-[state=checked]:bg-success"
+      />
+    </div>
+  );
+}
+
+function SettingField({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id} className="text-[13px] font-semibold">{label}</Label>
+      {children}
+    </div>
   );
 }

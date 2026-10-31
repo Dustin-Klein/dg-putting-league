@@ -15,7 +15,8 @@ import { GROUP_NAMES } from '@/lib/types/bracket';
 interface BracketViewProps {
   data: BracketWithTeams;
   eventStatus?: EventStatus;
-  onMatchClick?: (match: Match) => void;
+  /** `displayNumber` is the M-number shown on the card. */
+  onMatchClick?: (match: Match, displayNumber: number) => void;
   compact?: boolean;
   isEditMode?: boolean;
 }
@@ -633,7 +634,7 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                           isIdle={idleMatchIds.has(match.id)}
                           onDeckPosition={onDeckPositions.get(match.id)}
-                          onClick={() => onMatchClick?.(match)}
+                          onClick={() => onMatchClick?.(match, matchNumberMap.get(match.id) || 0)}
                           isClickable={
                             !!onMatchClick && (
                               match.status === Status.Ready ||

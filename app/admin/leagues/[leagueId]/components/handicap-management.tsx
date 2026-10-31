@@ -46,25 +46,31 @@ export function HandicapManagement({ leagueId }: { leagueId: string }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <ZoneReviewQueue
         leagueId={leagueId}
         suggestions={suggestions}
         demoteBelowPct={config.settings.demote_below_pct}
         onChanged={load}
       />
-      <HandicapSettingsForm
-        key={config.updated_at ?? 'defaults'}
-        leagueId={leagueId}
-        config={config}
-        onSaved={(saved) => {
-          setConfig(saved);
-          load();
-        }}
-      />
-      {config.configured && (
-        <HandicapRoster leagueId={leagueId} roster={roster} zones={config.zones} onChanged={load} />
-      )}
+      <div className="flex flex-wrap items-start gap-6">
+        {config.configured && (
+          <div className="min-w-0 flex-[999_1_600px]">
+            <HandicapRoster leagueId={leagueId} roster={roster} zones={config.zones} onChanged={load} />
+          </div>
+        )}
+        <div className="min-w-0 flex-[1_1_340px]">
+          <HandicapSettingsForm
+            key={config.updated_at ?? 'defaults'}
+            leagueId={leagueId}
+            config={config}
+            onSaved={(saved) => {
+              setConfig(saved);
+              load();
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle, Loader2, Check } from 'lucide-react';
@@ -28,6 +28,8 @@ type ScoringMode = 'frames' | 'final';
 
 interface MatchScoringDialogProps {
   match: Match | null;
+  /** The M-number on the bracket card; falls back to the match's number in its round. */
+  displayNumber?: number;
   team1?: Team;
   team2?: Team;
   eventId: string;
@@ -59,6 +61,7 @@ export function flipsRecordedWinner(
 
 export function MatchScoringDialog({
   match,
+  displayNumber,
   eventId,
   open,
   onOpenChange,
@@ -329,6 +332,13 @@ export function MatchScoringDialog({
     return result?.putts_made ?? null;
   };
 
+  /** A team's points in one frame: the sum of its players' results. */
+  const getFramePoints = (eventPlayerIds: string[], frameNumber: number): number | null => {
+    const frame = matchDetails?.frames?.find((f) => f.frame_number === frameNumber);
+    const results = frame?.results?.filter((r) => eventPlayerIds.includes(r.event_player_id)) ?? [];
+    return results.length > 0 ? results.reduce((sum, r) => sum + r.points_earned, 0) : null;
+  };
+
   const getPlayerTotalPoints = (eventPlayerId: string): number => {
     let total = 0;
     for (const frame of matchDetails?.frames || []) {
@@ -341,6 +351,8 @@ export function MatchScoringDialog({
   };
 
   if (!match) return null;
+
+  const matchLabel = displayNumber || match.number;
 
   const team1Score = matchDetails?.opponent1?.score ?? 0;
   const team2Score = matchDetails?.opponent2?.score ?? 0;
@@ -360,7 +372,7 @@ export function MatchScoringDialog({
     <div role="alert" className="flex gap-2.5 rounded-xl bg-warning/15 p-3 text-sm text-warning">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="flex flex-col gap-0.5">
-        <strong>This change flips the winner of M{match.number}.</strong>
+        <strong>This change flips the winner of M{matchLabel}.</strong>
         <span>{WINNER_CHANGE_MESSAGE}</span>
       </div>
     </div>
@@ -427,11 +439,19 @@ export function MatchScoringDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(
-        "max-h-[90vh] overflow-y-auto",
-        scoringMode === 'frames' ? "max-w-4xl" : "max-w-md"
+        "max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto",
+        scoringMode === 'frames' ? "sm:max-w-4xl" : "sm:max-w-md"
       )}>
-        <DialogHeader>
-          <DialogTitle>Match {match.number} Scoring</DialogTitle>
+        <DialogHeader className="gap-1 pr-8 text-left">
+          <span className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">
+            M{matchLabel}
+            {isCompleted && ' · Final'}
+            {isCorrectionMode && ' · Correction'}
+          </span>
+          <DialogTitle className="font-score text-[32px] leading-none">
+            {scoringMode === 'frames' ? 'Frame scores' : 'Final scores'}
+            <span className="sr-only"> for match {matchLabel}</span>
+          </DialogTitle>
           <DialogDescription>
             {isViewMode
               ? 'Frame-by-frame results'
@@ -443,13 +463,13 @@ export function MatchScoringDialog({
         </DialogHeader>
 
         {isCorrectionMode && (
-          <div className="p-3 bg-warning/15 text-warning rounded-md text-sm">
+          <div className="rounded-xl bg-warning/15 p-3 text-sm text-warning">
             Correcting completed match scores. Changes will not affect bracket progression.
           </div>
         )}
 
         {matchDetails?.has_score_override && (
-          <div className="flex items-center justify-between gap-3 rounded-md bg-warning/15 p-3 text-sm text-warning">
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-warning/15 p-3 text-sm text-warning">
             <span>This match uses a manually entered final score.</span>
             <Button
               variant="outline"
@@ -528,44 +548,38 @@ export function MatchScoringDialog({
               </Card>
 
               {/* Scoring Table */}
-              <Card className="overflow-hidden">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Frame Scores</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="text-left p-3 font-medium">Player</th>
-                          {frameNumbers.map((num) => (
-                            <th
-                              key={num}
-                              className={cn(
-                                "text-center p-3 font-medium min-w-[60px]",
-                                num > standardFrames && "bg-warning/10"
-                              )}
-                            >
-                              {num > standardFrames ? `OT${num - standardFrames}` : num}
-                            </th>
-                          ))}
-                          <th className="text-center p-3 font-medium bg-muted min-w-[70px]">
-                            Total
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Team 1 */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm tabular-nums">
+                  <caption className="sr-only">Frame scores</caption>
+                  <thead>
+                    <tr className="text-xs text-muted-foreground">
+                      <th scope="col" className="py-1.5 text-left font-semibold">Player</th>
+                      {frameNumbers.map((num) => (
+                        <th
+                          key={num}
+                          scope="col"
+                          className={cn(
+                            "w-14 min-w-14 font-semibold",
+                            num > standardFrames && "text-warning"
+                          )}
+                        >
+                          {num > standardFrames ? `OT${num - standardFrames}` : `F${num}`}
+                        </th>
+                      ))}
+                      <th scope="col" className="w-16 text-right font-semibold">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                         {matchDetails.team_one && (
                           <>
-                            <tr className="bg-team-1/5">
-                              <td
-                                colSpan={frameNumbers.length + 2}
-                                className="p-2 text-xs font-semibold text-muted-foreground"
-                              >
-                                {matchDetails.team_one.pool_combo}
-                              </td>
-                            </tr>
+                            <TeamRow
+                              team={matchDetails.team_one}
+                              teamNumber={1}
+                              frameNumbers={frameNumbers}
+                              standardFrames={standardFrames}
+                              getFramePoints={getFramePoints}
+                              total={team1Score}
+                            />
                             {sortBySlot(matchDetails.team_one.players).map((player) => (
                               <PlayerRow
                                 key={player.event_player_id}
@@ -583,17 +597,16 @@ export function MatchScoringDialog({
                           </>
                         )}
 
-                        {/* Team 2 */}
                         {matchDetails.team_two && (
                           <>
-                            <tr className="bg-team-2/5">
-                              <td
-                                colSpan={frameNumbers.length + 2}
-                                className="p-2 text-xs font-semibold text-muted-foreground"
-                              >
-                                {matchDetails.team_two.pool_combo}
-                              </td>
-                            </tr>
+                            <TeamRow
+                              team={matchDetails.team_two}
+                              teamNumber={2}
+                              frameNumbers={frameNumbers}
+                              standardFrames={standardFrames}
+                              getFramePoints={getFramePoints}
+                              total={team2Score}
+                            />
                             {sortBySlot(matchDetails.team_two.players).map((player) => (
                               <PlayerRow
                                 key={player.event_player_id}
@@ -610,11 +623,9 @@ export function MatchScoringDialog({
                             ))}
                           </>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+                  </tbody>
+                </table>
+              </div>
 
               {winnerFlipWarning}
               {errorMessage}
@@ -790,16 +801,18 @@ function PlayerRow({
   bonusPointEnabled,
 }: PlayerRowProps) {
   return (
-    <tr className="border-b">
-      <td className="p-3">
-        <div className="font-medium">{player.player.full_name}</div>
-        <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+    <tr className="border-t border-muted">
+      <th scope="row" className="py-2 pr-2 pl-4 text-left font-medium">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="whitespace-nowrap">{player.player.full_name}</span>
+          <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+        </div>
         {player.pool && (
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs font-normal text-muted-foreground">
             {poolLabel(player.pool)}
           </div>
         )}
-      </td>
+      </th>
       {frameNumbers.map((frameNum) => {
         const score = getScore(player.event_player_id, frameNum);
         const saveKey = `${player.event_player_id}-${frameNum}`;
@@ -809,7 +822,7 @@ function PlayerRow({
           <td
             key={frameNum}
             className={cn(
-              "text-center p-1",
+              "px-1 py-1.5 text-center",
               frameNum > standardFrames && "bg-warning/5"
             )}
           >
@@ -819,13 +832,49 @@ function PlayerRow({
               disabled={isCompleted || isCurrentlySaving}
               isSaving={isCurrentlySaving}
               bonusPointEnabled={bonusPointEnabled}
+              label={`${player.player.full_name} ${frameNum > standardFrames ? `overtime ${frameNum - standardFrames}` : `frame ${frameNum}`}`}
             />
           </td>
         );
       })}
-      <td className="text-center p-3 bg-muted font-score tabular-nums font-bold text-lg">
+      <td className="text-right font-score text-xl font-bold tabular-nums">
         {getTotalPoints(player.event_player_id)}
       </td>
+    </tr>
+  );
+}
+
+interface TeamRowProps {
+  team: NonNullable<BracketMatchWithDetails['team_one']>;
+  teamNumber: 1 | 2;
+  frameNumbers: number[];
+  standardFrames: number;
+  getFramePoints: (eventPlayerIds: string[], frameNumber: number) => number | null;
+  total: number;
+}
+
+/** The team's subtotal row above its players: points per frame and the match score. */
+function TeamRow({ team, teamNumber, frameNumbers, standardFrames, getFramePoints, total }: TeamRowProps) {
+  const playerIds = team.players.map((player) => player.event_player_id);
+  return (
+    <tr className={cn('border-t font-bold', teamNumber === 1 ? 'text-team-1-ink' : 'text-team-2-ink')}>
+      <th scope="row" className="py-2 pr-2 text-left whitespace-nowrap">
+        <span
+          aria-hidden="true"
+          className={cn('mr-2 inline-block size-2 rounded-full', teamNumber === 1 ? 'bg-team-1' : 'bg-team-2')}
+        />
+        {team.pool_combo || `Team ${teamNumber}`}
+        {team.seed != null && <span className="ml-1.5 font-semibold text-muted-foreground">#{team.seed}</span>}
+      </th>
+      {frameNumbers.map((frameNum) => (
+        <td
+          key={frameNum}
+          className={cn('text-center font-score text-lg', frameNum > standardFrames && 'bg-warning/5')}
+        >
+          {getFramePoints(playerIds, frameNum) ?? <span className="text-muted-foreground/60">–</span>}
+        </td>
+      ))}
+      <td className="text-right font-score text-[26px] leading-none">{total}</td>
     </tr>
   );
 }

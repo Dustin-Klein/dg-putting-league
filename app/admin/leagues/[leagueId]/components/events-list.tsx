@@ -15,10 +15,11 @@ type EventWithParticipantCount = EventData & { participant_count: number };
 interface EventsListProps {
   events: EventWithParticipantCount[] | null;
   leagueId: string;
+  leagueName?: string;
   isAdmin?: boolean;
 }
 
-export function EventsList({ events = [], leagueId, isAdmin = false }: EventsListProps) {
+export function EventsList({ events = [], leagueId, leagueName, isAdmin = false }: EventsListProps) {
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -66,7 +67,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
         <p className="text-muted-foreground mt-2 mb-4">
           This league doesn&apos;t have any events yet. {isAdmin && 'Create one to get started.'}
         </p>
-        {isAdmin && <CreateEventDialog leagueId={leagueId} completedEvents={[]} />}
+        {isAdmin && <CreateEventDialog leagueId={leagueId} leagueName={leagueName} completedEvents={[]} />}
       </div>
     );
   }
@@ -78,6 +79,7 @@ export function EventsList({ events = [], leagueId, isAdmin = false }: EventsLis
         {isAdmin && (
           <CreateEventDialog
             leagueId={leagueId}
+            leagueName={leagueName}
             completedEvents={(events ?? []).filter(e => e.status === 'completed')}
           />
         )}

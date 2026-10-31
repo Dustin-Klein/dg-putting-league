@@ -52,6 +52,7 @@ export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: Ev
               <EventsList
                 events={events}
                 leagueId={leagueId}
+                leagueName={league.name}
                 isAdmin={isAdmin}
               />
             </div>

@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { RefreshCw, Plus, Trash2, Wrench, Play, Unlock, Link } from 'lucide-react';
 import { MatchStatus, type LaneWithMatch } from '@/lib/types/bracket';
+import { cn } from '@/lib/utils/utils';
 
 interface LaneManagementProps {
   eventId: string;
@@ -205,17 +205,21 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   const occupiedCount = lanes.filter((l) => l.status === 'occupied').length;
   const maintenanceCount = lanes.filter((l) => l.status === 'maintenance').length;
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case 'idle':
-        return <Badge className="bg-success/15 text-success border-success/30">Idle</Badge>;
-      case 'occupied':
-        return <Badge className="bg-info/15 text-info border-info/30">Occupied</Badge>;
-      case 'maintenance':
-        return <Badge className="bg-warning/15 text-warning border-warning/30">Maintenance</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+  const laneState = (lane: LaneWithMatch): { tile: string; tone: string; label: string } => {
+    const match = lane.current_match_id ? `M${lane.current_match_number ?? lane.current_match_id}` : null;
+    if (lane.status === 'occupied' && lane.current_match_status === MatchStatus.Running) {
+      return { tile: 'bg-success/15 text-success', tone: 'text-success', label: `Occupied · ${match} in progress` };
     }
+    if (lane.status === 'occupied') {
+      return { tile: 'bg-warning/15 text-warning', tone: 'text-warning', label: `Occupied · ${match ?? 'match'} called, not started` };
+    }
+    if (lane.status === 'maintenance') {
+      return { tile: 'bg-muted text-muted-foreground', tone: 'text-muted-foreground', label: 'Maintenance' };
+    }
+    if (lane.status === 'idle') {
+      return { tile: 'border-[1.5px] border-dashed border-input text-foreground', tone: 'text-muted-foreground', label: 'Idle · no match' };
+    }
+    return { tile: 'bg-muted text-muted-foreground', tone: 'text-muted-foreground', label: lane.status };
   };
 
   if (loading && lanes.length === 0) {
@@ -240,32 +244,33 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4">
       {/* Header bar */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span>{lanes.length} total</span>
-          <span>·</span>
-          <span className="text-success">{idleCount} idle</span>
-          <span>·</span>
-          <span className="text-info">{occupiedCount} occupied</span>
+          <span aria-hidden="true">·</span>
+          <span>{idleCount} idle</span>
+          <span aria-hidden="true">·</span>
+          <span className="text-success">{occupiedCount} occupied</span>
           {maintenanceCount > 0 && (
             <>
-              <span>·</span>
-              <span className="text-warning">{maintenanceCount} maintenance</span>
+              <span aria-hidden="true">·</span>
+              <span>{maintenanceCount} maintenance</span>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
             <Input
               type="number"
               min={1}
               max={20}
+              aria-label="Number of lanes to add"
               value={addCount}
               onChange={(e) => setAddCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-              className="w-16 h-9"
+              className="h-9 w-16"
             />
             <Button
               size="sm"
@@ -274,7 +279,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
               disabled={actionLoading === 'add'}
             >
               <Plus className="mr-1 h-4 w-4" />
-              Add
+              Add lane{addCount === 1 ? '' : 's'}
             </Button>
           </div>
 
@@ -289,12 +294,13 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
           </Button>
 
           <Button
-            size="sm"
+            size="icon-sm"
             variant="ghost"
             onClick={fetchLanes}
             disabled={loading}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <span className="sr-only">Refresh lanes</span>
           </Button>
         </div>
       </div>
@@ -305,27 +311,35 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
           <p className="text-muted-foreground">No lanes yet. Add lanes to get started.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {lanes.map((lane) => (
+        <div className="flex flex-col divide-y divide-muted rounded-2xl border bg-card">
+          {lanes.map((lane) => {
+            const state = laneState(lane);
+            return (
             <div
               key={lane.id}
-              className="flex items-center gap-3 rounded-lg border px-4 py-3"
+              data-state={lane.status}
+              className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5"
             >
-              <span className="font-medium text-sm w-16 shrink-0">{lane.label}</span>
-              {statusBadge(lane.status)}
-              {lane.maintenance_pending && (
-                <Badge className="bg-warning/15 text-warning border-warning/30">
-                  Maintenance pending
-                </Badge>
-              )}
-
-              {lane.status === 'occupied' && lane.current_match_id && (
-                <span className="text-sm text-muted-foreground">
-                  M{lane.current_match_number ?? lane.current_match_id}
+              <span
+                className={cn(
+                  'flex size-11 flex-none items-center justify-center rounded-[10px] font-score text-[22px] leading-none font-bold',
+                  state.tile
+                )}
+                aria-hidden="true"
+              >
+                {lane.label.replace(/^Lane\s*/i, '')}
+              </span>
+              <div className="flex min-w-0 flex-[1_1_200px] flex-col gap-0.5">
+                <span className="text-[15px] font-semibold">{lane.label}</span>
+                <span className={cn('text-[13px] font-semibold', state.tone)}>
+                  {state.label}
+                  {lane.maintenance_pending && (
+                    <span className="text-warning"> · Maintenance after this match</span>
+                  )}
                 </span>
-              )}
+              </div>
 
-              <div className="flex items-center gap-2 ml-auto shrink-0">
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
                 {lane.status === 'idle' && (
                   <>
                     <Input
@@ -335,12 +349,12 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       onChange={(e) =>
                         setAssignMatchIds((prev) => ({ ...prev, [lane.id]: e.target.value }))
                       }
-                      className="w-24 h-8 text-xs"
+                      aria-label={`Match number for ${lane.label}`}
+                      className="h-9 w-24 text-sm md:text-sm"
                     />
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8"
                       onClick={() => handleAssignLane(lane.id)}
                       disabled={actionLoading === lane.id || !assignMatchIds[lane.id]}
                     >
@@ -419,13 +433,14 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       Maintenance
                     </Button>
                     <Button
-                      size="sm"
+                      size="icon-sm"
                       variant="ghost"
-                      className="text-destructive hover:text-destructive"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => handleDeleteLane(lane.id)}
                       disabled={actionLoading === lane.id}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete {lane.label}</span>
                     </Button>
                   </>
                 )}
@@ -443,7 +458,8 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
