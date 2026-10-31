@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { Check } from 'lucide-react';
+import { Check, Lock, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils/utils';
 import { NextStatusButton } from '@/components/next-status-button';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import type { EventStatus, EventWithDetails } from '@/lib/types/event';
 import { describeTeamFormat } from '@/lib/utils/team-utils';
+import { ZoneDistancesPopover, useEventHandicap, zoneLadderText } from './event-handicap';
 
 const STEPS: { status: EventStatus; label: string }[] = [
   { status: 'created', label: 'Created' },
@@ -56,6 +57,9 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
   // Use the event prop directly since state is now managed by parent
   const players = Array.isArray(event.players) ? event.players : [];
   const entryFee = event.entry_fee_per_player != null ? Number(event.entry_fee_per_player) : null;
+  const handicapView = useEventHandicap()?.view;
+  const ladder = zoneLadderText(handicapView);
+  const ladderEditable = handicapView?.editable ?? false;
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,12 +111,31 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
           </Stat>
         )}
 
-        <Stat label="Putt Distance">
-          <span className="font-score text-[28px] leading-none font-bold">
-            {event.handicap_enabled ? 'By zone' : `${event.putt_distance_ft} ft`}
-          </span>
-          {event.handicap_enabled && <span className="text-xs text-muted-foreground">By handicap zone</span>}
-        </Stat>
+        {ladder ? (
+          <ZoneDistancesPopover>
+            <button
+              type="button"
+              className="flex flex-col gap-1 rounded-[14px] border bg-card p-4 text-left hover:border-foreground/40"
+              aria-label={`Putt distance by zone: ${ladder} feet. ${ladderEditable ? 'Edit' : 'View'} tonight's zone distances`}
+            >
+              <span className="flex items-center justify-between gap-2 text-[13px] font-semibold text-muted-foreground">
+                Putt Distance
+                {ladderEditable
+                  ? <Pencil className="size-3.5" aria-hidden="true" />
+                  : <Lock className="size-3.5" aria-hidden="true" />}
+              </span>
+              <span className="font-score text-[28px] leading-none font-bold tabular-nums">{ladder}</span>
+              <span className="text-xs text-muted-foreground">ft by handicap zone</span>
+            </button>
+          </ZoneDistancesPopover>
+        ) : (
+          <Stat label="Putt Distance">
+            <span className="font-score text-[28px] leading-none font-bold">
+              {event.handicap_enabled ? 'By zone' : `${event.putt_distance_ft} ft`}
+            </span>
+            {event.handicap_enabled && <span className="text-xs text-muted-foreground">By handicap zone</span>}
+          </Stat>
+        )}
 
         <Stat label="Lanes">
           <span className="font-score text-[28px] leading-none font-bold tabular-nums">{event.lane_count}</span>

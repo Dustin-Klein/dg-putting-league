@@ -16,6 +16,8 @@ interface ResultsDisplayProps {
   eventId: string;
   /** Shown beside the results table, e.g. the payouts panel. */
   aside?: React.ReactNode;
+  /** Rendered after each team member's name, e.g. their handicap zone. */
+  memberAccessory?: (eventPlayerId: string) => React.ReactNode;
 }
 
 interface TeamPlacement {
@@ -173,7 +175,7 @@ interface PayoutByPlace {
   [place: number]: number;
 }
 
-export function ResultsDisplay({ eventId, aside }: ResultsDisplayProps) {
+export function ResultsDisplay({ eventId, aside, memberAccessory }: ResultsDisplayProps) {
   const [bracketData, setBracketData] = useState<BracketWithTeams | null>(null);
   const [payoutsByPlace, setPayoutsByPlace] = useState<PayoutByPlace>({});
   const [loading, setLoading] = useState(true);
@@ -331,6 +333,7 @@ export function ResultsDisplay({ eventId, aside }: ResultsDisplayProps) {
                             ) : (
                               <span>{member.event_player.player.full_name}</span>
                             )}
+                            {memberAccessory?.(member.event_player_id)}
                           </div>
                         ))}
                         <span className="text-xs text-muted-foreground">Seed {placement.team.seed}</span>
