@@ -182,7 +182,6 @@ interface TeamRowsProps {
 }
 
 function TeamRows({ team, teamNumber, total, match, frameNumbers }: TeamRowsProps) {
-  const playerIds = new Set(team.players.map((player) => player.event_player_id));
   return (
     <>
       {sortBySlot(team.players).map((player, index) => (
@@ -199,15 +198,7 @@ function TeamRows({ team, teamNumber, total, match, frameNumbers }: TeamRowsProp
         <th scope="row" className="px-2.5 py-2 text-left text-[13px]">
           Team {teamNumber} <span className="font-normal opacity-80">{team.pool_combo}</span>
         </th>
-        {frameNumbers.map((frameNum) => {
-          const frame = match.frames.find((f) => f.frame_number === frameNum);
-          const results = frame?.results.filter((r) => playerIds.has(r.event_player_id)) ?? [];
-          return (
-            <td key={frameNum}>
-              {results.length > 0 ? results.reduce((sum, r) => sum + r.points_earned, 0) : '–'}
-            </td>
-          );
-        })}
+        <td colSpan={frameNumbers.length} />
         <td className="pr-2.5 text-right font-score text-[22px]">{total}</td>
       </tr>
     </>
