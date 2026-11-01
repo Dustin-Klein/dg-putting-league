@@ -37,7 +37,7 @@ import {
   updateHandicapSettings,
 } from '@/lib/services/handicap/settings-service';
 import { lockQualificationEvent } from '@/lib/repositories/qualification-repository.db';
-import { getPlayerHandicap, resolveZoneSuggestion, setPlayerZone } from '@/lib/services/handicap/zone-service';
+import { getPlayerHandicap, moveEntryZone, resolveZoneSuggestion, setPlayerZone } from '@/lib/services/handicap/zone-service';
 import { BadRequestError, ConflictError } from '@/lib/errors';
 import { DEFAULT_HANDICAP_SETTINGS, type HandicapSettings } from '@/lib/types/handicap';
 import { closeDb, createTestDb, withRollback } from './db/harness';
@@ -319,6 +319,62 @@ describe('entry snapshots', () => {
 
       await updateEntryHandicap(event.eventId, entry.id, { putt_distance_ft: null });
       expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ putt_distance_ft: '27.00', distance_override: false });
+    });
+  });
+});
+
+describe('moving an entry to a zone from the event page', () => {
+  it('moves the league zone and tonight\'s entry before the first frame, dropping a hand-set distance', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const [playerId] = await newPlayers(tx, 1);
+      const event = await handicapEvent(tx, leagueId, [playerId], { distances: [20, 26, 32] });
+      const entry = await entryOf(tx, event.eventId, playerId);
+      await updateEntryHandicap(event.eventId, entry.id, { putt_distance_ft: 25 });
+
+      await expect(moveEntryZone(event.eventId, entry.id, 3, 'Stations set at Zone 3'))
+        .resolves.toEqual({ applied_tonight: true });
+
+      const period = await openPeriod(tx, leagueId, playerId);
+      expect(period).toMatchObject({ zone: 3, start_reason: 'manual', note: 'Stations set at Zone 3' });
+      expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({
+        zone: 3, putt_distance_ft: '32.00', distance_override: false, zone_period_id: period.id,
+      });
+    });
+  });
+
+  it('brings a stale entry in line with a zone already changed in the league', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const [playerId] = await newPlayers(tx, 1);
+      const event = await handicapEvent(tx, leagueId, [playerId]);
+      const entry = await entryOf(tx, event.eventId, playerId);
+      await setPlayerZone(leagueId, playerId, 1, 'Moved in the league tab');
+
+      await moveEntryZone(event.eventId, entry.id, 1, 'Match tonight');
+      expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ zone: 1, putt_distance_ft: '21.00' });
+    });
+  });
+
+  it('only moves the league zone once the entry has a frame', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const [playerId] = await newPlayers(tx, 1);
+      const event = await handicapEvent(tx, leagueId, [playerId]);
+      const entry = await entryOf(tx, event.eventId, playerId);
+      await addQualificationFrame(tx, event.eventId, entry.id);
+
+      await expect(moveEntryZone(event.eventId, entry.id, 3, 'From next week'))
+        .resolves.toEqual({ applied_tonight: false });
+      expect(await openPeriod(tx, leagueId, playerId)).toMatchObject({ zone: 3 });
+      expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ zone: 2, putt_distance_ft: '27.00' });
+      await expect(moveEntryZone(event.eventId, entry.id, 3, 'Again')).rejects.toThrow(BadRequestError);
     });
   });
 });

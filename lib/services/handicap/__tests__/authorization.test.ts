@@ -30,6 +30,7 @@ import {
   getLeagueHandicapRoster,
   getPlayerHandicap,
   listZoneSuggestions,
+  moveEntryZone,
   resolveZoneSuggestion,
   setPlayerZone,
 } from '../zone-service';
@@ -68,6 +69,7 @@ describe('handicap services refuse unauthorized callers before touching the data
     ['getEventHandicap', () => getEventHandicap(EVENT)],
     ['updateEventZoneDistances', () => updateEventZoneDistances(EVENT, [])],
     ['updateEntryHandicap', () => updateEntryHandicap(EVENT, PLAYER, { exclude_from_handicap: true })],
+    ['moveEntryZone', () => moveEntryZone(EVENT, PLAYER, 3, 'note')],
   ])('%s requires an event admin', async (_name, call) => {
     await expect(call()).rejects.toThrow(UnauthorizedError);
     expect(repoCalls()).toBe(0);

@@ -40,7 +40,7 @@ export function useEventHandicap(): EventHandicapContextValue | null {
   return useContext(EventHandicapContext);
 }
 
-async function sendJson(url: string, method: 'PUT' | 'PATCH', body: unknown): Promise<unknown> {
+async function sendJson(url: string, method: 'POST' | 'PUT' | 'PATCH', body: unknown): Promise<unknown> {
   const response = await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -233,13 +233,120 @@ export function zoneLadderText(view: EventHandicapView | null | undefined): stri
   return view.zones.map((zone) => formatDistanceFt(zone.distance_ft)).join(' / ');
 }
 
-/** One entry's distance tonight and "don't count". The zone itself is a league setting. */
+/** Move the player to another zone: league-wide, and tonight until their first frame. */
+function EntryZonePicker({ entry, busy, setBusy }: {
+  entry: EventPlayer;
+  busy: string | null;
+  setBusy: (busy: 'zone' | null) => void;
+}) {
+  const { event, view, onEntriesChanged } = useEventHandicap()!;
+  const [target, setTarget] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const { toast } = useToast();
+  if (!view || view.zones.length === 0) return null;
+
+  const name = entry.player.full_name;
+  const tonight = isBeforeBracket(event);
+  const targetDistance = view.zones.find((zone) => zone.zone === target)?.distance_ft;
+
+  const move = async () => {
+    if (target === null) return;
+    setBusy('zone');
+    try {
+      const result = (await sendJson(`/api/event/${event.id}/entries/${entry.id}/zone`, 'POST', {
+        zone: target,
+        note: note.trim(),
+      })) as { applied_tonight: boolean };
+      toast({
+        title: 'Zone changed',
+        description: result.applied_tonight
+          ? `${name} putts from Zone ${target} tonight and in future events`
+          : `${name} is in Zone ${target} from their next event`,
+      });
+      setTarget(null);
+      setNote('');
+      onEntriesChanged();
+    } catch (moveError) {
+      toast({
+        title: 'Error',
+        description: moveError instanceof Error ? moveError.message : 'Failed to change zone',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id={`zone-${entry.id}`} className="font-semibold">Zone</span>
+      <div role="radiogroup" aria-labelledby={`zone-${entry.id}`} className="flex flex-wrap gap-1.5">
+        {view.zones.map((zone) => {
+          const current = zone.zone === entry.zone;
+          const selected = target === null ? current : zone.zone === target;
+          return (
+            <button
+              key={zone.zone}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={`Zone ${zone.zone}, ${formatDistanceFt(zone.distance_ft)} feet${current ? ', current' : ''}`}
+              disabled={busy !== null}
+              onClick={() => setTarget(current ? null : zone.zone)}
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs font-bold tabular-nums transition-opacity disabled:opacity-50',
+                zoneColorClass(zone.zone),
+                selected ? 'ring-2 ring-foreground ring-offset-1 ring-offset-popover' : 'opacity-60 hover:opacity-100'
+              )}
+            >
+              Z{zone.zone} · {formatDistanceFt(zone.distance_ft)} ft
+            </button>
+          );
+        })}
+      </div>
+      {target === null ? (
+        <p className="text-xs text-muted-foreground">
+          Changes their zone in the league
+          {tonight ? ', and tonight if they haven\'t putted yet.' : ' from their next event.'}
+        </p>
+      ) : (
+        <>
+          <Textarea
+            aria-label={`Why ${name} moves to Zone ${target}`}
+            placeholder="Why the move (required, kept in their zone history)"
+            className="min-h-14 text-sm md:text-sm"
+            maxLength={1000}
+            value={note}
+            disabled={busy !== null}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={busy !== null || !note.trim()} onClick={move}>
+              {busy === 'zone' && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+              Move to Zone {target}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => { setTarget(null); setNote(''); }}>
+              Cancel
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {tonight
+              ? `From ${targetDistance !== undefined ? `${formatDistanceFt(targetDistance)} ft` : `Zone ${target}`} tonight (if they haven't putted yet) and in future events.`
+              : 'Applies from their next event.'}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One entry's zone, distance tonight and "don't count". */
 function EntryHandicapForm({ entry }: { entry: EventPlayer }) {
   const handicap = useEventHandicap()!;
   const { event, view, onEntriesChanged } = handicap;
   const [distance, setDistance] = useState(entry.putt_distance_ft !== undefined ? String(entry.putt_distance_ft) : '');
   const [note, setNote] = useState(entry.handicap_note ?? '');
-  const [busy, setBusy] = useState<'distance' | 'exclude' | 'note' | null>(null);
+  const [busy, setBusy] = useState<'zone' | 'distance' | 'exclude' | 'note' | null>(null);
   const { toast } = useToast();
   const name = entry.player.full_name;
   const excluded = entry.exclude_from_handicap ?? false;
@@ -269,11 +376,15 @@ function EntryHandicapForm({ entry }: { entry: EventPlayer }) {
     <div className="flex flex-col gap-3 text-sm">
       <div className="flex items-center justify-between gap-2">
         <h3 className="truncate text-[15px] font-bold">{name}</h3>
-        <ZoneBadge zone={entry.zone} distanceFt={null} size="sm" />
+        <ZoneBadge zone={entry.zone} distanceFt={entry.putt_distance_ft} size="sm" />
       </div>
 
+      <EntryZonePicker entry={entry} busy={busy} setBusy={setBusy} />
+
+      <div className="h-px bg-border" />
+
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={`distance-${entry.id}`} className="font-semibold">Distance tonight</label>
+        <label htmlFor={`distance-${entry.id}`} className="font-semibold">Custom distance tonight</label>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             id={`distance-${entry.id}`}
@@ -313,9 +424,7 @@ function EntryHandicapForm({ entry }: { entry: EventPlayer }) {
             ? `Fixed for this event${entry.distance_override ? ' (set by hand)' : ''}.`
             : entry.distance_override
               ? 'Set by hand for this player.'
-              : zoneDistance !== undefined
-                ? `Zone ${entry.zone} measures ${formatDistanceFt(zoneDistance)} ft tonight.`
-                : 'Fixed once this player records a frame.'}
+              : 'Only for a station off the zone ladder. Tonight only; keeps their zone.'}
         </p>
       </div>
 
@@ -366,8 +475,8 @@ function EntryHandicapForm({ entry }: { entry: EventPlayer }) {
 
       <div className="h-px bg-border" />
 
-      <Link href={`/admin/leagues/${event.league_id}`} className="text-[13px] text-info hover:underline">
-        Change their zone in the league&apos;s Handicaps tab
+      <Link href={`/admin/leagues/${event.league_id}?tab=handicaps`} className="text-[13px] text-info hover:underline">
+        Zone history and stats in the league&apos;s Handicaps tab
       </Link>
     </div>
   );
@@ -420,7 +529,7 @@ export function EntryZoneCell({ entry, compact = false }: { entry: EventPlayer; 
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80">
-        <EntryHandicapForm key={`${entry.putt_distance_ft}|${entry.handicap_note ?? ''}`} entry={entry} />
+        <EntryHandicapForm key={`${entry.zone}|${entry.putt_distance_ft}|${entry.handicap_note ?? ''}`} entry={entry} />
       </PopoverContent>
     </Popover>
   );
