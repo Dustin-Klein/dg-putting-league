@@ -7,9 +7,11 @@ import { requireLeagueAdmin } from '@/lib/services/auth';
 export const dynamic = 'force-dynamic';
 
 export default async function LeagueEventsPage({
-  params: paramsPromise
+  params: paramsPromise,
+  searchParams,
 }: {
   params: Promise<{ leagueId: string }> | { leagueId: string }
+  searchParams: Promise<{ tab?: string | string[] }>
 }) {
   const params = await Promise.resolve(paramsPromise);
   const leagueId = params.leagueId;
@@ -38,6 +40,7 @@ export default async function LeagueEventsPage({
       isAdmin={isAdmin}
       isOwner={isOwner}
       leagueId={params.leagueId}
+      initialTab={(await searchParams).tab === 'handicaps' && isAdmin ? 'handicaps' : 'events'}
     />
   );
 }
