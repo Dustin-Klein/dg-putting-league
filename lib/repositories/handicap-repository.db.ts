@@ -322,8 +322,9 @@ export interface EntrySnapshotState {
   has_frames: boolean;
 }
 
-const entryHasFrames = sql<boolean>`(exists (select 1 from ${frame_results} fr where fr.event_player_id = ${event_players.id})
-  or exists (select 1 from ${qualification_frames} qf where qf.event_player_id = ${event_players.id}))`;
+// Drizzle renders `${event_players.id}` unqualified in a select field, which a subquery would bind to its own table.
+const entryHasFrames = sql<boolean>`(exists (select 1 from ${frame_results} fr where fr.event_player_id = putting_league.event_players.id)
+  or exists (select 1 from ${qualification_frames} qf where qf.event_player_id = putting_league.event_players.id))`;
 
 /** The event's entries (or the given ones) with their snapshot and whether they have frames. */
 export async function getEntrySnapshotStates(

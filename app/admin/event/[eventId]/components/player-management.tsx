@@ -23,6 +23,7 @@ import {
 import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { createClient } from '@/lib/supabase/client';
 import { useDebouncedCallback } from 'use-debounce';
+import { EntryZoneCell, ZoneLadderChip } from './event-handicap';
 
 interface QualificationStatus {
   event_player_id: string;
@@ -125,6 +126,7 @@ export function PlayerManagement({
   const formRef = useRef<HTMLFormElement>(null);
 
   const showQualificationColumn = event.qualification_round_enabled && event.status === 'pre-bracket';
+  const showZoneColumn = event.handicap_enabled;
 
   const handleSort = (column: string) => {
     setSortConfig(prev => {
@@ -168,6 +170,14 @@ export function PlayerManagement({
             const aVal = order[a.payment_type ?? 'unpaid'] ?? 0;
             const bVal = order[b.payment_type ?? 'unpaid'] ?? 0;
             return dir * (aVal - bVal);
+          }
+          case 'zone': {
+            const aZone = a.zone ?? null;
+            const bZone = b.zone ?? null;
+            if (aZone === null && bZone === null) return 0;
+            if (aZone === null) return 1;
+            if (bZone === null) return -1;
+            return dir * (aZone - bZone || (a.putt_distance_ft ?? 0) - (b.putt_distance_ft ?? 0));
           }
           case 'qualification': {
             const aStatus = qualificationStatus[a.id];
@@ -400,8 +410,9 @@ export function PlayerManagement({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Players</h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="mr-auto text-2xl font-bold">Players</h2>
+        {showZoneColumn && <ZoneLadderChip />}
         {isAdmin && event.status === 'pre-bracket' && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -618,6 +629,7 @@ export function PlayerManagement({
                 { column: 'identifier', label: 'Player Number' },
                 { column: 'registered', label: 'Registered' },
                 { column: 'paid', label: 'Paid' },
+                ...(showZoneColumn ? [{ column: 'zone', label: 'Zone' }] : []),
               ].map(({ column, label }) => (
                 <TableHead
                   key={column}
@@ -700,6 +712,11 @@ export function PlayerManagement({
                       )}
                     </div>
                   </TableCell>
+                  {showZoneColumn && (
+                    <TableCell>
+                      <EntryZoneCell entry={eventPlayer} />
+                    </TableCell>
+                  )}
                   {showQualificationColumn && (
                     <TableCell>
                       {eventPlayer.payment_type !== null ? (
@@ -748,7 +765,7 @@ export function PlayerManagement({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4 + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
+                <TableCell colSpan={4 + (showZoneColumn ? 1 : 0) + (showQualificationColumn ? 1 : 0) + (isAdmin && event.status === 'pre-bracket' ? 1 : 0)} className="h-24 text-center">
                   {filterQuery.trim() ? 'No matching players.' : 'No players registered yet.'}
                 </TableCell>
               </TableRow>

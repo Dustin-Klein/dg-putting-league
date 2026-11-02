@@ -1,8 +1,9 @@
 import 'server-only';
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
-import { authorizeLeagueAdmin, authorizePublicRead, getViewer } from '@/lib/services/auth';
-import { lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
+import { authorizeEventAdmin, authorizeLeagueAdmin, authorizePublicRead, getViewer } from '@/lib/services/auth';
+import { lockEvent, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as handicapDb from '@/lib/repositories/handicap-repository.db';
+import * as eventDb from '@/lib/repositories/event-repository.db';
 import { getLeagueAdminRole, getLeagueById } from '@/lib/repositories/league-repository.db';
 import { getPlayerByNumber } from '@/lib/repositories/player-statistics-repository.db';
 import { isUuid } from '@/lib/utils/uuid';
@@ -17,6 +18,7 @@ import type {
   ZoneSuggestion,
 } from '@/lib/types/handicap';
 import { combinePeriodStats, eligibilityProgress } from './stats';
+import { refreshEntrySnapshots } from './snapshot';
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -207,6 +209,48 @@ async function movePlayer(
 }
 
 /**
+ * Open a `manual` period in `zone` for the player. With `allowSame`, a player already
+ * in that zone is left as is instead of refused.
+ */
+async function applyPlayerZone(
+  tx: Tx,
+  leagueId: string,
+  playerId: string,
+  zone: number,
+  note: string,
+  userId: string,
+  opts: { allowSame: boolean }
+): Promise<void> {
+  await lockLeagueHandicap(tx, leagueId);
+  const { settings, zones } = await loadLadder(tx, leagueId);
+  const target = zones.find((definition) => definition.zone === zone);
+  if (!target) throw new BadRequestError(`Zone ${zone} does not exist in this league`);
+
+  if (!isUuid(playerId) || !(await handicapDb.isPlayerInLeague(tx, leagueId, playerId))) {
+    throw new NotFoundError('Player has not played in this league');
+  }
+
+  const open = (await handicapDb.getOpenPeriods(tx, leagueId, [playerId])).get(playerId);
+  const next: handicapDb.NewZonePeriod = {
+    player_id: playerId,
+    zone: target.zone,
+    distance_ft: target.distance_ft,
+    start_reason: 'manual',
+    started_by_user: userId,
+    note,
+  };
+  if (!open) {
+    await handicapDb.insertOpenPeriods(tx, leagueId, [next]);
+  } else if (open.zone === zone) {
+    if (opts.allowSame) return;
+    throw new BadRequestError(`Player is already in zone ${zone}`);
+  } else {
+    await movePlayer(tx, leagueId, open, settings, next);
+  }
+  await handicapDb.supersedeOpenSuggestions(tx, leagueId, [playerId]);
+}
+
+/**
  * Put a player in a zone (league admin), with a required note. Affects future events
  * only (Q8): entries already snapshotted keep their zone, and an entry in an event
  * that has not started picks the change up at its next refresh.
@@ -221,33 +265,7 @@ export async function setPlayerZone(
   const trimmed = note.trim();
   if (!trimmed) throw new BadRequestError('A note is required when changing a zone');
 
-  await withTransaction(pg, async (tx) => {
-    await lockLeagueHandicap(tx, leagueId);
-    const { settings, zones } = await loadLadder(tx, leagueId);
-    const target = zones.find((definition) => definition.zone === zone);
-    if (!target) throw new BadRequestError(`Zone ${zone} does not exist in this league`);
-
-    if (!isUuid(playerId) || !(await handicapDb.isPlayerInLeague(tx, leagueId, playerId))) {
-      throw new NotFoundError('Player has not played in this league');
-    }
-
-    const open = (await handicapDb.getOpenPeriods(tx, leagueId, [playerId])).get(playerId);
-    const next: handicapDb.NewZonePeriod = {
-      player_id: playerId,
-      zone: target.zone,
-      distance_ft: target.distance_ft,
-      start_reason: 'manual',
-      started_by_user: user.id,
-      note: trimmed,
-    };
-    if (!open) {
-      await handicapDb.insertOpenPeriods(tx, leagueId, [next]);
-    } else {
-      if (open.zone === zone) throw new BadRequestError(`Player is already in zone ${zone}`);
-      await movePlayer(tx, leagueId, open, settings, next);
-    }
-    await handicapDb.supersedeOpenSuggestions(tx, leagueId, [playerId]);
-  });
+  await withTransaction(pg, (tx) => applyPlayerZone(tx, leagueId, playerId, zone, trimmed, user.id, { allowSame: false }));
 
   const league = await getLeagueById(pg, leagueId);
   return (await readPlayerHandicap(pg, playerId, leagueId, league?.name ?? '', true)) as PlayerHandicapAdmin;
@@ -305,5 +323,37 @@ export async function resolveZoneSuggestion(
     if (action === 'apply') {
       await handicapDb.supersedeOpenSuggestions(tx, leagueId, [evaluation.player_id], { exceptEvaluationId: evaluationId });
     }
+  });
+}
+
+/**
+ * Move an event entry's player to a zone from the event page. The league zone changes
+ * as with `setPlayerZone`; an entry without frames before the bracket also takes the
+ * new zone tonight (dropping any hand-set distance). Returns whether tonight changed.
+ */
+export async function moveEntryZone(
+  eventId: string,
+  eventPlayerId: string,
+  zone: number,
+  note: string
+): Promise<{ applied_tonight: boolean }> {
+  const { user, pg } = await authorizeEventAdmin(eventId);
+  const trimmed = note.trim();
+  if (!trimmed) throw new BadRequestError('A note is required when changing a zone');
+
+  return withTransaction(pg, async (tx) => {
+    await lockEvent(tx, eventId);
+    // FOR UPDATE waits out an in-flight first qualification frame, as for a distance override.
+    const config = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
+    const event = await handicapDb.getEventHandicapContext(tx, eventId);
+    if (!config || !event) throw new NotFoundError('Event not found');
+    if (!event.handicap_enabled) throw new BadRequestError('This event does not use handicaps');
+    const [entry] = await handicapDb.getEntrySnapshotStates(tx, eventId, [eventPlayerId]);
+    if (!entry) throw new NotFoundError('Player not found in this event');
+
+    const tonight = (event.status === 'created' || event.status === 'pre-bracket') && !entry.has_frames;
+    await applyPlayerZone(tx, event.league_id, entry.player_id, zone, trimmed, user.id, { allowSame: tonight });
+    if (tonight) await refreshEntrySnapshots(tx, eventId, { entryIds: [entry.id] });
+    return { applied_tonight: tonight };
   });
 }

@@ -8,24 +8,21 @@ import { ChevronLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EventHandicapPanel } from './components/event-handicap-panel';
+import { EntryZoneCell, EventHandicapProvider, EventHandicapSummary } from './components/event-handicap';
 
 function EventContent({
   event,
   isAdmin,
   onPlayersUpdate,
-  onRefresh,
 }: {
   event: EventWithDetails;
   isAdmin: boolean;
   onPlayersUpdate: (players: EventWithDetails['players']) => void;
-  onRefresh: () => void;
 }) {
   const hasEntryFee = event.entry_fee_per_player != null;
-  const showHandicaps = isAdmin && event.handicap_enabled;
-  const handicapPanel = showHandicaps ? <EventHandicapPanel event={event} onPlayersChanged={onRefresh} /> : null;
 
   if (event.status === 'completed') {
+    const entries = new Map(event.players.map((entry) => [entry.id, entry]));
     return (
       <div className="space-y-8">
         <ResultsDisplay
@@ -33,8 +30,12 @@ function EventContent({
           aside={hasEntryFee ? (
             <PayoutsDisplay eventId={event.id} eventStatus={event.status} isAdmin={isAdmin} />
           ) : null}
+          memberAccessory={event.handicap_enabled ? (eventPlayerId) => {
+            const entry = entries.get(eventPlayerId);
+            return entry ? <EntryZoneCell entry={entry} compact /> : null;
+          } : undefined}
         />
-        {handicapPanel}
+        <EventHandicapSummary />
       </div>
     );
   }
@@ -46,7 +47,6 @@ function EventContent({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
-            {showHandicaps && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -57,18 +57,11 @@ function EventContent({
         <TabsContent value="teams">
           <TeamDisplay event={event} isAdmin={isAdmin} />
         </TabsContent>
-
-        {showHandicaps && <TabsContent value="handicaps">{handicapPanel}</TabsContent>}
       </Tabs>
     );
   }
 
-  return (
-    <div className="space-y-8">
-      {handicapPanel}
-      <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={onPlayersUpdate} />
-    </div>
-  );
+  return <PlayerManagement event={event} isAdmin={isAdmin} onPlayersUpdate={onPlayersUpdate} />;
 }
 
 export default function EventPage({
@@ -183,6 +176,15 @@ export default function EventPage({
     );
   }
 
+  const body = (
+    <>
+      <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
+      <div className="mt-8">
+        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
+      </div>
+    </>
+  );
+
   return (
     <div className="mx-auto max-w-[1200px] px-4 pt-8 pb-14 md:px-6">
       <Link
@@ -192,10 +194,9 @@ export default function EventPage({
         <ChevronLeft className="size-4" aria-hidden="true" />
         Back to league
       </Link>
-      <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
-      <div className="mt-8">
-        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} onRefresh={handleRefresh} />
-      </div>
+      {isAdmin && event.handicap_enabled ? (
+        <EventHandicapProvider event={event} onEntriesChanged={handleRefresh}>{body}</EventHandicapProvider>
+      ) : body}
     </div>
   );
 }

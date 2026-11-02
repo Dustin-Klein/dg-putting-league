@@ -4,6 +4,7 @@ import { EventWithDetails } from '@/lib/types/event';
 import type { TeamMember } from '@/lib/types/team';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 import { Trophy, Users } from 'lucide-react';
+import { EntryZoneCell } from './event-handicap';
 
 interface TeamDisplayProps {
   event: EventWithDetails;
@@ -83,6 +84,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         ({hasScore(member) ? member.event_player.pfa_score!.toFixed(2) : 'X'})
                       </span>
+                      {event.handicap_enabled && <EntryZoneCell entry={member.event_player} compact />}
                     </div>
                   ))}
                   <span className="font-score tabular-nums font-bold text-xs shrink-0 w-10 text-right">

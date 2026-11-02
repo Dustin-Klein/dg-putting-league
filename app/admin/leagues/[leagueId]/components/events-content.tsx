@@ -16,9 +16,10 @@ interface EventsContentProps {
   isAdmin: boolean;
   isOwner: boolean;
   leagueId: string;
+  initialTab?: 'events' | 'handicaps';
 }
 
-export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: EventsContentProps) {
+export function EventsContent({ league, events, isAdmin, isOwner, leagueId, initialTab = 'events' }: EventsContentProps) {
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-8 pb-14 md:px-6">
       <div className="flex flex-col gap-2.5">
@@ -41,7 +42,7 @@ export function EventsContent({ league, events, isAdmin, isOwner, leagueId }: Ev
         </div>
       </div>
 
-      <Tabs defaultValue="events">
+      <Tabs defaultValue={initialTab}>
         <TabsList className="mb-2">
           <TabsTrigger value="events">Events</TabsTrigger>
           {isAdmin && <TabsTrigger value="handicaps">Handicaps</TabsTrigger>}
