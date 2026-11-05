@@ -6,11 +6,22 @@ import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
 import { syncMatchScores } from '@/lib/services/scoring/match-scores';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { bracket_match, lanes as lanesTable } from '@/lib/db/schema';
+import { getZoneSeedCandidates } from '@/lib/services/handicap/zone-service';
+import {
+  bracket_match,
+  event_players,
+  events,
+  frame_results,
+  lanes as lanesTable,
+  league_handicap_settings,
+  league_handicap_zones,
+  match_frames,
+  players as playersTable,
+} from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { closeDb, createCountingTestDb, withRollback } from './db/harness';
-import { getBracketSnapshot, getParticipantPlayers, seedBracket } from './db/seed';
+import { getBracketSnapshot, getParticipantPlayers, seedBracket, seedLeague } from './db/seed';
 import { expectLaneInvariants, opponentId, playMatch, playableMatches } from './db/play';
 
 // resetMatchResult authorizes with requireEventAdmin; hand it the test transaction instead.
@@ -22,6 +33,11 @@ jest.mock('@/lib/services/event/event-service', () => {
     requireEventAdmin: async () => ({ pg: mockAdmin.tx, user: { id: null } }),
   };
 });
+
+jest.mock('@/lib/services/auth', () => ({
+  ...jest.requireActual('@/lib/services/auth'),
+  authorizeLeagueAdmin: async () => ({ pg: mockAdmin.tx, user: { id: null } }),
+}));
 
 const counting = createCountingTestDb();
 afterAll(() => closeDb(counting.db));
@@ -116,5 +132,52 @@ describe('statement budgets', () => {
     // Lock, snapshot, lock rewritten rows, release lanes, frames, overrides, grand
     // final check and lane reassignment: the same fixed set whatever the bracket's size.
     for (const overhead of overheads) expect(overhead).toBeLessThanOrEqual(18);
+  });
+
+  it('reads the zone seeding field in the same number of statements for any number of players', async () => {
+    const totals: number[] = [];
+    for (const playerCount of [2, 40]) {
+      await withRollback(counting.db, async (tx) => {
+        mockAdmin.tx = tx;
+        const { leagueId } = await seedLeague(tx);
+        await tx.insert(league_handicap_settings).values({ league_id: leagueId, enabled: true });
+        await tx.insert(league_handicap_zones).values([
+          { league_id: leagueId, zone: 1, distance_ft: '21' },
+          { league_id: leagueId, zone: 2, distance_ft: '27' },
+        ]);
+        const { leagueId: sourceId } = await seedLeague(tx);
+        const [event] = await tx.insert(events).values({
+          league_id: sourceId,
+          event_date: '2026-02-01',
+          location: 'History',
+          lane_count: 1,
+          putt_distance_ft: '20',
+          access_code: `qb${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+          status: 'completed',
+          entry_fee_per_player: null,
+          admin_fees: null,
+          admin_fee_per_player: null,
+          payout_pool_override: null,
+        }).returning({ id: events.id });
+        const inserted = await tx.insert(playersTable)
+          .values(Array.from({ length: playerCount }, (_, i) => ({ full_name: `Budget ${i}` })))
+          .returning({ id: playersTable.id });
+        const entries = await tx.insert(event_players)
+          .values(inserted.map((row) => ({ event_id: event.id, player_id: row.id, payment_type: 'cash', putt_distance_ft: '20' })))
+          .returning({ id: event_players.id });
+        const [frame] = await tx.insert(match_frames).values({ frame_number: 1 }).returning({ id: match_frames.id });
+        await tx.insert(frame_results).values(entries.map((entry) => ({
+          match_frame_id: frame.id, event_player_id: entry.id, putts_made: 2, points_earned: 2, order_in_frame: 1,
+        })));
+
+        let listed = 0;
+        const { total } = await counting.count(async () => {
+          listed = (await getZoneSeedCandidates(leagueId, sourceId)).candidates.length;
+        });
+        expect(listed).toBe(playerCount);
+        totals.push(total);
+      });
+    }
+    expect(totals[1]).toBe(totals[0]);
   });
 });

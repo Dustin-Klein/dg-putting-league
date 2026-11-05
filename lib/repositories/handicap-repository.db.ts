@@ -24,12 +24,13 @@ import type {
   ZoneDecision,
   ZoneDefinition,
   ZoneEvaluation,
+  ZoneSeedSource,
   ZoneSkipReason,
   ZoneSuggestion,
   ZoneSuggestionResolution,
 } from '@/lib/types/handicap';
 import type { EventStatus } from '@/lib/types/event';
-import type { EntryCounts } from '@/lib/services/handicap/stats';
+import type { EntryCounts, SeedEntryCounts } from '@/lib/services/handicap/stats';
 
 /** bracket_match.status values that mean "finished": Completed and Archived. */
 const FINISHED_MATCH_STATUSES = [4, 5];
@@ -522,6 +523,177 @@ export async function getCareerEntryCounts(
     list.push(mapCounts(row));
     result.set(distance, list);
   }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Starting zones from another league's history
+// ---------------------------------------------------------------------------
+
+/** Pre-handicap evidence: played before the source league had zones. */
+const seedEntryFilter = sql`e.status = 'completed' and ep.zone is null and not ep.exclude_from_handicap`;
+
+/** Leagues (other than this one) with pre-handicap history, most events first. */
+export async function getSeedSources(ex: Executor, leagueId: string): Promise<ZoneSeedSource[]> {
+  const rows = await ex.execute<{
+    league_id: string;
+    league_name: string;
+    first_date: string;
+    last_date: string;
+    event_count: string | number;
+  }>(sql`
+    select l.id as league_id, l.name as league_name, min(e.event_date) as first_date,
+      max(e.event_date) as last_date, count(distinct e.id) as event_count
+    from ${event_players} ep
+    join ${events} e on e.id = ep.event_id
+    join ${leagues} l on l.id = e.league_id
+    where ${seedEntryFilter}
+      and e.league_id <> ${leagueId}
+      and (exists (select 1 from ${frame_results} fr where fr.event_player_id = ep.id)
+        or exists (select 1 from ${qualification_frames} qf where qf.event_player_id = ep.id))
+    group by l.id, l.name
+    order by event_count desc, last_date desc, l.id`);
+  return rows.map((row) => ({
+    league_id: row.league_id,
+    league_name: row.league_name,
+    from: String(row.first_date),
+    to: String(row.last_date),
+    events: Number(row.event_count),
+  }));
+}
+
+/** Each player's pre-handicap entries in the source league, in one statement. */
+export async function getSeedHistoryCounts(
+  ex: Executor,
+  sourceLeagueId: string
+): Promise<Map<string, SeedEntryCounts[]>> {
+  const rows = await ex.execute<CountsRow & {
+    frame_points: string | number;
+    qualification_points: string | number;
+  }>(sql`
+    select ep.player_id as key, ${entryCountColumns},
+      coalesce(fp.points, 0) as frame_points, coalesce(qp.points, 0) as qualification_points
+    from ${event_players} ep
+    ${entryCountJoins}
+    left join lateral (
+      select sum(fr.points_earned) as points from ${frame_results} fr where fr.event_player_id = ep.id
+    ) fp on true
+    left join lateral (
+      select sum(qf.points_earned) as points from ${qualification_frames} qf where qf.event_player_id = ep.id
+    ) qp on true
+    where e.league_id = ${sourceLeagueId}
+      and ${seedEntryFilter}
+      and coalesce(f.frames, 0) + coalesce(q.frames, 0) > 0`);
+  const result = new Map<string, SeedEntryCounts[]>();
+  for (const row of rows) {
+    const list = result.get(row.key) ?? [];
+    list.push({
+      event_id: row.event_id,
+      frames: Number(row.frames),
+      frame_points: Number(row.frame_points),
+      qualification_frames: Number(row.qualification_frames),
+      qualification_points: Number(row.qualification_points),
+      matches: Number(row.matches),
+    });
+    result.set(row.key, list);
+  }
+  return result;
+}
+
+export async function getPlayersByIds(
+  ex: Executor,
+  playerIds: readonly string[]
+): Promise<Array<{ id: string; full_name: string; player_number: number }>> {
+  if (playerIds.length === 0) return [];
+  return ex.select({ id: players.id, full_name: players.full_name, player_number: players.player_number })
+    .from(players)
+    .where(inArray(players.id, [...new Set(playerIds)]))
+    .orderBy(asc(players.full_name), asc(players.id));
+}
+
+export interface SeedablePeriod {
+  period: ZonePeriodRow | null;
+  /**
+   * The player has putted in this league, or holds a snapshot in an event that has
+   * started (it won't be refreshed, so moving the period would split the two).
+   */
+  used: boolean;
+}
+
+/** Every given player's open period in the league and whether it may still be rewritten. */
+export async function getSeedablePeriods(
+  ex: Executor,
+  leagueId: string,
+  playerIds: readonly string[]
+): Promise<Map<string, SeedablePeriod>> {
+  if (playerIds.length === 0) return new Map();
+  const ids = [...new Set(playerIds)];
+  const [periods, usedRows] = await Promise.all([
+    getOpenPeriods(ex, leagueId, ids),
+    ex.selectDistinct({ player_id: event_players.player_id }).from(event_players)
+      .innerJoin(events, eq(events.id, event_players.event_id))
+      .where(and(
+        eq(events.league_id, leagueId),
+        inArray(event_players.player_id, ids),
+        sql`(${entryHasFrames} or (${event_players.zone_period_id} is not null and ${events.status} in ('bracket', 'completed')))`
+      )),
+  ]);
+  const used = new Set(usedRows.map((row) => row.player_id));
+  return new Map(ids.map((id) => [id, { period: periods.get(id) ?? null, used: used.has(id) }]));
+}
+
+/** Rewrite an open `initial` period in place, so the history still reads "Started in Zone N". */
+export async function updateOpenPeriodStart(
+  ex: Executor,
+  periodId: string,
+  start: { zone: number; distance_ft: number; started_by_user: string; note: string | null }
+): Promise<boolean> {
+  const rows = await ex.update(player_zone_periods)
+    .set({
+      zone: start.zone,
+      distance_ft: String(start.distance_ft),
+      started_by_user: start.started_by_user,
+      note: start.note,
+    })
+    .where(and(
+      eq(player_zone_periods.id, periodId),
+      isNull(player_zone_periods.ended_at),
+      eq(player_zone_periods.start_reason, 'initial')
+    ))
+    .returning({ id: player_zone_periods.id });
+  return rows.length > 0;
+}
+
+/**
+ * The league's handicap events that have not started, ascending by id. `lock` is for
+ * callers already holding the event locks: it is what waits out an in-flight first frame.
+ */
+export async function getUnstartedEventIds(
+  ex: Executor,
+  leagueId: string,
+  opts: { lock?: 'update' } = {}
+): Promise<string[]> {
+  const query = ex.select({ id: events.id }).from(events).where(and(
+    eq(events.league_id, leagueId),
+    eq(events.handicap_enabled, true),
+    inArray(events.status, ['created', 'pre-bracket'])
+  )).orderBy(asc(events.id));
+  const rows = opts.lock ? await query.for(opts.lock) : await query;
+  return rows.map((row) => row.id);
+}
+
+/** The entries of the given players in the given events, keyed by event id. */
+export async function getEntryIdsByEvent(
+  ex: Executor,
+  eventIds: readonly string[],
+  playerIds: readonly string[]
+): Promise<Map<string, string[]>> {
+  if (eventIds.length === 0 || playerIds.length === 0) return new Map();
+  const rows = await ex.select({ id: event_players.id, event_id: event_players.event_id })
+    .from(event_players)
+    .where(and(inArray(event_players.event_id, [...eventIds]), inArray(event_players.player_id, [...playerIds])));
+  const result = new Map<string, string[]>();
+  for (const row of rows) result.set(row.event_id, [...(result.get(row.event_id) ?? []), row.id]);
   return result;
 }
 

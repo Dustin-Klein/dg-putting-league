@@ -1,7 +1,7 @@
 import 'server-only';
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { authorizeEventAdmin, authorizeLeagueAdmin, authorizePublicRead, getViewer } from '@/lib/services/auth';
-import { lockEvent, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockEvents, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as handicapDb from '@/lib/repositories/handicap-repository.db';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import { getLeagueAdminRole, getLeagueById } from '@/lib/repositories/league-repository.db';
@@ -15,9 +15,12 @@ import type {
   PlayerHandicapPublic,
   ZonePeriodAdmin,
   ZonePeriodPublic,
+  ZoneSeedCandidate,
+  ZoneSeedData,
+  ZoneSeedResult,
   ZoneSuggestion,
 } from '@/lib/types/handicap';
-import { combinePeriodStats, eligibilityProgress } from './stats';
+import { combinePeriodStats, combineSeedHistory, eligibilityProgress, isEligible, PUTTS_PER_FRAME } from './stats';
 import { refreshEntrySnapshots } from './snapshot';
 
 // ---------------------------------------------------------------------------
@@ -178,6 +181,65 @@ export async function listZoneSuggestions(leagueId: string): Promise<ZoneSuggest
   return handicapDb.listOpenSuggestions(pg, leagueId);
 }
 
+/**
+ * The field for "Set starting zones": another league's pre-handicap history, per player.
+ * Stats from completed events are public, so the source league needs no admin check.
+ * Players who can't be seeded any more are counted, not listed.
+ */
+export async function getZoneSeedCandidates(leagueId: string, sourceLeagueId?: string): Promise<ZoneSeedData> {
+  const { pg } = await authorizeLeagueAdmin(leagueId);
+  const [stored, zones, sources] = await Promise.all([
+    handicapDb.getLeagueHandicapSettings(pg, leagueId),
+    handicapDb.getLeagueZones(pg, leagueId),
+    handicapDb.getSeedSources(pg, leagueId),
+  ]);
+  if (!stored) throw new BadRequestError('Handicaps are not set up for this league');
+  const settings = stored.settings;
+
+  const source = sourceLeagueId === undefined
+    ? sources[0] ?? null
+    : sources.find((candidate) => candidate.league_id === sourceLeagueId);
+  if (source === undefined) throw new NotFoundError('Source league not found');
+
+  const history = source ? await handicapDb.getSeedHistoryCounts(pg, source.league_id) : new Map<string, never[]>();
+  const playerIds = [...history.keys()];
+  const [playerRows, seedable] = await Promise.all([
+    handicapDb.getPlayersByIds(pg, playerIds),
+    handicapDb.getSeedablePeriods(pg, leagueId, playerIds),
+  ]);
+
+  const candidates: ZoneSeedCandidate[] = [];
+  let lockedCount = 0;
+  for (const player of playerRows) {
+    const stats = combineSeedHistory(history.get(player.id) ?? [], settings);
+    if (stats.frames === 0) continue;
+    const state = seedable.get(player.id);
+    const period = state?.period ?? null;
+    if (state?.used || (period && period.start_reason !== 'initial')) {
+      lockedCount += 1;
+      continue;
+    }
+    candidates.push({
+      player_id: player.id,
+      player_name: player.full_name,
+      player_number: player.player_number,
+      history: stats,
+      eligible: isEligible({ putts_attempted: stats.frames * PUTTS_PER_FRAME, matches: stats.matches }, settings),
+      current_zone: period?.zone ?? null,
+    });
+  }
+
+  return {
+    default_zone: settings.default_zone,
+    zones,
+    settings: { min_putts: settings.min_putts, min_matches: settings.min_matches },
+    sources,
+    source,
+    candidates,
+    locked_count: lockedCount,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Writes: an admin is the only way a player moves closer (unless the league
 // enables automatic demotion), and every admin move affects future events only.
@@ -269,6 +331,82 @@ export async function setPlayerZone(
 
   const league = await getLeagueById(pg, leagueId);
   return (await readPlayerHandicap(pg, playerId, leagueId, league?.name ?? '', true)) as PlayerHandicapAdmin;
+}
+
+/**
+ * Set players' starting zones before they first putt in the league. Writes `initial`
+ * periods only, as new rows or in place, so it can be re-run until a player's first
+ * putt; it never closes a period (that is what `setPlayerZone` is for). Entries in
+ * events that have not started take the new zone at once.
+ */
+export async function seedPlayerZones(
+  leagueId: string,
+  assignments: ReadonlyArray<{ player_id: string; zone: number }>,
+  note?: string
+): Promise<ZoneSeedResult> {
+  const { user, pg } = await authorizeLeagueAdmin(leagueId);
+  const trimmed = note?.trim() || null;
+  const playerIds = assignments.map((assignment) => assignment.player_id);
+  if (new Set(playerIds).size !== playerIds.length) throw new BadRequestError('A player is listed more than once');
+
+  return withTransaction(pg, async (tx) => {
+    await lockEvents(tx, await handicapDb.getUnstartedEventIds(tx, leagueId));
+    // Re-read under the locks: an event that started in between is no longer ours to refresh.
+    const eventIds = await handicapDb.getUnstartedEventIds(tx, leagueId, { lock: 'update' });
+    await lockLeagueHandicap(tx, leagueId);
+
+    const { zones } = await loadLadder(tx, leagueId);
+    const distanceOf = new Map(zones.map((zone) => [zone.zone, zone.distance_ft]));
+    const unknownZone = assignments.find((assignment) => !distanceOf.has(assignment.zone));
+    if (unknownZone) throw new BadRequestError(`Zone ${unknownZone.zone} does not exist in this league`);
+    const known = await handicapDb.getPlayersByIds(tx, playerIds);
+    if (known.length !== playerIds.length) throw new BadRequestError('Unknown player');
+
+    const seedable = await handicapDb.getSeedablePeriods(tx, leagueId, playerIds);
+    const result: ZoneSeedResult = { applied: 0, unchanged: 0, skipped: [] };
+    const inserts: handicapDb.NewZonePeriod[] = [];
+    const affected: string[] = [];
+
+    for (const { player_id: playerId, zone } of assignments) {
+      const { period, used } = seedable.get(playerId) ?? { period: null, used: false };
+      const distance = distanceOf.get(zone) as number;
+      if (used) {
+        result.skipped.push({ player_id: playerId, reason: 'putted' });
+      } else if (period && period.start_reason !== 'initial') {
+        result.skipped.push({ player_id: playerId, reason: 'moved' });
+      } else if (period?.zone === zone) {
+        result.unchanged += 1;
+      } else if (period) {
+        const updated = await handicapDb.updateOpenPeriodStart(tx, period.id, {
+          zone,
+          distance_ft: distance,
+          started_by_user: user.id,
+          note: trimmed,
+        });
+        if (!updated) throw new ConflictError("A player's zone just changed. Reload and try again.");
+        result.applied += 1;
+        affected.push(playerId);
+      } else {
+        inserts.push({
+          player_id: playerId,
+          zone,
+          distance_ft: distance,
+          start_reason: 'initial',
+          started_by_user: user.id,
+          note: trimmed,
+        });
+        result.applied += 1;
+        affected.push(playerId);
+      }
+    }
+    await handicapDb.insertOpenPeriods(tx, leagueId, inserts);
+
+    const entriesByEvent = await handicapDb.getEntryIdsByEvent(tx, eventIds, affected);
+    for (const [eventId, entryIds] of entriesByEvent) {
+      await refreshEntrySnapshots(tx, eventId, { entryIds });
+    }
+    return result;
+  });
 }
 
 /**
