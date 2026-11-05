@@ -16,6 +16,11 @@ export function zoneColorClass(zone: number): string {
   return ZONE_COLORS[zone] ?? 'bg-muted-foreground text-background border-muted-foreground';
 }
 
+/** The zone's colour as a CSS value, for drawing (charts) rather than badges. */
+export function zoneColorValue(zone: number): string {
+  return zone in ZONE_COLORS ? `hsl(var(--zone-${zone}))` : 'hsl(var(--muted-foreground))';
+}
+
 export function formatDistanceFt(distance: number): string {
   return Number.isInteger(distance) ? String(distance) : distance.toFixed(1).replace(/\.0$/, '');
 }

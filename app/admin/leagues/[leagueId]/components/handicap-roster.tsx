@@ -22,18 +22,7 @@ import { StatusBadge } from '@/components/status-badge';
 import { cn } from '@/lib/utils/utils';
 import { eligibilityText, formatPct, formatPeriodStats, formatTimestampDate } from '@/lib/utils/handicap-format';
 import type { LeagueRosterEntry, PeriodStats, ZoneDefinition, ZoneSuggestion } from '@/lib/types/handicap';
-
-async function postJson(url: string, body: unknown): Promise<void> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data?.error || 'Request failed');
-  }
-}
+import { postJson } from './post-json';
 
 /**
  * Open demotion suggestions, pinned above the roster. The counterweight to "no
