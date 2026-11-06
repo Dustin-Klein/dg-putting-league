@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,17 +31,29 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [reviewOpen, setReviewOpen] = useState(false);
   const [applying, setApplying] = useState(false);
+  const latestLoad = useRef(0);
   const { toast } = useToast();
 
-  const load = useCallback(async (sourceId?: string) => {
+  /** False only when the latest load failed; a superseded response is dropped. */
+  const load = useCallback(async (sourceId?: string, opts: { switching?: boolean } = {}) => {
+    const thisLoad = ++latestLoad.current;
     try {
       const query = sourceId ? `?source_league_id=${sourceId}` : '';
       const response = await fetch(`/api/league/${leagueId}/handicap/seed${query}`);
       if (!response.ok) throw new Error('Failed to load past scoring');
-      setData(await response.json());
+      const loaded: ZoneSeedData = await response.json();
+      if (thisLoad !== latestLoad.current) return true;
+      setData(loaded);
       setError(null);
+      if (opts.switching) {
+        setOverrides({});
+        setDraggedCuts(null);
+      }
+      return true;
     } catch (loadError) {
+      if (thisLoad !== latestLoad.current) return true;
       setError(loadError instanceof Error ? loadError.message : 'Failed to load past scoring');
+      return false;
     }
   }, [leagueId]);
 
@@ -83,17 +95,16 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
   }, [data, rows, zoneEffect]);
 
   if (error && !data) return <p className="text-sm text-destructive">{error}</p>;
-  if (!data?.source || (data.candidates.length === 0 && pickedSource === undefined)) return null;
+  if (!data?.source || (data.candidates.length === 0 && data.sources.length < 2)) return null;
 
   const { source, zones, sources, settings, candidates, locked_count: lockedCount, default_zone: defaultZone } = data;
   const changes = rows.filter((row) => row.changed);
   const hasEligible = candidates.some((candidate) => candidate.eligible);
+  const switching = pickedSource !== undefined && pickedSource !== source.league_id;
 
-  const changeSource = (sourceId: string) => {
+  const changeSource = async (sourceId: string) => {
     setPickedSource(sourceId);
-    setOverrides({});
-    setDraggedCuts(null);
-    load(sourceId);
+    if (!(await load(sourceId, { switching: true }))) setPickedSource(source.league_id);
   };
 
   const pick = (playerId: string, zone: number) => {
@@ -164,7 +175,7 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-muted-foreground">Based on:</span>
               {sources.length > 1 ? (
-                <Select value={source.league_id} onValueChange={changeSource}>
+                <Select value={pickedSource ?? source.league_id} onValueChange={changeSource} disabled={applying}>
                   <SelectTrigger className="h-9 w-auto max-w-64 font-semibold" aria-label="Source league">
                     <SelectValue />
                   </SelectTrigger>
@@ -177,7 +188,9 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
               ) : (
                 <span className="font-semibold">{source.league_name}</span>
               )}
-              <span className="text-muted-foreground">· {plural(source.events, 'event')}</span>
+              {switching
+                ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Loading source league" />
+                : <span className="text-muted-foreground">· {plural(source.events, 'event')}</span>}
             </div>
             <CutInput
               id="zone-effect"
@@ -196,7 +209,9 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
             The points per zone is an assumption: no putts have been taken from another zone yet.
           </p>
 
-          {hasEligible ? (
+          {candidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nobody from {source.league_name} is left to place.</p>
+          ) : hasEligible ? (
             <ZoneCutHistogram
               candidates={candidates}
               cuts={cuts}
@@ -236,10 +251,10 @@ export function ZoneSeeding({ leagueId, onChanged }: { leagueId: string; onChang
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setReviewOpen(true)} disabled={rows.length === 0}>
+            <Button variant="outline" onClick={() => setReviewOpen(true)} disabled={switching || rows.length === 0}>
               Review {plural(rows.length, 'player')}
             </Button>
-            <Button onClick={apply} disabled={applying || changes.length === 0}>
+            <Button onClick={apply} disabled={applying || switching || changes.length === 0}>
               {applying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Apply {plural(changes.length, 'starting zone')}
             </Button>
