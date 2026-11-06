@@ -1218,6 +1218,38 @@ describe('race: handicap writers in one league', () => {
     expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 2, putt_distance_ft: '27.00' });
   });
 
+  it('seeding refuses an event created while it waited, so the new entries never split from the period', async () => {
+    const { leagueId } = await seedLeague(db);
+    const [playerId] = await newPlayers(db, 1);
+    committed.push({ leagueId, playerIds: [playerId] });
+    await enableHandicaps(db, leagueId);
+    mockAuth.pg = db;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let snapshotted!: () => void;
+    const entriesReady = new Promise<void>((resolve) => { snapshotted = resolve; });
+    const creator = withTransaction(db, async (tx) => {
+      const event = await handicapEvent(tx, leagueId, [playerId], { status: 'created' });
+      snapshotted();
+      await gate;
+      return event;
+    });
+    await entriesReady;
+
+    const seeding = seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]).catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    const event = await creator;
+
+    expect(await seeding).toBeInstanceOf(ConflictError);
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 2, putt_distance_ft: '27.00' });
+
+    expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]))
+      .toEqual({ applied: 1, unchanged: 0, skipped: [] });
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 3, putt_distance_ft: '33.00' });
+  });
+
   it('seeding and an event-page move of one player settle without a deadlock or a split entry', async () => {
     const { leagueId } = await seedLeague(db);
     const [playerId] = await newPlayers(db, 1);

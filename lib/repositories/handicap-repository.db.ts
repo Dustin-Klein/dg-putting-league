@@ -642,26 +642,31 @@ export async function getSeedablePeriods(
   return new Map(ids.map((id) => [id, { period: periods.get(id) ?? null, used: used.has(id) }]));
 }
 
-/** Rewrite an open `initial` period in place, so the history still reads "Started in Zone N". */
-export async function updateOpenPeriodStart(
+/**
+ * Rewrite open `initial` periods in place, so the history still reads "Started in
+ * Zone N". Returns the ids it rewrote.
+ */
+export async function updateOpenPeriodStarts(
   ex: Executor,
-  periodId: string,
-  start: { zone: number; distance_ft: number; started_by_user: string; note: string | null }
-): Promise<boolean> {
-  const rows = await ex.update(player_zone_periods)
-    .set({
-      zone: start.zone,
-      distance_ft: String(start.distance_ft),
-      started_by_user: start.started_by_user,
-      note: start.note,
-    })
-    .where(and(
-      eq(player_zone_periods.id, periodId),
-      isNull(player_zone_periods.ended_at),
-      eq(player_zone_periods.start_reason, 'initial')
-    ))
-    .returning({ id: player_zone_periods.id });
-  return rows.length > 0;
+  starts: ReadonlyArray<{ id: string; zone: number; distance_ft: number }>,
+  by: { started_by_user: string; note: string | null }
+): Promise<string[]> {
+  const updated: string[] = [];
+  for (const batch of chunks(starts)) {
+    const values = sql.join(
+      batch.map((start) => sql`(${start.id}::uuid, ${start.zone}::smallint, ${String(start.distance_ft)}::numeric)`),
+      sql`, `
+    );
+    const rows = await ex.execute<{ id: string }>(sql`
+      update ${player_zone_periods} as p
+      set zone = v.zone, distance_ft = v.distance_ft,
+          started_by_user = ${by.started_by_user}::uuid, note = ${by.note}
+      from (values ${values}) as v(id, zone, distance_ft)
+      where p.id = v.id and p.ended_at is null and p.start_reason = 'initial'
+      returning p.id`);
+    updated.push(...rows.map((row) => row.id));
+  }
+  return updated;
 }
 
 /**
