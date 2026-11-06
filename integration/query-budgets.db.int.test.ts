@@ -6,7 +6,7 @@ import { resetMatchResult } from '@/lib/services/bracket/bracket-service';
 import { syncMatchScores } from '@/lib/services/scoring/match-scores';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { getZoneSeedCandidates } from '@/lib/services/handicap/zone-service';
+import { getZoneSeedCandidates, seedPlayerZones } from '@/lib/services/handicap/zone-service';
 import {
   bracket_match,
   event_players,
@@ -175,6 +175,34 @@ describe('statement budgets', () => {
           listed = (await getZoneSeedCandidates(leagueId, sourceId)).candidates.length;
         });
         expect(listed).toBe(playerCount);
+        totals.push(total);
+      });
+    }
+    expect(totals[1]).toBe(totals[0]);
+  });
+
+  it('re-seeds starting zones in the same number of statements for any number of players', async () => {
+    const totals: number[] = [];
+    for (const playerCount of [2, 40]) {
+      await withRollback(counting.db, async (tx) => {
+        mockAdmin.tx = tx;
+        const { leagueId } = await seedLeague(tx);
+        await tx.insert(league_handicap_settings).values({ league_id: leagueId, enabled: true });
+        await tx.insert(league_handicap_zones).values([
+          { league_id: leagueId, zone: 1, distance_ft: '21' },
+          { league_id: leagueId, zone: 2, distance_ft: '27' },
+        ]);
+        const inserted = await tx.insert(playersTable)
+          .values(Array.from({ length: playerCount }, (_, i) => ({ full_name: `Budget ${i}` })))
+          .returning({ id: playersTable.id });
+        const seed = (zone: number) => seedPlayerZones(leagueId, inserted.map((row) => ({ player_id: row.id, zone })));
+        await seed(1);
+
+        let applied = 0;
+        const { total } = await counting.count(async () => {
+          applied = (await seed(2)).applied;
+        });
+        expect(applied).toBe(playerCount);
         totals.push(total);
       });
     }

@@ -354,6 +354,11 @@ export async function seedPlayerZones(
     // Re-read under the locks: an event that started in between is no longer ours to refresh.
     const eventIds = await handicapDb.getUnstartedEventIds(tx, leagueId, { lock: 'update' });
     await lockLeagueHandicap(tx, leagueId);
+    // An event that appeared while we waited can't be refreshed here: its lock would come after this one.
+    const latestEventIds = await handicapDb.getUnstartedEventIds(tx, leagueId);
+    if (latestEventIds.some((eventId) => !eventIds.includes(eventId))) {
+      throw new ConflictError('An event was just created. Try again.');
+    }
 
     const { zones } = await loadLadder(tx, leagueId);
     const distanceOf = new Map(zones.map((zone) => [zone.zone, zone.distance_ft]));
@@ -365,6 +370,7 @@ export async function seedPlayerZones(
     const seedable = await handicapDb.getSeedablePeriods(tx, leagueId, playerIds);
     const result: ZoneSeedResult = { applied: 0, unchanged: 0, skipped: [] };
     const inserts: handicapDb.NewZonePeriod[] = [];
+    const rewrites: Array<{ id: string; zone: number; distance_ft: number }> = [];
     const affected: string[] = [];
 
     for (const { player_id: playerId, zone } of assignments) {
@@ -377,13 +383,7 @@ export async function seedPlayerZones(
       } else if (period?.zone === zone) {
         result.unchanged += 1;
       } else if (period) {
-        const updated = await handicapDb.updateOpenPeriodStart(tx, period.id, {
-          zone,
-          distance_ft: distance,
-          started_by_user: user.id,
-          note: trimmed,
-        });
-        if (!updated) throw new ConflictError("A player's zone just changed. Reload and try again.");
+        rewrites.push({ id: period.id, zone, distance_ft: distance });
         result.applied += 1;
         affected.push(playerId);
       } else {
@@ -399,6 +399,8 @@ export async function seedPlayerZones(
         affected.push(playerId);
       }
     }
+    const rewritten = await handicapDb.updateOpenPeriodStarts(tx, rewrites, { started_by_user: user.id, note: trimmed });
+    if (rewritten.length !== rewrites.length) throw new ConflictError("A player's zone just changed. Reload and try again.");
     await handicapDb.insertOpenPeriods(tx, leagueId, inserts);
 
     const entriesByEvent = await handicapDb.getEntryIdsByEvent(tx, eventIds, affected);
