@@ -1,4 +1,11 @@
-import { combinePeriodStats, eligibilityProgress, makePct, type EntryCounts } from '../stats';
+import {
+  combinePeriodStats,
+  combineSeedHistory,
+  eligibilityProgress,
+  makePct,
+  type EntryCounts,
+  type SeedEntryCounts,
+} from '../stats';
 
 function entry(overrides: Partial<EntryCounts> & { event_id: string }): EntryCounts {
   return {
@@ -80,5 +87,40 @@ describe('makePct', () => {
   it('rounds to two decimals', () => {
     expect(makePct(2, 3)).toBe(66.67);
     expect(makePct(0, 0)).toBeNull();
+  });
+});
+
+describe('combineSeedHistory', () => {
+  function seed(overrides: Partial<SeedEntryCounts> & { event_id: string }): SeedEntryCounts {
+    return { frames: 0, frame_points: 0, qualification_frames: 0, qualification_points: 0, matches: 0, ...overrides };
+  }
+
+  it('scales points to a 5-frame match across events', () => {
+    const stats = combineSeedHistory([
+      seed({ event_id: 'a', frames: 10, frame_points: 18, matches: 2 }),
+      seed({ event_id: 'b', frames: 5, frame_points: 9 }),
+    ], { count_qualification_putts: true });
+    expect(stats).toEqual({ frames: 15, points: 27, points_per_match: 9, matches: 2, events: 2 });
+  });
+
+  it('counts qualification frames only when the league does', () => {
+    const entries = [
+      seed({ event_id: 'a', frames: 5, frame_points: 10, qualification_frames: 5, qualification_points: 5 }),
+      seed({ event_id: 'b', qualification_frames: 5, qualification_points: 20 }),
+    ];
+    expect(combineSeedHistory(entries, { count_qualification_putts: true }))
+      .toMatchObject({ frames: 15, points: 35, points_per_match: 11.67, events: 2 });
+    expect(combineSeedHistory(entries, { count_qualification_putts: false }))
+      .toMatchObject({ frames: 5, points: 10, points_per_match: 10, events: 1 });
+  });
+
+  it('never reads stored putts', () => {
+    const entry = { ...seed({ event_id: 'a', frames: 5, frame_points: 9 }), frame_putts_made: 15, qualification_putts_made: 15 };
+    expect(combineSeedHistory([entry], { count_qualification_putts: true }).points_per_match).toBe(9);
+  });
+
+  it('is empty without frames', () => {
+    expect(combineSeedHistory([], { count_qualification_putts: true }))
+      .toEqual({ frames: 0, points: 0, points_per_match: 0, matches: 0, events: 0 });
   });
 });

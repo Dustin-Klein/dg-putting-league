@@ -38,6 +38,14 @@ export const setPlayerZoneSchema = z.object({
   note: z.string().trim().min(1, 'A note is required').max(1000),
 });
 
+export const seedZonesSchema = z.object({
+  assignments: z.array(z.object({
+    player_id: z.uuid('Invalid player ID'),
+    zone: z.number().int().min(1).max(MAX_ZONES),
+  })).min(1, 'Choose at least one player').max(500),
+  note: z.string().trim().max(1000).optional(),
+});
+
 export const resolveSuggestionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('apply'), note: z.string().trim().max(1000).nullable().optional() }),
   z.object({ action: z.literal('dismiss'), note: z.string().trim().min(1, 'A note is required to dismiss').max(1000) }),
