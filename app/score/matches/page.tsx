@@ -13,6 +13,7 @@ import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { MatchStatus } from '@/lib/types/bracket';
 import type { PublicMatchInfo, PublicPlayerInfo, ScoringLane } from '@/lib/types/scoring';
 import { ZoneBadge } from '@/components/zone-badge';
+import { countCompletedFrames } from '@/app/score/components/scoring-wizard/scoring-utils';
 
 interface EventInfo {
   id: string;
@@ -20,6 +21,7 @@ interface EventInfo {
   location: string | null;
   lane_count: number;
   bonus_point_enabled: boolean;
+  bracket_frame_count: number;
   status: string;
 }
 
@@ -280,6 +282,9 @@ export default function MatchesPage() {
                     {match.lane_label && `${match.lane_label} · `}
                     {running ? 'In Progress' : 'Ready'}
                   </StatusBadge>
+                  {running && event && (
+                    <FrameProgress match={match} regulationFrames={event.bracket_frame_count} />
+                  )}
                 </div>
 
                 <TeamRow team={match.team_one} score={match.team_one_score} side="one" showScore={running} />
@@ -335,6 +340,17 @@ function TeamRow({
         {showScore ? score : ''}
       </span>
     </div>
+  );
+}
+
+function FrameProgress({ match, regulationFrames }: { match: PublicMatchInfo; regulationFrames: number }) {
+  const playerIds = [...match.team_one.players, ...match.team_two.players].map((p) => p.event_player_id);
+  const completed = countCompletedFrames(match.frames, playerIds);
+  const overtime = completed - regulationFrames;
+  return (
+    <span className="ml-auto font-score text-sm font-semibold text-muted-foreground tabular-nums">
+      {overtime > 0 ? `OT · frame ${overtime}` : `${completed}/${regulationFrames} frames`}
+    </span>
   );
 }
 
