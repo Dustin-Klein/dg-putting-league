@@ -18,6 +18,7 @@ interface FrameWizardProps {
   standardFrames: number;
   currentFrame: number;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
+  onScoreClear: (eventPlayerId: string, frameNumber: number) => void;
   onNextFrame: () => Promise<void>;
   onPrevFrame: () => Promise<void>;
   onGoToFrame: (frameNumber: number) => Promise<void>;
@@ -32,6 +33,7 @@ export function FrameWizard({
   standardFrames,
   currentFrame,
   onScoreChange,
+  onScoreClear,
   onNextFrame,
   onPrevFrame,
   onGoToFrame,
@@ -117,6 +119,7 @@ export function FrameWizard({
           localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
           onScoreChange={onScoreChange}
+          onScoreClear={onScoreClear}
         />
 
         <TeamScoringSection
@@ -127,6 +130,7 @@ export function FrameWizard({
           localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
           onScoreChange={onScoreChange}
+          onScoreClear={onScoreClear}
         />
       </div>
 
