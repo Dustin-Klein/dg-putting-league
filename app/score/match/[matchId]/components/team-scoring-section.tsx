@@ -22,6 +22,7 @@ interface TeamScoringSectionProps {
   localScores: ScoreState;
   bonusPointEnabled: boolean;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
+  onScoreClear: (eventPlayerId: string, frameNumber: number) => void;
 }
 
 export function TeamScoringSection({
@@ -32,6 +33,7 @@ export function TeamScoringSection({
   localScores,
   bonusPointEnabled,
   onScoreChange,
+  onScoreClear,
 }: TeamScoringSectionProps) {
   const frame = match.frames.find((item) => item.frame_number === frameNumber);
   let frameScore = 0;
@@ -83,6 +85,7 @@ export function TeamScoringSection({
           localScores={localScores}
           bonusPointEnabled={bonusPointEnabled}
           onScoreChange={onScoreChange}
+          onScoreClear={onScoreClear}
         />
       ))}
     </section>
@@ -97,6 +100,7 @@ interface MatchPlayerScoreRowProps {
   localScores: ScoreState;
   bonusPointEnabled: boolean;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
+  onScoreClear: (eventPlayerId: string, frameNumber: number) => void;
 }
 
 function MatchPlayerScoreRow({
@@ -107,6 +111,7 @@ function MatchPlayerScoreRow({
   localScores,
   bonusPointEnabled,
   onScoreChange,
+  onScoreClear,
 }: MatchPlayerScoreRowProps) {
   const currentScore = getResolvedScore(player.event_player_id, frameNumber, localScores, match.frames);
 
@@ -120,6 +125,11 @@ function MatchPlayerScoreRow({
       frameNumber={frameNumber}
       bonusPointEnabled={bonusPointEnabled}
       onChange={(puttsMade) => onScoreChange(player.event_player_id, frameNumber, puttsMade)}
+      onClear={
+        localScores.has(getScoreKey(player.event_player_id, frameNumber))
+          ? () => onScoreClear(player.event_player_id, frameNumber)
+          : undefined
+      }
     />
   );
 }

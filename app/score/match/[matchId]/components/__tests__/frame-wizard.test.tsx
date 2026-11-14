@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FrameWizard } from '../frame-wizard';
@@ -69,6 +70,28 @@ function createFrame(frameNumber: number, results: FrameInfo['results'] = []): F
   };
 }
 
+function StatefulWizard({ match, initialScores = [] }: { match: MatchInfo; initialScores?: [string, number][] }) {
+  const [localScores, setLocalScores] = useState<ScoreState>(new Map(initialScores));
+  return (
+    <FrameWizard
+      {...defaultProps}
+      match={match}
+      localScores={localScores}
+      onScoreChange={(id, frame, putts) => setLocalScores((prev) => new Map(prev).set(`${id}-${frame}`, putts))}
+      onScoreClear={(id, frame) =>
+        setLocalScores((prev) => {
+          const next = new Map(prev);
+          next.delete(`${id}-${frame}`);
+          return next;
+        })
+      }
+    />
+  );
+}
+
+const checkedPutts = (playerName: RegExp) =>
+  within(screen.getByRole('radiogroup', { name: playerName })).queryByRole('radio', { checked: true });
+
 const defaultProps = {
   match: createMatch(),
   localScores: new Map() as ScoreState,
@@ -76,6 +99,7 @@ const defaultProps = {
   standardFrames: 5,
   currentFrame: 1,
   onScoreChange: jest.fn(),
+  onScoreClear: jest.fn(),
   onNextFrame: jest.fn().mockResolvedValue(undefined),
   onPrevFrame: jest.fn().mockResolvedValue(undefined),
   onGoToFrame: jest.fn().mockResolvedValue(undefined),
@@ -171,6 +195,51 @@ describe('FrameWizard', () => {
       expect(within(group).getByRole('radio', { checked: true })).toHaveAccessibleName(
         new RegExp(`^${MAX_PUTTS} putts made`)
       );
+    });
+
+    it('clears an unsaved selection back to "Not scored" when tapped again', async () => {
+      const user = userEvent.setup();
+      render(<StatefulWizard match={createMatch()} />);
+      const group = screen.getByRole('radiogroup', { name: /putts made by team1 playera/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^2 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
+      const notScoredBefore = screen.getAllByText('Not scored').length;
+
+      await user.click(within(group).getByRole('radio', { name: /^2 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toBeNull();
+      expect(screen.getAllByText('Not scored')).toHaveLength(notScoredBefore + 1);
+    });
+
+    it('does not clear a saved score', async () => {
+      const user = userEvent.setup();
+      const onScoreChange = jest.fn();
+      const onScoreClear = jest.fn();
+      const match = createMatch({
+        frames: [createFrame(1, [{ id: 'r1', event_player_id: 'p1a', putts_made: 2, points_earned: 2 }])],
+      });
+      render(<FrameWizard {...defaultProps} match={match} onScoreChange={onScoreChange} onScoreClear={onScoreClear} />);
+
+      await user.click(screen.getAllByRole('radio', { name: /^2 putts made/ })[0]);
+
+      expect(onScoreClear).not.toHaveBeenCalled();
+      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 2);
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
+    });
+
+    it('reverts a locally changed saved score to the saved value when tapped again', async () => {
+      const user = userEvent.setup();
+      const match = createMatch({
+        frames: [createFrame(1, [{ id: 'r1', event_player_id: 'p1a', putts_made: 2, points_earned: 2 }])],
+      });
+      render(<StatefulWizard match={match} />);
+      const group = screen.getByRole('radiogroup', { name: /putts made by team1 playera/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^3 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^3 putts made/);
+
+      await user.click(within(group).getByRole('radio', { name: /^3 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
     });
 
     it('shows the bonus on the top button only when enabled', () => {

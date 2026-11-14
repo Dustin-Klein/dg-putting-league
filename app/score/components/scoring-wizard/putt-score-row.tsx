@@ -31,11 +31,14 @@ interface PuttScoreRowProps {
   groupLabel?: string;
   disabled?: boolean;
   onChange: (puttsMade: number) => void;
+  /** Called instead of onChange when the chosen button is tapped again. */
+  onClear?: () => void;
 }
 
 /**
  * One player's putts for a frame: a row of 0–3 buttons (Main.dc.html). Picking a
- * button sets the score; the bonus is shown on the 3.
+ * button sets the score; tapping the chosen button again clears it when onClear is
+ * given. The bonus is shown on the 3.
  */
 export function PuttScoreRow({
   label,
@@ -50,6 +53,7 @@ export function PuttScoreRow({
   groupLabel,
   disabled = false,
   onChange,
+  onClear,
 }: PuttScoreRowProps) {
   const points = score !== null ? calculatePoints(score, bonusPointEnabled) : null;
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -104,7 +108,7 @@ export function PuttScoreRow({
               tabIndex={putts === tabStop ? 0 : -1}
               aria-label={`${putts} putts made${bonus ? ', plus bonus point' : ''}`}
               disabled={disabled}
-              onClick={() => onChange(putts)}
+              onClick={() => (selected && onClear ? onClear() : onChange(putts))}
               onKeyDown={(event) => handleKeyDown(event, index)}
               className={cn(
                 'flex h-14 flex-col items-center justify-center rounded-xl border-[1.5px] font-score text-[28px] leading-none font-bold transition-colors touch-manipulation outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50',

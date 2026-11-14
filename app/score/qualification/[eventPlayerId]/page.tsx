@@ -239,6 +239,7 @@ export default function QualificationScoringPage() {
               frameNumber={nextFrameNumber}
               disabled={isSaving}
               onChange={setSelectedPutts}
+              onClear={() => setSelectedPutts(null)}
             />
             <Button
               className="h-14 w-full rounded-[14px] text-[17px]"
