@@ -10,7 +10,8 @@ import { ScoringBoard, ScoringFooter } from '@/app/score/components/scoring-wiza
 import { useToast } from '@/components/ui/use-toast';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { FrameNavigation } from '@/app/score/components/scoring-wizard/frame-navigation';
-import { PuttScoreRow } from '@/app/score/components/scoring-wizard/putt-score-row';
+import { PlayerScoreInput } from '@/app/score/components/scoring-wizard/player-score-input';
+import { ScoringSettingsButton } from '@/app/score/components/scoring-wizard/scoring-settings';
 import {
   calculatePoints,
   getResolvedScore,
@@ -391,7 +392,12 @@ export default function QualificationScoringPage() {
       <ScoringBoard
         backLabel="Players"
         onBack={handleBack}
-        meta={<span className="text-muted-foreground">Qualification</span>}
+        meta={
+          <>
+            <span className="text-muted-foreground">Qualification</span>
+            <ScoringSettingsButton />
+          </>
+        }
       >
         <div className="flex items-end justify-between">
           <div className="flex flex-col">
@@ -445,7 +451,7 @@ export default function QualificationScoringPage() {
               aria-label={player.full_name}
               className="bg-card rounded-2xl border p-3.5"
             >
-              <PuttScoreRow
+              <PlayerScoreInput
                 label={player.full_name}
                 badge={player.zone != null ? <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" /> : undefined}
                 subtitle={player.player_number ? `#${player.player_number}` : undefined}
@@ -481,7 +487,7 @@ export default function QualificationScoringPage() {
                     })}
                   </div>
                 )}
-              </PuttScoreRow>
+              </PlayerScoreInput>
             </section>
           );
         })}

@@ -6,13 +6,15 @@ import { MAX_PUTTS, MIN_PUTTS, calculatePoints } from './scoring-utils';
 
 const PUTT_OPTIONS = Array.from({ length: MAX_PUTTS - MIN_PUTTS + 1 }, (_, i) => MIN_PUTTS + i);
 
-const SELECTED: Record<'team-1' | 'team-2' | 'primary', string> = {
+export type ScoreTone = 'team-1' | 'team-2' | 'primary';
+
+const SELECTED: Record<ScoreTone, string> = {
   'team-1': 'border-team-1 bg-team-1 text-white',
   'team-2': 'border-team-2 bg-team-2 text-white',
   primary: 'border-primary bg-primary text-primary-foreground',
 };
 
-interface PuttScoreRowProps {
+export interface PuttScoreRowProps {
   label: string;
   /** Shown after the name, e.g. the player's pool. */
   subtitle?: ReactNode;
@@ -25,7 +27,7 @@ interface PuttScoreRowProps {
   score: number | null;
   bonusPointEnabled: boolean;
   /** Fill of the chosen button. */
-  tone?: keyof typeof SELECTED;
+  tone?: ScoreTone;
   frameNumber?: number;
   /** Accessible name of the button group; defaults to "Putts made by {label}". */
   groupLabel?: string;

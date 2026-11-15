@@ -90,3 +90,16 @@ test('scoring: match list and match', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Frames' })).toBeVisible();
   await snap(page, 'score-frame');
 });
+
+test('scoring: David scoring', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('scoring_mode', 'david'));
+  await page.goto('/score');
+  await page.getByLabel('Access Code').fill(seed.accessCode);
+  await page.getByLabel('Access Code').press('Enter');
+  await page.waitForURL('**/score/matches');
+  await page.getByText('In Progress').click();
+  await page.waitForURL('**/score/match/**');
+  await page.getByRole('button', { name: 'Resume scoring' }).click();
+  await expect(page.getByRole('group', { name: /^Putts made by/ })).toHaveCount(4);
+  await snap(page, 'score-match-david');
+});

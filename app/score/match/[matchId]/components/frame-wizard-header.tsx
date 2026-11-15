@@ -1,6 +1,7 @@
 'use client';
 
 import { ScoringBoard, LaneChip } from '@/app/score/components/scoring-wizard/scoring-board';
+import { ScoringSettingsButton } from '@/app/score/components/scoring-wizard/scoring-settings';
 import type { ReactNode } from 'react';
 import type { MatchInfo } from './wizard-types';
 
@@ -29,7 +30,12 @@ export function FrameWizardHeader({ match, isOvertime, showOvertimePrompt, onBac
     <ScoringBoard
       backLabel="Setup"
       onBack={onBack}
-      meta={<MatchMeta match={match} />}
+      meta={
+        <>
+          <MatchMeta match={match} />
+          <ScoringSettingsButton className="-my-1" />
+        </>
+      }
       className="pt-0.5 pb-2 gap-1"
       backClassName="min-h-9"
     >
