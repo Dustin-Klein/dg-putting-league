@@ -10,6 +10,8 @@ interface FrameNavigationProps {
   scoredFrames?: ReadonlySet<number>;
   disabled: boolean;
   onGoToFrame: (frameNumber: number) => void;
+  className?: string;
+  buttonClassName?: string;
 }
 
 export function frameLabel(frameNumber: number, standardFrames: number): string {
@@ -24,9 +26,11 @@ export function FrameNavigation({
   scoredFrames,
   disabled,
   onGoToFrame,
+  className,
+  buttonClassName,
 }: FrameNavigationProps) {
   return (
-    <nav aria-label="Frames" className="flex gap-1.5">
+    <nav aria-label="Frames" className={cn('flex gap-1.5', className)}>
       {frameNumbers.map((frameNumber) => {
         const current = frameNumber === currentFrame;
         const scored = scoredFrames?.has(frameNumber) ?? false;
@@ -43,7 +47,8 @@ export function FrameNavigation({
                 ? 'border-foreground bg-foreground text-background'
                 : scored
                   ? 'border-transparent bg-foreground/15 text-foreground'
-                  : 'border-dashed border-foreground/35 text-muted-foreground'
+                  : 'border-dashed border-foreground/35 text-muted-foreground',
+              buttonClassName
             )}
             aria-label={`Go to frame ${frameNumber}${scored ? ', scored' : ''}`}
           >
