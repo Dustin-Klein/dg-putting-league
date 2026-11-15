@@ -81,4 +81,12 @@ test('scoring: match list and match', async ({ page }) => {
   await page.waitForURL('**/score/match/**');
   await page.waitForLoadState('networkidle');
   await snap(page, 'score-match');
+
+  // Resuming PATCHes the match to running; stub it so the seed stays unchanged.
+  await page.route('**/api/score/match/*', (route) =>
+    route.request().method() === 'PATCH' ? route.fulfill({ json: { ok: true } }) : route.fallback()
+  );
+  await page.getByRole('button', { name: /resume scoring|begin scoring/i }).click();
+  await expect(page.getByRole('navigation', { name: 'Frames' })).toBeVisible();
+  await snap(page, 'score-frame');
 });
