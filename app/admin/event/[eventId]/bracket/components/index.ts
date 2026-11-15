@@ -1,5 +1,6 @@
 export { MatchCard } from './match-card';
-export { BracketView } from './bracket-view';
+export { BracketView, HideFinishedToggle, useHideFinished } from './bracket-view';
+export { BracketCanvas, type BracketCanvasHandle } from './bracket-canvas';
 export { MatchScoringDialog } from './match-scoring-dialog';
 export { MatchResultsDialog } from './match-results-dialog';
 export { PresentationOverlay } from './presentation-overlay';

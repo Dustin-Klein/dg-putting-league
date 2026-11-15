@@ -8,6 +8,8 @@ const baseProps = {
   onToggleAutoScale: jest.fn(),
   onRefresh: jest.fn(),
   onExit: jest.fn(),
+  hideFinished: false,
+  onToggleHideFinished: jest.fn(),
 };
 
 describe('PresentationOverlay', () => {

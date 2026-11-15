@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Match } from 'brackets-model';
 import { createClient } from '@/lib/supabase/client';
-import { BracketLegend, BracketToolbar, BracketView, MatchResultsDialog, PresentationOverlay } from '@/app/admin/event/[eventId]/bracket/components';
+import { BracketCanvas, BracketLegend, BracketToolbar, BracketView, HideFinishedToggle, MatchResultsDialog, PresentationOverlay, useHideFinished, type BracketCanvasHandle } from '@/app/admin/event/[eventId]/bracket/components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
@@ -24,6 +24,8 @@ export default function PublicBracketPage({
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
+  const canvasRef = useRef<BracketCanvasHandle>(null);
+  const [hideFinished, setHideFinished] = useHideFinished();
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -152,6 +154,13 @@ export default function PublicBracketPage({
     }
   }, [bracketData, isPresentationMode, isMeasuring, recalculate]);
 
+  // Hiding finished matches changes the bracket's size, so the TV fit must be redone.
+  useEffect(() => {
+    if (!isPresentationMode || isMeasuring) return;
+    const rafId = requestAnimationFrame(() => recalculate());
+    return () => cancelAnimationFrame(rafId);
+  }, [hideFinished, isPresentationMode, isMeasuring, recalculate]);
+
   const handleMatchClick = (match: Match) => {
     setSelectedMatch(match);
     setIsDialogOpen(true);
@@ -230,6 +239,8 @@ export default function PublicBracketPage({
           onToggleAutoScale={() => setIsAutoScaleEnabled(!isAutoScaleEnabled)}
           onRefresh={bracketRefresh.refresh}
           onExit={exitPresentationMode}
+          hideFinished={hideFinished}
+          onToggleHideFinished={() => setHideFinished((prev) => !prev)}
           isRefreshing={loading}
         />
         <div
@@ -249,6 +260,7 @@ export default function PublicBracketPage({
               eventStatus={bracketData.eventStatus}
               onMatchClick={handleMatchClick}
               compact
+              hideFinished={hideFinished}
             />
           </div>
         </div>
@@ -265,32 +277,31 @@ export default function PublicBracketPage({
   }
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 pt-6 pb-12 md:px-6">
+    <div className="mx-auto flex h-[calc(100dvh-65px)] max-w-[1200px] flex-col gap-3 px-4 pt-4 md:h-auto md:gap-5 md:px-6 md:pt-6 md:pb-12">
       <BracketToolbar
         title={bracketData.bracket.stage.name}
         scale={scale}
-        onScaleChange={setScale}
+        onScaleChange={(percent) => canvasRef.current?.setScale(percent)}
         onBack={() => router.back()}
         onRefresh={bracketRefresh.refresh}
         isRefreshing={loading}
         onPresent={enterPresentationMode}
       />
 
-      <BracketLegend showAdminEdits={false} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <BracketLegend showAdminEdits={false} />
+        <HideFinishedToggle hideFinished={hideFinished} onToggle={() => setHideFinished((prev) => !prev)} />
+      </div>
 
-      <div className="overflow-auto rounded-[18px] border bg-card p-6">
-        <div
-          style={{
-            transform: `scale(${scale / 100})`,
-            transformOrigin: 'top left',
-          }}
-        >
+      <div className="-mx-4 min-h-0 flex-1 overflow-hidden border-t bg-card md:mx-0 md:flex-none md:rounded-[18px] md:border">
+        <BracketCanvas ref={canvasRef} onScaleChange={setScale} className="h-full">
           <BracketView
             data={bracketData}
             eventStatus={bracketData.eventStatus}
             onMatchClick={handleMatchClick}
+            hideFinished={hideFinished}
           />
-        </div>
+        </BracketCanvas>
       </div>
 
       {eventId && (

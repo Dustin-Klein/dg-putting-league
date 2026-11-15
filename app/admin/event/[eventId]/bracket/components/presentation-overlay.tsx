@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
-import { X, RefreshCw, Maximize, Minimize } from 'lucide-react';
+import { X, RefreshCw, Maximize, Minimize, Eye, EyeOff } from 'lucide-react';
 import { BracketLegend } from './bracket-legend';
 
 const noopSubscribe = () => () => {};
@@ -17,6 +17,8 @@ interface PresentationOverlayProps {
   onExit: () => void;
   isRefreshing?: boolean;
   accessCode?: string;
+  hideFinished: boolean;
+  onToggleHideFinished: () => void;
 }
 
 export function PresentationOverlay({
@@ -28,6 +30,8 @@ export function PresentationOverlay({
   onExit,
   isRefreshing = false,
   accessCode,
+  hideFinished,
+  onToggleHideFinished,
 }: PresentationOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
   const origin = useSyncExternalStore(noopSubscribe, () => window.location.origin, () => null);
@@ -61,6 +65,11 @@ export function PresentationOverlay({
 
             {/* Controls */}
             <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={onToggleHideFinished} aria-pressed={hideFinished}>
+                {hideFinished ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                {hideFinished ? 'Show finished' : 'Hide finished'}
+              </Button>
+
               <Button
                 variant="ghost"
                 size="sm"
