@@ -97,7 +97,7 @@ interface PuttButtonGroupProps {
   className?: string;
   buttonClassName?: string;
   /** Text under the 3 when the bonus applies. */
-  bonusLabel?: string;
+  bonusLabel?: ReactNode;
   bonusClassName?: string;
 }
 

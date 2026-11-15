@@ -207,11 +207,24 @@ function MatchPlayerScoreRow({
       }
       buttonClassName={
         roomy
-          ? 'h-full rounded-[14px] text-[length:clamp(30px,calc(100cqh/var(--rows)*0.13),40px)]'
+          ? // A size container so the bonus label can move to the corner when the button is short.
+            'relative h-full min-h-0 rounded-[14px] text-[length:clamp(30px,calc(100cqh/var(--rows)*0.13),40px)] [container-type:size]'
           : 'relative h-full min-h-0 rounded-[10px] text-[26px]'
       }
-      bonusLabel={roomy ? '+1 BONUS' : '+1'}
-      bonusClassName={roomy ? undefined : 'absolute top-1 right-1 mt-0 text-[9px] leading-none'}
+      bonusLabel={
+        roomy ? (
+          <>
+            +1<span className="[@container(max-height:62px)]:hidden"> BONUS</span>
+          </>
+        ) : (
+          '+1'
+        )
+      }
+      bonusClassName={
+        roomy
+          ? '[@container(max-height:62px)]:absolute [@container(max-height:62px)]:top-1 [@container(max-height:62px)]:right-1.5 [@container(max-height:62px)]:mt-0 [@container(max-height:62px)]:text-[9px] [@container(max-height:62px)]:leading-none'
+          : 'absolute top-1 right-1 mt-0 text-[9px] leading-none'
+      }
     />
   );
 

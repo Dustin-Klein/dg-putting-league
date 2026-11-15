@@ -637,7 +637,7 @@ describe('FrameWizard layout', () => {
     mockScreenHeight(700);
     render(<FrameWizard {...defaultProps} />);
 
-    expect(screen.getAllByText('+1 BONUS')).toHaveLength(4);
+    expect(screen.getAllByText('BONUS', { exact: false })).toHaveLength(4);
     expect(screen.getByRole('region', { name: 'Team 1' })).toHaveClass('[container-type:size]');
   });
 
@@ -645,7 +645,7 @@ describe('FrameWizard layout', () => {
     mockScreenHeight(553);
     render(<FrameWizard {...defaultProps} />);
 
-    expect(screen.queryByText('+1 BONUS')).not.toBeInTheDocument();
+    expect(screen.queryByText('BONUS', { exact: false })).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Team 1' })).not.toHaveClass('[container-type:size]');
   });
 
@@ -657,6 +657,6 @@ describe('FrameWizard layout', () => {
     });
     render(<FrameWizard {...defaultProps} match={match} />);
 
-    expect(screen.getAllByText('+1 BONUS')).toHaveLength(2);
+    expect(screen.getAllByText('BONUS', { exact: false })).toHaveLength(2);
   });
 });
