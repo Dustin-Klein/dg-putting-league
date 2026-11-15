@@ -19,10 +19,8 @@ interface BracketViewProps {
   onMatchClick?: (match: Match, displayNumber: number) => void;
   compact?: boolean;
   isEditMode?: boolean;
-  /** When set, the caller owns the "Hide finished" preference. */
+  /** When set, the caller owns the "Hide finished" toggle and the built-in one is not rendered. */
   hideFinished?: boolean;
-  /** With `hideFinished`: renders the built-in toggle wired to this. Omit it when the caller renders its own toggle. */
-  onHideFinishedToggle?: () => void;
 }
 
 interface MatchWithTeamInfo extends Match {
@@ -386,7 +384,6 @@ export function BracketView({
   compact = false,
   isEditMode = false,
   hideFinished: controlledHideFinished,
-  onHideFinishedToggle,
 }: BracketViewProps) {
   const {
     bracket,
@@ -717,11 +714,8 @@ export function BracketView({
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-8'}>
-      {(!isControlled || onHideFinishedToggle) && (
-        <HideFinishedToggle
-          hideFinished={hideFinished}
-          onToggle={onHideFinishedToggle ?? (() => setHideFinished(prev => !prev))}
-        />
+      {!isControlled && (
+        <HideFinishedToggle hideFinished={hideFinished} onToggle={() => setHideFinished(prev => !prev)} />
       )}
       {/* Winners bracket + Grand Final side by side, vertically centered */}
       <div className={`flex items-center ${compact ? 'gap-4' : 'gap-8'}`}>

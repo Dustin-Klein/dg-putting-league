@@ -154,6 +154,13 @@ export default function PublicBracketPage({
     }
   }, [bracketData, isPresentationMode, isMeasuring, recalculate]);
 
+  // Hiding finished matches changes the bracket's size, so the TV fit must be redone.
+  useEffect(() => {
+    if (!isPresentationMode || isMeasuring) return;
+    const rafId = requestAnimationFrame(() => recalculate());
+    return () => cancelAnimationFrame(rafId);
+  }, [hideFinished, isPresentationMode, isMeasuring, recalculate]);
+
   const handleMatchClick = (match: Match) => {
     setSelectedMatch(match);
     setIsDialogOpen(true);
@@ -232,6 +239,8 @@ export default function PublicBracketPage({
           onToggleAutoScale={() => setIsAutoScaleEnabled(!isAutoScaleEnabled)}
           onRefresh={bracketRefresh.refresh}
           onExit={exitPresentationMode}
+          hideFinished={hideFinished}
+          onToggleHideFinished={() => setHideFinished((prev) => !prev)}
           isRefreshing={loading}
         />
         <div
@@ -252,7 +261,6 @@ export default function PublicBracketPage({
               onMatchClick={handleMatchClick}
               compact
               hideFinished={hideFinished}
-              onHideFinishedToggle={() => setHideFinished((prev) => !prev)}
             />
           </div>
         </div>
