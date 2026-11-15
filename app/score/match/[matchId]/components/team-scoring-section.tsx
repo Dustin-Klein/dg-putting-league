@@ -98,22 +98,22 @@ export function TeamScoringSection({
     >
       {roomy ? (
         <div className="flex shrink-0 items-end justify-between gap-2 pt-[calc(100cqh/var(--rows)*0.04)] pb-[calc(100cqh/var(--rows)*0.02)]">
-          <div className="flex min-w-0 flex-col gap-0.5 pb-1">
-            <span className={cn('font-bold tracking-[0.06em] uppercase', ink, sizes.label)}>Team {teamNumber}</span>
-            <span className="truncate text-[13px] font-semibold text-muted-foreground">
-              #{team.seed}
-              {showCombo && ` · ${team.pool_combo}`}
-            </span>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <span className={cn('font-score font-bold tabular-nums', sizes.total, 'leading-[0.85]')}>
-              <span className="sr-only">Total: </span>
-              {total}
-            </span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className={cn('font-bold tracking-[0.06em] uppercase', ink, sizes.label)}>Team {teamNumber}</span>
+              <span className="truncate text-[13px] font-semibold text-muted-foreground">
+                #{team.seed}
+                {showCombo && ` · ${team.pool_combo}`}
+              </span>
+            </div>
             <span className="text-xs font-semibold whitespace-nowrap text-muted-foreground">
               +{frameScore} this frame
             </span>
           </div>
+          <span className={cn('shrink-0 font-score font-bold tabular-nums', sizes.total, 'leading-[0.85]')}>
+            <span className="sr-only">Total: </span>
+            {total}
+          </span>
         </div>
       ) : (
         <div className="flex h-[22px] shrink-0 items-center justify-between gap-2">
@@ -136,7 +136,7 @@ export function TeamScoringSection({
           </div>
         </div>
       )}
-      <div className={cn('flex min-h-0 flex-1 flex-col justify-evenly', roomy && 'gap-2 pb-3')}>
+      <div className={cn('flex min-h-0 flex-1 flex-col justify-evenly', roomy && 'gap-2 pb-2')}>
         {sortBySlot(team.players).map((player) => (
           <MatchPlayerScoreRow
             key={player.event_player_id}
@@ -203,28 +203,18 @@ function MatchPlayerScoreRow({
       className={
         roomy
           ? cn('min-h-11 flex-1 grid-rows-[minmax(0,1fr)] gap-2', sizes.buttons)
-          : 'shrink-0 self-stretch grid-cols-[repeat(4,50px)] grid-rows-[minmax(0,1fr)] gap-1 py-0.5'
+          : 'shrink-0 self-stretch grid-cols-[repeat(4,50px)] grid-rows-[minmax(0,1fr)] gap-1 py-px'
       }
       buttonClassName={
         roomy
-          ? // A size container so the bonus label can move to the corner when the button is short.
-            'relative h-full min-h-0 rounded-[14px] text-[length:clamp(30px,calc(100cqh/var(--rows)*0.13),40px)] [container-type:size]'
-          : 'relative h-full min-h-0 rounded-[10px] text-[26px]'
+          ? // A size container so a short button can shrink its number to keep "+1 BONUS" inside.
+            'h-full min-h-0 rounded-[14px] text-[length:clamp(30px,calc(100cqh/var(--rows)*0.13),40px)] [container-type:size]'
+          : 'h-full min-h-0 rounded-[10px] [container-type:size]'
       }
-      bonusLabel={
-        roomy ? (
-          <>
-            +1<span className="[@container(max-height:62px)]:hidden"> BONUS</span>
-          </>
-        ) : (
-          '+1'
-        )
+      contentClassName={
+        roomy ? '[@container(max-height:58px)]:text-[24px]' : 'text-[20px] [@container(min-height:48px)]:text-[24px]'
       }
-      bonusClassName={
-        roomy
-          ? '[@container(max-height:62px)]:absolute [@container(max-height:62px)]:top-1 [@container(max-height:62px)]:right-1.5 [@container(max-height:62px)]:mt-0 [@container(max-height:62px)]:text-[9px] [@container(max-height:62px)]:leading-none'
-          : 'absolute top-1 right-1 mt-0 text-[9px] leading-none'
-      }
+      bonusClassName={roomy ? 'mt-1 leading-none' : 'mt-px text-[9px] leading-none tracking-normal'}
     />
   );
 

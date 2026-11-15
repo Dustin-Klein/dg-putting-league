@@ -99,6 +99,8 @@ interface PuttButtonGroupProps {
   /** Text under the 3 when the bonus applies. */
   bonusLabel?: ReactNode;
   bonusClassName?: string;
+  /** Classes on the number-and-label stack inside each button. */
+  contentClassName?: string;
 }
 
 /** The 0–3 buttons as a radio group: one Tab stop, arrow keys pick, tapping the chosen one clears. */
@@ -114,6 +116,7 @@ export function PuttButtonGroup({
   buttonClassName,
   bonusLabel = '+1 BONUS',
   bonusClassName,
+  contentClassName,
 }: PuttButtonGroupProps) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   // Radio-group keyboard pattern: one Tab stop (the chosen score, else the first),
@@ -157,12 +160,14 @@ export function PuttButtonGroup({
               buttonClassName
             )}
           >
-            {putts}
-            {bonus && (
-              <span className={cn('mt-0.5 font-sans text-[10px] font-bold tracking-[0.06em]', bonusClassName)}>
-                {bonusLabel}
-              </span>
-            )}
+            <span className={cn('flex flex-col items-center', contentClassName)}>
+              {putts}
+              {bonus && (
+                <span className={cn('mt-0.5 font-sans text-[10px] font-bold tracking-[0.06em]', bonusClassName)}>
+                  {bonusLabel}
+                </span>
+              )}
+            </span>
           </button>
         );
       })}
