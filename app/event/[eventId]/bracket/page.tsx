@@ -251,6 +251,8 @@ export default function PublicBracketPage({
               eventStatus={bracketData.eventStatus}
               onMatchClick={handleMatchClick}
               compact
+              hideFinished={hideFinished}
+              onHideFinishedToggle={() => setHideFinished((prev) => !prev)}
             />
           </div>
         </div>

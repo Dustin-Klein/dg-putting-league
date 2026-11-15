@@ -84,7 +84,8 @@ export const BracketCanvas = forwardRef<BracketCanvasHandle, BracketCanvasProps>
   const viewport = useElementSize(viewportRef);
   const content = useElementSize(contentRef);
   const [percent, setPercent] = useState(100);
-  const lastPercentRef = useRef(100);
+  // Null until the first report, so a remounted canvas always re-syncs the parent's readout.
+  const lastPercentRef = useRef<number | null>(null);
   // Once the user pans or zooms, data refreshes stop snapping the view back to fit.
   const userAdjustedRef = useRef(false);
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -142,18 +143,45 @@ export const BracketCanvas = forwardRef<BracketCanvasHandle, BracketCanvasProps>
   );
 
   // A drag or pinch that ends over a match card must not also open it.
-  const activePointersRef = useRef(0);
+  const activePointersRef = useRef(new Set<number>());
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Releases are tracked on window: a drag can end outside the canvas.
+  useEffect(() => {
+    const active = activePointersRef.current;
+    const release = (e: PointerEvent) => {
+      if (!active.delete(e.pointerId) || active.size > 0) return;
+      pointerStartRef.current = null;
+      if (suppressClickRef.current) {
+        userAdjustedRef.current = true;
+        setHasInteracted(true);
+      }
+    };
+    const reset = () => {
+      active.clear();
+      pointerStartRef.current = null;
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', reset);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      window.removeEventListener('blur', reset);
+    };
+  }, []);
+
   const pointerHandlers = {
     onPointerDownCapture: (e: ReactPointerEvent) => {
-      if (activePointersRef.current === 0) {
+      const active = activePointersRef.current;
+      if (active.size === 0) {
         pointerStartRef.current = { x: e.clientX, y: e.clientY };
         suppressClickRef.current = false;
       } else {
         suppressClickRef.current = true;
       }
-      activePointersRef.current += 1;
+      active.add(e.pointerId);
     },
     onPointerMoveCapture: (e: ReactPointerEvent) => {
       const start = pointerStartRef.current;
@@ -161,20 +189,6 @@ export const BracketCanvas = forwardRef<BracketCanvasHandle, BracketCanvasProps>
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_CLICK_THRESHOLD_PX) {
         suppressClickRef.current = true;
       }
-    },
-    onPointerUpCapture: () => {
-      activePointersRef.current = Math.max(0, activePointersRef.current - 1);
-      if (activePointersRef.current === 0) {
-        pointerStartRef.current = null;
-        if (suppressClickRef.current) {
-          userAdjustedRef.current = true;
-          setHasInteracted(true);
-        }
-      }
-    },
-    onPointerCancelCapture: () => {
-      activePointersRef.current = Math.max(0, activePointersRef.current - 1);
-      if (activePointersRef.current === 0) pointerStartRef.current = null;
     },
     onClickCapture: (e: ReactMouseEvent) => {
       if (!suppressClickRef.current) return;
@@ -207,6 +221,7 @@ export const BracketCanvas = forwardRef<BracketCanvasHandle, BracketCanvasProps>
           userAdjustedRef.current = true;
           setHasInteracted(true);
         }}
+        onInit={(api) => handleTransform(api, api.state)}
         onTransform={handleTransform}
       >
         <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
