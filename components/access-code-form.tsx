@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,20 +16,23 @@ export function AccessCodeForm({
   label = 'Access code',
   submitLabel = 'Enter',
   autoFocus = false,
+  initialCode,
   className,
 }: {
+  /** Pre-filled and submitted on mount (from the presentation-mode QR code). */
+  initialCode?: string;
   label?: string;
   submitLabel?: string;
   autoFocus?: boolean;
   className?: string;
 }) {
   const router = useRouter();
-  const [accessCode, setAccessCode] = useState('');
+  const [accessCode, setAccessCode] = useState(initialCode ?? '');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const autoSubmitted = useRef(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitCode = async (code: string) => {
     setError(null);
     setIsLoading(true);
 
@@ -37,7 +40,7 @@ export function AccessCodeForm({
       const response = await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_code: accessCode }),
+        body: JSON.stringify({ access_code: code }),
       });
 
       if (!response.ok) {
@@ -48,7 +51,7 @@ export function AccessCodeForm({
       const data = await response.json();
 
       // Store access code for subsequent requests
-      sessionStorage.setItem('scoring_access_code', accessCode);
+      sessionStorage.setItem('scoring_access_code', code);
 
       // Navigate based on mode
       if (data.mode === 'qualification') {
@@ -62,6 +65,19 @@ export function AccessCodeForm({
       setIsLoading(false);
     }
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitCode(accessCode);
+  };
+
+  useEffect(() => {
+    // Ref guard: StrictMode runs mount effects twice.
+    if (!initialCode || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    void submitCode(initialCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode]);
 
   return (
     <form onSubmit={handleSubmit} className={cn('flex flex-col gap-3', className)}>

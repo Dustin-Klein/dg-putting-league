@@ -1,6 +1,13 @@
 import { AccessCodeForm } from '@/components/access-code-form';
 
-export default function ScorePage() {
+export default async function ScorePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { code } = await searchParams;
+  const initialCode = typeof code === 'string' && code.trim() ? code.trim() : undefined;
+
   return (
     <div className="bg-background px-5 pt-10 pb-6">
       <div className="mx-auto flex w-full max-w-md flex-col gap-7">
@@ -10,7 +17,7 @@ export default function ScorePage() {
             Enter the event access code. Your organizer has it, and it&apos;s on the TV at the venue.
           </p>
         </div>
-        <AccessCodeForm autoFocus />
+        <AccessCodeForm autoFocus initialCode={initialCode} />
       </div>
     </div>
   );
