@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { X, RefreshCw, Maximize, Minimize } from 'lucide-react';
+import { BracketLegend } from './bracket-legend';
+
+const noopSubscribe = () => () => {};
 
 interface PresentationOverlayProps {
   stageName: string;
@@ -26,6 +30,7 @@ export function PresentationOverlay({
   accessCode,
 }: PresentationOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const origin = useSyncExternalStore(noopSubscribe, () => window.location.origin, () => null);
 
   return (
     <>
@@ -99,14 +104,33 @@ export function PresentationOverlay({
       {accessCode && (
         <div className="fixed top-4 right-4 z-40 text-right">
           {/* Scoreboard panel: dark in both themes so it reads from across the room. */}
-          <div className="dark bg-board text-foreground rounded-[18px] border px-5 py-4">
-            <p className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Submit scores at</p>
-            <p className="font-mono font-semibold text-base">dg-putting-league.vercel.app/score</p>
-            <p className="mt-2 text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Access Code</p>
-            <p className="font-score text-4xl leading-none font-bold tracking-[0.12em]">{accessCode}</p>
+          <div className="dark bg-board text-foreground flex items-center gap-4 rounded-[18px] border px-5 py-4">
+            {origin && (
+              <div className="rounded-lg bg-white p-1.5" title="Scan to keep score">
+                <QRCodeSVG
+                  value={`${origin}/score?code=${encodeURIComponent(accessCode)}`}
+                  size={112}
+                  marginSize={1}
+                  aria-label="Scan to keep score"
+                  role="img"
+                />
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Submit scores at</p>
+              <p className="font-mono font-semibold text-base">dg-putting-league.vercel.app/score</p>
+              <p className="mt-2 text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Access Code</p>
+              <p className="font-score text-4xl leading-none font-bold tracking-[0.12em]">{accessCode}</p>
+            </div>
           </div>
         </div>
       )}
+
+      <div className="fixed bottom-4 left-4 z-40 max-w-[calc(100vw-10rem)]">
+        <div className="dark bg-board text-foreground rounded-[18px] border px-4 py-3">
+          <BracketLegend showAdminEdits={false} />
+        </div>
+      </div>
 
       {/* Always visible exit hint in corner */}
       <div className="fixed bottom-4 right-4 z-50">
