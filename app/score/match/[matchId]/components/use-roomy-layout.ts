@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 
 // Viewport height (px) from which each team size fits the large layout without scrolling.
-const ROOMY_MIN_HEIGHT = [480, 600, 820, 1000];
+const ROOMY_MIN_HEIGHT = [480, 620, 820, 1000];
 // From md up the site nav (h-16 + 1px border) sits above the scoring screen.
 const NAV_HEIGHT = 65;
 
