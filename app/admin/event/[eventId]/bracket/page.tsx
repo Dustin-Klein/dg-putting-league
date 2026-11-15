@@ -6,7 +6,7 @@ import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import { createClient } from '@/lib/supabase/client';
-import { BracketLegend, BracketToolbar, BracketView, MatchScoringDialog, PresentationOverlay } from './components';
+import { BracketCanvas, BracketLegend, BracketToolbar, BracketView, HideFinishedToggle, MatchScoringDialog, PresentationOverlay, useHideFinished, type BracketCanvasHandle } from './components';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
@@ -32,6 +32,8 @@ export default function BracketPage({
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [scale, setScale] = useState(100);
+  const canvasRef = useRef<BracketCanvasHandle>(null);
+  const [hideFinished, setHideFinished] = useHideFinished();
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isAutoScaleEnabled, setIsAutoScaleEnabled] = useState(true);
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -305,32 +307,31 @@ export default function BracketPage({
   }
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 pt-6 pb-12 md:px-6">
+    <div className="mx-auto flex h-[calc(100dvh-65px)] max-w-[1200px] flex-col gap-3 px-4 pt-4 md:h-auto md:gap-5 md:px-6 md:pt-6 md:pb-12">
       <BracketToolbar
         title={bracketData.bracket.stage.name}
         scale={scale}
-        onScaleChange={setScale}
+        onScaleChange={(percent) => canvasRef.current?.setScale(percent)}
         onBack={() => router.back()}
         onRefresh={bracketRefresh.refresh}
         isRefreshing={loading}
         onPresent={enterPresentationMode}
       />
 
-      <BracketLegend />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <BracketLegend />
+        <HideFinishedToggle hideFinished={hideFinished} onToggle={() => setHideFinished((prev) => !prev)} />
+      </div>
 
-      <div className="overflow-auto rounded-[18px] border bg-card p-6">
-        <div
-          style={{
-            transform: `scale(${scale / 100})`,
-            transformOrigin: 'top left',
-          }}
-        >
+      <div className="-mx-4 min-h-0 flex-1 overflow-hidden border-t bg-card md:mx-0 md:flex-none md:rounded-[18px] md:border">
+        <BracketCanvas ref={canvasRef} onScaleChange={setScale} className="h-full">
           <BracketView
             data={bracketData}
             eventStatus={bracketData.eventStatus}
             onMatchClick={handleMatchClick}
+            hideFinished={hideFinished}
           />
-        </div>
+        </BracketCanvas>
       </div>
 
       {eventId && (

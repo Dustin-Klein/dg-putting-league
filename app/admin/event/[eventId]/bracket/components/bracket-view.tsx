@@ -19,6 +19,8 @@ interface BracketViewProps {
   onMatchClick?: (match: Match, displayNumber: number) => void;
   compact?: boolean;
   isEditMode?: boolean;
+  /** When set, the caller owns the "Hide finished" toggle and the built-in one is not rendered. */
+  hideFinished?: boolean;
 }
 
 interface MatchWithTeamInfo extends Match {
@@ -337,15 +339,8 @@ function RoundConnector({
   );
 }
 
-export function BracketView({ data, eventStatus, onMatchClick, compact = false, isEditMode = false }: BracketViewProps) {
-  const {
-    bracket,
-    participantTeamMap,
-    laneMap = {},
-    bracketFrameCount,
-    frameCountMap = {},
-    progressionSourceMap = {},
-  } = data;
+/** "Hide finished" preference, shared across bracket views for the browser session. */
+export function useHideFinished() {
   const [hideFinished, setHideFinished] = useState(() => {
     if (typeof window !== 'undefined') {
       return sessionStorage.getItem('bracket-hide-finished') === 'true';
@@ -356,6 +351,51 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
   useEffect(() => {
     sessionStorage.setItem('bracket-hide-finished', String(hideFinished));
   }, [hideFinished]);
+
+  return [hideFinished, setHideFinished] as const;
+}
+
+export function HideFinishedToggle({
+  hideFinished,
+  onToggle,
+  className,
+}: {
+  hideFinished: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={hideFinished}
+      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border-[1.5px] border-input px-3 text-sm font-semibold transition-colors hover:bg-muted ${className ?? ''}`}
+    >
+      {hideFinished ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      {hideFinished ? 'Show finished' : 'Hide finished'}
+    </button>
+  );
+}
+
+export function BracketView({
+  data,
+  eventStatus,
+  onMatchClick,
+  compact = false,
+  isEditMode = false,
+  hideFinished: controlledHideFinished,
+}: BracketViewProps) {
+  const {
+    bracket,
+    participantTeamMap,
+    laneMap = {},
+    bracketFrameCount,
+    frameCountMap = {},
+    progressionSourceMap = {},
+  } = data;
+  const [ownHideFinished, setHideFinished] = useHideFinished();
+  const isControlled = controlledHideFinished !== undefined;
+  const hideFinished = isControlled ? controlledHideFinished : ownHideFinished;
 
   const onDeckPositions = useMemo(() => {
     const ids = getOnDeckMatchIds(
@@ -674,15 +714,9 @@ export function BracketView({ data, eventStatus, onMatchClick, compact = false, 
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-8'}>
-      <button
-        type="button"
-        onClick={() => setHideFinished(prev => !prev)}
-        aria-pressed={hideFinished}
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg border-[1.5px] border-input px-3 text-sm font-semibold transition-colors hover:bg-muted"
-      >
-        {hideFinished ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        {hideFinished ? 'Show finished' : 'Hide finished'}
-      </button>
+      {!isControlled && (
+        <HideFinishedToggle hideFinished={hideFinished} onToggle={() => setHideFinished(prev => !prev)} />
+      )}
       {/* Winners bracket + Grand Final side by side, vertically centered */}
       <div className={`flex items-center ${compact ? 'gap-4' : 'gap-8'}`}>
         {winnersBracket && renderGroup(winnersBracket)}

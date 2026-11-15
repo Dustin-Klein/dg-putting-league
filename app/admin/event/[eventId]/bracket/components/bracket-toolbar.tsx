@@ -27,12 +27,13 @@ export function BracketToolbar({
   onPresent,
 }: BracketToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="flex flex-wrap items-center gap-2.5 md:gap-4">
       <Button variant="outline" size="icon" aria-label="Back" onClick={onBack}>
         <ChevronLeft className="size-[18px]" />
       </Button>
-      <h1 className="mr-auto font-score text-4xl leading-none font-bold">{title}</h1>
-      <div role="group" aria-label="Zoom" className="flex h-11 items-center gap-0.5 rounded-[10px] border bg-card px-1">
+      <h1 className="mr-auto min-w-0 font-score text-[28px] leading-none font-bold md:text-4xl">{title}</h1>
+      {/* Phones get floating zoom controls on the bracket itself. */}
+      <div role="group" aria-label="Zoom" className="hidden h-11 items-center md:flex gap-0.5 rounded-[10px] border bg-card px-1">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -72,11 +73,11 @@ export function BracketToolbar({
           <RotateCcw className="size-4" />
         </Button>
       </div>
-      <Button variant="outline" onClick={onRefresh} disabled={isRefreshing}>
+      <Button variant="outline" onClick={onRefresh} disabled={isRefreshing} aria-label="Refresh" className="max-md:size-11 max-md:px-0">
         <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        Refresh
+        <span className="max-md:sr-only">Refresh</span>
       </Button>
-      <Button onClick={onPresent}>
+      <Button onClick={onPresent} className="max-md:hidden">
         <Presentation className="size-4" />
         Present on TV
       </Button>
