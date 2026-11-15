@@ -311,6 +311,14 @@ export default function QualificationScoringPage() {
     });
   };
 
+  const handleScoreClear = (eventPlayerId: string, frameNumber: number) => {
+    setLocalScores((previousScores) => {
+      const nextScores = new Map(previousScores);
+      nextScores.delete(getScoreKey(eventPlayerId, frameNumber));
+      return nextScores;
+    });
+  };
+
   const handleBack = () => {
     sessionStorage.removeItem('qualification_selected_players');
     router.push('/score/qualification');
@@ -452,6 +460,11 @@ export default function QualificationScoringPage() {
                 frameNumber={currentFrame}
                 disabled={isSaving}
                 onChange={(puttsMade) => handleScoreChange(player.event_player_id, currentFrame, puttsMade)}
+                onClear={
+                  localScores.has(getScoreKey(player.event_player_id, currentFrame))
+                    ? () => handleScoreClear(player.event_player_id, currentFrame)
+                    : undefined
+                }
               >
                 {history.length > 0 && (
                   <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">

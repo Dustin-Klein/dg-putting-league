@@ -11,6 +11,8 @@ interface ScoringBoardProps {
   /** Right side of the top row, e.g. the round and lane chip. */
   meta?: ReactNode;
   className?: string;
+  /** Overrides on the back button, e.g. a shorter row on the frame screen. */
+  backClassName?: string;
   children?: ReactNode;
 }
 
@@ -18,7 +20,7 @@ interface ScoringBoardProps {
  * The scoreboard band at the top of each scoring screen. Dark in both themes, like the
  * site header, so its contents use the dark tokens.
  */
-export function ScoringBoard({ backLabel, onBack, backDisabled, meta, className, children }: ScoringBoardProps) {
+export function ScoringBoard({ backLabel, onBack, backDisabled, meta, className, backClassName, children }: ScoringBoardProps) {
   return (
     <header className="bg-board border-b border-board dark:border-border">
       <div className={cn('dark text-foreground max-w-lg mx-auto px-4 pt-2 pb-3.5 flex flex-col gap-2.5', className)}>
@@ -27,7 +29,10 @@ export function ScoringBoard({ backLabel, onBack, backDisabled, meta, className,
             type="button"
             onClick={onBack}
             disabled={backDisabled}
-            className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg pr-2 text-[15px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(
+              '-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg pr-2 text-[15px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50',
+              backClassName
+            )}
           >
             <ChevronLeft className="size-5" aria-hidden="true" />
             {backLabel}

@@ -215,6 +215,54 @@ export interface EvaluationSummary {
   skipped: EvaluationSummaryEntry[];
 }
 
+/** A player's scoring in a seed source; see combineSeedHistory. */
+export interface SeedStats {
+  frames: number;
+  points: number;
+  /** Points scaled to a 5-frame match; 0 when there are no frames. */
+  points_per_match: number;
+  matches: number;
+  events: number;
+}
+
+export interface ZoneSeedSource {
+  league_id: string;
+  league_name: string;
+  /** First and last event dates. */
+  from: string;
+  to: string;
+  events: number;
+}
+
+export interface ZoneSeedCandidate {
+  player_id: string;
+  player_name: string;
+  player_number: number;
+  history: SeedStats;
+  eligible: boolean;
+  current_zone: number | null;
+}
+
+export interface ZoneSeedData {
+  default_zone: number;
+  zones: ZoneDefinition[];
+  settings: Pick<HandicapSettings, 'min_putts' | 'min_matches'>;
+  sources: ZoneSeedSource[];
+  /** Null when no league has usable history. */
+  source: ZoneSeedSource | null;
+  candidates: ZoneSeedCandidate[];
+  /** Players with history who can no longer be seeded; left out of `candidates`. */
+  locked_count: number;
+}
+
+export type ZoneSeedSkipReason = 'putted' | 'moved';
+
+export interface ZoneSeedResult {
+  applied: number;
+  unchanged: number;
+  skipped: Array<{ player_id: string; reason: ZoneSeedSkipReason }>;
+}
+
 export interface EntryHandicapPatch {
   /** Allowed only while the entry has no recorded frames. Null clears the override. */
   putt_distance_ft?: number | null;

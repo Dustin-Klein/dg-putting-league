@@ -6,11 +6,9 @@ import type { MatchInfo } from './wizard-types';
 
 interface FrameWizardHeaderProps {
   match: MatchInfo;
-  currentFrame: number;
-  standardFrames: number;
   isOvertime: boolean;
-  teamOneTotal: number;
-  teamTwoTotal: number;
+  /** Tied after the last regular frame. */
+  showOvertimePrompt: boolean;
   onBack: () => void;
   /** The frame pips. */
   children?: ReactNode;
@@ -25,47 +23,30 @@ export function MatchMeta({ match }: { match: MatchInfo }) {
   );
 }
 
-export function FrameWizardHeader({
-  match,
-  currentFrame,
-  standardFrames,
-  isOvertime,
-  teamOneTotal,
-  teamTwoTotal,
-  onBack,
-  children,
-}: FrameWizardHeaderProps) {
+/** Back, round and lane, then the frame pips. Team totals live on each team's card. */
+export function FrameWizardHeader({ match, isOvertime, showOvertimePrompt, onBack, children }: FrameWizardHeaderProps) {
   return (
-    <ScoringBoard backLabel="Setup" onBack={onBack} meta={<MatchMeta match={match} />}>
-      <div className="grid grid-cols-3 items-end">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold tracking-[0.06em] text-team-1-ink uppercase">
-            Team 1 · #{match.team_one.seed}
+    <ScoringBoard
+      backLabel="Setup"
+      onBack={onBack}
+      meta={<MatchMeta match={match} />}
+      className="pt-0.5 pb-2 gap-1"
+      backClassName="min-h-9"
+    >
+      <div className="flex items-center gap-2.5">
+        {isOvertime ? (
+          <span role="status" className="shrink-0 rounded-full bg-warning/20 px-2 py-0.5 text-[11px] font-bold tracking-[0.04em] text-warning uppercase">
+            Overtime<span className="sr-only"> – continue until there&apos;s a winner</span>
           </span>
-          <span className="font-score text-[56px] leading-[0.9] font-bold tabular-nums">
-            <span className="sr-only">Team 1: </span>
-            {teamOneTotal}
+        ) : showOvertimePrompt ? (
+          <span role="status" className="shrink-0 rounded-full bg-warning/20 px-2 py-0.5 text-[11px] font-bold tracking-[0.04em] text-warning uppercase">
+            Tied<span className="sr-only"> – continue to overtime</span>
           </span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5 pb-1.5">
-          <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">
-            {isOvertime ? 'OVERTIME' : 'FRAME'}
-          </span>
-          <span className="font-score text-[28px] leading-none font-bold tabular-nums">
-            {isOvertime ? `OT${currentFrame - standardFrames}` : `${currentFrame} / ${standardFrames}`}
-          </span>
-        </div>
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="text-xs font-semibold tracking-[0.06em] text-team-2-ink uppercase">
-            #{match.team_two.seed} · Team 2
-          </span>
-          <span className="font-score text-[56px] leading-[0.9] font-bold tabular-nums">
-            <span className="sr-only">Team 2: </span>
-            {teamTwoTotal}
-          </span>
-        </div>
+        ) : (
+          <span className="shrink-0 text-[10px] font-bold tracking-[0.08em] text-muted-foreground uppercase">Frame</span>
+        )}
+        {children}
       </div>
-      {children}
     </ScoringBoard>
   );
 }

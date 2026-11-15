@@ -9,6 +9,7 @@ jest.mock('@/lib/services/auth', () => ({
 jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (pg, fn) => fn(pg)),
   lockEvent: jest.fn(),
+  lockEvents: jest.fn(),
   lockLeagueHandicap: jest.fn(),
 }));
 jest.mock('@/lib/repositories/handicap-repository.db');
@@ -29,9 +30,11 @@ import {
 import {
   getLeagueHandicapRoster,
   getPlayerHandicap,
+  getZoneSeedCandidates,
   listZoneSuggestions,
   moveEntryZone,
   resolveZoneSuggestion,
+  seedPlayerZones,
   setPlayerZone,
 } from '../zone-service';
 import { DEFAULT_HANDICAP_SETTINGS } from '@/lib/types/handicap';
@@ -58,6 +61,8 @@ describe('handicap services refuse unauthorized callers before touching the data
     ['updateHandicapSettings', () => updateHandicapSettings(LEAGUE, { settings: DEFAULT_HANDICAP_SETTINGS })],
     ['getLeagueHandicapRoster', () => getLeagueHandicapRoster(LEAGUE)],
     ['listZoneSuggestions', () => listZoneSuggestions(LEAGUE)],
+    ['getZoneSeedCandidates', () => getZoneSeedCandidates(LEAGUE)],
+    ['seedPlayerZones', () => seedPlayerZones(LEAGUE, [{ player_id: PLAYER, zone: 2 }])],
     ['setPlayerZone', () => setPlayerZone(LEAGUE, PLAYER, 2, 'note')],
     ['resolveZoneSuggestion', () => resolveZoneSuggestion(LEAGUE, EVALUATION, 'dismiss', 'note')],
   ])('%s requires a league admin', async (_name, call) => {

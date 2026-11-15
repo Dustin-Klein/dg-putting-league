@@ -189,6 +189,15 @@ export default function MatchScoringPage({
     });
   };
 
+  const handleScoreClear = (eventPlayerId: string, frameNumber: number): void => {
+    const saveKey = getScoreKey(eventPlayerId, frameNumber);
+    setLocalScores(prev => {
+      const next = new Map(prev);
+      next.delete(saveKey);
+      return next;
+    });
+  };
+
   const handleComplete = async () => {
     if (!accessCode || !matchId || !match) return;
 
@@ -363,6 +372,7 @@ export default function MatchScoringPage({
           standardFrames={bracketFrameCount}
           currentFrame={currentFrame}
           onScoreChange={handleScoreChange}
+          onScoreClear={handleScoreClear}
           onNextFrame={handleNextFrame}
           onPrevFrame={handlePrevFrame}
           onGoToFrame={handleGoToFrame}

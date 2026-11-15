@@ -9,6 +9,7 @@ import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-
 import { FrameWizardHeader } from './frame-wizard-header';
 import { TeamScoringSection } from './team-scoring-section';
 import { useMatchFrameWizard } from './use-match-frame-wizard';
+import { useRoomyLayout } from './use-roomy-layout';
 import { getAllPlayers, type MatchInfo, type ScoreState } from './wizard-types';
 
 interface FrameWizardProps {
@@ -18,6 +19,7 @@ interface FrameWizardProps {
   standardFrames: number;
   currentFrame: number;
   onScoreChange: (eventPlayerId: string, frameNumber: number, puttsMade: number) => void;
+  onScoreClear: (eventPlayerId: string, frameNumber: number) => void;
   onNextFrame: () => Promise<void>;
   onPrevFrame: () => Promise<void>;
   onGoToFrame: (frameNumber: number) => Promise<void>;
@@ -32,6 +34,7 @@ export function FrameWizard({
   standardFrames,
   currentFrame,
   onScoreChange,
+  onScoreClear,
   onNextFrame,
   onPrevFrame,
   onGoToFrame,
@@ -57,27 +60,28 @@ export function FrameWizard({
     currentFrame,
   });
 
+  const players = getAllPlayers(match);
   const scoredFrames = new Set(
     frameNumbers.filter((frameNumber) =>
-      getAllPlayers(match).every(
+      players.every(
         (player) => getResolvedScore(player.event_player_id, frameNumber, localScores, match.frames) !== null
       )
     )
   );
-  const remaining = getAllPlayers(match).filter(
+  const remaining = players.filter(
     (player) => getResolvedScore(player.event_player_id, currentFrame, localScores, match.frames) === null
   ).length;
   const currentLabel = frameLabel(currentFrame, standardFrames);
+  const roomy = useRoomyLayout(Math.max(match.team_one.players.length, match.team_two.players.length));
+  const teamProps = { frameNumber: currentFrame, match, localScores, bonusPointEnabled, roomy, onScoreChange, onScoreClear };
 
   return (
-    <div className="min-h-full flex flex-col bg-background">
+    // Sized to the screen (below the site nav from md up) so the totals and Next never scroll away.
+    <div className="flex h-dvh flex-col bg-background md:h-[calc(100dvh-65px)]">
       <FrameWizardHeader
         match={match}
-        currentFrame={currentFrame}
-        standardFrames={standardFrames}
         isOvertime={isOvertime}
-        teamOneTotal={teamOneTotal}
-        teamTwoTotal={teamTwoTotal}
+        showOvertimePrompt={showOvertimePrompt}
         onBack={onBack}
       >
         <FrameNavigation
@@ -86,6 +90,8 @@ export function FrameWizard({
           standardFrames={standardFrames}
           scoredFrames={scoredFrames}
           disabled={isSaving}
+          className="min-w-0 flex-1 gap-1"
+          buttonClassName={roomy ? 'h-[38px]' : 'h-[30px] rounded-lg text-sm'}
           onGoToFrame={(frameNumber) => {
             if (frameNumber === currentFrame) {
               return;
@@ -96,47 +102,19 @@ export function FrameWizard({
         />
       </FrameWizardHeader>
 
-      <div className="flex-1 w-full max-w-lg mx-auto px-4 py-3 flex flex-col gap-3">
-        {isOvertime && (
-          <div role="status" className="rounded-[10px] bg-warning/15 px-3 py-2.5 text-center text-sm font-semibold text-warning">
-            Overtime – Continue until there&apos;s a winner
-          </div>
+      {/* Scrolls only when the rows can't fit at their minimum height (e.g. a phone in landscape). */}
+      <div
+        className={cn(
+          'relative w-full max-w-lg mx-auto flex min-h-0 flex-1 flex-col overflow-y-auto',
+          roomy ? 'gap-2.5 px-3 py-2.5' : 'gap-1 px-2.5 py-1'
         )}
-
-        {showOvertimePrompt && (
-          <div role="status" className="rounded-[10px] bg-warning/15 px-3 py-2.5 text-center text-sm font-semibold text-warning">
-            Tied! Continue to overtime
-          </div>
-        )}
-
-        <TeamScoringSection
-          team={match.team_one}
-          teamNumber={1}
-          frameNumber={currentFrame}
-          match={match}
-          localScores={localScores}
-          bonusPointEnabled={bonusPointEnabled}
-          onScoreChange={onScoreChange}
-        />
-
-        <TeamScoringSection
-          team={match.team_two}
-          teamNumber={2}
-          frameNumber={currentFrame}
-          match={match}
-          localScores={localScores}
-          bonusPointEnabled={bonusPointEnabled}
-          onScoreChange={onScoreChange}
-        />
+      >
+        <TeamScoringSection team={match.team_one} teamNumber={1} total={teamOneTotal} {...teamProps} />
+        <TeamScoringSection team={match.team_two} teamNumber={2} total={teamTwoTotal} {...teamProps} />
       </div>
 
-      <ScoringFooter>
-        <p
-          className={cn(
-            'text-center text-[13px] font-medium',
-            frameComplete ? 'text-success' : 'text-muted-foreground'
-          )}
-        >
+      <ScoringFooter className="pt-2 pb-2.5">
+        <p role="status" className="sr-only">
           {frameComplete
             ? `Frame ${currentLabel} complete`
             : `Enter scores for all players to continue · ${remaining} left`}
@@ -144,7 +122,7 @@ export function FrameWizard({
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="flex-1 h-[54px] rounded-[14px] text-base"
+            className="flex-1 h-12 rounded-[14px] text-base"
             onClick={() => void runAction(onPrevFrame)}
             disabled={currentFrame === 1 || isSaving}
           >
@@ -156,7 +134,7 @@ export function FrameWizard({
           </Button>
 
           {canFinish ? (
-            <Button className="flex-[2] h-[54px] rounded-[14px] text-base" onClick={() => void runAction(onFinish)} disabled={isSaving}>
+            <Button className="flex-[2] h-12 rounded-[14px] text-base" onClick={() => void runAction(onFinish)} disabled={isSaving}>
               {isSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -168,21 +146,20 @@ export function FrameWizard({
             </Button>
           ) : (
             <Button
-              className="flex-[2] h-[54px] rounded-[14px] text-base"
+              className="flex-[2] h-12 rounded-[14px] text-base"
               onClick={() => void runAction(onNextFrame)}
               disabled={!frameComplete || isSaving}
             >
               {isSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isTied && currentFrame === Math.max(...frameNumbers) ? (
-                <>
-                  Overtime
-                  <ArrowRight className="size-[18px]" />
-                </>
               ) : (
                 <>
-                  Next frame
-                  <ArrowRight className="size-[18px]" />
+                  {isTied && currentFrame === Math.max(...frameNumbers) ? 'Overtime' : 'Next frame'}
+                  {frameComplete ? (
+                    <ArrowRight className="size-[18px]" />
+                  ) : (
+                    <span className="font-medium opacity-75">· {remaining} left</span>
+                  )}
                 </>
               )}
             </Button>

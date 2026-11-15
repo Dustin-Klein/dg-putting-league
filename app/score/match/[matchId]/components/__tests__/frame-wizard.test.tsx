@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FrameWizard } from '../frame-wizard';
@@ -69,6 +70,30 @@ function createFrame(frameNumber: number, results: FrameInfo['results'] = []): F
   };
 }
 
+function StatefulWizard({ match, initialScores = [] }: { match: MatchInfo; initialScores?: [string, number][] }) {
+  const [localScores, setLocalScores] = useState<ScoreState>(new Map(initialScores));
+  return (
+    <FrameWizard
+      {...defaultProps}
+      match={match}
+      localScores={localScores}
+      onScoreChange={(id, frame, putts) => setLocalScores((prev) => new Map(prev).set(`${id}-${frame}`, putts))}
+      onScoreClear={(id, frame) =>
+        setLocalScores((prev) => {
+          const next = new Map(prev);
+          next.delete(`${id}-${frame}`);
+          return next;
+        })
+      }
+    />
+  );
+}
+
+const statusText = () => screen.getAllByRole('status').map((element) => element.textContent).join(' | ');
+
+const checkedPutts = (playerName: RegExp) =>
+  within(screen.getByRole('radiogroup', { name: playerName })).queryByRole('radio', { checked: true });
+
 const defaultProps = {
   match: createMatch(),
   localScores: new Map() as ScoreState,
@@ -76,6 +101,7 @@ const defaultProps = {
   standardFrames: 5,
   currentFrame: 1,
   onScoreChange: jest.fn(),
+  onScoreClear: jest.fn(),
   onNextFrame: jest.fn().mockResolvedValue(undefined),
   onPrevFrame: jest.fn().mockResolvedValue(undefined),
   onGoToFrame: jest.fn().mockResolvedValue(undefined),
@@ -92,13 +118,13 @@ describe('FrameWizard', () => {
     it('renders frame indicator correctly', () => {
       render(<FrameWizard {...defaultProps} />);
 
-      expect(screen.getByText('1 / 5')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /go to frame 1/i })).toHaveAttribute('aria-current', 'step');
     });
 
     it('renders overtime frame indicator correctly', () => {
       render(<FrameWizard {...defaultProps} currentFrame={6} />);
 
-      expect(screen.getByText('OVERTIME')).toBeInTheDocument();
+      expect(statusText()).toMatch(/^Overtime/);
       expect(screen.getByRole('button', { name: /go to frame 6/i })).toHaveTextContent('OT1');
     });
 
@@ -173,12 +199,57 @@ describe('FrameWizard', () => {
       );
     });
 
+    it('clears an unsaved selection when tapped again', async () => {
+      const user = userEvent.setup();
+      render(<StatefulWizard match={createMatch()} />);
+      const group = screen.getByRole('radiogroup', { name: /putts made by team1 playera/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^2 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
+
+      await user.click(within(group).getByRole('radio', { name: /^2 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toBeNull();
+    });
+
+    it('does not clear a saved score', async () => {
+      const user = userEvent.setup();
+      const onScoreChange = jest.fn();
+      const onScoreClear = jest.fn();
+      const match = createMatch({
+        frames: [createFrame(1, [{ id: 'r1', event_player_id: 'p1a', putts_made: 2, points_earned: 2 }])],
+      });
+      render(<FrameWizard {...defaultProps} match={match} onScoreChange={onScoreChange} onScoreClear={onScoreClear} />);
+
+      await user.click(screen.getAllByRole('radio', { name: /^2 putts made/ })[0]);
+
+      expect(onScoreClear).not.toHaveBeenCalled();
+      expect(onScoreChange).toHaveBeenCalledWith('p1a', 1, 2);
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
+    });
+
+    it('reverts a locally changed saved score to the saved value when tapped again', async () => {
+      const user = userEvent.setup();
+      const match = createMatch({
+        frames: [createFrame(1, [{ id: 'r1', event_player_id: 'p1a', putts_made: 2, points_earned: 2 }])],
+      });
+      render(<StatefulWizard match={match} />);
+      const group = screen.getByRole('radiogroup', { name: /putts made by team1 playera/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^3 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^3 putts made/);
+
+      await user.click(within(group).getByRole('radio', { name: /^3 putts made/ }));
+      expect(checkedPutts(/putts made by team1 playera/i)).toHaveAccessibleName(/^2 putts made/);
+    });
+
     it('shows the bonus on the top button only when enabled', () => {
       const { unmount } = render(<FrameWizard {...defaultProps} bonusPointEnabled={true} />);
+      expect(screen.getAllByRole('radio', { name: /plus bonus point/ })).toHaveLength(4);
       expect(screen.getAllByText('+1 BONUS')).toHaveLength(4);
       unmount();
 
       render(<FrameWizard {...defaultProps} bonusPointEnabled={false} />);
+      expect(screen.queryByRole('radio', { name: /plus bonus point/ })).not.toBeInTheDocument();
       expect(screen.queryByText('+1 BONUS')).not.toBeInTheDocument();
     });
   });
@@ -281,7 +352,7 @@ describe('FrameWizard', () => {
         />
       );
 
-      expect(screen.getByText(/tied! continue to overtime/i)).toBeInTheDocument();
+      expect(statusText()).toMatch(/tied – continue to overtime/i);
     });
 
     it('shows "Overtime" button text when tied and complete', () => {
@@ -306,7 +377,7 @@ describe('FrameWizard', () => {
     it('displays overtime notice when in overtime frame', () => {
       render(<FrameWizard {...defaultProps} currentFrame={6} />);
 
-      expect(screen.getByText(/overtime – continue until there's a winner/i)).toBeInTheDocument();
+      expect(statusText()).toMatch(/overtime – continue until there's a winner/i);
     });
 
     it('shows overtime frame in navigation with OT prefix', () => {
@@ -354,12 +425,17 @@ describe('FrameWizard', () => {
       expect(within(screen.getByRole('region', { name: 'Team 2' })).getByText('4')).toBeInTheDocument();
     });
 
-    it('shows individual player points conversion', () => {
-      const localScores = new Map([['p1a-1', 2]]);
-      render(<FrameWizard {...defaultProps} localScores={localScores} bonusPointEnabled={true} />);
+    it("shows each team's points for this frame and its total", () => {
+      const localScores = new Map([['p1a-1', 3], ['p1b-1', 1]]);
+      const match = createMatch({
+        frames: [createFrame(1, [{ id: 'r1', event_player_id: 'p2a', putts_made: 2, points_earned: 2 }])],
+      });
+      render(<FrameWizard {...defaultProps} match={match} localScores={localScores} bonusPointEnabled={true} />);
 
-      // Score of 2 = 2 points
-      expect(screen.getByText('2 pts')).toBeInTheDocument();
+      const teamOne = screen.getByRole('region', { name: 'Team 1' });
+      expect(teamOne).toHaveTextContent('+5 this frame');
+      expect(teamOne).toHaveTextContent('Total: 5');
+      expect(screen.getByRole('region', { name: 'Team 2' })).toHaveTextContent('+2 this frame');
     });
   });
 
@@ -531,5 +607,55 @@ describe('needsOvertime', () => {
     expect(screen.getByText('Solo One')).toBeInTheDocument();
     expect(screen.getByText('Solo Two')).toBeInTheDocument();
     expect(screen.queryByText(/^B$/)).not.toBeInTheDocument();
+  });
+});
+
+describe('FrameWizard layout', () => {
+  const originalMatchMedia = window.matchMedia;
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+  });
+
+  function mockScreenHeight(height: number) {
+    window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+      // Phone-width screen: only the max-width branch of roomyLayoutQuery applies.
+      matches: Number(/max-width[^,]*min-height: (\d+)px/.exec(query)?.[1]) <= height,
+      media: query,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    }));
+  }
+
+  it('puts the remaining count on the Next button until the frame is complete', () => {
+    render(<FrameWizard {...defaultProps} localScores={new Map([['p1a-1', 2]])} />);
+
+    expect(screen.getByRole('button', { name: /next frame · 3 left/i })).toBeDisabled();
+  });
+
+  it('uses the large layout for doubles on a tall phone', () => {
+    mockScreenHeight(700);
+    render(<FrameWizard {...defaultProps} />);
+
+    expect(screen.getAllByText('+1 BONUS')).toHaveLength(4);
+    expect(screen.getByRole('region', { name: 'Team 1' })).toHaveClass('[container-type:size]');
+  });
+
+  it('keeps doubles compact on a short phone', () => {
+    mockScreenHeight(553);
+    render(<FrameWizard {...defaultProps} />);
+
+    expect(screen.getByRole('region', { name: 'Team 1' })).not.toHaveClass('[container-type:size]');
+  });
+
+  it('uses the large layout for singles on a short phone', () => {
+    mockScreenHeight(553);
+    const match = createMatch({
+      team_one: createTeam({ players: [createPlayer({ event_player_id: 'p1', full_name: 'Solo One' })] }),
+      team_two: createTeam({ id: 'team-2', players: [createPlayer({ event_player_id: 'p2', full_name: 'Solo Two' })] }),
+    });
+    render(<FrameWizard {...defaultProps} match={match} />);
+
+    expect(screen.getAllByText('+1 BONUS')).toHaveLength(2);
   });
 });

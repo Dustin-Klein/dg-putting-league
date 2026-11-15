@@ -31,11 +31,14 @@ interface PuttScoreRowProps {
   groupLabel?: string;
   disabled?: boolean;
   onChange: (puttsMade: number) => void;
+  /** Called instead of onChange when the chosen button is tapped again. */
+  onClear?: () => void;
 }
 
 /**
  * One player's putts for a frame: a row of 0–3 buttons (Main.dc.html). Picking a
- * button sets the score; the bonus is shown on the 3.
+ * button sets the score; tapping the chosen button again clears it when onClear is
+ * given. The bonus is shown on the 3.
  */
 export function PuttScoreRow({
   label,
@@ -50,8 +53,71 @@ export function PuttScoreRow({
   groupLabel,
   disabled = false,
   onChange,
+  onClear,
 }: PuttScoreRowProps) {
   const points = score !== null ? calculatePoints(score, bonusPointEnabled) : null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-base font-semibold">{label}</span>
+        {badge}
+        {subtitle && <span className="shrink-0 text-xs font-semibold text-muted-foreground">{subtitle}</span>}
+        <span className="ml-auto shrink-0 whitespace-nowrap">
+          {aside ?? (
+            <span className={cn('text-[13px] font-semibold', points === null && 'text-muted-foreground')}>
+              {points === null ? 'Not scored' : `${points} ${points === 1 ? 'pt' : 'pts'}`}
+            </span>
+          )}
+        </span>
+      </div>
+      {children}
+      <PuttButtonGroup
+        label={`${groupLabel ?? `Putts made by ${label}`}${frameNumber ? `, frame ${frameNumber}` : ''}`}
+        score={score}
+        bonusPointEnabled={bonusPointEnabled}
+        tone={tone}
+        disabled={disabled}
+        onChange={onChange}
+        onClear={onClear}
+      />
+    </div>
+  );
+}
+
+interface PuttButtonGroupProps {
+  /** Accessible name of the radiogroup. */
+  label: string;
+  score: number | null;
+  bonusPointEnabled: boolean;
+  tone?: keyof typeof SELECTED;
+  disabled?: boolean;
+  onChange: (puttsMade: number) => void;
+  onClear?: () => void;
+  className?: string;
+  buttonClassName?: string;
+  /** Text under the 3 when the bonus applies. */
+  bonusLabel?: ReactNode;
+  bonusClassName?: string;
+  /** Classes on the number-and-label stack inside each button. */
+  contentClassName?: string;
+}
+
+/** The 0–3 buttons as a radio group: one Tab stop, arrow keys pick, tapping the chosen one clears. */
+export function PuttButtonGroup({
+  label,
+  score,
+  bonusPointEnabled,
+  tone = 'primary',
+  disabled = false,
+  onChange,
+  onClear,
+  className,
+  buttonClassName,
+  bonusLabel = '+1 BONUS',
+  bonusClassName,
+  contentClassName,
+}: PuttButtonGroupProps) {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   // Radio-group keyboard pattern: one Tab stop (the chosen score, else the first),
   // and the arrow keys move to and pick the next or previous score.
@@ -72,53 +138,39 @@ export function PuttScoreRow({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-base font-semibold">{label}</span>
-        {badge}
-        {subtitle && <span className="shrink-0 text-xs font-semibold text-muted-foreground">{subtitle}</span>}
-        <span className="ml-auto shrink-0 whitespace-nowrap">
-          {aside ?? (
-            <span className={cn('text-[13px] font-semibold', points === null && 'text-muted-foreground')}>
-              {points === null ? 'Not scored' : `${points} ${points === 1 ? 'pt' : 'pts'}`}
-            </span>
-          )}
-        </span>
-      </div>
-      {children}
-      <div
-        role="radiogroup"
-        aria-label={`${groupLabel ?? `Putts made by ${label}`}${frameNumber ? `, frame ${frameNumber}` : ''}`}
-        className="grid grid-cols-4 gap-1.5"
-      >
-        {PUTT_OPTIONS.map((putts, index) => {
-          const selected = score === putts;
-          const bonus = putts === MAX_PUTTS && bonusPointEnabled;
-          return (
-            <button
-              key={putts}
-              ref={(element) => { buttons.current[index] = element; }}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              tabIndex={putts === tabStop ? 0 : -1}
-              aria-label={`${putts} putts made${bonus ? ', plus bonus point' : ''}`}
-              disabled={disabled}
-              onClick={() => onChange(putts)}
-              onKeyDown={(event) => handleKeyDown(event, index)}
-              className={cn(
-                'flex h-14 flex-col items-center justify-center rounded-xl border-[1.5px] font-score text-[28px] leading-none font-bold transition-colors touch-manipulation outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50',
-                selected ? SELECTED[tone] : 'border-input bg-control text-foreground hover:border-foreground/40'
-              )}
-            >
+    <div role="radiogroup" aria-label={label} className={cn('grid grid-cols-4 gap-1.5', className)}>
+      {PUTT_OPTIONS.map((putts, index) => {
+        const selected = score === putts;
+        const bonus = putts === MAX_PUTTS && bonusPointEnabled;
+        return (
+          <button
+            key={putts}
+            ref={(element) => { buttons.current[index] = element; }}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={putts === tabStop ? 0 : -1}
+            aria-label={`${putts} putts made${bonus ? ', plus bonus point' : ''}`}
+            disabled={disabled}
+            onClick={() => (selected && onClear ? onClear() : onChange(putts))}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+            className={cn(
+              'flex h-14 flex-col items-center justify-center rounded-xl border-[1.5px] font-score text-[28px] leading-none font-bold transition-colors touch-manipulation outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50',
+              selected ? SELECTED[tone] : 'border-input bg-control text-foreground hover:border-foreground/40',
+              buttonClassName
+            )}
+          >
+            <span className={cn('flex flex-col items-center', contentClassName, 'leading-none')}>
               {putts}
               {bonus && (
-                <span className="mt-0.5 font-sans text-[10px] font-bold tracking-[0.06em]">+1 BONUS</span>
+                <span className={cn('mt-0.5 font-sans text-[10px] font-bold tracking-[0.06em]', bonusClassName)}>
+                  {bonusLabel}
+                </span>
               )}
-            </button>
-          );
-        })}
-      </div>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

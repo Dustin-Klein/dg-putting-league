@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import QualificationScoringPage, { clearSentLocalScores } from '../page';
 
@@ -238,6 +238,29 @@ describe('QualificationScoringPage', () => {
     expect(await screen.findByText('1 / 3')).toBeInTheDocument();
     expect(screen.getByText('#18')).toBeInTheDocument();
     expect(screen.getAllByRole('radio', { name: /^2 putts made/, checked: true })).toHaveLength(1);
+  });
+
+  it('clears an unsaved score when its selected button is tapped again', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => createBatchResponse(),
+    })) as unknown as typeof fetch;
+
+    render(<QualificationScoringPage />);
+
+    const group = await screen.findByRole('radiogroup', { name: /putts made by player one/i });
+    const twoPutts = within(group).getByRole('radio', { name: /^2 putts made/ });
+
+    await user.click(twoPutts);
+    expect(twoPutts).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('Frame 1 complete')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next frame/i })).toBeEnabled();
+
+    await user.click(twoPutts);
+    expect(within(group).queryByRole('radio', { checked: true })).toBeNull();
+    expect(screen.getByText('Enter scores for all selected players to continue')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next frame/i })).toBeDisabled();
   });
 
   it('returns to scoring when editing a frame from review', async () => {

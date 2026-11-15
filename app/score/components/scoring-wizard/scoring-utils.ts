@@ -78,3 +78,14 @@ export function getSequentialFrameNumbers<TFrame extends PersistedFrame>(
   const maxFrame = getMaxFrameNumber(frames, minimumFrameCount);
   return Array.from({ length: maxFrame }, (_, index) => index + 1);
 }
+
+/** Frames in which every listed player has a recorded result. */
+export function countCompletedFrames<TFrame extends PersistedFrame>(
+  frames: TFrame[],
+  eventPlayerIds: string[]
+): number {
+  if (eventPlayerIds.length === 0) return 0;
+  return frames.filter((frame) =>
+    eventPlayerIds.every((id) => frame.results.some((result) => result.event_player_id === id))
+  ).length;
+}

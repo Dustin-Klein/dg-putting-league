@@ -53,3 +53,52 @@ describe('PuttScoreRow keyboard', () => {
     expect(onChange).toHaveBeenLastCalledWith(3);
   });
 });
+
+describe('PuttScoreRow clearing', () => {
+  it('calls onClear instead of onChange when the chosen button is tapped again', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    const onClear = jest.fn();
+    render(<PuttScoreRow label="Avery Lund" score={2} bonusPointEnabled onChange={onChange} onClear={onClear} />);
+
+    await user.click(radio(2));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('re-picks the same score when onClear is not given', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(<PuttScoreRow label="Avery Lund" score={2} bonusPointEnabled onChange={onChange} />);
+
+    await user.click(radio(2));
+
+    expect(onChange).toHaveBeenCalledWith(2);
+  });
+
+  it('picks an unselected score even when onClear is given', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    const onClear = jest.fn();
+    render(<PuttScoreRow label="Avery Lund" score={2} bonusPointEnabled onChange={onChange} onClear={onClear} />);
+
+    await user.click(radio(3));
+
+    expect(onChange).toHaveBeenCalledWith(3);
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
+  it('never clears from the arrow keys', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    const onClear = jest.fn();
+    render(<PuttScoreRow label="Avery Lund" score={0} bonusPointEnabled onChange={onChange} onClear={onClear} />);
+
+    await user.tab();
+    await user.keyboard('{Home}');
+
+    expect(onClear).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith(0);
+  });
+});

@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import type { LeagueHandicapConfig, LeagueRosterEntry, ZoneSuggestion } from '@/lib/types/handicap';
 import { HandicapSettingsForm } from './handicap-settings-form';
 import { HandicapRoster, ZoneReviewQueue } from './handicap-roster';
+import { ZoneSeeding } from './zone-seeding';
 
 /** The league's Handicaps tab: review queue (when non-empty), settings and roster. */
 export function HandicapManagement({ leagueId }: { leagueId: string }) {
@@ -53,6 +54,9 @@ export function HandicapManagement({ leagueId }: { leagueId: string }) {
         demoteBelowPct={config.settings.demote_below_pct}
         onChanged={load}
       />
+      {config.configured && (
+        <ZoneSeeding key={config.updated_at ?? 'defaults'} leagueId={leagueId} onChanged={load} />
+      )}
       <div className="flex flex-wrap items-start gap-6">
         {config.configured && (
           <div className="min-w-0 flex-[999_1_600px]">

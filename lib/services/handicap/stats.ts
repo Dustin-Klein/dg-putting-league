@@ -12,9 +12,11 @@
  * The bonus point never enters make %: it is computed from putts, not points.
  * Pure functions only; the aggregate queries live in handicap-repository.db.ts.
  */
-import type { EligibilityProgress, HandicapSettings, PeriodStats } from '@/lib/types/handicap';
+import type { EligibilityProgress, HandicapSettings, PeriodStats, SeedStats } from '@/lib/types/handicap';
 
 export const PUTTS_PER_FRAME = 3;
+
+const FRAMES_PER_MATCH = 5;
 
 /** One event entry's raw counts, as the aggregate query returns them. */
 export interface EntryCounts {
@@ -26,6 +28,16 @@ export interface EntryCounts {
   frame_putts_made: number;
   qualification_frames: number;
   qualification_putts_made: number;
+  matches: number;
+}
+
+/** One entry's counts for seeding: scored points only, since imported events' stored putts aren't real. */
+export interface SeedEntryCounts {
+  event_id: string;
+  frames: number;
+  frame_points: number;
+  qualification_frames: number;
+  qualification_points: number;
   matches: number;
 }
 
@@ -82,11 +94,38 @@ export function combinePeriodStats(
 }
 
 /**
+ * A player's scoring across a source league's entries. Unlike a period's stats there
+ * is no rolling window: an old sample gains nothing from recency.
+ */
+export function combineSeedHistory(
+  entries: readonly SeedEntryCounts[],
+  settings: Pick<HandicapSettings, 'count_qualification_putts'>
+): SeedStats {
+  let frames = 0;
+  let points = 0;
+  let matches = 0;
+  let events = 0;
+  for (const entry of entries) {
+    const entryFrames = entry.frames + (settings.count_qualification_putts ? entry.qualification_frames : 0);
+    if (entryFrames === 0) continue;
+    frames += entryFrames;
+    points += entry.frame_points + (settings.count_qualification_putts ? entry.qualification_points : 0);
+    matches += entry.matches;
+    events += 1;
+  }
+  const pointsPerMatch = frames > 0 ? Math.round((points / frames) * FRAMES_PER_MATCH * 100) / 100 : 0;
+  return { frames, points, points_per_match: pointsPerMatch, matches, events };
+}
+
+/**
  * Whether a sample is large enough to decide on. A minimum of 0 means the criterion
  * is disabled, not satisfied: a bare `x >= 0` is always true, which would let one
  * zero minimum switch the other criterion off and make everyone eligible at once.
  */
-export function isEligible(stats: PeriodStats, settings: Pick<HandicapSettings, 'min_putts' | 'min_matches'>): boolean {
+export function isEligible(
+  stats: Pick<PeriodStats, 'putts_attempted' | 'matches'>,
+  settings: Pick<HandicapSettings, 'min_putts' | 'min_matches'>
+): boolean {
   const byPutts = settings.min_putts > 0 && stats.putts_attempted >= settings.min_putts;
   const byMatches = settings.min_matches > 0 && stats.matches >= settings.min_matches;
   return byPutts || byMatches;

@@ -14,6 +14,7 @@ import {
   league_admins,
   league_handicap_settings,
   league_handicap_zones,
+  match_frames,
   players,
   player_zone_evaluations,
   player_zone_periods,
@@ -37,8 +38,15 @@ import {
   updateHandicapSettings,
 } from '@/lib/services/handicap/settings-service';
 import { lockQualificationEvent } from '@/lib/repositories/qualification-repository.db';
-import { getPlayerHandicap, moveEntryZone, resolveZoneSuggestion, setPlayerZone } from '@/lib/services/handicap/zone-service';
-import { BadRequestError, ConflictError } from '@/lib/errors';
+import {
+  getPlayerHandicap,
+  getZoneSeedCandidates,
+  moveEntryZone,
+  resolveZoneSuggestion,
+  seedPlayerZones,
+  setPlayerZone,
+} from '@/lib/services/handicap/zone-service';
+import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { DEFAULT_HANDICAP_SETTINGS, type HandicapSettings } from '@/lib/types/handicap';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { playOutBracket } from './db/play';
@@ -221,6 +229,45 @@ async function addQualificationFrame(ex: Executor, eventId: string, eventPlayerI
     putts_made: puttsMade,
     points_earned: puttsMade,
   });
+}
+
+/** Frames as imported events hold them: no bracket match, even spread, stored putts not real. */
+async function addImportedFrames(ex: Executor, eventPlayerId: string, points: number[], puttsMade = 3) {
+  const frames = await ex.insert(match_frames)
+    .values(points.map((_, i) => ({ frame_number: i + 1 })))
+    .returning({ id: match_frames.id });
+  await ex.insert(frame_results).values(points.map((earned, i) => ({
+    match_frame_id: frames[i].id,
+    event_player_id: eventPlayerId,
+    putts_made: puttsMade,
+    points_earned: earned,
+    order_in_frame: 1,
+  })));
+}
+
+/** A league of completed pre-handicap events; `framesPerEvent[i]` is every player's frame points at event i. */
+async function historyLeague(ex: Executor, playerIds: string[], framesPerEvent: number[][]) {
+  const { leagueId } = await seedLeague(ex);
+  for (let i = 0; i < framesPerEvent.length; i++) {
+    const [event] = await ex.insert(events).values({
+      league_id: leagueId,
+      event_date: `2026-02-0${i + 1}`,
+      location: 'History',
+      lane_count: 1,
+      putt_distance_ft: '20',
+      access_code: `hs${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      status: 'completed',
+      entry_fee_per_player: null,
+      admin_fees: null,
+      admin_fee_per_player: null,
+      payout_pool_override: null,
+    }).returning({ id: events.id });
+    const entries = await ex.insert(event_players)
+      .values(playerIds.map((player_id) => ({ event_id: event.id, player_id, payment_type: 'cash', putt_distance_ft: '20' })))
+      .returning({ id: event_players.id });
+    for (const entry of entries) await addImportedFrames(ex, entry.id, framesPerEvent[i]);
+  }
+  return leagueId;
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +845,291 @@ describe('completed handicap events', () => {
 // Concurrency (commits real data)
 // ---------------------------------------------------------------------------
 
+describe('starting zones from past scoring', () => {
+  const twoFrames = [[2, 2, 2, 2, 2], [1, 1, 1, 1, 1]];
+
+  describe('getZoneSeedCandidates', () => {
+    it('reports points per match from all completed events, ignoring the window and stored distance', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId, { window_putts: 15, min_putts: 30 });
+        const [playerId] = await newPlayers(tx, 1);
+        const sourceId = await historyLeague(tx, [playerId], twoFrames);
+
+        const data = await getZoneSeedCandidates(leagueId, sourceId);
+        expect(data).toMatchObject({
+          default_zone: 2,
+          settings: { min_putts: 30, min_matches: 0 },
+          locked_count: 0,
+          source: { league_id: sourceId, from: '2026-02-01', to: '2026-02-02', events: 2 },
+        });
+        expect(data.zones).toHaveLength(3);
+        expect(data.candidates).toHaveLength(1);
+        expect(data.candidates[0]).toMatchObject({
+          player_id: playerId,
+          eligible: true,
+          current_zone: null,
+          history: { frames: 10, points: 15, points_per_match: 7.5, matches: 0, events: 2 },
+        });
+      });
+    });
+
+    it('leaves out zoned entries, excluded entries, unfinished events and other leagues', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [kept, other] = await newPlayers(tx, 2);
+        const sourceId = await historyLeague(tx, [kept], twoFrames);
+        await historyLeague(tx, [other], twoFrames);
+
+        const addEvent = async (status: 'completed' | 'bracket', entry: Partial<typeof event_players.$inferInsert>) => {
+          const [event] = await tx.insert(events).values({
+            league_id: sourceId,
+            event_date: '2026-02-09',
+            location: 'History',
+            lane_count: 1,
+            putt_distance_ft: '20',
+            access_code: `hs${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+            status,
+            entry_fee_per_player: null,
+            admin_fees: null,
+            admin_fee_per_player: null,
+            payout_pool_override: null,
+          }).returning({ id: events.id });
+          const [row] = await tx.insert(event_players)
+            .values({ event_id: event.id, player_id: kept, payment_type: 'cash', putt_distance_ft: '20', ...entry })
+            .returning({ id: event_players.id });
+          await addImportedFrames(tx, row.id, [4, 4, 4, 4, 4]);
+        };
+        await addEvent('completed', { zone: 2 });
+        await addEvent('completed', { exclude_from_handicap: true });
+        await addEvent('bracket', {});
+
+        const data = await getZoneSeedCandidates(leagueId, sourceId);
+        expect(data.candidates.map((row) => row.player_id)).toEqual([kept]);
+        expect(data.candidates[0].history).toMatchObject({ frames: 10, points: 15, events: 2 });
+      });
+    });
+
+    it('applies count_qualification_putts', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId, { count_qualification_putts: false });
+        const [played, qualifiedOnly] = await newPlayers(tx, 2);
+        const sourceId = await historyLeague(tx, [played, qualifiedOnly], [[2, 2, 2, 2, 2]]);
+        const [{ event_id: eventId }] = await tx.select({ event_id: event_players.event_id }).from(event_players)
+          .innerJoin(events, eq(events.id, event_players.event_id))
+          .where(and(eq(events.league_id, sourceId), eq(event_players.player_id, played)));
+        const playedEntry = await entryOf(tx, eventId, played);
+        const qualifiedEntry = await entryOf(tx, eventId, qualifiedOnly);
+        await tx.delete(frame_results).where(eq(frame_results.event_player_id, qualifiedEntry.id));
+        await addQualificationFrame(tx, eventId, playedEntry.id, 3);
+        await addQualificationFrame(tx, eventId, qualifiedEntry.id, 3);
+
+        const withoutQualification = await getZoneSeedCandidates(leagueId, sourceId);
+        expect(withoutQualification.candidates.map((row) => row.player_id)).toEqual([played]);
+        expect(withoutQualification.candidates[0].history).toMatchObject({ frames: 5, points: 10 });
+
+        await setSettings(tx, leagueId, { count_qualification_putts: true });
+        const withQualification = await getZoneSeedCandidates(leagueId, sourceId);
+        expect(withQualification.candidates).toHaveLength(2);
+        expect(withQualification.candidates.find((row) => row.player_id === played)?.history)
+          .toMatchObject({ frames: 6, points: 13 });
+      });
+    });
+
+    it('defaults to the league with the most events, never this one, and 404s on an unknown source', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const [playerId] = await newPlayers(tx, 1);
+        const longest = Array.from({ length: 9 }, () => [2, 2, 2, 2, 2]);
+        const sourceId = await historyLeague(tx, [playerId], longest);
+        await historyLeague(tx, [playerId], [[1, 1, 1, 1, 1]]);
+        const ownLeague = await historyLeague(tx, [playerId], [...longest, [2, 2, 2, 2, 2]]);
+        await enableHandicaps(tx, ownLeague);
+
+        const data = await getZoneSeedCandidates(ownLeague);
+        expect(data.source?.league_id).toBe(sourceId);
+        expect(data.sources.some((source) => source.league_id === ownLeague)).toBe(false);
+        await expect(getZoneSeedCandidates(ownLeague, ownLeague)).rejects.toThrow(NotFoundError);
+        await expect(getZoneSeedCandidates(ownLeague, randomUUID())).rejects.toThrow(NotFoundError);
+      });
+    });
+
+    it('counts players who can no longer be seeded instead of listing them', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [fresh, putted, moved] = await newPlayers(tx, 3);
+        const sourceId = await historyLeague(tx, [fresh, putted, moved], twoFrames);
+        const event = await handicapEvent(tx, leagueId, [fresh, putted, moved]);
+        await addQualificationFrame(tx, event.eventId, (await entryOf(tx, event.eventId, putted)).id);
+        await setPlayerZone(leagueId, moved, 3, 'Too good');
+
+        const data = await getZoneSeedCandidates(leagueId, sourceId);
+        expect(data.candidates.map((row) => row.player_id)).toEqual([fresh]);
+        expect(data.candidates[0].current_zone).toBe(2);
+        expect(data.locked_count).toBe(2);
+      });
+    });
+
+    it('refuses a league without handicap settings', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await expect(getZoneSeedCandidates(leagueId)).rejects.toThrow(BadRequestError);
+      });
+    });
+  });
+
+  describe('seedPlayerZones', () => {
+    it('opens an initial period at the assigned zone, with the note and user', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId] = await newPlayers(tx, 1);
+
+        const result = await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }], 'Cuts 7.3 / 10.3');
+        expect(result).toEqual({ applied: 1, unchanged: 0, skipped: [] });
+        expect(await openPeriod(tx, leagueId, playerId)).toMatchObject({
+          zone: 3, distance_ft: '33.00', start_reason: 'initial', started_by_user: adminId, note: 'Cuts 7.3 / 10.3',
+        });
+      });
+    });
+
+    it('rewrites an unused period in place and refreshes unstarted entries', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId, bystander] = await newPlayers(tx, 2);
+        const event = await handicapEvent(tx, leagueId, [playerId, bystander], { distances: [20, 26, 32] });
+        const before = await openPeriod(tx, leagueId, playerId);
+
+        await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 1 }], 'First');
+        const after = await openPeriod(tx, leagueId, playerId);
+        expect(after).toMatchObject({ id: before.id, zone: 1, distance_ft: '21.00', start_reason: 'initial', note: 'First' });
+        expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({
+          zone: 1, putt_distance_ft: '20.00', zone_period_id: before.id,
+        });
+        expect(await entryOf(tx, event.eventId, bystander)).toMatchObject({ zone: 2 });
+
+        // Re-seeding before night one works, and a repeat is a no-op.
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }], 'Second'))
+          .toEqual({ applied: 1, unchanged: 0, skipped: [] });
+        expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ zone: 3, putt_distance_ft: '32.00' });
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }], 'Third'))
+          .toEqual({ applied: 0, unchanged: 1, skipped: [] });
+        expect(await openPeriod(tx, leagueId, playerId)).toMatchObject({ note: 'Second' });
+      });
+    });
+
+    it('skips a player who has putted in the league, leaving the period alone', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId] = await newPlayers(tx, 1);
+        const event = await handicapEvent(tx, leagueId, [playerId]);
+        await addQualificationFrame(tx, event.eventId, (await entryOf(tx, event.eventId, playerId)).id);
+
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]))
+          .toEqual({ applied: 0, unchanged: 0, skipped: [{ player_id: playerId, reason: 'putted' }] });
+        expect(await openPeriod(tx, leagueId, playerId)).toMatchObject({ zone: 2 });
+        expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ zone: 2 });
+      });
+    });
+
+    it('skips a player with frames in the league but no period yet', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const [playerId] = await newPlayers(tx, 1);
+        const leagueId = await historyLeague(tx, [playerId], twoFrames);
+        await enableHandicaps(tx, leagueId);
+
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]))
+          .toEqual({ applied: 0, unchanged: 0, skipped: [{ player_id: playerId, reason: 'putted' }] });
+        expect(await openPeriod(tx, leagueId, playerId)).toBeUndefined();
+      });
+    });
+
+    it('skips a period that an organizer or an evaluation opened', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId] = await newPlayers(tx, 1);
+        await handicapEvent(tx, leagueId, [playerId]);
+        await setPlayerZone(leagueId, playerId, 3, 'By hand');
+
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 1 }]))
+          .toEqual({ applied: 0, unchanged: 0, skipped: [{ player_id: playerId, reason: 'moved' }] });
+        expect(await openPeriod(tx, leagueId, playerId)).toMatchObject({ zone: 3, start_reason: 'manual' });
+      });
+    });
+
+    it('skips a player snapshotted into a started event, whose entry would keep the old zone', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const playerIds = await newPlayers(tx, 8);
+        const event = await handicapEvent(tx, leagueId, playerIds);
+        const { poolAssignments, teamPairings } = buildDeterministicPairings(event);
+        await startBracket(tx, event.eventId, poolAssignments, teamPairings);
+
+        expect(await seedPlayerZones(leagueId, [{ player_id: playerIds[0], zone: 3 }]))
+          .toEqual({ applied: 0, unchanged: 0, skipped: [{ player_id: playerIds[0], reason: 'putted' }] });
+        expect(await entryOf(tx, event.eventId, playerIds[0])).toMatchObject({ zone: 2 });
+      });
+    });
+
+    it('refuses an unknown zone, an unknown player and a duplicate without writing anything', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId] = await newPlayers(tx, 1);
+
+        await expect(seedPlayerZones(leagueId, [{ player_id: playerId, zone: 9 }])).rejects.toThrow(BadRequestError);
+        await expect(seedPlayerZones(leagueId, [{ player_id: randomUUID(), zone: 2 }])).rejects.toThrow(BadRequestError);
+        await expect(seedPlayerZones(leagueId, [
+          { player_id: playerId, zone: 1 },
+          { player_id: playerId, zone: 3 },
+        ])).rejects.toThrow(BadRequestError);
+        expect(await openPeriod(tx, leagueId, playerId)).toBeUndefined();
+      });
+    });
+
+    it('refuses a league without handicap settings', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        const [playerId] = await newPlayers(tx, 1);
+        await expect(seedPlayerZones(leagueId, [{ player_id: playerId, zone: 2 }])).rejects.toThrow(BadRequestError);
+      });
+    });
+
+    it('gives a seeded player the seeded zone when they first enter an event', async () => {
+      await withRollback(db, async (tx) => {
+        mockAuth.pg = tx;
+        const { leagueId } = await seedLeague(tx);
+        await enableHandicaps(tx, leagueId);
+        const [playerId] = await newPlayers(tx, 1);
+        await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]);
+
+        const event = await handicapEvent(tx, leagueId, [playerId]);
+        expect(await entryOf(tx, event.eventId, playerId)).toMatchObject({ zone: 3, putt_distance_ft: '33.00' });
+      });
+    });
+  });
+});
+
 describe('race: handicap writers in one league', () => {
   it('two events sharing players complete concurrently: each player evaluated once per event, no deadlock', async () => {
     const { leagueId } = await seedLeague(db);
@@ -855,6 +1187,88 @@ describe('race: handicap writers in one league', () => {
 
     expect(await edit).toBeInstanceOf(ConflictError);
     expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ putt_distance_ft: '27.00', distance_override: false });
+  });
+
+  it('seeding waits for an in-flight first qualification frame, then skips the player', async () => {
+    const { leagueId } = await seedLeague(db);
+    const [playerId] = await newPlayers(db, 1);
+    committed.push({ leagueId, playerIds: [playerId] });
+    await enableHandicaps(db, leagueId);
+    const event = await handicapEvent(db, leagueId, [playerId]);
+    mockAuth.pg = db;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let framed!: () => void;
+    const frameWritten = new Promise<void>((resolve) => { framed = resolve; });
+    const scorer = withTransaction(db, async (tx) => {
+      await lockQualificationEvent(tx, event.eventId);
+      await addQualificationFrame(tx, event.eventId, event.eventPlayerIds[0]);
+      framed();
+      await gate;
+    });
+    await frameWritten;
+
+    const seeding = seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await scorer;
+
+    expect(await seeding).toEqual({ applied: 0, unchanged: 0, skipped: [{ player_id: playerId, reason: 'putted' }] });
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 2, putt_distance_ft: '27.00' });
+  });
+
+  it('seeding refuses an event created while it waited, so the new entries never split from the period', async () => {
+    const { leagueId } = await seedLeague(db);
+    const [playerId] = await newPlayers(db, 1);
+    committed.push({ leagueId, playerIds: [playerId] });
+    await enableHandicaps(db, leagueId);
+    mockAuth.pg = db;
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let snapshotted!: () => void;
+    const entriesReady = new Promise<void>((resolve) => { snapshotted = resolve; });
+    const creator = withTransaction(db, async (tx) => {
+      const event = await handicapEvent(tx, leagueId, [playerId], { status: 'created' });
+      snapshotted();
+      await gate;
+      return event;
+    });
+    await entriesReady;
+
+    const seeding = seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]).catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    const event = await creator;
+
+    expect(await seeding).toBeInstanceOf(ConflictError);
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 2, putt_distance_ft: '27.00' });
+
+    expect(await seedPlayerZones(leagueId, [{ player_id: playerId, zone: 3 }]))
+      .toEqual({ applied: 1, unchanged: 0, skipped: [] });
+    expect(await entryOf(db, event.eventId, playerId)).toMatchObject({ zone: 3, putt_distance_ft: '33.00' });
+  });
+
+  it('seeding and an event-page move of one player settle without a deadlock or a split entry', async () => {
+    const { leagueId } = await seedLeague(db);
+    const [playerId] = await newPlayers(db, 1);
+    committed.push({ leagueId, playerIds: [playerId] });
+    await enableHandicaps(db, leagueId);
+    const first = await handicapEvent(db, leagueId, [playerId]);
+    mockAuth.pg = db;
+
+    await Promise.all([
+      seedPlayerZones(leagueId, [{ player_id: playerId, zone: 1 }]),
+      moveEntryZone(first.eventId, first.eventPlayerIds[0], 3, 'By hand'),
+    ]);
+
+    const open = await openPeriod(db, leagueId, playerId);
+    expect((await entryOf(db, first.eventId, playerId)).zone).toBe(open.zone);
+    expect(await db.select().from(player_zone_periods).where(and(
+      eq(player_zone_periods.player_id, playerId),
+      isNull(player_zone_periods.ended_at)
+    ))).toHaveLength(1);
   });
 
   it('two entries racing for a player without a period open one period', async () => {
