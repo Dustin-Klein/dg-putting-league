@@ -160,7 +160,7 @@ export function PuttButtonGroup({
               buttonClassName
             )}
           >
-            <span className={cn('flex flex-col items-center', contentClassName)}>
+            <span className={cn('flex flex-col items-center', contentClassName, 'leading-none')}>
               {putts}
               {bonus && (
                 <span className={cn('mt-0.5 font-sans text-[10px] font-bold tracking-[0.06em]', bonusClassName)}>

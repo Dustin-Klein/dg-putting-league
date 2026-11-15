@@ -212,7 +212,7 @@ function MatchPlayerScoreRow({
           : 'h-full min-h-0 rounded-[10px] [container-type:size]'
       }
       contentClassName={
-        roomy ? '[@container(max-height:58px)]:text-[24px]' : 'text-[20px] [@container(min-height:48px)]:text-[24px]'
+        roomy ? '[@container(max-height:58px)]:text-[24px]' : 'text-[18px] [@container(min-height:44px)]:text-[24px]'
       }
       bonusClassName={roomy ? 'mt-1 leading-none' : 'mt-px text-[9px] leading-none tracking-normal'}
     />
