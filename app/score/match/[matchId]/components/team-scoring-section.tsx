@@ -205,16 +205,16 @@ function MatchPlayerScoreRow({
           ? cn('min-h-11 flex-1 grid-rows-[minmax(0,1fr)] gap-2', sizes.buttons)
           : 'shrink-0 self-stretch grid-cols-[repeat(4,50px)] grid-rows-[minmax(0,1fr)] gap-1 py-px'
       }
+      // Each button is a size container so the number and bonus label scale with its height.
       buttonClassName={
+        roomy ? 'h-full min-h-0 rounded-[14px] [container-type:size]' : 'h-full min-h-0 rounded-[10px] [container-type:size]'
+      }
+      contentClassName={roomy ? 'text-[length:clamp(24px,50cqh,60px)]' : 'text-[length:clamp(18px,45cqh,28px)]'}
+      bonusClassName={
         roomy
-          ? // A size container so a short button can shrink its number to keep "+1 BONUS" inside.
-            'h-full min-h-0 rounded-[14px] text-[length:clamp(30px,calc(100cqh/var(--rows)*0.13),40px)] [container-type:size]'
-          : 'h-full min-h-0 rounded-[10px] [container-type:size]'
+          ? 'mt-[clamp(2px,4cqh,6px)] text-[length:clamp(10px,10cqh,13px)] leading-none'
+          : 'mt-px text-[9px] leading-none tracking-normal'
       }
-      contentClassName={
-        roomy ? '[@container(max-height:58px)]:text-[24px]' : 'text-[18px] [@container(min-height:44px)]:text-[24px]'
-      }
-      bonusClassName={roomy ? 'mt-1 leading-none' : 'mt-px text-[9px] leading-none tracking-normal'}
     />
   );
 
