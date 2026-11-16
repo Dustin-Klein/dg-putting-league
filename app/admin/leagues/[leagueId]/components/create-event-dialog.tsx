@@ -10,7 +10,7 @@ import { Form } from '@/components/ui/form';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDisplayDate, parseLocalDate } from '@/lib/utils/date-utils';
 import {
-  DEFAULT_EVENT_SETUP,
+  defaultEventSetup,
   generateAccessCode,
   templateToSetupValues,
   toCreateEventBody,
@@ -41,10 +41,10 @@ interface CreateEventDialogProps {
 
 type Screen = 'start' | 'sentence' | 'steps';
 
-const NO_HANDICAP: EventSetupContext = { handicapEnabled: false, zones: [] };
+const NO_HANDICAP: EventSetupContext = { leagueHandicaps: false, zones: [] };
 
-function blankValues(): Partial<CreateEventFormValues> {
-  return { ...DEFAULT_EVENT_SETUP, event_date: undefined, location: '', access_code: generateAccessCode() };
+function blankValues(ctx: EventSetupContext): Partial<CreateEventFormValues> {
+  return { ...defaultEventSetup(ctx), event_date: undefined, location: '', access_code: generateAccessCode() };
 }
 
 export function CreateEventDialog({
@@ -67,7 +67,7 @@ export function CreateEventDialog({
   const form = useForm<CreateEventFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createEventSchema) as any,
-    defaultValues: blankValues(),
+    defaultValues: blankValues(handicap),
   });
 
   const copySources: CopySource[] = useMemo(() => completedEvents.map((event) => ({
@@ -87,7 +87,7 @@ export function CreateEventDialog({
       : [];
     setDateSuggestions(suggestions);
     form.reset({
-      ...blankValues(),
+      ...blankValues(handicap),
       ...(templateEvent ? { event_date: suggestions[0], location: templateEvent.location ?? '' } : {}),
     });
     setScreen(templateEvent ? 'start' : 'steps');
@@ -110,7 +110,7 @@ export function CreateEventDialog({
       const response = await fetch(`/api/league/${leagueId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toCreateEventBody(values, copyPlayersFrom)),
+        body: JSON.stringify(toCreateEventBody(values, handicap, copyPlayersFrom)),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'Failed to create event');
@@ -135,14 +135,15 @@ export function CreateEventDialog({
     if (screen === 'start') {
       if (!(await form.trigger(['event_date', 'location']))) return;
       if (startChoice === 'template' && templateEvent) {
-        const setup = templateToSetupValues(templateEvent);
+        const setup = templateToSetupValues(templateEvent, handicap);
         for (const [key, value] of Object.entries(setup)) {
           form.setValue(key as keyof typeof setup, value as never);
         }
         setScreen('sentence');
       } else {
-        for (const [key, value] of Object.entries(DEFAULT_EVENT_SETUP)) {
-          form.setValue(key as keyof typeof DEFAULT_EVENT_SETUP, value as never);
+        const setup = defaultEventSetup(handicap);
+        for (const [key, value] of Object.entries(setup)) {
+          form.setValue(key as keyof typeof setup, value as never);
         }
         setScreen('steps');
         setStep(0);
@@ -192,6 +193,7 @@ export function CreateEventDialog({
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-6 sm:px-7">
                 {screen === 'start' && templateEvent && (
                   <StartScreen
+                    ctx={handicap}
                     template={templateEvent}
                     dateSuggestions={dateSuggestions}
                     choice={startChoice}

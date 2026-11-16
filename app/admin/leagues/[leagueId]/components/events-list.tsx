@@ -9,7 +9,7 @@ import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
 import { EventStatusBadge, StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
-import type { EventSetupContext } from '@/lib/utils/event-setup';
+import { eventDistanceLabel, type EventSetupContext } from '@/lib/utils/event-setup';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
 
@@ -116,7 +116,7 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
           <div className="flex gap-6">
             <EventStat value={event.participant_count || 0} label="Participants" />
             <EventStat value={event.lane_count} label="Lanes" />
-            <EventStat value={`${event.putt_distance_ft} ft`} label="Distance" />
+            <EventStat value={eventDistanceLabel(event)} label="Distance" />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             <Button variant="outline" asChild>

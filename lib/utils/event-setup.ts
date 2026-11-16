@@ -17,16 +17,18 @@ export interface EventSetupValues {
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;
+  /** Players putt from their handicap zone; only possible when the league uses handicaps. */
+  handicap_enabled: boolean;
 }
 
 export interface EventSetupContext {
-  /** The league uses distance handicaps, so players putt from their zone, not one event distance. */
-  handicapEnabled: boolean;
+  /** The league uses distance handicaps, so its events can putt from players' zones. */
+  leagueHandicaps: boolean;
   /** The league ladder a new handicap event starts from. */
   zones: readonly ZoneDefinition[];
 }
 
-export const DEFAULT_EVENT_SETUP: EventSetupValues = {
+export const DEFAULT_EVENT_SETUP: Omit<EventSetupValues, 'handicap_enabled'> = {
   lane_count: 1,
   putt_distance_ft: 15,
   qualification_round_enabled: false,
@@ -40,6 +42,11 @@ export const DEFAULT_EVENT_SETUP: EventSetupValues = {
   admin_fee_per_player: null,
 };
 
+/** A new event's starting settings; a handicap league's events use handicaps unless the organizer opts out. */
+export function defaultEventSetup(ctx: EventSetupContext): EventSetupValues {
+  return { ...DEFAULT_EVENT_SETUP, handicap_enabled: ctx.leagueHandicaps };
+}
+
 /** Whether the organizer chooses how teams form; singles has only one way. */
 export function teamAssignmentApplies(teamSize: number): boolean {
   return teamAssignmentOptions(teamSize).length > 1;
@@ -50,8 +57,7 @@ export type ConditionalSetupField = 'team_assignment' | 'qualification_frame_cou
 
 export function setupFieldApplies(
   field: ConditionalSetupField,
-  values: Pick<EventSetupValues, 'team_size' | 'qualification_round_enabled'>,
-  ctx: Pick<EventSetupContext, 'handicapEnabled'>
+  values: Pick<EventSetupValues, 'team_size' | 'qualification_round_enabled' | 'handicap_enabled'>
 ): boolean {
   switch (field) {
     case 'team_assignment':
@@ -59,7 +65,7 @@ export function setupFieldApplies(
     case 'qualification_frame_count':
       return values.qualification_round_enabled;
     case 'putt_distance_ft':
-      return !ctx.handicapEnabled;
+      return !values.handicap_enabled;
   }
 }
 
@@ -93,8 +99,15 @@ export function teamFormatLabel(teamSize: number, assignment: TeamAssignment): s
   return phrase ? `${teamSizeLabel(teamSize)}, ${phrase}` : teamSizeLabel(teamSize);
 }
 
-export function distanceLabel(values: Pick<EventSetupValues, 'putt_distance_ft'>, ctx: EventSetupContext): string {
-  return ctx.handicapEnabled ? `zones ${zoneLadderLabel(ctx.zones)}` : `${values.putt_distance_ft} ft`;
+/** "zones 21 / 27 / 33 ft", "20 ft", or "20 ft for everyone" when the league could have used zones. */
+export function distanceLabel(values: Pick<EventSetupValues, 'putt_distance_ft' | 'handicap_enabled'>, ctx: EventSetupContext): string {
+  if (values.handicap_enabled) return `zones ${zoneLadderLabel(ctx.zones)}`;
+  return ctx.leagueHandicaps ? `${values.putt_distance_ft} ft for everyone` : `${values.putt_distance_ft} ft`;
+}
+
+/** An existing event's distance, from its own setting: its zone distances may differ from today's ladder. */
+export function eventDistanceLabel(event: { handicap_enabled: boolean; putt_distance_ft: number }): string {
+  return event.handicap_enabled ? 'By zone' : `${event.putt_distance_ft} ft`;
 }
 
 /** "no admin fee", "$1 per player to admin", "$1 per player + $5 to admin". */
@@ -145,8 +158,8 @@ export type SentencePart = { text: string; edit?: SetupEdit };
 
 /**
  * The whole event as plain sentences, with the changeable values marked. Settings
- * that don't apply (assignment for singles, frames without a qualification round, the
- * distance in a handicap league) never appear.
+ * that don't apply (assignment for singles, frames without a qualification round) never
+ * appear.
  */
 export function describeEventSetup(
   values: EventSetupValues,
@@ -168,11 +181,10 @@ export function describeEventSetup(
     { text: '. Played on ' },
     { text: `${values.lane_count} lane${values.lane_count === 1 ? '' : 's'}`, edit: 'lanes' },
   );
-  if (ctx.handicapEnabled) {
-    parts.push({ text: ` from each player's handicap zone (${zoneLadderLabel(ctx.zones)})` });
-  } else {
-    parts.push({ text: ' from ' }, { text: `${values.putt_distance_ft} ft`, edit: 'distance' });
-  }
+  parts.push({ text: ' from ' }, {
+    text: values.handicap_enabled ? `each player's handicap zone (${zoneLadderLabel(ctx.zones)})` : distanceLabel(values, ctx),
+    edit: 'distance',
+  });
   parts.push({ text: ' at ' }, { text: location?.trim() ? location.trim() : 'no location set', edit: 'location' });
   if (values.entry_fee_per_player) {
     parts.push(
@@ -207,8 +219,11 @@ export function eventFormatParts(event: {
   ];
 }
 
-/** A previous event's settings for a new one. Date, place, code, players and payouts are not settings. */
-export function templateToSetupValues(event: EventSetupValues): EventSetupValues {
+/**
+ * A previous event's settings for a new one. Date, place, code, players and payouts are
+ * not settings. Handicaps follow the template unless the league has since turned them off.
+ */
+export function templateToSetupValues(event: EventSetupValues, ctx: EventSetupContext): EventSetupValues {
   return {
     lane_count: event.lane_count,
     putt_distance_ft: event.putt_distance_ft,
@@ -221,6 +236,7 @@ export function templateToSetupValues(event: EventSetupValues): EventSetupValues
     entry_fee_per_player: event.entry_fee_per_player,
     admin_fees: event.admin_fees,
     admin_fee_per_player: event.admin_fee_per_player,
+    handicap_enabled: ctx.leagueHandicaps && event.handicap_enabled,
   };
 }
 
@@ -237,8 +253,12 @@ export interface CreateEventInput extends EventSetupValues {
   access_code: string;
 }
 
-/** The POST /api/league/[leagueId] body. */
-export function toCreateEventBody(values: CreateEventInput, copyPlayersFromEventId?: string | null) {
+/** The POST /api/league/[leagueId] body. The handicap choice is only sent where the league offers one. */
+export function toCreateEventBody(
+  values: CreateEventInput,
+  ctx: Pick<EventSetupContext, 'leagueHandicaps'>,
+  copyPlayersFromEventId?: string | null
+) {
   return {
     event_date: formatForDatabase(values.event_date),
     location: values.location?.trim() ? values.location.trim() : null,
@@ -254,6 +274,7 @@ export function toCreateEventBody(values: CreateEventInput, copyPlayersFromEvent
     admin_fee_per_player: values.admin_fee_per_player ?? null,
     team_size: values.team_size,
     team_assignment: values.team_assignment,
+    ...(ctx.leagueHandicaps ? { handicap_enabled: values.handicap_enabled } : {}),
     ...(copyPlayersFromEventId ? { copy_players_from_event_id: copyPlayersFromEventId } : {}),
   };
 }

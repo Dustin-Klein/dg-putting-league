@@ -8,8 +8,10 @@ import { cn } from '@/lib/utils/utils';
 import { formatDisplayDate, parseLocalDate } from '@/lib/utils/date-utils';
 import {
   describeEventSetup,
+  distanceLabel,
   formatMoney,
   teamFormatLabel,
+  templateToSetupValues,
   type EventSetupContext,
   type EventSetupValues,
   type SetupEdit,
@@ -40,17 +42,20 @@ export interface TemplateEvent extends EventSetupValues {
 
 export type StartChoice = 'template' | 'scratch';
 
-function templateChips(template: TemplateEvent): string[] {
+function templateChips(template: TemplateEvent, ctx: EventSetupContext): string[] {
+  const distance = distanceLabel(templateToSetupValues(template, ctx), ctx);
   return [
     teamFormatLabel(template.team_size, template.team_assignment),
     ...(template.qualification_round_enabled ? [`Qualification ${template.qualification_frame_count} frames`] : []),
     `Matches ${template.bracket_frame_count} frames`,
     `${template.lane_count} lane${template.lane_count === 1 ? '' : 's'}`,
+    distance.charAt(0).toUpperCase() + distance.slice(1),
     ...(template.entry_fee_per_player ? [`${formatMoney(template.entry_fee_per_player)} entry`] : []),
   ];
 }
 
 export function StartScreen({
+  ctx,
   template,
   dateSuggestions,
   choice,
@@ -58,6 +63,7 @@ export function StartScreen({
   copyPlayers,
   onCopyPlayersChange,
 }: {
+  ctx: EventSetupContext;
   template: TemplateEvent;
   dateSuggestions: Date[];
   choice: StartChoice;
@@ -97,7 +103,7 @@ export function StartScreen({
               </span>
             </label>
             <ul aria-label="Last event's settings" className="flex flex-wrap gap-1.5 pl-[30px]">
-              {templateChips(template).map((chip) => (
+              {templateChips(template, ctx).map((chip) => (
                 <li key={chip} className="rounded-full bg-background px-2.5 py-1 text-[13px] font-semibold">{chip}</li>
               ))}
             </ul>
@@ -140,7 +146,7 @@ const EDIT_FIELDS: Record<SetupEdit, CreateEventField[]> = {
   bracket_frames: ['bracket_frame_count'],
   grand_final: ['double_grand_final'],
   lanes: ['lane_count'],
-  distance: ['putt_distance_ft'],
+  distance: ['handicap_enabled', 'putt_distance_ft'],
   location: ['location'],
   entry_fee: ['entry_fee_per_player'],
   admin_fees: ['admin_fee_per_player', 'admin_fees'],

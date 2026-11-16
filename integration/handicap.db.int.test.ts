@@ -470,6 +470,54 @@ describe('event zone distances', () => {
     });
   });
 
+  it('are skipped for a one-distance event in a handicap league, which leaves zone periods alone', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const source = await handicapEvent(tx, leagueId, await newPlayers(tx, 2));
+      const periodBefore = await openPeriod(tx, leagueId, source.playerIds[0]);
+
+      const created = await createEvent({
+        league_id: leagueId,
+        event_date: '2026-10-15',
+        location: null,
+        lane_count: 2,
+        putt_distance_ft: 20,
+        access_code: `hc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+        qualification_round_enabled: false,
+        bracket_frame_count: 5,
+        qualification_frame_count: 5,
+        copy_players_from_event_id: source.eventId,
+        handicap_enabled: false,
+      });
+      expect(created.handicap_enabled).toBe(false);
+      expect(await tx.select().from(event_zone_distances).where(eq(event_zone_distances.event_id, created.id))).toEqual([]);
+      expect(await entryOf(tx, created.id, source.playerIds[0]))
+        .toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '20.00' });
+      expect(await openPeriod(tx, leagueId, source.playerIds[0])).toEqual(periodBefore);
+    });
+  });
+
+  it('refuse a handicap event in a league without handicaps', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await expect(createEvent({
+        league_id: leagueId,
+        event_date: '2026-10-15',
+        location: null,
+        lane_count: 2,
+        putt_distance_ft: 20,
+        access_code: `hc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+        qualification_round_enabled: false,
+        bracket_frame_count: 5,
+        qualification_frame_count: 5,
+        handicap_enabled: true,
+      })).rejects.toThrow(BadRequestError);
+    });
+  });
+
   it('follow ladder changes made after the event was created, until the first frame', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
@@ -837,6 +885,25 @@ describe('completed handicap events', () => {
         expect(entry).toMatchObject({ zone: 2, putt_distance_ft: '26.00' });
         expect(entry.zone_period_id).not.toBeNull();
       }
+    });
+  });
+
+  it('keep a one-distance parent one-distance in its second-chance event', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const parent = await handicapEvent(tx, leagueId, await newPlayers(tx, 8), { handicap: false });
+      await playEvent(tx, parent);
+      await complete(tx, parent.eventId);
+
+      const child = await createSecondChanceEvent(parent.eventId, {
+        access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+      });
+      expect(child.handicap_enabled).toBe(false);
+      const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) expect(entry).toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '15.00' });
     });
   });
 });

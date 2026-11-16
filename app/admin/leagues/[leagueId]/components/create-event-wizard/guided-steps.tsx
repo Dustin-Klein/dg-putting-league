@@ -43,14 +43,15 @@ export function stepFields(step: StepId, values: CreateEventFormValues, ctx: Eve
     case 'format':
       return [
         'team_size',
-        ...(setupFieldApplies('team_assignment', values, ctx) ? ['team_assignment' as const] : []),
+        ...(setupFieldApplies('team_assignment', values) ? ['team_assignment' as const] : []),
         'qualification_round_enabled',
-        ...(setupFieldApplies('qualification_frame_count', values, ctx) ? ['qualification_frame_count' as const] : []),
+        ...(setupFieldApplies('qualification_frame_count', values) ? ['qualification_frame_count' as const] : []),
       ];
     case 'scoring':
       return [
         'bracket_frame_count',
-        ...(setupFieldApplies('putt_distance_ft', values, ctx) ? ['putt_distance_ft' as const] : []),
+        ...(ctx.leagueHandicaps ? ['handicap_enabled' as const] : []),
+        ...(setupFieldApplies('putt_distance_ft', values) ? ['putt_distance_ft' as const] : []),
         'double_grand_final',
       ];
     case 'money':
@@ -164,7 +165,7 @@ export function GuidedStep({
       {id === 'format' && (
         <>
           <Question title="How do players enter the bracket?"><TeamSizeField /></Question>
-          {setupFieldApplies('team_assignment', values, ctx) && (
+          {setupFieldApplies('team_assignment', values) && (
             <Question title="How are teams formed?"><TeamAssignmentField /></Question>
           )}
           <Question title="Seed with a qualification round?"><QualificationField /></Question>

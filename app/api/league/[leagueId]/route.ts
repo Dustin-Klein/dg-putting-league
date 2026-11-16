@@ -30,6 +30,7 @@ const eventSchema = z.object({
   team_size: z.number().int().min(TEAM_SIZE_MIN).max(TEAM_SIZE_MAX).optional().default(2),
   team_assignment: z.enum(['random_pairing', 'random_flat', 'manual']).optional().default('random_pairing'),
   copy_players_from_event_id: z.string().uuid().optional(),
+  handicap_enabled: z.boolean().optional(),
 });
 
 export async function POST(

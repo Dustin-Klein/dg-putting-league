@@ -41,7 +41,7 @@ export default async function LeagueEventsPage({
       events={eventsWithParticipantCount}
       isAdmin={isAdmin}
       isOwner={isOwner}
-      handicap={{ handicapEnabled: handicapConfig.settings.enabled, zones: handicapConfig.zones }}
+      handicap={{ leagueHandicaps: handicapConfig.settings.enabled, zones: handicapConfig.zones }}
       leagueId={params.leagueId}
       initialTab={(await searchParams).tab === 'handicaps' && isAdmin ? 'handicaps' : 'events'}
     />

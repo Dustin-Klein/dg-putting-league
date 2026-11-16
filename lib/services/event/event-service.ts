@@ -28,7 +28,7 @@ import {
   restoreGrandFinalResetMatchTx,
 } from '@/lib/services/bracket';
 import { autoAssignLanesTx } from '@/lib/services/lane';
-import { lockEvent, lockEvents, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockEvents, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
 import * as teamDb from '@/lib/repositories/team-repository.db';
@@ -139,6 +139,8 @@ export async function createEvent(data: {
   team_size?: number;
   team_assignment?: TeamAssignment;
   copy_players_from_event_id?: string;
+  /** Omitted: follow the league. false: one distance for everyone in a handicap league. */
+  handicap_enabled?: boolean;
 }) {
   // 1. Auth check
   const { user, pg } = await authorizeLeagueAdmin(data.league_id);
@@ -157,7 +159,7 @@ export async function createEvent(data: {
   // 3. Format date — data.event_date is already YYYY-MM-DD from the form
   const formattedDate = data.event_date;
 
-  const { copy_players_from_event_id, entry_fee_per_player, admin_fees, admin_fee_per_player, ...eventData } = data;
+  const { copy_players_from_event_id, entry_fee_per_player, admin_fees, admin_fee_per_player, handicap_enabled, ...eventData } = data;
 
   let attemptedEventId: string | undefined;
   let newEvent: eventDb.EventData;
@@ -171,9 +173,15 @@ export async function createEvent(data: {
       }
 
       // Handicaps are snapshotted from the league: changing the league setting later
-      // doesn't change an event that was set up (and maybe played) under it.
+      // doesn't change an event that was set up (and maybe played) under it. The lock
+      // keeps the flag and the ladder from straddling a concurrent settings change.
+      await lockLeagueHandicap(tx, data.league_id);
       const handicap = await handicapDb.getLeagueHandicapSettings(tx, data.league_id);
-      const handicapEnabled = handicap?.settings.enabled ?? false;
+      const leagueHandicaps = handicap?.settings.enabled ?? false;
+      if (handicap_enabled && !leagueHandicaps) {
+        throw new BadRequestError('This league does not use distance handicaps');
+      }
+      const handicapEnabled = leagueHandicaps && handicap_enabled !== false;
       const created = await eventDb.createEvent(tx, {
         ...eventData,
         access_code: accessCode,

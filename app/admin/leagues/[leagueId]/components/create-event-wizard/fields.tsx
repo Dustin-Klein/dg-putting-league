@@ -2,7 +2,7 @@
 
 import { useId, useState } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
-import { CalendarIcon, Minus, Plus, RefreshCw, Ruler } from 'lucide-react';
+import { CalendarIcon, ExternalLink, Minus, Plus, RefreshCw, Ruler } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
@@ -360,32 +360,28 @@ export function ZoneLadder({ zones }: { zones: EventSetupContext['zones'] }) {
   );
 }
 
-export function DistanceField({ ctx }: { ctx: EventSetupContext }) {
+function HandicapSettingsLink() {
+  return (
+    <a
+      href="?tab=handicaps"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 font-semibold text-info hover:underline"
+    >
+      Handicap settings
+      <ExternalLink className="size-3.5" aria-hidden="true" />
+      <span className="sr-only">(opens in a new tab)</span>
+    </a>
+  );
+}
+
+function FixedDistanceInput() {
   const { register } = useFormContext<CreateEventFormValues>();
-  const id = useId();
-  if (ctx.handicapEnabled) {
-    return (
-      <div className="flex flex-col gap-3.5 rounded-xl border-[1.5px] border-input bg-muted p-4">
-        <div className="flex items-start gap-3">
-          <Ruler className="mt-0.5 size-5 shrink-0 text-info" aria-hidden="true" />
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-bold">From their handicap zone</span>
-            <span className="text-[13px] text-muted-foreground">
-              This league uses distance handicaps, so there&apos;s no single event distance. You can adjust tonight&apos;s
-              distances on the event page until the first frame is scored.
-            </span>
-          </div>
-        </div>
-        <ZoneLadder zones={ctx.zones} />
-      </div>
-    );
-  }
   return (
     <>
       <SettingRow title="Putt distance" description="Same line on every lane">
         <span className="flex items-center gap-2">
           <Input
-            id={id}
             type="number"
             step="0.5"
             min="1"
@@ -398,6 +394,54 @@ export function DistanceField({ ctx }: { ctx: EventSetupContext }) {
       </SettingRow>
       <FieldError name="putt_distance_ft" />
     </>
+  );
+}
+
+export function DistanceField({ ctx }: { ctx: EventSetupContext }) {
+  const { field } = useController<CreateEventFormValues, 'handicap_enabled'>({ name: 'handicap_enabled' });
+  if (!ctx.leagueHandicaps) {
+    return (
+      <div className="flex flex-col gap-2.5">
+        <FixedDistanceInput />
+        <p className="text-[13px] text-muted-foreground">
+          Leagues can use distance handicaps instead. <HandicapSettingsLink />
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2.5">
+      <p className="text-[13px] text-muted-foreground">
+        This league uses distance handicaps. <HandicapSettingsLink />
+      </p>
+      <div role="radiogroup" aria-label="Putt distance" className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <ChoiceCard
+          name="handicap_enabled"
+          checked={field.value === true}
+          onSelect={() => field.onChange(true)}
+          title="From handicap zones"
+          description="Moves players between zones as usual."
+        />
+        <ChoiceCard
+          name="handicap_enabled"
+          checked={field.value === false}
+          onSelect={() => field.onChange(false)}
+          title="One distance for everyone"
+          description="Nobody changes zone from this event. Results still count in player stats."
+        />
+      </div>
+      {field.value ? (
+        <div className="flex flex-col gap-3 rounded-xl bg-muted p-4">
+          <ZoneLadder zones={ctx.zones} />
+          <span className="flex items-start gap-2 text-[13px] text-muted-foreground">
+            <Ruler className="mt-0.5 size-4 shrink-0 text-info" aria-hidden="true" />
+            You can adjust tonight&apos;s zone distances on the event page until the first frame is scored.
+          </span>
+        </div>
+      ) : (
+        <FixedDistanceInput />
+      )}
+    </div>
   );
 }
 

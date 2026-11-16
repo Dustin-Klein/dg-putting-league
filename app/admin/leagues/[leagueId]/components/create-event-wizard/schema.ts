@@ -21,6 +21,7 @@ export const createEventSchema = z.object({
   admin_fee_per_player: money,
   team_size: z.coerce.number().int().min(TEAM_SIZE_MIN).max(TEAM_SIZE_MAX),
   team_assignment: z.enum(['random_pairing', 'random_flat', 'manual']),
+  handicap_enabled: z.boolean(),
 }).refine(
   (values) => teamAssignmentOptions(values.team_size).some((option) => option.value === values.team_assignment),
   { message: 'Choose how teams are formed for this team size', path: ['team_assignment'] }

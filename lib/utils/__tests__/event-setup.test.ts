@@ -1,7 +1,9 @@
 import {
-  DEFAULT_EVENT_SETUP,
   adminFeeLabel,
+  defaultEventSetup,
   describeEventSetup,
+  distanceLabel,
+  eventDistanceLabel,
   eventFormatParts,
   formatMoney,
   generateAccessCode,
@@ -14,9 +16,9 @@ import {
   type EventSetupValues,
 } from '../event-setup';
 
-const FLAT: EventSetupContext = { handicapEnabled: false, zones: [] };
+const FLAT: EventSetupContext = { leagueHandicaps: false, zones: [] };
 const ZONES: EventSetupContext = {
-  handicapEnabled: true,
+  leagueHandicaps: true,
   zones: [
     { zone: 3, distance_ft: 33 },
     { zone: 1, distance_ft: 21 },
@@ -24,7 +26,7 @@ const ZONES: EventSetupContext = {
   ],
 };
 
-const setup = (overrides: Partial<EventSetupValues> = {}): EventSetupValues => ({ ...DEFAULT_EVENT_SETUP, ...overrides });
+const setup = (overrides: Partial<EventSetupValues> = {}, ctx = FLAT): EventSetupValues => ({ ...defaultEventSetup(ctx), ...overrides });
 const sentence = (values: EventSetupValues, ctx = FLAT, location: string | null = 'Brewhouse') =>
   describeEventSetup(values, ctx, location).map((part) => part.text).join('');
 const edits = (values: EventSetupValues, ctx = FLAT) =>
@@ -32,19 +34,20 @@ const edits = (values: EventSetupValues, ctx = FLAT) =>
 
 describe('setupFieldApplies', () => {
   it('asks how teams form only when there is a choice', () => {
-    expect(setupFieldApplies('team_assignment', setup({ team_size: 1 }), FLAT)).toBe(false);
-    expect(setupFieldApplies('team_assignment', setup({ team_size: 2 }), FLAT)).toBe(true);
-    expect(setupFieldApplies('team_assignment', setup({ team_size: 4 }), FLAT)).toBe(true);
+    expect(setupFieldApplies('team_assignment', setup({ team_size: 1 }))).toBe(false);
+    expect(setupFieldApplies('team_assignment', setup({ team_size: 2 }))).toBe(true);
+    expect(setupFieldApplies('team_assignment', setup({ team_size: 4 }))).toBe(true);
   });
 
   it('asks for qualification frames only with a qualification round', () => {
-    expect(setupFieldApplies('qualification_frame_count', setup({ qualification_round_enabled: false }), FLAT)).toBe(false);
-    expect(setupFieldApplies('qualification_frame_count', setup({ qualification_round_enabled: true }), FLAT)).toBe(true);
+    expect(setupFieldApplies('qualification_frame_count', setup({ qualification_round_enabled: false }))).toBe(false);
+    expect(setupFieldApplies('qualification_frame_count', setup({ qualification_round_enabled: true }))).toBe(true);
   });
 
-  it('asks for a putt distance only without handicaps', () => {
-    expect(setupFieldApplies('putt_distance_ft', setup(), FLAT)).toBe(true);
-    expect(setupFieldApplies('putt_distance_ft', setup(), ZONES)).toBe(false);
+  it('asks for a putt distance only when the event does not use handicaps', () => {
+    expect(setupFieldApplies('putt_distance_ft', setup())).toBe(true);
+    expect(setupFieldApplies('putt_distance_ft', setup({}, ZONES))).toBe(false);
+    expect(setupFieldApplies('putt_distance_ft', setup({ handicap_enabled: false }, ZONES))).toBe(true);
   });
 });
 
@@ -63,7 +66,7 @@ describe('labels', () => {
 
   it('summarizes each step, with zones in order for a handicap league', () => {
     const summary = setupSummary(
-      setup({ qualification_round_enabled: true, entry_fee_per_player: 10, admin_fee_per_player: 1 }),
+      setup({ qualification_round_enabled: true, entry_fee_per_player: 10, admin_fee_per_player: 1 }, ZONES),
       ZONES
     );
     expect(summary).toEqual({
@@ -72,6 +75,13 @@ describe('labels', () => {
       money: '$10 entry · $1 per player to admin',
     });
     expect(setupSummary(setup(), FLAT).money).toBe('No entry fee');
+  });
+
+  it('describes the distance from the event, noting a one-distance night in a handicap league', () => {
+    expect(distanceLabel(setup({ putt_distance_ft: 20 }), FLAT)).toBe('20 ft');
+    expect(distanceLabel(setup({ putt_distance_ft: 20, handicap_enabled: false }, ZONES), ZONES)).toBe('20 ft for everyone');
+    expect(eventDistanceLabel({ handicap_enabled: true, putt_distance_ft: 15 })).toBe('By zone');
+    expect(eventDistanceLabel({ handicap_enabled: false, putt_distance_ft: 20 })).toBe('20 ft');
   });
 });
 
@@ -82,7 +92,7 @@ describe('describeEventSetup', () => {
       qualification_round_enabled: true,
       entry_fee_per_player: 10,
       admin_fee_per_player: 1,
-    }), ZONES)).toBe(
+    }, ZONES), ZONES)).toBe(
       'Doubles, one from each pool, seeded by a 5-frame qualification round. Bracket matches are 5 frames, ' +
       "double elimination with a bracket reset. Played on 4 lanes from each player's handicap zone (21 / 27 / 33 ft) " +
       'at Brewhouse. Entry is $10, $1 per player to admin.'
@@ -94,8 +104,8 @@ describe('describeEventSetup', () => {
     expect(edits(singles)).not.toContain('team_assignment');
     expect(sentence(singles)).toContain('Singles, seeded by past averages.');
     expect(sentence(singles)).toContain('Played on 1 lane from 15 ft');
-    expect(edits(setup(), ZONES)).not.toContain('distance');
-    expect(edits(setup(), FLAT)).toContain('distance');
+    expect(sentence(setup({ handicap_enabled: false, putt_distance_ft: 20 }, ZONES), ZONES)).toContain('from 20 ft for everyone at');
+    expect(edits(setup({}, ZONES), ZONES)).toContain('distance');
     expect(sentence(setup(), FLAT, '  ')).toContain('at no location set. No entry fee.');
     expect(edits(setup())).not.toContain('admin_fees');
   });
@@ -130,9 +140,15 @@ describe('templateToSetupValues', () => {
       payout_structure: [{ place: 1, percentage: 100 }],
       status: 'completed',
     };
-    expect(templateToSetupValues(template)).toEqual(
+    expect(templateToSetupValues(template, FLAT)).toEqual(
       setup({ lane_count: 4, team_size: 3, team_assignment: 'manual', entry_fee_per_player: 10, admin_fees: 5 })
     );
+  });
+
+  it("repeats the template's handicap choice unless the league has since turned handicaps off", () => {
+    expect(templateToSetupValues(setup({ handicap_enabled: false }, ZONES), ZONES).handicap_enabled).toBe(false);
+    expect(templateToSetupValues(setup({}, ZONES), ZONES).handicap_enabled).toBe(true);
+    expect(templateToSetupValues(setup({}, ZONES), FLAT).handicap_enabled).toBe(false);
   });
 });
 
@@ -157,7 +173,7 @@ describe('toCreateEventBody', () => {
   };
 
   it('matches the create-event API body', () => {
-    expect(toCreateEventBody(input, 'source-1')).toEqual({
+    expect(toCreateEventBody(input, FLAT, 'source-1')).toEqual({
       event_date: '2026-11-17',
       location: 'Brewhouse',
       lane_count: 1,
@@ -177,9 +193,14 @@ describe('toCreateEventBody', () => {
   });
 
   it('omits the copy source and blank locations', () => {
-    const body = toCreateEventBody({ ...input, location: ' ' }, null);
+    const body = toCreateEventBody({ ...input, location: ' ' }, FLAT, null);
     expect(body.location).toBeNull();
     expect(body).not.toHaveProperty('copy_players_from_event_id');
+    expect(body).not.toHaveProperty('handicap_enabled');
+  });
+
+  it('sends the handicap choice only in a handicap league', () => {
+    expect(toCreateEventBody({ ...input, handicap_enabled: false }, ZONES)).toMatchObject({ handicap_enabled: false });
   });
 });
 

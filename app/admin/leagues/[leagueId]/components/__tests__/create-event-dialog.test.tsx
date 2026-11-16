@@ -13,7 +13,7 @@ jest.mock('@/components/ui/calendar', () => ({
 }));
 
 const ZONES: EventSetupContext = {
-  handicapEnabled: true,
+  leagueHandicaps: true,
   zones: [
     { zone: 1, distance_ft: 21 },
     { zone: 2, distance_ft: 27 },
@@ -23,6 +23,7 @@ const ZONES: EventSetupContext = {
 
 const TEMPLATE: TemplateEvent = {
   ...DEFAULT_EVENT_SETUP,
+  handicap_enabled: true,
   id: '11111111-1111-4111-8111-111111111111',
   event_date: '2026-11-10',
   location: 'Brewhouse',
@@ -115,6 +116,7 @@ describe('CreateEventDialog: guided steps', () => {
     });
     expect(body.access_code).toMatch(/^[A-Z2-9]{6}$/);
     expect(body).not.toHaveProperty('copy_players_from_event_id');
+    expect(body).not.toHaveProperty('handicap_enabled');
   });
 
   it('shows the zone ladder instead of a distance in a handicap league', async () => {
@@ -128,6 +130,30 @@ describe('CreateEventDialog: guided steps', () => {
     expect(screen.queryByLabelText('Putt distance in feet')).not.toBeInTheDocument();
     const ladder = screen.getByRole('list', { name: 'Zone distances' });
     expect(within(ladder).getByText('27 ft')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /From handicap zones/ })).toBeChecked();
+    expect(screen.getByRole('link', { name: /Handicap settings/ })).toHaveAttribute('target', '_blank');
+  });
+
+  it('lets a handicap league run one distance for everyone', async () => {
+    render(<CreateEventDialog leagueId="league-1" handicap={ZONES} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+    await pickDate();
+    next();
+    await screen.findByRole('heading', { name: 'How is the night played?' });
+    next();
+    await screen.findByRole('heading', { name: 'How long and how far?' });
+    fireEvent.click(screen.getByRole('radio', { name: /One distance for everyone/ }));
+    expect(screen.queryByRole('list', { name: 'Zone distances' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Putt distance in feet'), { target: { value: '20' } });
+    next();
+    await screen.findByRole('heading', { name: 'Any fees?' });
+    next();
+    await screen.findByRole('heading', { name: 'Ready to create' });
+    expect(screen.getByText(/20 ft for everyone/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create event' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(postedBody()).toMatchObject({ handicap_enabled: false, putt_distance_ft: 20 });
   });
 
   it('returns to review with the server error', async () => {
@@ -160,7 +186,7 @@ describe('CreateEventDialog: repeat last event', () => {
     next();
     expect(await screen.findByText(/tap anything underlined/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Lanes: 4 lanes/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Putt distance/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Putt distance: each player's handicap zone/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Create event' }));
 
     await waitFor(() => expect(push).toHaveBeenCalled());
@@ -171,6 +197,7 @@ describe('CreateEventDialog: repeat last event', () => {
       qualification_round_enabled: true,
       entry_fee_per_player: 10,
       admin_fee_per_player: 1,
+      handicap_enabled: true,
       copy_players_from_event_id: TEMPLATE.id,
     });
     // Next Tuesday on or after today.
@@ -194,6 +221,23 @@ describe('CreateEventDialog: repeat last event', () => {
     const body = postedBody();
     expect(body.lane_count).toBe(5);
     expect(body).not.toHaveProperty('copy_players_from_event_id');
+  });
+
+  it('repeats a one-distance night as one distance', async () => {
+    render(
+      <CreateEventDialog
+        leagueId="league-1"
+        templateEvent={{ ...TEMPLATE, handicap_enabled: false, putt_distance_ft: 20 }}
+        handicap={ZONES}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+    expect(await screen.findByText('20 ft for everyone')).toBeInTheDocument();
+    next();
+    expect(await screen.findByRole('button', { name: /^Putt distance: 20 ft for everyone/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create event' }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(postedBody()).toMatchObject({ handicap_enabled: false, putt_distance_ft: 20 });
   });
 
   it('falls through to the guided steps from scratch', async () => {
