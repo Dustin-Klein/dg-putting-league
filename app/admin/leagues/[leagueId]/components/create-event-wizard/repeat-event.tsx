@@ -67,7 +67,9 @@ export function StartScreen({
 }) {
   const cardClass =
     'flex cursor-pointer gap-3 rounded-[14px] border-[1.5px] border-input bg-control p-4 transition-colors hover:border-foreground/40 ' +
-    'has-[:checked]:border-foreground has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-foreground)] has-[:checked]:bg-accent has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50';
+    'has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50';
+  // Not has-[:checked]: the template card also holds the copy-players checkbox.
+  const selectedClass = 'border-foreground hover:border-foreground shadow-[inset_0_0_0_1px_var(--color-foreground)] bg-accent';
   return (
     <div className="flex flex-col gap-7">
       <Question title="Which night?">
@@ -77,7 +79,7 @@ export function StartScreen({
 
       <Question title="Start from">
         <div role="radiogroup" aria-label="Start from" className="flex flex-col gap-2.5">
-          <div className={cn(cardClass, 'flex-col')}>
+          <div className={cn(cardClass, 'flex-col', choice === 'template' && selectedClass)}>
             <label className="flex cursor-pointer items-start gap-3">
               <input
                 type="radio"
@@ -112,7 +114,7 @@ export function StartScreen({
               </label>
             )}
           </div>
-          <label className={cardClass}>
+          <label className={cn(cardClass, choice === 'scratch' && selectedClass)}>
             <input
               type="radio"
               name="start-from"
