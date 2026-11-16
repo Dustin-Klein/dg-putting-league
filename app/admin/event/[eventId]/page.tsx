@@ -6,9 +6,9 @@ import { EventWithDetails } from '@/lib/types/event';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EntryZoneCell, EventHandicapProvider, EventHandicapSummary } from './components/event-handicap';
+import { EventBracketProvider } from './components/event-bracket-context';
 
 function EventContent({
   event,
@@ -136,28 +136,29 @@ export default function EventPage({
         {/* Back link skeleton */}
         <Skeleton className="h-5 w-28 mb-4" />
 
-        {/* Event header card skeleton */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-start">
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-48" />
-                <Skeleton className="h-5 w-32" />
+        {/* Event header skeleton */}
+        <div className="flex flex-col gap-[18px]">
+          <div className="flex items-center justify-between gap-6 rounded-[18px] border px-[30px] py-[26px]">
+            <div className="space-y-2.5">
+              <Skeleton className="h-14 w-64" />
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-80" />
+            </div>
+            <Skeleton className="hidden h-[60px] w-72 sm:block" />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton className="h-8 w-full max-w-[624px]" />
+            <Skeleton className="h-11 w-36" />
+          </div>
+          <div className="grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-8 w-16" />
               </div>
-              <Skeleton className="h-10 w-32" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="space-y-1">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-6 w-16" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        </div>
 
         {/* Content section skeleton */}
         <div className="mt-8 space-y-4">
@@ -176,7 +177,7 @@ export default function EventPage({
     );
   }
 
-  const body = (
+  const content = (
     <>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       <div className="mt-8">
@@ -184,6 +185,9 @@ export default function EventPage({
       </div>
     </>
   );
+  const body = event.status === 'bracket'
+    ? <EventBracketProvider eventId={event.id}>{content}</EventBracketProvider>
+    : content;
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 pt-8 pb-14 md:px-6">

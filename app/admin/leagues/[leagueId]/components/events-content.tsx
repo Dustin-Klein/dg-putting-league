@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import type { EventData } from '@/lib/repositories/event-repository.db';
+import type { EventSetupContext } from '@/lib/utils/event-setup';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
 
@@ -17,9 +18,10 @@ interface EventsContentProps {
   isOwner: boolean;
   leagueId: string;
   initialTab?: 'events' | 'handicaps';
+  handicap?: EventSetupContext;
 }
 
-export function EventsContent({ league, events, isAdmin, isOwner, leagueId, initialTab = 'events' }: EventsContentProps) {
+export function EventsContent({ league, events, isAdmin, isOwner, leagueId, initialTab = 'events', handicap }: EventsContentProps) {
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 pt-8 pb-14 md:px-6">
       <div className="flex flex-col gap-2.5">
@@ -55,6 +57,7 @@ export function EventsContent({ league, events, isAdmin, isOwner, leagueId, init
                 leagueId={leagueId}
                 leagueName={league.name}
                 isAdmin={isAdmin}
+                handicap={handicap}
               />
             </div>
             {isOwner && (

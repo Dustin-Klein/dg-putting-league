@@ -48,14 +48,22 @@ export const TEAM_SIZE_LABELS: Record<number, string> = {
  * draw exists only for doubles. Singles has one option: every player is their own
  * entrant, seeded by score.
  */
-export function teamAssignmentOptions(teamSize: number): Array<{ value: TeamAssignment; label: string }> {
+export function teamAssignmentOptions(
+  teamSize: number
+): Array<{ value: TeamAssignment; label: string; description: string }> {
   if (teamSize === 1) {
-    return [{ value: 'random_pairing', label: 'Every player enters alone' }];
+    return [{ value: 'random_pairing', label: 'Every player enters alone', description: 'Seeded by score.' }];
   }
   return [
-    ...(teamSize === 2 ? [{ value: 'random_pairing' as const, label: 'Random draw, one from Pool A and Pool B' }] : []),
-    { value: 'random_flat', label: 'Random draw, no pools' },
-    { value: 'manual', label: 'Organizer picks teams' },
+    ...(teamSize === 2
+      ? [{
+          value: 'random_pairing' as const,
+          label: 'Random draw, one from Pool A and Pool B',
+          description: 'Pools split the field by skill, so every team is balanced.',
+        }]
+      : []),
+    { value: 'random_flat', label: 'Random draw, no pools', description: 'Anyone can be paired with anyone.' },
+    { value: 'manual', label: 'Organizer picks teams', description: 'You set the teams before the bracket starts.' },
   ];
 }
 

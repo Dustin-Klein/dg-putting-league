@@ -1,42 +1,175 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, Lock, Pencil } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { QRCodeSVG } from 'qrcode.react';
+import { Check, Copy, Lock, Pencil, QrCode } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useToast } from '@/components/ui/use-toast';
+import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
+import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/utils';
 import { NextStatusButton } from '@/components/next-status-button';
+import { zoneColorClass } from '@/components/zone-badge';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
+import { eventFormatParts, formatMoney } from '@/lib/utils/event-setup';
+import { bracketProgress, headerStats, type BracketProgress, type HeaderStat } from '@/lib/utils/event-progress';
 import type { EventStatus, EventWithDetails } from '@/lib/types/event';
-import { describeTeamFormat } from '@/lib/utils/team-utils';
-import { ZoneDistancesPopover, useEventHandicap, zoneLadderText } from './event-handicap';
+import { ZoneDistancesPopover, useEventHandicap } from './event-handicap';
+import { useEventBracket } from './event-bracket-context';
 
-const STEPS: { status: EventStatus; label: string }[] = [
-  { status: 'created', label: 'Created' },
-  { status: 'pre-bracket', label: 'Pre-Bracket' },
-  { status: 'bracket', label: 'Bracket' },
-  { status: 'completed', label: 'Completed' },
+interface QualificationProgress {
+  done: number;
+  total: number;
+}
+
+/**
+ * Players who finished their qualification frames; admins only, before the bracket.
+ * Refreshes on the same qualification_frames changes the roster listens to.
+ */
+function useQualificationProgress(event: EventWithDetails): QualificationProgress | null {
+  const [progress, setProgress] = useState<QualificationProgress | null>(null);
+  const active = event.viewer_is_admin === true && event.status === 'pre-bracket' && event.qualification_round_enabled;
+  const playerCount = event.players.length;
+
+  const load = useCallback(async (signal: AbortSignal) => {
+    try {
+      const response = await fetch(`/api/event/${event.id}/qualification`, { signal });
+      if (!response.ok || signal.aborted) return;
+      const data: { players?: Array<{ is_complete: boolean }> } = await response.json();
+      if (signal.aborted || !data.players) return;
+      setProgress({ done: data.players.filter((player) => player.is_complete).length, total: data.players.length });
+    } catch {
+      // Progress is a hint; the roster below shows the authoritative status.
+    }
+  }, [event.id]);
+  const refresh = useCoalescedRefresh(load, event.id);
+
+  useEffect(() => {
+    if (active) refresh.refresh();
+  }, [active, refresh, playerCount]);
+
+  useEffect(() => {
+    if (!active) return;
+    const channel = createClient()
+      .channel(`header-qualification-${event.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'putting_league', table: 'qualification_frames', filter: `event_id=eq.${event.id}` },
+        () => refresh.request()
+      )
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [active, event.id, refresh]);
+
+  return active ? progress : null;
+}
+
+function ScoringCode({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast({ title: 'Could not copy', description: 'Select the code and copy it instead.' });
+    }
+  };
+  const iconButton =
+    'flex h-[27px] w-11 items-center justify-center rounded-md border text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden';
+  return (
+    <div className="flex flex-col items-start gap-2.5 sm:items-end">
+      <span className="text-xs font-bold tracking-[0.08em] text-muted-foreground uppercase">Scoring code · /score</span>
+      <div className="flex items-center gap-2.5">
+        {code.length <= 8 ? (
+          <span aria-label={code} className="flex gap-1.5">
+            {code.split('').map((char, index) => (
+              <span
+                key={index}
+                aria-hidden="true"
+                className="flex h-[52px] w-[38px] items-center justify-center rounded-lg border bg-card font-score text-[34px] font-bold text-gold uppercase sm:h-[60px] sm:w-[46px] sm:text-[40px]"
+              >
+                {char}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <code className="rounded-lg border bg-card px-3 py-2 font-score text-[34px] leading-none font-bold tracking-[0.08em] break-all text-gold uppercase sm:text-[40px]">
+            {code}
+          </code>
+        )}
+        <span className="flex flex-col gap-1.5">
+          <button type="button" aria-label={copied ? 'Copied' : 'Copy scoring code'} onClick={copy} className={iconButton}>
+            {copied ? <Check className="size-[15px] text-success" aria-hidden="true" /> : <Copy className="size-[15px]" aria-hidden="true" />}
+          </button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label="Show scoring QR code" className={iconButton}>
+                <QrCode className="size-[15px]" aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-auto rounded-[14px] p-3">
+              <div className="rounded-lg bg-white p-2">
+                <QRCodeSVG
+                  value={`${window.location.origin}/score?code=${encodeURIComponent(code)}`}
+                  size={176}
+                  marginSize={1}
+                  role="img"
+                  aria-label="Scan to keep score"
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const PHASES: Array<{ status: EventStatus; label: (qualifying: boolean) => string }> = [
+  { status: 'created', label: () => 'Registration' },
+  { status: 'pre-bracket', label: (qualifying) => (qualifying ? 'Qualifying' : 'Pre-bracket') },
+  { status: 'bracket', label: () => 'Bracket' },
+  { status: 'completed', label: () => 'Done' },
 ];
 
-function StatusSteps({ status }: { status: EventStatus }) {
-  const currentIndex = STEPS.findIndex((step) => step.status === status);
+function StatusTrack({
+  event,
+  progress,
+}: {
+  event: EventWithDetails;
+  progress: { done: number; total: number } | null;
+}) {
+  const current = PHASES.findIndex((phase) => phase.status === event.status);
   return (
-    <ol aria-label="Event status" className="flex flex-wrap items-center gap-1 text-[13px] font-semibold">
-      {STEPS.map((step, index) => {
-        const done = index < currentIndex;
-        const current = index === currentIndex;
+    <ol aria-label="Event status" className="grid w-full max-w-[624px] grid-cols-4 gap-1.5">
+      {PHASES.map((phase, index) => {
+        const done = index < current || event.status === 'completed';
+        const active = index === current && event.status !== 'completed';
+        const fraction = active && progress && progress.total > 0 ? progress.done / progress.total : 0;
         return (
           <li
-            key={step.status}
-            aria-current={current ? 'step' : undefined}
+            key={phase.status}
+            aria-current={index === current ? 'step' : undefined}
             className={cn(
-              'inline-flex items-center gap-1 rounded-full px-2.5 py-1',
-              current && 'bg-foreground text-background',
-              done && 'text-foreground',
-              !done && !current && 'text-muted-foreground'
+              'flex min-w-0 flex-col gap-1.5 text-[13px] font-semibold',
+              active ? 'font-bold' : done ? 'text-foreground/80' : 'text-muted-foreground'
             )}
           >
-            {done && <Check className="size-3.5" aria-hidden="true" />}
-            {step.label}
+            <span className="h-1 overflow-hidden rounded-full bg-input" aria-hidden="true">
+              <span
+                className={cn('block h-full rounded-full', done ? 'bg-success' : active ? 'bg-success' : 'bg-transparent')}
+                style={{ width: done ? '100%' : active ? `${Math.max(fraction * 100, 6)}%` : '0%' }}
+              />
+            </span>
+            <span className="truncate">
+              {phase.label(event.qualification_round_enabled)}
+              {active && progress ? ` · ${progress.done} of ${progress.total}` : ''}
+            </span>
           </li>
         );
       })}
@@ -44,132 +177,204 @@ function StatusSteps({ status }: { status: EventStatus }) {
   );
 }
 
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+function Stat({ label, children, first }: { label: React.ReactNode; children: React.ReactNode; first?: boolean }) {
   return (
-    <div className="flex flex-col gap-1 rounded-[14px] border bg-card p-4">
-      <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
-      {children}
+    <div className={cn('flex min-w-0 flex-col gap-1 py-1', !first && 'sm:border-l sm:pl-5', 'sm:pr-5')}>
+      <dt className="flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground">{label}</dt>
+      <dd className="m-0 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">{children}</dd>
     </div>
   );
 }
 
+const big = 'font-score text-[34px] leading-none font-bold tabular-nums';
+
+function DistanceStat({ event, first }: { event: EventWithDetails; first: boolean }) {
+  const handicap = useEventHandicap();
+  const view = handicap?.view;
+  if (!event.handicap_enabled) {
+    return <Stat label="Distance" first={first}><span className={big}>{event.putt_distance_ft} ft</span></Stat>;
+  }
+  if (!view || view.zones.length === 0) {
+    return <Stat label="Distance" first={first}><span className={big}>By zone</span></Stat>;
+  }
+  const ladder = (
+    <span className="flex items-center gap-2">
+      {view.zones.map((zone) => (
+        <span key={zone.zone} className="inline-flex items-center gap-1.5">
+          <span className={cn('size-2.5 rounded-full', zoneColorClass(zone.zone))} aria-hidden="true" />
+          <span className="font-score text-[28px] leading-none font-bold tabular-nums">{zone.distance_ft}</span>
+        </span>
+      ))}
+      <span className="text-[13px] text-muted-foreground">ft</span>
+    </span>
+  );
+  const ladderText = view.zones.map((zone) => `Zone ${zone.zone} ${zone.distance_ft} feet`).join(', ');
+  return (
+    <Stat
+      first={first}
+      label={
+        <>
+          {event.status === 'created' || event.status === 'pre-bracket' ? 'Distances tonight' : 'Distances'}
+          {view.editable
+            ? <Pencil className="size-3.5" aria-hidden="true" />
+            : <Lock className="size-3.5" aria-label="Locked" role="img" />}
+        </>
+      }
+    >
+      <ZoneDistancesPopover>
+        <button
+          type="button"
+          aria-label={`${ladderText}. ${view.editable ? 'Edit' : 'View'} tonight's zone distances`}
+          className="-mx-1.5 rounded-md px-1.5 py-0.5 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden"
+        >
+          {ladder}
+        </button>
+      </ZoneDistancesPopover>
+    </Stat>
+  );
+}
+
+function StatCell({
+  stat,
+  event,
+  bracket,
+  first,
+}: {
+  stat: HeaderStat;
+  event: EventWithDetails;
+  bracket: BracketProgress | null;
+  first: boolean;
+}) {
+  const players = event.players;
+  const isAdmin = event.viewer_is_admin === true;
+  switch (stat) {
+    case 'players': {
+      const unpaid = players.filter((player) => player.payment_type === null).length;
+      return (
+        <Stat label="Players" first={first}>
+          <span className={big}>{players.length}</span>
+          {isAdmin && players.length > 0 && (
+            unpaid > 0
+              ? <span className="text-[13px] font-semibold text-warning">{unpaid} unpaid</span>
+              : <span className="text-[13px] text-muted-foreground">all paid</span>
+          )}
+        </Stat>
+      );
+    }
+    case 'pot': {
+      const fee = Number(event.entry_fee_per_player ?? 0);
+      const cash = players.filter((player) => player.payment_type === 'cash').length * fee;
+      const electronic = players.filter((player) => player.payment_type === 'electronic').length * fee;
+      return (
+        <Stat label={`Pot · ${formatMoney(fee)} entry`} first={first}>
+          <span className={big}>{formatMoney(cash + electronic)}</span>
+          <span className="text-[13px] text-muted-foreground">{formatMoney(cash)} cash · {formatMoney(electronic)} electronic</span>
+        </Stat>
+      );
+    }
+    case 'lanes':
+      return <Stat label="Lanes" first={first}><span className={big}>{event.lane_count}</span></Stat>;
+    case 'matches':
+      return (
+        <Stat label="Matches played" first={first}>
+          <span className={big}>
+            {bracket ? bracket.played : '–'}
+            <span className="text-muted-foreground">/{bracket ? bracket.total : '–'}</span>
+          </span>
+        </Stat>
+      );
+    case 'lanes_live':
+      return (
+        <Stat label="Lanes" first={first}>
+          {bracket && bracket.lanes.length > 0 ? (
+            <>
+              <span className="flex flex-wrap gap-1.5">
+                {bracket.lanes.map((lane) => (
+                  <span
+                    key={lane.id}
+                    title={`${lane.label}: ${lane.inPlay ? 'in play' : 'open'}`}
+                    className={cn(
+                      'flex h-[30px] min-w-[26px] items-center justify-center rounded-md px-1 font-score text-lg font-bold',
+                      lane.inPlay ? 'bg-success text-background' : 'border-[1.5px] border-dashed border-muted-foreground/60 text-muted-foreground'
+                    )}
+                  >
+                    {lane.label.replace(/^Lane\s*/i, '')}
+                  </span>
+                ))}
+              </span>
+              <span className="text-[13px] text-muted-foreground">{bracket.lanesInPlay} in play</span>
+            </>
+          ) : (
+            <span className={big}>{event.lane_count}</span>
+          )}
+        </Stat>
+      );
+    case 'teams':
+      return (
+        <Stat label="Teams" first={first}>
+          <span className={big}>{bracket?.teams ?? event.teams?.length ?? 0}</span>
+        </Stat>
+      );
+    case 'distance':
+      return <DistanceStat event={event} first={first} />;
+  }
+}
+
 export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails; onStatusUpdate?: () => void }) {
-  // Use the event prop directly since state is now managed by parent
-  const players = Array.isArray(event.players) ? event.players : [];
-  const entryFee = event.entry_fee_per_player != null ? Number(event.entry_fee_per_player) : null;
-  const handicapView = useEventHandicap()?.view;
-  const ladder = zoneLadderText(handicapView);
-  const ladderEditable = handicapView?.editable ?? false;
+  const isAdmin = event.viewer_is_admin === true;
+  const bracketContext = useEventBracket();
+  const bracket = event.status === 'bracket' && bracketContext?.bracketData ? bracketProgress(bracketContext.bracketData) : null;
+  const qualification = useQualificationProgress(event);
+  const trackProgress = event.status === 'bracket'
+    ? (bracket ? { done: bracket.played, total: bracket.total } : null)
+    : qualification;
+  const live = event.status === 'bracket';
+  const showPublicLink = event.status === 'bracket' || event.status === 'completed';
+  const stats = headerStats(event, isAdmin);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h1 className="font-score text-5xl leading-none font-bold">
-            {formatDisplayDate(event.event_date)}
-          </h1>
-          <p className="text-[15px] text-muted-foreground">
-            {event.location || 'Location not specified'}
-            {(event.status === 'bracket' || event.status === 'completed') && (
+    <div className="flex flex-col gap-[18px]">
+      <section
+        aria-label="Event"
+        className="dark flex flex-col justify-between gap-6 rounded-[18px] border bg-board px-5 py-6 text-foreground sm:flex-row sm:items-center sm:px-[30px] sm:py-[26px]"
+      >
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3.5">
+            <h1 className="font-score text-5xl leading-[0.95] font-bold sm:text-[64px]">{formatDisplayDate(event.event_date)}</h1>
+            {live && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-[13px] font-bold text-success">
+                <span className="size-2 rounded-full bg-success" aria-hidden="true" />
+                Live
+              </span>
+            )}
+          </div>
+          <p className="text-base text-foreground/80">
+            {event.location || 'No location set'}
+            {showPublicLink && (
               <>
                 {' · '}
-                <Link href={`/event/${event.id}/bracket`} className="text-info hover:underline">
-                  Public bracket page
-                </Link>
+                <Link href={`/event/${event.id}/bracket`} className="text-info hover:underline">Public bracket</Link>
               </>
             )}
           </p>
+          <p className="text-sm text-balance text-muted-foreground">{eventFormatParts(event).join(' · ')}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusSteps status={event.status} />
-          <NextStatusButton
-            event={event}
-            onStatusUpdate={onStatusUpdate}
-          />
-        </div>
+        {event.access_code && <ScoringCode code={event.access_code} />}
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <StatusTrack event={event} progress={trackProgress} />
+        <NextStatusButton event={event} onStatusUpdate={onStatusUpdate} />
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
-        {event.access_code && (
-          <Stat label="Access Code">
-            <div className="flex items-center gap-1">
-              <code className="font-score text-[28px] leading-none font-bold tracking-[0.08em]">
-                {event.access_code}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (event.access_code) {
-                    navigator.clipboard.writeText(event.access_code);
-                  }
-                }}
-              >
-                Copy
-              </Button>
-            </div>
-          </Stat>
-        )}
-
-        {ladder ? (
-          <ZoneDistancesPopover>
-            <button
-              type="button"
-              className="flex flex-col gap-1 rounded-[14px] border bg-card p-4 text-left hover:border-foreground/40"
-              aria-label={`Putt distance by zone: ${ladder} feet. ${ladderEditable ? 'Edit' : 'View'} tonight's zone distances`}
-            >
-              <span className="flex items-center justify-between gap-2 text-[13px] font-semibold text-muted-foreground">
-                Putt Distance
-                {ladderEditable
-                  ? <Pencil className="size-3.5" aria-hidden="true" />
-                  : <Lock className="size-3.5" aria-hidden="true" />}
-              </span>
-              <span className="font-score text-[28px] leading-none font-bold tabular-nums">{ladder}</span>
-              <span className="text-xs text-muted-foreground">ft by handicap zone</span>
-            </button>
-          </ZoneDistancesPopover>
-        ) : (
-          <Stat label="Putt Distance">
-            <span className="font-score text-[28px] leading-none font-bold">
-              {event.handicap_enabled ? 'By zone' : `${event.putt_distance_ft} ft`}
-            </span>
-            {event.handicap_enabled && <span className="text-xs text-muted-foreground">By handicap zone</span>}
-          </Stat>
-        )}
-
-        <Stat label="Lanes">
-          <span className="font-score text-[28px] leading-none font-bold tabular-nums">{event.lane_count}</span>
-        </Stat>
-
-        <Stat label="Participants">
-          <span className="font-score text-[28px] leading-none font-bold tabular-nums">
-            {players.filter(p => p.payment_type !== null).length}/{players.length}
-          </span>
-          <span className="text-xs text-muted-foreground">paid</span>
-        </Stat>
-
-        {entryFee !== null && (
-          <Stat label="Entry Fee">
-            <span className="font-score text-[28px] leading-none font-bold tabular-nums">${entryFee.toFixed(2)}</span>
-            <span className="text-xs text-muted-foreground">
-              Cash ${(players.filter(p => p.payment_type === 'cash').length * entryFee).toFixed(2)} · Electronic $
-              {(players.filter(p => p.payment_type === 'electronic').length * entryFee).toFixed(2)}
-            </span>
-          </Stat>
-        )}
-
-        <Stat label="Teams">
-          <span className="text-base font-bold">{describeTeamFormat(event.team_size, event.team_assignment)}</span>
-        </Stat>
-
-        <Stat label="Bonus Points">
-          <span className="text-base font-bold">{event.bonus_point_enabled ? 'Enabled' : 'Disabled'}</span>
-        </Stat>
-
-        <Stat label="Qualification Round">
-          <span className="text-base font-bold">{event.qualification_round_enabled ? 'Enabled' : 'Disabled'}</span>
-        </Stat>
-      </div>
+      <dl
+        className="m-0 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 sm:grid-cols-[repeat(var(--stat-columns),minmax(0,1fr))] sm:gap-0"
+        style={{ '--stat-columns': stats.length } as React.CSSProperties}
+      >
+        {stats.map((stat, index) => (
+          <StatCell key={stat} stat={stat} event={event} bracket={bracket} first={index === 0} />
+        ))}
+      </dl>
     </div>
   );
 }
