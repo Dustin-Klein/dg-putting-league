@@ -263,6 +263,25 @@ describe('QualificationScoringPage', () => {
     expect(screen.getByRole('button', { name: /next frame/i })).toBeDisabled();
   });
 
+  it('renders persisted scores as steppers in David scoring', async () => {
+    localStorage.setItem('scoring_mode', 'david');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => createBatchResponse(),
+    })) as unknown as typeof fetch;
+
+    try {
+      render(<QualificationScoringPage />);
+
+      expect(await screen.findByText('1 / 3')).toBeInTheDocument();
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('status').map((el) => el.textContent)).toContain('2 points');
+      expect(screen.getByRole('button', { name: 'Scoring settings, David scoring on' })).toBeInTheDocument();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
   it('returns to scoring when editing a frame from review', async () => {
     const fetchMock = jest.fn(async () => ({
       ok: true,

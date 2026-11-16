@@ -4,6 +4,8 @@ import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils/utils';
 import { sortBySlot } from '@/lib/utils/team-utils';
 import { PuttButtonGroup } from '@/app/score/components/scoring-wizard/putt-score-row';
+import { PuttStepper } from '@/app/score/components/scoring-wizard/score-stepper-row';
+import { useScoringMode } from '@/app/score/components/scoring-wizard/use-scoring-mode';
 import { ZoneBadge } from '@/components/zone-badge';
 import { getResolvedScore } from '@/app/score/components/scoring-wizard/scoring-utils';
 import {
@@ -188,13 +190,41 @@ function MatchPlayerScoreRow({
       <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size={roomy ? 'md' : 'sm'} />
     ) : null;
 
-  const buttons = (
-    <PuttButtonGroup
-      label={`Putts made by ${player.full_name}, frame ${frameNumber}`}
+  const [mode] = useScoringMode();
+  const groupLabel = `Putts made by ${player.full_name}, frame ${frameNumber}`;
+  const tone = teamNumber === 1 ? ('team-1' as const) : ('team-2' as const);
+  const onChange = (puttsMade: number) => onScoreChange(player.event_player_id, frameNumber, puttsMade);
+
+  const buttons = mode === 'david' ? (
+    <PuttStepper
+      label={groupLabel}
+      playerName={player.full_name}
       score={currentScore}
       bonusPointEnabled={bonusPointEnabled}
-      tone={teamNumber === 1 ? 'team-1' : 'team-2'}
-      onChange={(puttsMade) => onScoreChange(player.event_player_id, frameNumber, puttsMade)}
+      tone={tone}
+      onChange={onChange}
+      // − / + and the box fill the same space the 0–3 buttons would.
+      className={
+        roomy
+          ? cn('min-h-11 flex-1 grid grid-cols-[1fr_1.15fr_1fr] grid-rows-[minmax(0,1fr)] gap-2', sizes.buttons)
+          : 'self-stretch gap-1.5 py-px'
+      }
+      buttonClassName={
+        roomy ? 'h-full min-h-0 w-full rounded-[14px] [container-type:size]' : 'h-full max-h-[52px] aspect-square'
+      }
+      iconClassName={roomy ? 'size-[clamp(20px,34cqh,34px)]' : undefined}
+      boxClassName={
+        roomy ? 'h-full min-h-0 w-full rounded-[14px] [container-type:size]' : 'h-full max-h-[52px] w-14 rounded-[10px] [container-type:size]'
+      }
+      contentClassName={roomy ? 'text-[length:clamp(24px,55cqh,60px)]' : 'text-[length:clamp(18px,55cqh,30px)]'}
+    />
+  ) : (
+    <PuttButtonGroup
+      label={groupLabel}
+      score={currentScore}
+      bonusPointEnabled={bonusPointEnabled}
+      tone={tone}
+      onChange={onChange}
       onClear={
         localScores.has(getScoreKey(player.event_player_id, frameNumber))
           ? () => onScoreClear(player.event_player_id, frameNumber)

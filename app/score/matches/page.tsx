@@ -13,6 +13,7 @@ import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { MatchStatus } from '@/lib/types/bracket';
 import type { PublicMatchInfo, PublicPlayerInfo, ScoringLane } from '@/lib/types/scoring';
 import { ZoneBadge } from '@/components/zone-badge';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/lib/utils/safe-storage';
 import { countCompletedFrames } from '@/app/score/components/scoring-wizard/scoring-utils';
 
 interface EventInfo {
@@ -23,30 +24,6 @@ interface EventInfo {
   bonus_point_enabled: boolean;
   bracket_frame_count: number;
   status: string;
-}
-
-function safeStorageGet(storage: Storage, key: string): string | null {
-  try {
-    return storage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeStorageSet(storage: Storage, key: string, value: string): void {
-  try {
-    storage.setItem(key, value);
-  } catch {
-    // Storage unavailable (quota exceeded, private mode, etc.)
-  }
-}
-
-function safeStorageRemove(storage: Storage, key: string): void {
-  try {
-    storage.removeItem(key);
-  } catch {
-    // Storage unavailable
-  }
 }
 
 export default function MatchesPage() {

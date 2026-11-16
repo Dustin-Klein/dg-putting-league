@@ -254,6 +254,42 @@ describe('FrameWizard', () => {
     });
   });
 
+  describe('David scoring', () => {
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it('shows − / + steppers for every player when the device uses David scoring', async () => {
+      localStorage.setItem('scoring_mode', 'david');
+      const user = userEvent.setup();
+      const onScoreChange = jest.fn();
+      render(<FrameWizard {...defaultProps} onScoreChange={onScoreChange} />);
+
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('group', { name: /^putts made by/i })).toHaveLength(4);
+
+      await user.click(screen.getByRole('button', { name: 'Increase score for Team2 PlayerB' }));
+      expect(onScoreChange).toHaveBeenCalledWith('p2b', 1, 1);
+    });
+
+    it('switches between one tap and steppers from the settings sheet', async () => {
+      const user = userEvent.setup();
+      const localScores = new Map([['p1a-1', 2]]);
+      render(<FrameWizard {...defaultProps} localScores={localScores} />);
+      expect(screen.getAllByRole('radiogroup')).toHaveLength(4);
+
+      await user.click(screen.getByRole('button', { name: 'Scoring settings' }));
+      await user.click(screen.getByRole('switch', { name: 'David scoring' }));
+      await user.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+      const group = screen.getByRole('group', { name: /putts made by team1 playera/i });
+      expect(within(group).getByRole('status')).toHaveTextContent('2 points');
+      expect(screen.getByRole('button', { name: 'Scoring settings, David scoring on' })).toBeInTheDocument();
+      expect(localStorage.getItem('scoring_mode')).toBe('david');
+    });
+  });
+
   describe('Frame navigation', () => {
     it('disables prev button on frame 1', () => {
       render(<FrameWizard {...defaultProps} currentFrame={1} />);
