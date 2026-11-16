@@ -110,7 +110,7 @@ export function CreateEventDialog({
       const response = await fetch(`/api/league/${leagueId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toCreateEventBody(values, handicap, copyPlayersFrom)),
+        body: JSON.stringify(toCreateEventBody(values, copyPlayersFrom)),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'Failed to create event');

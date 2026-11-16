@@ -65,18 +65,18 @@ describe('bracketProgress', () => {
     ]))).toMatchObject({ played: 1, total: 1 });
   });
 
-  it('orders lanes and marks the ones in play', () => {
+  it('orders lanes and tells in-play, open and maintenance lanes apart', () => {
     const progress = bracketProgress(bracket([], [
       { label: 'Lane 10', status: 'idle' },
       { label: 'Lane 2', status: 'occupied' },
       { label: 'Lane 1', status: 'maintenance' },
     ]));
-    expect(progress.lanes.map((lane) => [lane.label, lane.inPlay])).toEqual([
-      ['Lane 1', false],
-      ['Lane 2', true],
-      ['Lane 10', false],
+    expect(progress.lanes.map((lane) => [lane.label, lane.state])).toEqual([
+      ['Lane 1', 'maintenance'],
+      ['Lane 2', 'in_play'],
+      ['Lane 10', 'open'],
     ]);
-    expect(progress.lanesInPlay).toBe(1);
+    expect(progress).toMatchObject({ lanesInPlay: 1, lanesInMaintenance: 1 });
   });
 });
 

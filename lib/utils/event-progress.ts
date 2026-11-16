@@ -6,7 +6,8 @@ export interface BracketProgress {
   played: number;
   total: number;
   lanesInPlay: number;
-  lanes: Array<{ id: string; label: string; inPlay: boolean }>;
+  lanesInMaintenance: number;
+  lanes: Array<{ id: string; label: string; state: 'in_play' | 'open' | 'maintenance' }>;
   teams: number;
 }
 
@@ -41,12 +42,17 @@ export function bracketProgress(data: BracketWithTeams): BracketProgress {
 
   const lanes = [...data.lanes]
     .sort((x, y) => x.label.localeCompare(y.label, undefined, { numeric: true }))
-    .map((lane) => ({ id: lane.id, label: lane.label, inPlay: lane.status === 'occupied' }));
+    .map((lane) => ({
+      id: lane.id,
+      label: lane.label,
+      state: lane.status === 'occupied' ? 'in_play' as const : lane.status === 'maintenance' ? 'maintenance' as const : 'open' as const,
+    }));
 
   return {
     played,
     total,
-    lanesInPlay: lanes.filter((lane) => lane.inPlay).length,
+    lanesInPlay: lanes.filter((lane) => lane.state === 'in_play').length,
+    lanesInMaintenance: lanes.filter((lane) => lane.state === 'maintenance').length,
     lanes,
     teams: data.teams.length,
   };

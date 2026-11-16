@@ -173,7 +173,7 @@ describe('toCreateEventBody', () => {
   };
 
   it('matches the create-event API body', () => {
-    expect(toCreateEventBody(input, FLAT, 'source-1')).toEqual({
+    expect(toCreateEventBody(input, 'source-1')).toEqual({
       event_date: '2026-11-17',
       location: 'Brewhouse',
       lane_count: 1,
@@ -188,19 +188,19 @@ describe('toCreateEventBody', () => {
       admin_fee_per_player: null,
       team_size: 2,
       team_assignment: 'random_pairing',
+      handicap_enabled: false,
       copy_players_from_event_id: 'source-1',
     });
   });
 
   it('omits the copy source and blank locations', () => {
-    const body = toCreateEventBody({ ...input, location: ' ' }, FLAT, null);
+    const body = toCreateEventBody({ ...input, location: ' ' }, null);
     expect(body.location).toBeNull();
     expect(body).not.toHaveProperty('copy_players_from_event_id');
-    expect(body).not.toHaveProperty('handicap_enabled');
   });
 
-  it('sends the handicap choice only in a handicap league', () => {
-    expect(toCreateEventBody({ ...input, handicap_enabled: false }, ZONES)).toMatchObject({ handicap_enabled: false });
+  it('always states the handicap choice', () => {
+    expect(toCreateEventBody({ ...input, handicap_enabled: true })).toMatchObject({ handicap_enabled: true });
   });
 });
 

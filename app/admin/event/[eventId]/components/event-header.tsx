@@ -188,6 +188,8 @@ function Stat({ label, children, first }: { label: React.ReactNode; children: Re
 
 const big = 'font-score text-[34px] leading-none font-bold tabular-nums';
 
+const LANE_STATE_LABEL = { in_play: 'in play', open: 'open', maintenance: 'in maintenance' } as const;
+
 function DistanceStat({ event, first }: { event: EventWithDetails; first: boolean }) {
   const handicap = useEventHandicap();
   const view = handicap?.view;
@@ -292,17 +294,23 @@ function StatCell({
                 {bracket.lanes.map((lane) => (
                   <span
                     key={lane.id}
-                    title={`${lane.label}: ${lane.inPlay ? 'in play' : 'open'}`}
+                    title={`${lane.label}: ${LANE_STATE_LABEL[lane.state]}`}
                     className={cn(
                       'flex h-[30px] min-w-[26px] items-center justify-center rounded-md px-1 font-score text-lg font-bold',
-                      lane.inPlay ? 'bg-success text-background' : 'border-[1.5px] border-dashed border-muted-foreground/60 text-muted-foreground'
+                      lane.state === 'in_play' && 'bg-success text-background',
+                      lane.state === 'open' && 'border-[1.5px] border-dashed border-muted-foreground/60 text-muted-foreground',
+                      lane.state === 'maintenance' && 'bg-warning/20 text-warning line-through'
                     )}
                   >
                     {lane.label.replace(/^Lane\s*/i, '')}
+                    <span className="sr-only">: {LANE_STATE_LABEL[lane.state]}</span>
                   </span>
                 ))}
               </span>
-              <span className="text-[13px] text-muted-foreground">{bracket.lanesInPlay} in play</span>
+              <span className="text-[13px] text-muted-foreground">
+                {bracket.lanesInPlay} in play
+                {bracket.lanesInMaintenance > 0 && ` · ${bracket.lanesInMaintenance} in maintenance`}
+              </span>
             </>
           ) : (
             <span className={big}>{event.lane_count}</span>

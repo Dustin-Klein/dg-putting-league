@@ -116,7 +116,7 @@ describe('CreateEventDialog: guided steps', () => {
     });
     expect(body.access_code).toMatch(/^[A-Z2-9]{6}$/);
     expect(body).not.toHaveProperty('copy_players_from_event_id');
-    expect(body).not.toHaveProperty('handicap_enabled');
+    expect(body.handicap_enabled).toBe(false);
   });
 
   it('shows the zone ladder instead of a distance in a handicap league', async () => {

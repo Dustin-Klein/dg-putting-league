@@ -253,12 +253,11 @@ export interface CreateEventInput extends EventSetupValues {
   access_code: string;
 }
 
-/** The POST /api/league/[leagueId] body. The handicap choice is only sent where the league offers one. */
-export function toCreateEventBody(
-  values: CreateEventInput,
-  ctx: Pick<EventSetupContext, 'leagueHandicaps'>,
-  copyPlayersFromEventId?: string | null
-) {
+/**
+ * The POST /api/league/[leagueId] body. The handicap choice is always explicit, so a league
+ * setting changed after the form loaded is refused rather than silently applied.
+ */
+export function toCreateEventBody(values: CreateEventInput, copyPlayersFromEventId?: string | null) {
   return {
     event_date: formatForDatabase(values.event_date),
     location: values.location?.trim() ? values.location.trim() : null,
@@ -274,7 +273,7 @@ export function toCreateEventBody(
     admin_fee_per_player: values.admin_fee_per_player ?? null,
     team_size: values.team_size,
     team_assignment: values.team_assignment,
-    ...(ctx.leagueHandicaps ? { handicap_enabled: values.handicap_enabled } : {}),
+    handicap_enabled: values.handicap_enabled,
     ...(copyPlayersFromEventId ? { copy_players_from_event_id: copyPlayersFromEventId } : {}),
   };
 }
