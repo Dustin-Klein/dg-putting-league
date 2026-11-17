@@ -3,6 +3,7 @@ import { EventsContent } from './components/events-content';
 import { getEventsByLeagueId } from '@/lib/services/event';
 import { getLeague, checkIsLeagueOwner } from '@/lib/services/league';
 import { requireLeagueAdmin } from '@/lib/services/auth';
+import { getHandicapSettings } from '@/lib/services/handicap';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +29,10 @@ export default async function LeagueEventsPage({
       redirect('/admin/leagues');
   }
 
-  const [eventsWithParticipantCount, isOwner] = await Promise.all([
+  const [eventsWithParticipantCount, isOwner, handicapConfig] = await Promise.all([
     getEventsByLeagueId(leagueId),
     checkIsLeagueOwner(leagueId),
+    getHandicapSettings(leagueId),
   ]);
 
   return (
@@ -39,6 +41,7 @@ export default async function LeagueEventsPage({
       events={eventsWithParticipantCount}
       isAdmin={isAdmin}
       isOwner={isOwner}
+      handicap={{ leagueHandicaps: handicapConfig.settings.enabled, zones: handicapConfig.zones }}
       leagueId={params.leagueId}
       initialTab={(await searchParams).tab === 'handicaps' && isAdmin ? 'handicaps' : 'events'}
     />

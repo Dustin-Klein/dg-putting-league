@@ -9,6 +9,7 @@ import { CreateEventDialog } from './create-event-dialog';
 import { Trash2 } from 'lucide-react';
 import { EventStatusBadge, StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
+import { eventDistanceLabel, type EventSetupContext } from '@/lib/utils/event-setup';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
 
@@ -17,9 +18,10 @@ interface EventsListProps {
   leagueId: string;
   leagueName?: string;
   isAdmin?: boolean;
+  handicap?: EventSetupContext;
 }
 
-export function EventsList({ events = [], leagueId, leagueName, isAdmin = false }: EventsListProps) {
+export function EventsList({ events = [], leagueId, leagueName, isAdmin = false, handicap }: EventsListProps) {
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -67,10 +69,13 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false 
         <p className="text-muted-foreground mt-2 mb-4">
           This league doesn&apos;t have any events yet. {isAdmin && 'Create one to get started.'}
         </p>
-        {isAdmin && <CreateEventDialog leagueId={leagueId} leagueName={leagueName} completedEvents={[]} />}
+        {isAdmin && <CreateEventDialog leagueId={leagueId} leagueName={leagueName} handicap={handicap} />}
       </div>
     );
   }
+
+  // Newest first, as the list is ordered.
+  const completedEvents = events.filter((event) => event.status === 'completed');
 
   return (
     <section aria-labelledby="events-heading" className="flex flex-col gap-3">
@@ -80,7 +85,9 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false 
           <CreateEventDialog
             leagueId={leagueId}
             leagueName={leagueName}
-            completedEvents={(events ?? []).filter(e => e.status === 'completed')}
+            completedEvents={completedEvents}
+            templateEvent={completedEvents.find((event) => event.parent_event_id === null) ?? null}
+            handicap={handicap}
           />
         )}
       </div>
@@ -109,7 +116,7 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false 
           <div className="flex gap-6">
             <EventStat value={event.participant_count || 0} label="Participants" />
             <EventStat value={event.lane_count} label="Lanes" />
-            <EventStat value={`${event.putt_distance_ft} ft`} label="Distance" />
+            <EventStat value={eventDistanceLabel(event)} label="Distance" />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             <Button variant="outline" asChild>

@@ -31,12 +31,14 @@ jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(async (pg, fn) => fn(pg)),
   lockEvent: jest.fn(),
   lockEvents: jest.fn(),
+  lockLeagueHandicap: jest.fn(),
 }));
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import * as eventDb from '@/lib/repositories/event-repository.db';
-import { lockEvents } from '@/lib/db/tx';
+import * as handicapDb from '@/lib/repositories/handicap-repository.db';
+import { lockEvents, lockLeagueHandicap } from '@/lib/db/tx';
 import {
   createEvent, deleteEvent, getEventForViewer, getEventsByLeagueId, getEventWithPlayers,
   requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
@@ -152,6 +154,35 @@ describe('event service Drizzle port', () => {
       }));
       await expect(createEvent({ ...data, team_size: 3, team_assignment: 'random_pairing' }))
         .rejects.toThrow(/use a flat random draw/);
+    });
+
+    describe('handicap choice', () => {
+      const zones = [{ zone: 1, distance_ft: 21 }];
+      const handicapLeague = () => {
+        (handicapDb.getLeagueHandicapSettings as jest.Mock).mockResolvedValue({ settings: { enabled: true } });
+        (handicapDb.getLeagueZones as jest.Mock).mockResolvedValue(zones);
+      };
+
+      it('follows the league when omitted, reading it under the league handicap lock', async () => {
+        handicapLeague();
+        await createEvent(data);
+        expect(lockLeagueHandicap).toHaveBeenCalledWith(pg, 'league-1');
+        expect(eventDb.createEvent).toHaveBeenCalledWith(pg, expect.objectContaining({ handicap_enabled: true }));
+        expect(handicapDb.replaceEventZoneDistances).toHaveBeenCalledWith(pg, 'new-event', zones);
+      });
+
+      it('makes a one-distance event in a handicap league when asked', async () => {
+        handicapLeague();
+        await createEvent({ ...data, handicap_enabled: false });
+        expect(eventDb.createEvent).toHaveBeenCalledWith(pg, expect.objectContaining({ handicap_enabled: false, putt_distance_ft: 25 }));
+        expect(handicapDb.replaceEventZoneDistances).not.toHaveBeenCalled();
+      });
+
+      it('refuses handicaps in a league that does not use them', async () => {
+        (handicapDb.getLeagueHandicapSettings as jest.Mock).mockResolvedValue(null);
+        await expect(createEvent({ ...data, handicap_enabled: true })).rejects.toThrow('This league does not use distance handicaps');
+        expect(eventDb.createEvent).not.toHaveBeenCalled();
+      });
     });
   });
 
