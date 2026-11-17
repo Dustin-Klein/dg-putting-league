@@ -290,6 +290,18 @@ export async function getMembersOfTeams(
   return new Set(rows.map((r) => r.event_player_id));
 }
 
+/** Player ids (not event_player ids) of the given teams' members, in one event. */
+export async function getPlayerIdsOfTeams(ex: Executor, eventId: string, teamIds: string[]): Promise<string[]> {
+  if (teamIds.length === 0) return [];
+  const rows = await ex
+    .selectDistinct({ player_id: event_players.player_id })
+    .from(team_members)
+    .innerJoin(teams, eq(teams.id, team_members.team_id))
+    .innerJoin(event_players, eq(event_players.id, team_members.event_player_id))
+    .where(and(eq(teams.event_id, eventId), eq(event_players.event_id, eventId), inArray(teams.id, teamIds)));
+  return rows.map((row) => row.player_id);
+}
+
 export async function getTeamMemberIds(ex: Executor, teamIds: string[]): Promise<string[]> {
   if (teamIds.length === 0) return [];
   const rows = await ex

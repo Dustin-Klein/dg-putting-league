@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSecondChanceEvent } from '@/lib/services/event';
+import { createSecondChanceEvent, getSecondChanceSummary } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 import { BRACKET_FORMATS } from '@/lib/brackets/format';
 
 const secondChanceSchema = z.object({
   access_code: z.string().trim().min(6).max(50),
-  exclude_top_placements: z.number().int().min(1).optional(),
   event_date: z.iso.date().optional(),
   location: z.string().nullable().optional(),
   lane_count: z.number().int().positive().optional(),
@@ -21,8 +20,21 @@ const secondChanceSchema = z.object({
   admin_fee_per_player: z.number().min(0).nullable().optional(),
 });
 
+/** This event's second chance: whether one exists or can be created, and how many players are out. */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ eventId: string }> }
+) {
+  try {
+    const { eventId } = await params;
+    return NextResponse.json(await getSecondChanceSummary(eventId));
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
 /**
- * Create a singles second-chance event linked to this (completed) event.
+ * Create a singles second-chance event linked to this event (in bracket play or completed).
  */
 export async function POST(
   req: NextRequest,

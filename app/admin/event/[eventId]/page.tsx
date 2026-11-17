@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EntryZoneCell, EventHandicapProvider, EventHandicapSummary } from './components/event-handicap';
 import { EventBracketProvider } from './components/event-bracket-context';
+import { SecondChancePanel, SecondChanceRosterPanel } from './components/second-chance';
 
 function EventContent({
   event,
@@ -177,9 +178,17 @@ export default function EventPage({
     );
   }
 
+  const secondChance = !isAdmin ? null
+    : event.link_type === 'second_chance'
+      ? <SecondChanceRosterPanel event={event} onPlayersAdded={handleRefresh} />
+      : event.status === 'bracket' || event.status === 'completed'
+        ? <SecondChancePanel event={event} />
+        : null;
+
   const content = (
     <>
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
+      {secondChance && <div className="mt-6">{secondChance}</div>}
       <div className="mt-8">
         <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
       </div>

@@ -317,6 +317,7 @@ export const events = putting_league.table("events", {
 	index("idx_events_league_date").using("btree", table.league_id.asc().nullsLast().op("uuid_ops"), table.event_date.desc().nullsFirst().op("date_ops")),
 	index("idx_events_parent").using("btree", table.parent_event_id.asc().nullsLast().op("uuid_ops")).where(sql`(parent_event_id IS NOT NULL)`),
 	unique("events_access_code_key").on(table.access_code),
+	uniqueIndex("events_one_second_chance_per_parent").using("btree", table.parent_event_id.asc().nullsLast().op("uuid_ops")).where(sql`(link_type = 'second_chance'::putting_league.event_link_type)`),
 ]);
 
 export const frame_results = putting_league.table("frame_results", {
