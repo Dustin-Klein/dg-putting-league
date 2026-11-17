@@ -355,6 +355,32 @@ export const frame_results = putting_league.table("frame_results", {
 	unique("frame_results_match_frame_id_event_player_id_key").on(table.match_frame_id, table.event_player_id),
 ]);
 
+export const lane_loans = putting_league.table("lane_loans", {
+	lane_id: uuid().primaryKey().notNull(),
+	from_event_id: uuid().notNull(),
+	to_event_id: uuid().notNull(),
+	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	check("lane_loans_to_another_event", sql`from_event_id <> to_event_id`),
+	foreignKey({
+			columns: [table.from_event_id],
+			foreignColumns: [events.id],
+			name: "lane_loans_from_event_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.lane_id],
+			foreignColumns: [lanes.id],
+			name: "lane_loans_lane_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.to_event_id],
+			foreignColumns: [events.id],
+			name: "lane_loans_to_event_id_fkey"
+		}).onDelete("cascade"),
+	index("idx_lane_loans_from_event").using("btree", table.from_event_id.asc().nullsLast().op("uuid_ops")),
+	index("idx_lane_loans_to_event").using("btree", table.to_event_id.asc().nullsLast().op("uuid_ops")),
+]);
+
 export const lanes = putting_league.table("lanes", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	event_id: uuid().notNull(),

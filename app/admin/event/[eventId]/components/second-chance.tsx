@@ -59,7 +59,6 @@ function CreateSecondChanceDialog({
   const [accessCode, setAccessCode] = useState(generateAccessCode);
   const [format, setFormat] = useState<BracketFormat>('single_elimination');
   const [extraMatch, setExtraMatch] = useState(false);
-  const [laneCount, setLaneCount] = useState('1');
   const [entryFee, setEntryFee] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -76,7 +75,6 @@ function CreateSecondChanceDialog({
           bracket_format: format,
           double_grand_final: format === 'double_elimination' && extraMatch,
           third_place_match: format === 'single_elimination' && extraMatch,
-          lane_count: Number(laneCount),
           entry_fee_per_player: entryFee === '' ? null : Number(entryFee),
         }),
       }));
@@ -96,7 +94,7 @@ function CreateSecondChanceDialog({
           <DialogTitle>Create second chance</DialogTitle>
           <DialogDescription>
             A singles bracket for players knocked out of this event. Players knocked out later can be
-            added until its bracket starts.
+            added until its bracket starts. It plays on lanes you lend it from this event&apos;s lanes.
           </DialogDescription>
         </DialogHeader>
 
@@ -132,30 +130,17 @@ function CreateSecondChanceDialog({
             <Switch id="sc-extra" checked={extraMatch} onCheckedChange={setExtraMatch} disabled={saving} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="sc-lanes">Lanes</Label>
-              <Input
-                id="sc-lanes"
-                type="number"
-                min={1}
-                value={laneCount}
-                onChange={(e) => setLaneCount(e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="sc-fee">Entry fee (optional)</Label>
-              <Input
-                id="sc-fee"
-                type="number"
-                min={0}
-                step="0.01"
-                value={entryFee}
-                onChange={(e) => setEntryFee(e.target.value)}
-                disabled={saving}
-              />
-            </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="sc-fee">Entry fee (optional)</Label>
+            <Input
+              id="sc-fee"
+              type="number"
+              min={0}
+              step="0.01"
+              value={entryFee}
+              onChange={(e) => setEntryFee(e.target.value)}
+              disabled={saving}
+            />
           </div>
 
           <div className="grid gap-1.5">
@@ -180,7 +165,7 @@ function CreateSecondChanceDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={submit} disabled={saving || accessCode.trim().length < 6 || Number(laneCount) < 1}>
+          <Button onClick={submit} disabled={saving || accessCode.trim().length < 6}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             Create second chance
           </Button>

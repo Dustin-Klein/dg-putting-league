@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, Plus, Trash2, Wrench, Play, Unlock, Link } from 'lucide-react';
-import { MatchStatus, type LaneWithMatch } from '@/lib/types/bracket';
+import { RefreshCw, Plus, Trash2, Wrench, Play, Unlock, Link, Share2, Undo2 } from 'lucide-react';
+import NextLink from 'next/link';
+import { MatchStatus, type LaneLoans, type LaneWithMatch } from '@/lib/types/bracket';
 import { cn } from '@/lib/utils/utils';
 
 interface LaneManagementProps {
@@ -18,17 +19,22 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   const [addCount, setAddCount] = useState(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [assignMatchIds, setAssignMatchIds] = useState<Record<string, string>>({});
+  const [loans, setLoans] = useState<LaneLoans | null>(null);
 
   const fetchLanes = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/event/${eventId}/lanes`);
+      const [res, loansRes] = await Promise.all([
+        fetch(`/api/event/${eventId}/lanes`),
+        fetch(`/api/event/${eventId}/lanes/loans`),
+      ]);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to fetch lanes');
       }
       const data = await res.json();
       setLanes(data);
+      setLoans(loansRes.ok ? await loansRes.json() : null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch lanes');
@@ -201,6 +207,30 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
     }
   };
 
+  const handleLoan = async (action: 'lend' | 'return', laneId: string) => {
+    try {
+      setActionLoading(laneId);
+      const res = await fetch(`/api/event/${eventId}/lanes/loans`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, laneIds: [laneId] }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `Failed to ${action} lane`);
+      }
+      await fetchLanes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `Failed to ${action} lane`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const isSecondChance = loans?.role === 'second_chance';
+  const canLend = loans?.role === 'main' && loans.can_lend;
+  const lentOut = loans?.role === 'main' ? loans.lanes : [];
+
   const idleCount = lanes.filter((l) => l.status === 'idle').length;
   const occupiedCount = lanes.filter((l) => l.status === 'occupied').length;
   const maintenanceCount = lanes.filter((l) => l.status === 'maintenance').length;
@@ -262,6 +292,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {!isSecondChance && (
           <div className="flex items-center gap-1">
             <Input
               type="number"
@@ -282,6 +313,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
               Add lane{addCount === 1 ? '' : 's'}
             </Button>
           </div>
+          )}
 
           <Button
             size="sm"
@@ -306,9 +338,45 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
       </div>
 
       {/* Lane list */}
+      {isSecondChance && loans?.partner_event_id && (
+        <p className="text-sm text-muted-foreground">
+          This second chance plays on lanes lent by the{' '}
+          <NextLink href={`/admin/event/${loans.partner_event_id}/bracket`} className="text-info underline-offset-4 hover:underline">
+            main event
+          </NextLink>
+          . Lend more from its lanes; return one here once its match is done.
+        </p>
+      )}
+
+      {lentOut.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed px-5 py-3 text-sm">
+          <Share2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-muted-foreground">Lent to the</span>
+          <NextLink href={`/admin/event/${loans!.partner_event_id}/bracket`} className="text-info underline-offset-4 hover:underline">
+            second chance
+          </NextLink>
+          <span className="text-muted-foreground">:</span>
+          {lentOut.map((lane) => (
+            <Button
+              key={lane.id}
+              size="sm"
+              variant="outline"
+              onClick={() => handleLoan('return', lane.id)}
+              disabled={actionLoading === lane.id || lane.status === 'occupied'}
+              title={lane.status === 'occupied' ? 'A second-chance match is on this lane' : undefined}
+            >
+              <Undo2 className="mr-1 h-3 w-3" />
+              Return {lane.label}
+            </Button>
+          ))}
+        </div>
+      )}
+
       {lanes.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No lanes yet. Add lanes to get started.</p>
+          <p className="text-muted-foreground">
+            {isSecondChance ? 'No lanes yet. Lend some from the main event.' : 'No lanes yet. Add lanes to get started.'}
+          </p>
         </div>
       ) : (
         <div className="flex flex-col divide-y divide-muted rounded-2xl border bg-card">
@@ -432,16 +500,39 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       <Wrench className="mr-1 h-3 w-3" />
                       Maintenance
                     </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => handleDeleteLane(lane.id)}
-                      disabled={actionLoading === lane.id}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Delete {lane.label}</span>
-                    </Button>
+                    {canLend && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLoan('lend', lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Share2 className="mr-1 h-3 w-3" />
+                        Lend to second chance
+                      </Button>
+                    )}
+                    {isSecondChance ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLoan('return', lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Undo2 className="mr-1 h-3 w-3" />
+                        Return
+                      </Button>
+                    ) : (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleDeleteLane(lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete {lane.label}</span>
+                      </Button>
+                    )}
                   </>
                 )}
 

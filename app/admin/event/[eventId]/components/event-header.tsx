@@ -236,6 +236,11 @@ function DistanceStat({ event, first }: { event: EventWithDetails; first: boolea
   );
 }
 
+/** A second chance plays only on lanes its main event lends it. */
+function laneCountLabel(event: EventWithDetails): string | number {
+  return event.link_type === 'second_chance' ? 'Borrowed' : event.lane_count;
+}
+
 function StatCell({
   stat,
   event,
@@ -275,7 +280,7 @@ function StatCell({
       );
     }
     case 'lanes':
-      return <Stat label="Lanes" first={first}><span className={big}>{event.lane_count}</span></Stat>;
+      return <Stat label="Lanes" first={first}><span className={big}>{laneCountLabel(event)}</span></Stat>;
     case 'matches':
       return (
         <Stat label="Matches played" first={first}>
@@ -313,7 +318,7 @@ function StatCell({
               </span>
             </>
           ) : (
-            <span className={big}>{event.lane_count}</span>
+            <span className={big}>{laneCountLabel(event)}</span>
           )}
         </Stat>
       );

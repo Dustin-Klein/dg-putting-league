@@ -35,7 +35,7 @@ import {
   createBracketTx,
   restoreGrandFinalResetMatchTx,
 } from '@/lib/services/bracket';
-import { autoAssignLanesTx } from '@/lib/services/lane';
+import { autoAssignLanesTx, returnAllLanesTx } from '@/lib/services/lane';
 import { lockEvent, lockEvents, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
@@ -400,7 +400,9 @@ export async function deleteEvent(eventId: string) {
   const { pg } = await requireEventAdmin(eventId);
   await withTransaction(pg, async (tx) => {
     const childIds = (await eventDb.getChildEvents(tx, eventId)).map((child) => child.id);
-    await lockEvents(tx, [eventId, ...childIds]);
+    const ownParentId = (await eventDb.getEventLink(tx, eventId))?.parent_event_id ?? null;
+    // The parent too when deleting a second chance: its borrowed lanes go back first.
+    await lockEvents(tx, [eventId, ...childIds, ...(ownParentId ? [ownParentId] : [])]);
     const children = await eventDb.getChildEvents(tx, eventId, { lock: 'update' });
     if (children.some((child) => !childIds.includes(child.id))) {
       throw new ConflictError('A linked event was just created for this event. Try again.');
@@ -415,6 +417,9 @@ export async function deleteEvent(eventId: string) {
         'This event has been counted toward player handicaps and can no longer be deleted.'
       );
     }
+
+    for (const child of children) await returnAllLanesTx(tx, eventId, child.id);
+    if (ownParentId) await returnAllLanesTx(tx, ownParentId, eventId);
 
     for (const id of [...children.map((child) => child.id), eventId]) {
       const unlinkedFrameIds = await frameDb.getUnlinkedMatchFrameIdsForEvent(tx, id);
@@ -555,7 +560,11 @@ export async function updateEventSettingsTx(
   eventId: string,
   patch: UpdateEventSettingsPatch
 ): Promise<{ handicapSummary: EvaluationSummary | null }> {
-  await lockEvent(tx, eventId);
+  // A second chance's completion gives its borrowed lanes back, so it needs its parent's
+  // lock too; parent_event_id never changes, so reading it first is safe.
+  const link = await eventDb.getEventLink(tx, eventId);
+  const lentFromEventId = link?.link_type === 'second_chance' ? link.parent_event_id : null;
+  await lockEvents(tx, lentFromEventId ? [lentFromEventId, eventId] : [eventId]);
   const current = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
   if (!current) throw new NotFoundError('Event not found');
 
@@ -642,6 +651,10 @@ export async function updateEventSettingsTx(
     ...(patch.team_size !== undefined ? { team_size: patch.team_size } : {}),
     ...(patch.team_assignment !== undefined ? { team_assignment: patch.team_assignment } : {}),
   });
+
+  if (lentFromEventId && patch.status === 'completed') {
+    await returnAllLanesTx(tx, lentFromEventId, eventId);
+  }
 
   // Last in the transaction: both take the league handicap lock, which comes after
   // every event, match and lane lock.
@@ -888,7 +901,8 @@ export async function startBracket(
       }))
     );
 
-    if (current.lane_count > 0 && !(await laneDb.hasLanes(tx, eventId))) {
+    // A second chance plays on lanes lent by its main event, never lanes of its own.
+    if (current.link_type !== 'second_chance' && current.lane_count > 0 && !(await laneDb.hasLanes(tx, eventId))) {
       await laneDb.insertLanes(tx, eventId, current.lane_count);
     }
 

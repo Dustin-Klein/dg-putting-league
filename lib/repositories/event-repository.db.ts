@@ -465,6 +465,7 @@ export interface EventBracketConfig {
   lane_count: number;
   team_size: number;
   team_assignment: TeamAssignment;
+  link_type: EventLinkType | null;
 }
 
 export async function getEventBracketConfig(
@@ -483,6 +484,7 @@ export async function getEventBracketConfig(
     lane_count: events.lane_count,
     team_size: events.team_size,
     team_assignment: events.team_assignment,
+    link_type: events.link_type,
   }).from(events).where(eq(events.id, eventId));
   const rows = opts.lock ? await query.for(opts.lock) : await query;
   return rows[0] ?? null;

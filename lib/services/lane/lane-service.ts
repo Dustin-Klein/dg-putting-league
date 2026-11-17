@@ -4,7 +4,7 @@ import { authorizeEventView, type Db } from '@/lib/services/auth';
 import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { fetchBracketStructure, getStageForEvent } from '@/lib/repositories/bracket-repository.db';
-import { getEventBracketConfig } from '@/lib/repositories/event-repository.db';
+import { getEventBracketConfig, getEventLink } from '@/lib/repositories/event-repository.db';
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { Status } from 'brackets-model';
@@ -209,6 +209,9 @@ export async function addLanes(
   const lanes = await withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
     await getEventBracketConfig(tx, eventId, { lock: 'share' });
+    if ((await getEventLink(tx, eventId))?.link_type === 'second_chance') {
+      throw new BadRequestError('A second chance borrows lanes from its main event: lend them from the main event\'s lanes');
+    }
     await laneDb.lockEventLanes(tx, eventId);
     return laneDb.addLanesToEvent(tx, eventId, count);
   });

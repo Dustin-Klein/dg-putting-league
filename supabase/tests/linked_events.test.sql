@@ -137,5 +137,13 @@ SELECT lives_ok(
   'deleting the league still cascades to linked events'
 );
 
+-- ---------------------------------------------------------------------------
+-- lane_loans: server-only
+-- ---------------------------------------------------------------------------
+
+SELECT table_privs_are('putting_league', 'lane_loans', r, ARRAY[]::text[])
+FROM unnest(ARRAY['anon', 'authenticated']) AS r;
+SELECT table_privs_are('putting_league', 'lane_loans', 'app_server', ARRAY['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+
 SELECT * FROM finish();
 ROLLBACK;
