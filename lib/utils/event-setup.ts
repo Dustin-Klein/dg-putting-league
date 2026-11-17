@@ -1,4 +1,5 @@
 import { addDays, startOfDay } from 'date-fns';
+import type { BracketFormat } from '@/lib/brackets/format';
 import type { TeamAssignment } from '@/lib/types/event';
 import type { ZoneDefinition } from '@/lib/types/handicap';
 import { formatForDatabase } from './date-utils';
@@ -11,7 +12,11 @@ export interface EventSetupValues {
   qualification_round_enabled: boolean;
   qualification_frame_count: number;
   bracket_frame_count: number;
+  bracket_format: BracketFormat;
+  /** Double elimination only. */
   double_grand_final: boolean;
+  /** Single elimination only. */
+  third_place_match: boolean;
   team_size: number;
   team_assignment: TeamAssignment;
   entry_fee_per_player: number | null;
@@ -34,7 +39,9 @@ export const DEFAULT_EVENT_SETUP: Omit<EventSetupValues, 'handicap_enabled'> = {
   qualification_round_enabled: false,
   qualification_frame_count: 5,
   bracket_frame_count: 5,
+  bracket_format: 'double_elimination',
   double_grand_final: true,
+  third_place_match: false,
   team_size: 2,
   team_assignment: 'random_pairing',
   entry_fee_per_player: null,
@@ -67,6 +74,16 @@ export function setupFieldApplies(
     case 'putt_distance_ft':
       return !values.handicap_enabled;
   }
+}
+
+type BracketFormatValues = Pick<EventSetupValues, 'bracket_format' | 'double_grand_final' | 'third_place_match'>;
+
+/** "double elimination with a bracket reset", "single elimination with a third-place match", … */
+export function bracketFormatPhrase(values: BracketFormatValues): string {
+  if (values.bracket_format === 'single_elimination') {
+    return values.third_place_match ? 'single elimination with a third-place match' : 'single elimination';
+  }
+  return values.double_grand_final ? 'double elimination with a bracket reset' : 'double elimination without a bracket reset';
 }
 
 /** "$10" for whole dollars, "$10.50" otherwise. */
@@ -133,7 +150,7 @@ export function setupSummary(values: EventSetupValues, ctx: EventSetupContext): 
   const scoring = [
     `${values.bracket_frame_count}-frame matches`,
     distanceLabel(values, ctx),
-    values.double_grand_final ? 'bracket reset' : 'no bracket reset',
+    bracketFormatPhrase(values),
   ];
   const money = values.entry_fee_per_player
     ? `${formatMoney(values.entry_fee_per_player)} entry · ${adminFeeLabel(values)}`
@@ -147,7 +164,7 @@ export type SetupEdit =
   | 'team_assignment'
   | 'qualification'
   | 'bracket_frames'
-  | 'grand_final'
+  | 'bracket_format'
   | 'lanes'
   | 'distance'
   | 'location'
@@ -176,8 +193,8 @@ export function describeEventSetup(
   parts.push(
     { text: '. Bracket matches are ' },
     { text: `${values.bracket_frame_count} frames`, edit: 'bracket_frames' },
-    { text: ', double elimination ' },
-    { text: values.double_grand_final ? 'with a bracket reset' : 'without a bracket reset', edit: 'grand_final' },
+    { text: ', ' },
+    { text: bracketFormatPhrase(values), edit: 'bracket_format' },
     { text: '. Played on ' },
     { text: `${values.lane_count} lane${values.lane_count === 1 ? '' : 's'}`, edit: 'lanes' },
   );
@@ -207,14 +224,19 @@ export function eventFormatParts(event: {
   qualification_round_enabled: boolean;
   qualification_frame_count: number;
   bracket_frame_count: number | null;
+  bracket_format: BracketFormat;
   double_grand_final: boolean;
+  third_place_match: boolean;
   bonus_point_enabled: boolean;
 }): string[] {
+  const bracket = event.bracket_format === 'single_elimination'
+    ? ['single elimination', ...(event.third_place_match ? ['third-place match'] : [])]
+    : event.double_grand_final ? ['bracket reset'] : [];
   return [
     teamFormatLabel(event.team_size, event.team_assignment),
     ...(event.qualification_round_enabled ? [`${event.qualification_frame_count}-frame qualification`] : []),
     ...(event.bracket_frame_count ? [`${event.bracket_frame_count}-frame matches`] : []),
-    ...(event.double_grand_final ? ['bracket reset'] : []),
+    ...bracket,
     ...(event.bonus_point_enabled ? ['bonus point for 3 of 3'] : []),
   ];
 }
@@ -230,7 +252,9 @@ export function templateToSetupValues(event: EventSetupValues, ctx: EventSetupCo
     qualification_round_enabled: event.qualification_round_enabled,
     qualification_frame_count: event.qualification_frame_count,
     bracket_frame_count: event.bracket_frame_count,
+    bracket_format: event.bracket_format,
     double_grand_final: event.double_grand_final,
+    third_place_match: event.third_place_match,
     team_size: event.team_size,
     team_assignment: event.team_assignment,
     entry_fee_per_player: event.entry_fee_per_player,
@@ -265,7 +289,9 @@ export function toCreateEventBody(values: CreateEventInput, copyPlayersFromEvent
     putt_distance_ft: values.putt_distance_ft,
     access_code: values.access_code,
     qualification_round_enabled: values.qualification_round_enabled,
-    double_grand_final: values.double_grand_final,
+    bracket_format: values.bracket_format,
+    double_grand_final: values.bracket_format === 'double_elimination' && values.double_grand_final,
+    third_place_match: values.bracket_format === 'single_elimination' && values.third_place_match,
     bracket_frame_count: values.bracket_frame_count,
     qualification_frame_count: values.qualification_frame_count,
     entry_fee_per_player: values.entry_fee_per_player ?? null,

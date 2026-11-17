@@ -1,5 +1,6 @@
 import type { Match, Participant, Stage, Group, Round } from 'brackets-model';
 import type { Team } from './team';
+import { groupRole, type BracketFormat, type GroupRole } from '@/lib/brackets/format';
 import type { EventStatus } from './event';
 
 /**
@@ -72,12 +73,18 @@ export interface MatchDisplayData {
   groupName: string;
 }
 
-// Group names for double elimination
-export const GROUP_NAMES: Record<number, string> = {
-  1: "Winner's Bracket",
-  2: "Loser's Bracket",
-  3: 'Grand Final',
+const GROUP_NAMES: Record<GroupRole, string> = {
+  winners: "Winner's Bracket",
+  losers: "Loser's Bracket",
+  grand_final: 'Grand Final',
+  main: 'Bracket',
+  third_place: '3rd Place',
 };
+
+export function groupDisplayName(format: BracketFormat, groupNumber: number): string {
+  const role = groupRole(format, groupNumber);
+  return role ? GROUP_NAMES[role] : `Group ${groupNumber}`;
+}
 
 // Match status enum from brackets-model
 export enum MatchStatus {

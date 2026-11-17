@@ -71,7 +71,7 @@ describe('labels', () => {
     );
     expect(summary).toEqual({
       format: 'Doubles, one from each pool · 5-frame qualification',
-      scoring: '5-frame matches · zones 21 / 27 / 33 ft · bracket reset',
+      scoring: '5-frame matches · zones 21 / 27 / 33 ft · double elimination with a bracket reset',
       money: '$10 entry · $1 per player to admin',
     });
     expect(setupSummary(setup(), FLAT).money).toBe('No entry fee');
@@ -118,7 +118,9 @@ describe('eventFormatParts', () => {
     qualification_round_enabled: false,
     qualification_frame_count: 5,
     bracket_frame_count: 5,
+    bracket_format: 'double_elimination' as const,
     double_grand_final: false,
+    third_place_match: false,
     bonus_point_enabled: false,
   };
 
@@ -126,6 +128,11 @@ describe('eventFormatParts', () => {
     expect(eventFormatParts(event)).toEqual(['Doubles, one from each pool', '5-frame matches']);
     expect(eventFormatParts({ ...event, qualification_round_enabled: true, double_grand_final: true, bonus_point_enabled: true }))
       .toEqual(['Doubles, one from each pool', '5-frame qualification', '5-frame matches', 'bracket reset', 'bonus point for 3 of 3']);
+  });
+
+  it('names single elimination and its third-place match', () => {
+    expect(eventFormatParts({ ...event, bracket_format: 'single_elimination', third_place_match: true }))
+      .toEqual(['Doubles, one from each pool', '5-frame matches', 'single elimination', 'third-place match']);
   });
 });
 
@@ -180,7 +187,9 @@ describe('toCreateEventBody', () => {
       putt_distance_ft: 15,
       access_code: 'K7QM4R',
       qualification_round_enabled: false,
+      bracket_format: 'double_elimination',
       double_grand_final: true,
+      third_place_match: false,
       bracket_frame_count: 5,
       qualification_frame_count: 5,
       entry_fee_per_player: 10,
@@ -197,6 +206,13 @@ describe('toCreateEventBody', () => {
     const body = toCreateEventBody({ ...input, location: ' ' }, null);
     expect(body.location).toBeNull();
     expect(body).not.toHaveProperty('copy_players_from_event_id');
+  });
+
+  it('sends only the extra match that fits the format', () => {
+    expect(toCreateEventBody({ ...input, bracket_format: 'single_elimination', double_grand_final: true, third_place_match: true }))
+      .toMatchObject({ bracket_format: 'single_elimination', double_grand_final: false, third_place_match: true });
+    expect(toCreateEventBody({ ...input, double_grand_final: false, third_place_match: true }))
+      .toMatchObject({ bracket_format: 'double_elimination', double_grand_final: false, third_place_match: false });
   });
 
   it('always states the handicap choice', () => {

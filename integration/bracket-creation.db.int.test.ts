@@ -10,6 +10,7 @@ import {
   teams,
 } from '@/lib/db/schema';
 import type { Executor, Tx } from '@/lib/db/tx';
+import type { BracketFormatSettings } from '@/lib/brackets/format';
 import { DrizzleBracketStorage } from '@/lib/repositories/bracket-storage.db';
 import { createBracketTx } from '@/lib/services/bracket/bracket-service';
 import { startBracket } from '@/lib/services/event/event-service';
@@ -29,7 +30,7 @@ afterAll(async () => {
 });
 
 /** The bracket creation this replaced: brackets-manager writing through to Postgres row by row. */
-async function createBracketRowByRow(tx: Tx, eventId: string, doubleGrandFinal: boolean): Promise<void> {
+async function createBracketRowByRow(tx: Tx, eventId: string, format: BracketFormatSettings): Promise<void> {
   const teamRows = await tx.select().from(teams).where(eq(teams.event_id, eventId));
   const sortedTeams = [...teamRows].sort((a, b) => (a.seed || 0) - (b.seed || 0));
   let size = 2;
@@ -37,13 +38,24 @@ async function createBracketRowByRow(tx: Tx, eventId: string, doubleGrandFinal: 
   const seeding: (string | null)[] = sortedTeams.map((t) => t.pool_combo ?? `Team ${t.seed}`);
   while (seeding.length < size) seeding.push(null);
 
-  await new BracketsManager(new DrizzleBracketStorage(tx, eventId)).create.stage({
-    tournamentId: eventId as unknown as number,
-    name: 'Double Elimination',
-    type: 'double_elimination',
-    seeding,
-    settings: { grandFinal: doubleGrandFinal ? 'double' : 'simple', seedOrdering: ['inner_outer'], balanceByes: true },
-  });
+  const manager = new BracketsManager(new DrizzleBracketStorage(tx, eventId));
+  if (format.bracket_format === 'single_elimination') {
+    await manager.create.stage({
+      tournamentId: eventId as unknown as number,
+      name: 'Single Elimination',
+      type: 'single_elimination',
+      seeding,
+      settings: { seedOrdering: ['inner_outer'], balanceByes: true, consolationFinal: format.third_place_match && size >= 4 },
+    });
+  } else {
+    await manager.create.stage({
+      tournamentId: eventId as unknown as number,
+      name: 'Double Elimination',
+      type: 'double_elimination',
+      seeding,
+      settings: { grandFinal: format.double_grand_final ? 'double' : 'simple', seedOrdering: ['inner_outer'], balanceByes: true },
+    });
+  }
 
   const participants = await tx
     .select({ id: bracket_participant.id })
@@ -109,8 +121,14 @@ async function canonicalBracket(ex: Executor, eventId: string) {
   };
 }
 
-async function seedTeams(tx: Tx, teamCount: number, doubleGrandFinal: boolean): Promise<string> {
-  const event = await seedEvent(tx, { players: 0, status: 'bracket', doubleGrandFinal });
+async function seedTeams(tx: Tx, teamCount: number, format: BracketFormatSettings): Promise<string> {
+  const event = await seedEvent(tx, {
+    players: 0,
+    status: 'bracket',
+    doubleGrandFinal: format.double_grand_final,
+    bracketFormat: format.bracket_format,
+    thirdPlaceMatch: format.third_place_match,
+  });
   await tx.insert(teams).values(
     Array.from({ length: teamCount }, (_, i) => ({ event_id: event.eventId, seed: i + 1, pool_combo: `Team ${i + 1}` }))
   );
@@ -119,14 +137,20 @@ async function seedTeams(tx: Tx, teamCount: number, doubleGrandFinal: boolean): 
 
 describe('bracket creation', () => {
   const sizes = [2, 3, 5, 8, 16, 32, 64, 128];
-  for (const doubleGrandFinal of [true, false]) {
-    it.each(sizes)(`matches row-by-row creation for %i teams (${doubleGrandFinal ? 'double' : 'simple'} grand final)`, async (teamCount) => {
+  const formats: Array<[string, BracketFormatSettings]> = [
+    ['double grand final', { bracket_format: 'double_elimination', double_grand_final: true, third_place_match: false }],
+    ['simple grand final', { bracket_format: 'double_elimination', double_grand_final: false, third_place_match: false }],
+    ['single elimination', { bracket_format: 'single_elimination', double_grand_final: false, third_place_match: false }],
+    ['single elimination with third place', { bracket_format: 'single_elimination', double_grand_final: false, third_place_match: true }],
+  ];
+  for (const [label, format] of formats) {
+    it.each(sizes)(`matches row-by-row creation for %i teams (${label})`, async (teamCount) => {
       await withRollback(db, async (tx) => {
-        const reference = await seedTeams(tx, teamCount, doubleGrandFinal);
-        const generated = await seedTeams(tx, teamCount, doubleGrandFinal);
+        const reference = await seedTeams(tx, teamCount, format);
+        const generated = await seedTeams(tx, teamCount, format);
 
-        await createBracketRowByRow(tx, reference, doubleGrandFinal);
-        await createBracketTx(tx, generated, doubleGrandFinal);
+        await createBracketRowByRow(tx, reference, format);
+        await createBracketTx(tx, generated, format);
 
         const expected = await canonicalBracket(tx, reference);
         expect(expected.matches.length).toBeGreaterThan(0);
@@ -137,9 +161,10 @@ describe('bracket creation', () => {
 
   it('refuses an event that already has bracket rows', async () => {
     await withRollback(db, async (tx) => {
-      const eventId = await seedTeams(tx, 4, true);
+      const format: BracketFormatSettings = { bracket_format: 'double_elimination', double_grand_final: true, third_place_match: false };
+      const eventId = await seedTeams(tx, 4, format);
       await tx.insert(bracket_participant).values({ tournament_id: eventId, name: 'Leftover' });
-      await expect(createBracketTx(tx, eventId, true)).rejects.toThrow('Bracket has already been created');
+      await expect(createBracketTx(tx, eventId, format)).rejects.toThrow('Bracket has already been created');
     });
   });
 

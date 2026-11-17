@@ -7,6 +7,8 @@ import { sql } from "drizzle-orm"
 
 export const putting_league = pgSchema("putting_league");
 
+export const bracket_format = putting_league.enum("bracket_format", ['double_elimination', 'single_elimination'])
+
 export const event_link_type = putting_league.enum("event_link_type", ['second_chance', 'side', 'makeup'])
 
 export const event_status = putting_league.enum("event_status", ['created', 'pre-bracket', 'bracket', 'completed'])
@@ -290,14 +292,18 @@ export const events = putting_league.table("events", {
 	parent_event_id: uuid(),
 	link_type: event_link_type(),
 	handicap_enabled: boolean().default(false).notNull(),
+	bracket_format: bracket_format().default('double_elimination').notNull(),
+	third_place_match: boolean().default(false).notNull(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),
+	check("events_grand_final_needs_double_elim", sql`(bracket_format = 'double_elimination'::putting_league.bracket_format) OR (double_grand_final = false)`),
 	check("events_lane_count_check", sql`lane_count > 0`),
 	check("events_link_consistent", sql`(parent_event_id IS NULL) = (link_type IS NULL)`),
 	check("events_no_self_link", sql`parent_event_id IS DISTINCT FROM id`),
 	check("events_qualification_frame_count_check", sql`(qualification_frame_count > 0) AND (qualification_frame_count <= 10)`),
 	check("events_team_size_check", sql`(team_size >= 1) AND (team_size <= 4)`),
+	check("events_third_place_needs_single_elim", sql`(bracket_format = 'single_elimination'::putting_league.bracket_format) OR (third_place_match = false)`),
 	foreignKey({
 			columns: [table.league_id],
 			foreignColumns: [leagues.id],

@@ -12,6 +12,7 @@ import {
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 import { validateCsrfOrigin } from '@/lib/utils';
 import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
+import { BRACKET_FORMATS } from '@/lib/brackets/format';
 
 const updateEventSchema = z.object({
   status: z.enum([
@@ -20,6 +21,8 @@ const updateEventSchema = z.object({
     'completed',
   ]).optional(),
   double_grand_final: z.boolean().optional(),
+  bracket_format: z.enum(BRACKET_FORMATS).optional(),
+  third_place_match: z.boolean().optional(),
   team_size: z.number().int().min(TEAM_SIZE_MIN).max(TEAM_SIZE_MAX).optional(),
   team_assignment: z.enum(['random_pairing', 'random_flat', 'manual']).optional(),
   force: z.boolean().optional(),

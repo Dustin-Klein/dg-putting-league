@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import type { Match } from 'brackets-model';
 import type { Team } from '@/lib/types/team';
 import type { BracketWithTeams } from '@/lib/types/bracket';
 import { PoolBadge } from '@/components/pool-badge';
@@ -11,6 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils/utils';
 import { formatPlacement } from '@/lib/utils/format-utils';
+import { groupRole, stageFormat, type BracketFormat } from '@/lib/brackets/format';
+import {
+  decidedMatchesOf,
+  placeDecidedMatchesDetailed,
+  type DetailedPlacement,
+  type PlacementOpponent,
+} from '@/lib/brackets/placements';
 
 interface ResultsDisplayProps {
   eventId: string;
@@ -26,149 +32,43 @@ interface TeamPlacement {
   eliminatedIn: string;
 }
 
+function placementLabel(format: BracketFormat, placement: DetailedPlacement): string {
+  const { decidedBy, won } = placement;
+  const role = groupRole(format, decidedBy.groupNumber);
+  if (role === 'grand_final') return won ? 'Grand Final Winner' : 'Grand Final';
+  if (role === 'losers') return `Loser's Bracket Round ${decidedBy.roundNumber}`;
+  if (role === 'winners') return `Winner's Bracket Round ${decidedBy.roundNumber}`;
+  if (role === 'third_place') return won ? 'Third-Place Match Winner' : 'Third-Place Match';
+  if (decidedBy.isLastRoundOfGroup) return won ? 'Final Winner' : 'Final';
+  return `Round ${decidedBy.roundNumber}`;
+}
+
 function calculatePlacements(bracketData: BracketWithTeams | null): TeamPlacement[] {
   if (!bracketData) return [];
 
   const { bracket, participantTeamMap } = bracketData;
-  const placements: TeamPlacement[] = [];
-  const placedTeamIds = new Set<string>();
+  const format = stageFormat(bracket.stage?.type);
+  const participants = Object.entries(participantTeamMap).map(([id, team]) => ({ id: Number(id), team_id: team.id }));
+  const decided = decidedMatchesOf({
+    groups: bracket.groups.map((group) => ({ id: Number(group.id), number: group.number })),
+    rounds: bracket.rounds.map((round) => ({ id: Number(round.id), group_id: Number(round.group_id), number: round.number })),
+    matches: bracket.matches.map((match) => ({
+      id: Number(match.id),
+      round_id: Number(match.round_id),
+      // Any recorded result places a team here, even before the match row is archived.
+      status: 4,
+      opponent1: match.opponent1 as PlacementOpponent | null,
+      opponent2: match.opponent2 as PlacementOpponent | null,
+    })),
+    participants,
+  });
 
-  // Helper to get team from participant ID
-  const getTeam = (participantId: number | null): Team | undefined => {
-    if (participantId === null) return undefined;
-    return participantTeamMap[participantId];
-  };
-
-  // Helper to check if match has a result
-  const hasResult = (match: Match): boolean => {
-    const opp1 = match.opponent1 as { id: number | null; result?: string } | null;
-    const opp2 = match.opponent2 as { id: number | null; result?: string } | null;
-    return opp1?.result === 'win' || opp2?.result === 'win';
-  };
-
-  // Helper to get winner/loser of a match
-  const getMatchResult = (match: Match): { winner?: Team; loser?: Team } => {
-    const opp1 = match.opponent1 as { id: number | null; result?: string } | null;
-    const opp2 = match.opponent2 as { id: number | null; result?: string } | null;
-
-    if (opp1?.result === 'win') {
-      return {
-        winner: getTeam(opp1.id),
-        loser: getTeam(opp2?.id ?? null),
-      };
-    } else if (opp2?.result === 'win') {
-      return {
-        winner: getTeam(opp2.id),
-        loser: getTeam(opp1?.id ?? null),
-      };
-    }
-    return {};
-  };
-
-  // Get groups
-  const grandFinalGroup = bracket.groups.find((g) => g.number === 3);
-  const losersGroup = bracket.groups.find((g) => g.number === 2);
-  const winnersGroup = bracket.groups.find((g) => g.number === 1);
-
-  // 1st and 2nd: From Grand Final
-  if (grandFinalGroup) {
-    const grandFinalRounds = bracket.rounds
-      .filter((r) => r.group_id === grandFinalGroup.id)
-      .sort((a, b) => b.number - a.number); // Latest round first
-
-    for (const round of grandFinalRounds) {
-      const matches = bracket.matches
-        .filter((m) => m.round_id === round.id && hasResult(m))
-        .sort((a, b) => b.number - a.number);
-
-      for (const match of matches) {
-        const { winner, loser } = getMatchResult(match);
-
-        if (winner && !placedTeamIds.has(winner.id)) {
-          placements.push({
-            place: placements.length + 1,
-            team: winner,
-            eliminatedIn: 'Grand Final Winner',
-          });
-          placedTeamIds.add(winner.id);
-        }
-
-        if (loser && !placedTeamIds.has(loser.id)) {
-          placements.push({
-            place: placements.length + 1,
-            team: loser,
-            eliminatedIn: 'Grand Final',
-          });
-          placedTeamIds.add(loser.id);
-        }
-      }
-    }
-  }
-
-  // 3rd and beyond: From Loser's Bracket (latest rounds first)
-  if (losersGroup) {
-    const losersRounds = bracket.rounds
-      .filter((r) => r.group_id === losersGroup.id)
-      .sort((a, b) => b.number - a.number);
-
-    for (const round of losersRounds) {
-      const matches = bracket.matches
-        .filter((m) => m.round_id === round.id && hasResult(m))
-        .sort((a, b) => a.number - b.number);
-
-      const losersThisRound: Team[] = [];
-
-      for (const match of matches) {
-        const { loser } = getMatchResult(match);
-        if (loser && !placedTeamIds.has(loser.id)) {
-          losersThisRound.push(loser);
-          placedTeamIds.add(loser.id);
-        }
-      }
-
-      // Add all losers from this round at the same placement level
-      for (const team of losersThisRound) {
-        placements.push({
-          place: placements.length + 1,
-          team,
-          eliminatedIn: `Loser's Bracket Round ${round.number}`,
-        });
-      }
-    }
-  }
-
-  // Remaining: From Winner's Bracket (teams eliminated to loser's bracket, latest first)
-  if (winnersGroup) {
-    const winnersRounds = bracket.rounds
-      .filter((r) => r.group_id === winnersGroup.id)
-      .sort((a, b) => b.number - a.number);
-
-    for (const round of winnersRounds) {
-      const matches = bracket.matches
-        .filter((m) => m.round_id === round.id && hasResult(m))
-        .sort((a, b) => a.number - b.number);
-
-      const losersThisRound: Team[] = [];
-
-      for (const match of matches) {
-        const { loser } = getMatchResult(match);
-        if (loser && !placedTeamIds.has(loser.id)) {
-          losersThisRound.push(loser);
-          placedTeamIds.add(loser.id);
-        }
-      }
-
-      for (const team of losersThisRound) {
-        placements.push({
-          place: placements.length + 1,
-          team,
-          eliminatedIn: `Winner's Bracket Round ${round.number}`,
-        });
-      }
-    }
-  }
-
-  return placements;
+  return placeDecidedMatchesDetailed('', format, decided).flatMap((placement) => {
+    const team = participantTeamMap[
+      Number(participants.find((participant) => participant.team_id === placement.teamId)?.id)
+    ];
+    return team ? [{ place: placement.placement, team, eliminatedIn: placementLabel(format, placement) }] : [];
+  });
 }
 
 interface PayoutByPlace {

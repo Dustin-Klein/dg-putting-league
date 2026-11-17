@@ -9,6 +9,7 @@ import {
 import { validateCsrfOrigin } from '@/lib/utils';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
 import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
+import { BRACKET_FORMATS } from '@/lib/brackets/format';
 
 const eventSchema = z.object({
   event_date: z.string().refine((val) => {
@@ -21,7 +22,9 @@ const eventSchema = z.object({
   putt_distance_ft: z.number().positive(),
   access_code: z.string().trim().min(6).max(50),
   qualification_round_enabled: z.boolean().optional().default(false),
-  double_grand_final: z.boolean().optional().default(true),
+  double_grand_final: z.boolean().optional(),
+  bracket_format: z.enum(BRACKET_FORMATS).optional(),
+  third_place_match: z.boolean().optional(),
   bracket_frame_count: z.number().int().min(1).max(10).default(5),
   qualification_frame_count: z.number().int().min(1).max(10).default(5),
   entry_fee_per_player: z.number().min(0).nullable().optional().default(null),

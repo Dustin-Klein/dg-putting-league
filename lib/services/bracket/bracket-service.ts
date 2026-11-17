@@ -39,6 +39,7 @@ import type {
 } from '@/lib/repositories/bracket-repository.db';
 import { getFullTeamsForEvent, getPublicTeamsForEvent } from '@/lib/repositories/team-repository.db';
 import type { EventStatus } from '@/lib/types/event';
+import type { BracketFormatSettings } from '@/lib/brackets/format';
 import type {
   BracketWithTeams,
   Lane,
@@ -149,9 +150,11 @@ export async function buildProgressionSourceMap(
     return getMatchByGroupRoundAndNumber(finalGroupId, 1, 1);
   };
 
+  // Double elimination numbers its consolation final 2 (after the grand final); single elimination's is alone.
+  const consolationFinalNumber = context.stage.type === 'single_elimination' ? 1 : 2;
   const getConsolationFinalMatch = (): Match | null => {
     const finalGroupId = toNumericId(finalGroup?.id);
-    return finalGroupId == null ? null : getMatchByGroupRoundAndNumber(finalGroupId, 1, 2);
+    return finalGroupId == null ? null : getMatchByGroupRoundAndNumber(finalGroupId, 1, consolationFinalNumber);
   };
 
   const getNextDiagonalMatch = (sourceMatch: Match, sourceRoundNumber: number): Match | null => {
@@ -389,7 +392,7 @@ export async function buildProgressionSourceMap(
 }
 
 /**
- * Create the double-elimination bracket for an event from its teams (seed order),
+ * Create the event's single- or double-elimination bracket from its teams (seed order),
  * inside the caller's transaction, which must hold the event lock: brackets-manager
  * structure, participant → team links, and first-round matches set Ready.
  *
@@ -400,7 +403,7 @@ export async function buildProgressionSourceMap(
 export async function createBracketTx(
   tx: Tx,
   eventId: string,
-  doubleGrandFinal: boolean
+  format: BracketFormatSettings
 ): Promise<void> {
   if (await bracketStorageDb.bracketRowsExist(tx, eventId)) {
     throw new BadRequestError('Bracket has already been created for this event');
@@ -424,17 +427,32 @@ export async function createBracketTx(
 
   const storage = new MemoryBracketStorage();
   const manager = new BracketsManager(storage);
-  await manager.create.stage({
-    tournamentId: eventId as unknown as number,
-    name: 'Double Elimination',
-    type: 'double_elimination',
-    seeding,
-    settings: {
-      grandFinal: doubleGrandFinal ? 'double' : 'simple',
-      seedOrdering: ['inner_outer'],
-      balanceByes: true,
-    },
-  });
+  await manager.create.stage(
+    format.bracket_format === 'single_elimination'
+      ? {
+          tournamentId: eventId as unknown as number,
+          name: 'Single Elimination',
+          type: 'single_elimination',
+          seeding,
+          settings: {
+            seedOrdering: ['inner_outer'],
+            balanceByes: true,
+            // Two teams have no semifinal losers to play for third.
+            consolationFinal: format.third_place_match && bracketSize >= 4,
+          },
+        }
+      : {
+          tournamentId: eventId as unknown as number,
+          name: 'Double Elimination',
+          type: 'double_elimination',
+          seeding,
+          settings: {
+            grandFinal: format.double_grand_final ? 'double' : 'simple',
+            seedOrdering: ['inner_outer'],
+            balanceByes: true,
+          },
+        }
+  );
 
   const bracket = {
     stage: storage.dump('stage'),
@@ -463,7 +481,7 @@ export async function createBracketTx(
 }
 
 /**
- * Create a double elimination bracket for an event that is already in bracket play
+ * Create the bracket for an event that is already in bracket play
  * but has no bracket yet.
  */
 export async function createBracket(eventId: string): Promise<BracketData> {
@@ -478,7 +496,7 @@ export async function createBracket(eventId: string): Promise<BracketData> {
     if (event.status !== 'bracket') {
       throw new BadRequestError('Bracket can only be created for events in bracket status');
     }
-    await createBracketTx(tx, eventId, event.double_grand_final);
+    await createBracketTx(tx, eventId, event);
   });
 
   return getBracket(eventId);

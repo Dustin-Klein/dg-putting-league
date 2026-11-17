@@ -200,6 +200,8 @@ export function createMockEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     bracket_frame_count: 5,
     qualification_frame_count: 5,
     double_grand_final: true,
+    bracket_format: 'double_elimination',
+    third_place_match: false,
     entry_fee_per_player: null,
     admin_fees: null,
     admin_fee_per_player: null,
@@ -229,6 +231,8 @@ export interface MockEvent {
   bracket_frame_count: number;
   qualification_frame_count: number;
   double_grand_final: boolean;
+  bracket_format: 'double_elimination' | 'single_elimination';
+  third_place_match: boolean;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;

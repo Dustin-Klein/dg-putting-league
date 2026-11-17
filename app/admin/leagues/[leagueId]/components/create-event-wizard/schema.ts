@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { isFutureOrToday } from '@/lib/utils/date-utils';
+import { BRACKET_FORMATS } from '@/lib/brackets/format';
 import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
 import { teamAssignmentOptions } from '@/lib/utils/team-utils';
 
@@ -13,7 +14,9 @@ export const createEventSchema = z.object({
   putt_distance_ft: z.coerce.number().positive('Distance must be greater than 0'),
   access_code: z.string().trim().min(6, 'Access code must be at least 6 characters').max(50),
   qualification_round_enabled: z.boolean(),
+  bracket_format: z.enum(BRACKET_FORMATS),
   double_grand_final: z.boolean(),
+  third_place_match: z.boolean(),
   bracket_frame_count: z.coerce.number().int().min(1).max(10),
   qualification_frame_count: z.coerce.number().int().min(1).max(10),
   entry_fee_per_player: money,

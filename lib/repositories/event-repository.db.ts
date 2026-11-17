@@ -4,7 +4,7 @@ import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, player_profiles, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
-import type { EventLinkType, EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
+import type { BracketFormat, EventLinkType, EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
 import type { EventPlayer, PaymentType } from '@/lib/types/player';
 import type { Team } from '@/lib/types/team';
 import type { LeagueAdminRole } from './league-repository.db';
@@ -22,6 +22,8 @@ export interface EventData {
   bracket_frame_count: number;
   qualification_frame_count: number;
   double_grand_final: boolean;
+  bracket_format: BracketFormat;
+  third_place_match: boolean;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;
@@ -65,6 +67,8 @@ const eventSelection = {
   bracket_frame_count: events.bracket_frame_count,
   qualification_frame_count: events.qualification_frame_count,
   double_grand_final: events.double_grand_final,
+  bracket_format: events.bracket_format,
+  third_place_match: events.third_place_match,
   entry_fee_per_player: events.entry_fee_per_player,
   admin_fees: events.admin_fees,
   admin_fee_per_player: events.admin_fee_per_player,
@@ -311,6 +315,8 @@ export interface CreateEventData {
   bracket_frame_count: number;
   qualification_frame_count: number;
   double_grand_final?: boolean;
+  bracket_format?: BracketFormat;
+  third_place_match?: boolean;
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
@@ -435,6 +441,8 @@ export interface EventBracketConfig {
   bonus_point_enabled: boolean;
   bracket_frame_count: number;
   double_grand_final: boolean;
+  bracket_format: BracketFormat;
+  third_place_match: boolean;
   lane_count: number;
   team_size: number;
   team_assignment: TeamAssignment;
@@ -451,6 +459,8 @@ export async function getEventBracketConfig(
     bonus_point_enabled: events.bonus_point_enabled,
     bracket_frame_count: events.bracket_frame_count,
     double_grand_final: events.double_grand_final,
+    bracket_format: events.bracket_format,
+    third_place_match: events.third_place_match,
     lane_count: events.lane_count,
     team_size: events.team_size,
     team_assignment: events.team_assignment,
@@ -469,6 +479,8 @@ export async function updateEventSettings(
   patch: {
     status?: EventStatus;
     double_grand_final?: boolean;
+    bracket_format?: BracketFormat;
+    third_place_match?: boolean;
     team_size?: number;
     team_assignment?: TeamAssignment;
   }

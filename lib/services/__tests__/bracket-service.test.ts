@@ -459,6 +459,32 @@ describe('Bracket Service', () => {
       expect(allResetSourceIds).toContain(1001);
       expect(allResetSourceIds).not.toContain(1002);
     });
+
+    it('feeds both single-elimination semifinal losers into the third-place match', async () => {
+      const match = (id: number, group_id: number, round_id: number, number: number) =>
+        ({ id, stage_id: 1, group_id, round_id, number, status: 1, opponent1: null, opponent2: null });
+      const context = {
+        stage: { id: 1, type: 'single_elimination', settings: { consolationFinal: true } },
+        groups: [{ id: 10, number: 1 }, { id: 20, number: 2 }],
+        rounds: [
+          { id: 101, group_id: 10, number: 1 },
+          { id: 102, group_id: 10, number: 2 },
+          { id: 201, group_id: 20, number: 1 },
+        ],
+        matches: [match(1, 10, 101, 1), match(2, 10, 101, 2), match(3, 10, 102, 1), match(4, 20, 201, 1)],
+      };
+
+      const map = await buildProgressionSourceMap(context as never);
+
+      expect(map[3]).toEqual({
+        opponent1: { sourceMatchId: 1, sourceOutcome: 'winner' },
+        opponent2: { sourceMatchId: 2, sourceOutcome: 'winner' },
+      });
+      expect(map[4]).toEqual({
+        opponent1: { sourceMatchId: 1, sourceOutcome: 'loser' },
+        opponent2: { sourceMatchId: 2, sourceOutcome: 'loser' },
+      });
+    });
   });
 
 
