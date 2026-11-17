@@ -98,3 +98,31 @@ export interface EventWithDetails {
 export interface UpdateEventStatusValues {
   status: EventStatus;
 }
+
+/** A main event's view of its second chance (admin only). */
+export interface SecondChanceSummary {
+  /** The main event's status; a second chance can be created during bracket play or after. */
+  status: EventStatus;
+  /** Players knocked out of the main bracket so far (after completion: placed below the winners). */
+  eliminated_count: number;
+  child: { id: string; status: EventStatus; event_date: string } | null;
+  can_create: boolean;
+}
+
+export interface SecondChancePlayer {
+  player_id: string;
+  full_name: string;
+}
+
+/** A second-chance event's roster compared with who is out of the main event (admin only). */
+export interface SecondChanceRoster {
+  parent_event_id: string;
+  parent_status: EventStatus;
+  status: EventStatus;
+  /** Knocked out of the main event but not entered yet. */
+  pending: SecondChancePlayer[];
+  /** Entered here and in the main event, but not knocked out of it (e.g. after a match reset there). */
+  not_eliminated: SecondChancePlayer[];
+  /** Players can be added until the second-chance bracket starts. */
+  can_sync: boolean;
+}

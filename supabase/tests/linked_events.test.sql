@@ -41,6 +41,49 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
+-- events_one_second_chance_per_parent: other link types are not limited
+-- ---------------------------------------------------------------------------
+
+SELECT throws_ok(
+  $$ INSERT INTO putting_league.events (league_id, event_date, lane_count, putt_distance_ft, access_code,
+                                parent_event_id, link_type, team_size)
+     VALUES ('00000000-0000-0000-0000-00000008b001', '2026-01-01', 2, 25, 'linkchild2',
+             '00000000-0000-0000-0000-00000008c001', 'second_chance', 1) $$,
+  '23505', NULL, 'a parent cannot have a second second-chance event'
+);
+SELECT lives_ok(
+  $$ INSERT INTO putting_league.events (id, league_id, event_date, lane_count, putt_distance_ft, access_code,
+                                parent_event_id, link_type)
+     VALUES ('00000000-0000-0000-0000-00000008c00a', '00000000-0000-0000-0000-00000008b001', '2026-01-01', 2, 25,
+             'linkside1', '00000000-0000-0000-0000-00000008c001', 'side') $$,
+  'a parent with a second chance can still have a side event'
+);
+DELETE FROM putting_league.events WHERE id = '00000000-0000-0000-0000-00000008c00a';
+
+-- ---------------------------------------------------------------------------
+-- bracket format: each format's extra match only exists for that format
+-- ---------------------------------------------------------------------------
+
+SELECT throws_ok(
+  $$ INSERT INTO putting_league.events (league_id, event_date, lane_count, putt_distance_ft, access_code,
+                                bracket_format, double_grand_final)
+     VALUES ('00000000-0000-0000-0000-00000008b001', '2026-01-01', 2, 25, 'formatse1', 'single_elimination', true) $$,
+  '23514', NULL, 'single elimination has no grand-final reset'
+);
+SELECT throws_ok(
+  $$ INSERT INTO putting_league.events (league_id, event_date, lane_count, putt_distance_ft, access_code,
+                                third_place_match)
+     VALUES ('00000000-0000-0000-0000-00000008b001', '2026-01-01', 2, 25, 'formatde1', true) $$,
+  '23514', NULL, 'double elimination has no third-place match'
+);
+SELECT lives_ok(
+  $$ INSERT INTO putting_league.events (league_id, event_date, lane_count, putt_distance_ft, access_code,
+                                bracket_format, double_grand_final, third_place_match)
+     VALUES ('00000000-0000-0000-0000-00000008b001', '2026-01-01', 2, 25, 'formatse2', 'single_elimination', false, true) $$,
+  'single elimination with a third-place match'
+);
+
+-- ---------------------------------------------------------------------------
 -- events_no_self_link
 -- ---------------------------------------------------------------------------
 

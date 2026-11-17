@@ -370,6 +370,7 @@ export interface EventLink {
   league_id: string;
   status: EventStatus;
   parent_event_id: string | null;
+  link_type: EventLinkType | null;
 }
 
 /** The fields that decide whether an event can be (or have) a linked event. */
@@ -383,9 +384,27 @@ export async function getEventLink(
     league_id: events.league_id,
     status: events.status,
     parent_event_id: events.parent_event_id,
+    link_type: events.link_type,
   }).from(events).where(eq(events.id, eventId));
   const rows = opts.lock ? await query.for(opts.lock) : await query;
   return rows[0] ?? null;
+}
+
+/** The parent's second-chance event, if one was created. */
+export async function getSecondChanceChild(
+  ex: Executor,
+  parentEventId: string
+): Promise<{ id: string; status: EventStatus; event_date: string } | null> {
+  const [row] = await ex
+    .select({
+      id: events.id,
+      status: events.status,
+      event_date: events.event_date,
+    })
+    .from(events)
+    .where(and(eq(events.parent_event_id, parentEventId), eq(events.link_type, 'second_chance')))
+    .limit(1);
+  return row ?? null;
 }
 
 /** Events linked to `parentEventId`, ordered by id (the cross-event lock order). */

@@ -5,22 +5,14 @@ export interface PlacedPlayer {
   playerId: string;
 }
 
-/** Default second-chance cut: only the winning team is excluded. */
-export const DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS = 1;
-
 /**
- * Players eligible for a second-chance event: every player on a team placed below
- * `excludeTopPlacements` (placements are per team; a tie at the cut is excluded
- * together). The default excludes only the winners, i.e. everyone who lost at least
- * once gets in. Returns player ids, de-duplicated, in input order.
+ * Players eligible for a completed event's second chance: everyone knocked out, i.e.
+ * every player not on the winning team. Returns player ids, de-duplicated, in input order.
  */
-export function selectSecondChancePlayers(
-  placedPlayers: readonly PlacedPlayer[],
-  excludeTopPlacements: number = DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS
-): string[] {
+export function selectSecondChancePlayers(placedPlayers: readonly PlacedPlayer[]): string[] {
   const eligible = new Set<string>();
   for (const { placement, playerId } of placedPlayers) {
-    if (placement > excludeTopPlacements) {
+    if (placement > 1) {
       eligible.add(playerId);
     }
   }

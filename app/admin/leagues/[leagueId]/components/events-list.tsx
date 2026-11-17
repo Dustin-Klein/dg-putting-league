@@ -10,6 +10,7 @@ import { Trash2 } from 'lucide-react';
 import { EventStatusBadge, StatusBadge } from '@/components/status-badge';
 import { useToast } from '@/components/ui/use-toast';
 import { eventDistanceLabel, type EventSetupContext } from '@/lib/utils/event-setup';
+import { cn } from '@/lib/utils/utils';
 
 type EventWithParticipantCount = EventData & { participant_count: number };
 
@@ -91,10 +92,13 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
           />
         )}
       </div>
-      {events.map((event) => (
+      {withLinkedEventsNested(events).map(({ event, nested }) => (
         <article
           key={event.id}
-          className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border bg-card px-5 py-[18px]"
+          className={cn(
+            'flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border bg-card px-5 py-[18px]',
+            nested && 'ml-6 border-dashed'
+          )}
         >
           <div className="flex min-w-[200px] flex-[1_1_220px] flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -105,6 +109,9 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
                 {formatDisplayDate(event.event_date)}
               </Link>
               <EventStatusBadge status={event.status} />
+              {event.link_type === 'second_chance' && (
+                <StatusBadge tone="outline">Second Chance</StatusBadge>
+              )}
               {event.qualification_round_enabled && (
                 <StatusBadge tone="outline">Qualification Round</StatusBadge>
               )}
@@ -141,6 +148,25 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
       ))}
     </section>
   );
+}
+
+/** Each linked event right after its parent, so a second chance reads as part of its night. */
+function withLinkedEventsNested<T extends { id: string; parent_event_id: string | null }>(
+  events: T[]
+): Array<{ event: T; nested: boolean }> {
+  const ids = new Set(events.map((event) => event.id));
+  const childrenOf = new Map<string, T[]>();
+  for (const event of events) {
+    if (event.parent_event_id && ids.has(event.parent_event_id)) {
+      childrenOf.set(event.parent_event_id, [...(childrenOf.get(event.parent_event_id) ?? []), event]);
+    }
+  }
+  return events
+    .filter((event) => !event.parent_event_id || !ids.has(event.parent_event_id))
+    .flatMap((event) => [
+      { event, nested: false },
+      ...(childrenOf.get(event.id) ?? []).map((child) => ({ event: child, nested: true })),
+    ]);
 }
 
 function EventStat({ value, label }: { value: React.ReactNode; label: string }) {

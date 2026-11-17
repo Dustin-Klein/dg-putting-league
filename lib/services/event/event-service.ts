@@ -58,7 +58,7 @@ import {
   type PlacementMatch,
   type PlacementOpponent,
 } from './placements';
-import { DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS, selectSecondChancePlayers } from './linked-events';
+import { eligibleSecondChancePlayerIds } from './second-chance';
 import {
   assertRosterCurrent,
   resolvePoolAssignments,
@@ -67,6 +67,18 @@ import {
   type ProvidedPoolAssignment,
   type ProvidedTeamPairing,
 } from './preview';
+
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  const pgError = (error as { cause?: unknown })?.cause ?? error;
+  return (pgError as { code?: string })?.code === '23505'
+    && (pgError as { constraint_name?: string })?.constraint_name === constraint;
+}
+
+const SECOND_CHANCE_BRACKET_FORMAT: BracketFormatSettings = {
+  bracket_format: 'single_elimination',
+  double_grand_final: false,
+  third_place_match: false,
+};
 
 function bracketFormatSettingsOrThrow(
   current: BracketFormatSettings,
@@ -254,8 +266,6 @@ export async function createEvent(data: {
 
 export interface CreateSecondChanceEventInput {
   access_code: string;
-  /** Teams placed this well or better in the parent are excluded (default: the winners only). */
-  exclude_top_placements?: number;
   /** Omitted settings are taken from the parent event. */
   event_date?: string;
   location?: string | null;
@@ -271,8 +281,9 @@ export interface CreateSecondChanceEventInput {
 }
 
 /**
- * Create a singles second-chance event linked to a completed event, entering every
- * player whose team placed below the cut.
+ * Create a singles second-chance event linked to an event in bracket play or completed,
+ * entering every player knocked out of it so far (later knockouts are added with
+ * syncSecondChancePlayers). Single elimination unless the input says otherwise. One per event.
  *
  * Only `player_id` carries over. The child has its own entry fee, so payment_type
  * starts NULL (the pre-bracket → bracket gate then asks for the second entry); pool
@@ -288,7 +299,6 @@ export async function createSecondChanceEvent(
 ): Promise<eventDb.EventData> {
   const { user, pg } = await requireEventAdmin(parentEventId);
   const accessCode = await normalizeNewAccessCode(pg, input.access_code);
-  const excludeTopPlacements = input.exclude_top_placements ?? DEFAULT_SECOND_CHANCE_EXCLUDED_PLACEMENTS;
 
   let child: eventDb.EventData;
   try {
@@ -302,15 +312,16 @@ export async function createSecondChanceEvent(
       if (link.parent_event_id !== null) {
         throw new BadRequestError('A linked event cannot have linked events of its own');
       }
-      if (link.status !== 'completed') {
-        throw new BadRequestError('A second-chance event can only be created from a completed event');
+      if (link.status !== 'bracket' && link.status !== 'completed') {
+        throw new BadRequestError('A second-chance event can be created once bracket play has started');
+      }
+      if (await eventDb.getSecondChanceChild(tx, parentEventId)) {
+        throw new ConflictError('This event already has a second-chance event');
       }
 
-      const playerIds = selectSecondChancePlayers(
-        await eventPlacementDb.getPlacedPlayers(tx, parentEventId),
-        excludeTopPlacements
-      );
-      if (playerIds.length === 0) {
+      const playerIds = await eligibleSecondChancePlayerIds(tx, link);
+      // During bracket play the roster can start empty and fill as players are knocked out.
+      if (playerIds.length === 0 && link.status === 'completed') {
         throw new BadRequestError('No players are eligible for a second-chance event');
       }
 
@@ -327,7 +338,7 @@ export async function createSecondChanceEvent(
         lane_count: input.lane_count ?? parent.lane_count,
         putt_distance_ft: input.putt_distance_ft ?? parent.putt_distance_ft,
         bracket_frame_count: input.bracket_frame_count ?? parent.bracket_frame_count,
-        ...bracketFormatSettingsOrThrow(parent, input),
+        ...bracketFormatSettingsOrThrow(SECOND_CHANCE_BRACKET_FORMAT, input),
         qualification_round_enabled: false,
         qualification_frame_count: parent.qualification_frame_count,
         entry_fee_per_player: input.entry_fee_per_player ?? null,
@@ -358,6 +369,9 @@ export async function createSecondChanceEvent(
       outcome: 'failure',
       error: error instanceof Error ? error.message : String(error),
     });
+    if (isUniqueViolation(error, 'events_one_second_chance_per_parent')) {
+      throw new ConflictError('This event already has a second-chance event');
+    }
     throw error;
   }
 

@@ -17,20 +17,10 @@ const placed: PlacedPlayer[] = [
 ];
 
 describe('selectSecondChancePlayers', () => {
-  it('by default excludes only the winning team, every member of it', () => {
+  it('excludes only the winning team, every member of it', () => {
     expect(selectSecondChancePlayers(placed)).toEqual(
       ['p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12']
     );
-  });
-
-  it('resolves per-team placements to every player on the team', () => {
-    const players = selectSecondChancePlayers(placed, 3);
-    expect(players).toEqual(['p7', 'p8', 'p9', 'p10', 'p11', 'p12']);
-  });
-
-  it('excludes teams tied at the cut together', () => {
-    expect(selectSecondChancePlayers(placed, 5)).toEqual([]);
-    expect(selectSecondChancePlayers(placed, 4)).toEqual(['p9', 'p10', 'p11', 'p12']);
   });
 
   it('handles singles teams and de-duplicates players', () => {

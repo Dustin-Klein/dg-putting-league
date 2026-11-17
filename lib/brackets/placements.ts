@@ -53,6 +53,7 @@ export interface DecidedMatch {
   isLastRoundOfGroup: boolean;
   winnerTeamId?: string;
   loserTeamId?: string;
+  loserSlot?: 'opponent1' | 'opponent2';
 }
 
 /** A placement plus the match that decided it (the team's last win, or its eliminating loss). */
@@ -161,6 +162,7 @@ export function decidedMatchesOf({
       isLastRoundOfGroup: lastRoundByGroup.get(round.group_id) === round.number,
       winnerTeamId: opponent1Won ? team(match.opponent1) : opponent2Won ? team(match.opponent2) : undefined,
       loserTeamId: opponent1Won ? team(match.opponent2) : opponent2Won ? team(match.opponent1) : undefined,
+      loserSlot: opponent1Won ? 'opponent2' : opponent2Won ? 'opponent1' : undefined,
     });
   }
   return decided;

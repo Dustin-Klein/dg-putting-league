@@ -1,5 +1,5 @@
 import 'server-only';
-import { eq, ilike } from 'drizzle-orm';
+import { eq, ilike, inArray } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, player_profiles, players } from '@/lib/db/schema';
 import type { PlayerSearchResult } from '@/lib/types/player';
@@ -90,4 +90,16 @@ export async function getPlayerIdsInEvent(
     .where(eq(event_players.event_id, eventId));
 
   return rows.map((r) => r.player_id);
+}
+
+/** Names for the given players, in no particular order. */
+export async function getPlayerNames(
+  ex: Executor,
+  playerIds: string[]
+): Promise<Array<{ player_id: string; full_name: string }>> {
+  if (playerIds.length === 0) return [];
+  return ex
+    .select({ player_id: players.id, full_name: players.full_name })
+    .from(players)
+    .where(inArray(players.id, playerIds));
 }

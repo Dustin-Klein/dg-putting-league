@@ -110,10 +110,7 @@ describe('createSecondChanceEvent', () => {
         expect(entry.pool).not.toBeNull();
       }
 
-      const child = await createSecondChanceEvent(parent.eventId, {
-        access_code: accessCode(),
-        exclude_top_placements: 2,
-      });
+      const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode() });
 
       const entrants = await entrantsOf(tx, child.id);
       expect(entrants.length).toBeGreaterThan(0);
@@ -162,16 +159,12 @@ describe('createSecondChanceEvent', () => {
     });
   });
 
-  it('refuses a parent that is not completed, and a cut that leaves nobody', async () => {
+  it('refuses a parent before bracket play', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
-      const running = await seedBracket(tx, { teams: 4 });
-      await expect(createSecondChanceEvent(running.eventId, { access_code: accessCode() }))
-        .rejects.toThrow('A second-chance event can only be created from a completed event');
-
-      const parent = await completedDoublesEvent(tx);
-      await expect(createSecondChanceEvent(parent.eventId, { access_code: accessCode(), exclude_top_placements: 99 }))
-        .rejects.toThrow('No players are eligible for a second-chance event');
+      const notStarted = await seedEvent(tx, { players: 4 });
+      await expect(createSecondChanceEvent(notStarted.eventId, { access_code: accessCode() }))
+        .rejects.toThrow('A second-chance event can be created once bracket play has started');
     });
   });
 });
@@ -216,8 +209,7 @@ describe('deleteEvent with a linked event', () => {
 describe('cross-event locking (committed data, real concurrency)', () => {
   const ITERATIONS = 20;
 
-  it('rejects a concurrent duplicate access code as a client error without leaving a partial child', async () => {
-    mockAuth.pg = db;
+  async function committedCompletedParent(): Promise<SeededEvent> {
     const parent = await seedBracket(db, { teams: 2 });
     committed.push(parent);
     const parentTeams = await db.select({ id: teams.id, seed: teams.seed }).from(teams)
@@ -226,6 +218,13 @@ describe('cross-event locking (committed data, real concurrency)', () => {
       event_id: parent.eventId, team_id: team.id, placement: team.seed!,
     })));
     await db.update(events).set({ status: 'completed' }).where(eq(events.id, parent.eventId));
+    return parent;
+  }
+
+  it('rejects a concurrent duplicate access code as a client error without leaving a partial child', async () => {
+    mockAuth.pg = db;
+    // Two parents: one parent can only ever have one second chance.
+    const parents = [await committedCompletedParent(), await committedCompletedParent()];
 
     // Force both requests to pass their preflight check before either inserts.
     const checkUnique = jest.requireActual<typeof eventDb>('@/lib/repositories/event-repository.db').isAccessCodeUnique;
@@ -240,16 +239,15 @@ describe('cross-event locking (committed data, real concurrency)', () => {
     });
     try {
       const input = { access_code: accessCode() };
-      const outcomes = await Promise.allSettled([
-        createSecondChanceEvent(parent.eventId, input),
-        createSecondChanceEvent(parent.eventId, input),
-      ]);
+      const outcomes = await Promise.allSettled(
+        parents.map((parent) => createSecondChanceEvent(parent.eventId, input))
+      );
       expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
       expect(outcomes.find((outcome) => outcome.status === 'rejected')).toMatchObject({
         status: 'rejected',
         reason: { name: 'BadRequestError', message: 'An event with this access code already exists' },
       });
-      const children = await eventDb.getChildEvents(db, parent.eventId);
+      const children = (await Promise.all(parents.map((parent) => eventDb.getChildEvents(db, parent.eventId)))).flat();
       expect(children).toHaveLength(1);
       expect(await entrantsOf(db, children[0].id)).toHaveLength(2);
     } finally {
