@@ -133,3 +133,14 @@ export function getStatusColor(status: number): string {
       return 'bg-muted text-muted-foreground';
   }
 }
+
+/** Lanes shared between a main event and its second chance, from one side (admin only). */
+export interface LaneLoans {
+  /** This event's side of the loan, or null when it has no second chance (or is none). */
+  role: 'main' | 'second_chance' | null;
+  partner_event_id: string | null;
+  /** main: its lanes lent to the second chance; second chance: the lanes it borrowed. */
+  lanes: Array<{ id: string; label: string; status: Lane['status'] }>;
+  /** main only: the second chance can still take lanes. */
+  can_lend: boolean;
+}

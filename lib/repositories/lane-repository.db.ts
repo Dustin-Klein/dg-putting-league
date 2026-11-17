@@ -2,9 +2,24 @@ import 'server-only';
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Status } from 'brackets-model';
 import type { Executor, Tx } from '@/lib/db/tx';
-import { bracket_match, bracket_round, lanes } from '@/lib/db/schema';
+import { bracket_match, bracket_round, lane_loans, lanes } from '@/lib/db/schema';
 import { compareMatchQueue } from '@/lib/utils/match-queue';
 import type { Lane } from '@/lib/types/bracket';
+
+/**
+ * Lanes an event plays on: its own lanes that aren't lent out, plus lanes lent to it.
+ * Ownership (lanes.event_id) never changes; numbering, adding and deleting go by it.
+ */
+function usableBy(eventId: string) {
+  return sql`(
+    (${lanes.event_id} = ${eventId}
+      and not exists (select 1 from ${lane_loans} where ${lane_loans.lane_id} = ${lanes.id}))
+    or exists (
+      select 1 from ${lane_loans}
+      where ${lane_loans.lane_id} = ${lanes.id} and ${lane_loans.to_event_id} = ${eventId}
+    )
+  )`;
+}
 
 /**
  * Lock all of an event's lanes (ascending id, per the lock order) and return them.
@@ -13,7 +28,7 @@ export async function lockEventLanes(tx: Tx, eventId: string): Promise<Lane[]> {
   const rows = await tx
     .select()
     .from(lanes)
-    .where(eq(lanes.event_id, eventId))
+    .where(usableBy(eventId))
     .orderBy(asc(lanes.id))
     .for('update');
   return rows as Lane[];
@@ -25,19 +40,19 @@ export async function hasLanes(ex: Executor, eventId: string): Promise<boolean> 
 }
 
 export async function getLanesForEvent(ex: Executor, eventId: string): Promise<Lane[]> {
-  return ex.select().from(lanes).where(eq(lanes.event_id, eventId)).orderBy(asc(lanes.label)) as Promise<Lane[]>;
+  return ex.select().from(lanes).where(usableBy(eventId)).orderBy(asc(lanes.label)) as Promise<Lane[]>;
 }
 
 export async function getLaneById(ex: Executor, eventId: string, laneId: string): Promise<Lane | null> {
   const [lane] = await ex
     .select()
     .from(lanes)
-    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId)));
+    .where(and(eq(lanes.id, laneId), usableBy(eventId)));
   return (lane as Lane | undefined) ?? null;
 }
 
 export async function getLaneLabelsForEvent(ex: Executor, eventId: string): Promise<Record<string, string>> {
-  const rows = await ex.select({ id: lanes.id, label: lanes.label }).from(lanes).where(eq(lanes.event_id, eventId));
+  const rows = await ex.select({ id: lanes.id, label: lanes.label }).from(lanes).where(usableBy(eventId));
   return Object.fromEntries(rows.map((lane) => [lane.id, lane.label]));
 }
 
@@ -75,7 +90,8 @@ export async function insertLanes(ex: Executor, eventId: string, count: number):
 }
 
 export async function addLanesToEvent(ex: Executor, eventId: string, count: number): Promise<Lane[]> {
-  const existing = await getLanesForEvent(ex, eventId);
+  // Owned lanes, lent ones included: a lent "Lane 7" must not be created again.
+  const existing = await ex.select({ label: lanes.label }).from(lanes).where(eq(lanes.event_id, eventId));
   let maxNumber = 0;
   for (const lane of existing) {
     const match = /^Lane (\d+)$/.exec(lane.label);
@@ -89,6 +105,17 @@ export async function addLanesToEvent(ex: Executor, eventId: string, count: numb
       status: 'idle' as const,
     }))
   ).returning() as Promise<Lane[]>;
+}
+
+/** Lock the event's matches on any of the given lanes (ascending id), before the lane rows. */
+export async function lockMatchesOnLanes(tx: Tx, eventId: string, laneIds: string[]): Promise<void> {
+  if (laneIds.length === 0) return;
+  await tx
+    .select({ id: bracket_match.id })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.event_id, eventId), inArray(bracket_match.lane_id, laneIds)))
+    .orderBy(asc(bracket_match.id))
+    .for('update');
 }
 
 /** Lock assigned matches before lane rows, in documented order. */
@@ -107,7 +134,7 @@ export async function deleteIdleLane(ex: Executor, eventId: string, laneId: stri
   if (assigned) return false;
   const deleted = await ex
     .delete(lanes)
-    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId), eq(lanes.status, 'idle')))
+    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId), usableBy(eventId), eq(lanes.status, 'idle')))
     .returning({ id: lanes.id });
   return deleted.length > 0;
 }
@@ -182,7 +209,7 @@ export async function assignLanes(
   await ex
     .update(lanes)
     .set({ status: 'occupied' })
-    .where(and(eq(lanes.event_id, eventId), inArray(lanes.id, assigned.map((row) => row.lane_id))));
+    .where(and(usableBy(eventId), inArray(lanes.id, assigned.map((row) => row.lane_id))));
   return assigned.map((row) => ({ laneId: row.lane_id, matchId: row.match_id }));
 }
 
@@ -207,7 +234,7 @@ export async function releaseMatchLanes(ex: Executor, eventId: string, matchIds:
     update ${lanes}
     set status = case when maintenance_pending then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end,
         maintenance_pending = false
-    where event_id = ${eventId} and id in (select lane_id from released)`);
+    where ${usableBy(eventId)} and id in (select lane_id from released)`);
 }
 
 /**
@@ -239,7 +266,7 @@ export async function releaseMatchLane(
       status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end`,
       maintenance_pending: false,
     })
-    .where(and(eq(lanes.id, match.lane_id), eq(lanes.event_id, eventId)));
+    .where(and(eq(lanes.id, match.lane_id), usableBy(eventId)));
   return true;
 }
 
@@ -255,7 +282,7 @@ export async function setLaneState(
   const updated = await ex
     .update(lanes)
     .set(state)
-    .where(and(eq(lanes.id, laneId), eq(lanes.event_id, eventId)))
+    .where(and(eq(lanes.id, laneId), usableBy(eventId)))
     .returning({ id: lanes.id });
   return updated.length > 0;
 }
@@ -279,5 +306,97 @@ export async function resetOccupiedLanesToIdle(ex: Executor, eventId: string): P
       status: sql`case when ${lanes.maintenance_pending} then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end`,
       maintenance_pending: false,
     })
-    .where(and(eq(lanes.event_id, eventId), eq(lanes.status, 'occupied')));
+    .where(and(usableBy(eventId), eq(lanes.status, 'occupied')));
+}
+
+export interface LentLane {
+  id: string;
+  label: string;
+  status: Lane['status'];
+  to_event_id: string;
+}
+
+/** The event's own lanes that are lent out, with who has them. */
+export async function getLanesLentOut(ex: Executor, eventId: string): Promise<LentLane[]> {
+  return ex
+    .select({ id: lanes.id, label: lanes.label, status: lanes.status, to_event_id: lane_loans.to_event_id })
+    .from(lanes)
+    .innerJoin(lane_loans, eq(lane_loans.lane_id, lanes.id))
+    .where(eq(lanes.event_id, eventId))
+    .orderBy(asc(lanes.label));
+}
+
+/** Lock the given lanes owned by `ownerEventId` (ascending id), with their loan if any. */
+export async function lockOwnedLanes(
+  tx: Tx,
+  ownerEventId: string,
+  laneIds: string[]
+): Promise<Array<Lane & { to_event_id: string | null }>> {
+  if (laneIds.length === 0) return [];
+  const rows = await tx
+    .select()
+    .from(lanes)
+    .where(and(eq(lanes.event_id, ownerEventId), inArray(lanes.id, laneIds)))
+    .orderBy(asc(lanes.id))
+    .for('update');
+  const loans = await tx
+    .select({ lane_id: lane_loans.lane_id, to_event_id: lane_loans.to_event_id })
+    .from(lane_loans)
+    .where(inArray(lane_loans.lane_id, laneIds));
+  const loanByLane = new Map(loans.map((loan) => [loan.lane_id, loan.to_event_id]));
+  return rows.map((row) => ({ ...(row as Lane), to_event_id: loanByLane.get(row.id) ?? null }));
+}
+
+/** Lanes with a match of `eventId` on them, of the given lanes. */
+export async function getLanesInUseBy(ex: Executor, eventId: string, laneIds: string[]): Promise<string[]> {
+  if (laneIds.length === 0) return [];
+  const rows = await ex
+    .selectDistinct({ lane_id: bracket_match.lane_id })
+    .from(bracket_match)
+    .where(and(eq(bracket_match.event_id, eventId), inArray(bracket_match.lane_id, laneIds)));
+  return rows.flatMap((row) => (row.lane_id ? [row.lane_id] : []));
+}
+
+export async function insertLaneLoans(
+  ex: Executor,
+  fromEventId: string,
+  toEventId: string,
+  laneIds: string[]
+): Promise<void> {
+  if (laneIds.length === 0) return;
+  await ex.insert(lane_loans).values(laneIds.map((laneId) => ({
+    lane_id: laneId,
+    from_event_id: fromEventId,
+    to_event_id: toEventId,
+  })));
+}
+
+/**
+ * End the given loans: the lanes go back to their owner idle (or into maintenance if
+ * that was pending). Callers have taken the borrower's matches off them.
+ */
+export async function endLaneLoans(ex: Executor, laneIds: string[]): Promise<void> {
+  if (laneIds.length === 0) return;
+  await ex.delete(lane_loans).where(inArray(lane_loans.lane_id, laneIds));
+  // Also the realtime signal for the owner's lane subscription, which filters on event_id.
+  await ex
+    .update(lanes)
+    .set({
+      status: sql`case when ${lanes.status} = 'maintenance' or ${lanes.maintenance_pending} then 'maintenance'::putting_league.lane_status else 'idle'::putting_league.lane_status end`,
+      maintenance_pending: false,
+    })
+    .where(inArray(lanes.id, laneIds));
+}
+
+/** Lane ids lent to `eventId`. */
+export async function getLaneIdsLentTo(ex: Executor, eventId: string): Promise<string[]> {
+  const rows = await ex.select({ lane_id: lane_loans.lane_id }).from(lane_loans)
+    .where(eq(lane_loans.to_event_id, eventId)).orderBy(asc(lane_loans.lane_id));
+  return rows.map((row) => row.lane_id);
+}
+
+/** Touch lanes so the owner's realtime lane subscription (filtered on event_id) fires. */
+export async function touchLanes(ex: Executor, laneIds: string[]): Promise<void> {
+  if (laneIds.length === 0) return;
+  await ex.update(lanes).set({ status: sql`${lanes.status}` }).where(inArray(lanes.id, laneIds));
 }

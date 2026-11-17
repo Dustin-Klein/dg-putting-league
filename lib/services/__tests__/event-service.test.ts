@@ -34,11 +34,13 @@ jest.mock('@/lib/db/tx', () => ({
   lockLeagueHandicap: jest.fn(),
 }));
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }));
+jest.mock('@/lib/services/lane', () => ({ autoAssignLanesTx: jest.fn(), returnAllLanesTx: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as handicapDb from '@/lib/repositories/handicap-repository.db';
 import { lockEvents, lockLeagueHandicap } from '@/lib/db/tx';
+import { returnAllLanesTx } from '@/lib/services/lane';
 import {
   createEvent, deleteEvent, getEventForViewer, getEventsByLeagueId, getEventWithPlayers,
   requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
@@ -285,6 +287,8 @@ describe('deleteEvent with linked events', () => {
     expect(lockEvents).toHaveBeenCalledWith(pg, ['event-1', 'child-1']);
     expect(eventDb.getChildEvents).toHaveBeenLastCalledWith(pg, 'event-1', { lock: 'update' });
     expect((eventDb.deleteEvent as jest.Mock).mock.calls).toEqual([[pg, 'child-1'], [pg, 'event-1']]);
+    // Lanes lent to the child go back before it is deleted.
+    expect(returnAllLanesTx).toHaveBeenCalledWith(pg, 'event-1', 'child-1');
   });
 
   it('refuses when a linked event appeared before the locks were taken', async () => {
