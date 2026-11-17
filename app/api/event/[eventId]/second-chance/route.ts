@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSecondChanceEvent } from '@/lib/services/event';
 import { handleError, BadRequestError } from '@/lib/errors';
 import { withStrictRateLimit } from '@/lib/middleware/rate-limit';
+import { BRACKET_FORMATS } from '@/lib/brackets/format';
 
 const secondChanceSchema = z.object({
   access_code: z.string().trim().min(6).max(50),
@@ -13,6 +14,8 @@ const secondChanceSchema = z.object({
   putt_distance_ft: z.number().positive().optional(),
   bracket_frame_count: z.number().int().min(1).max(10).optional(),
   double_grand_final: z.boolean().optional(),
+  bracket_format: z.enum(BRACKET_FORMATS).optional(),
+  third_place_match: z.boolean().optional(),
   entry_fee_per_player: z.number().min(0).nullable().optional(),
   admin_fees: z.number().min(0).nullable().optional(),
   admin_fee_per_player: z.number().min(0).nullable().optional(),

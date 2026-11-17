@@ -8,6 +8,7 @@ import {
   bracket_match,
   bracket_participant,
   bracket_round,
+  bracket_stage,
   event_placements,
   event_players,
   events,
@@ -21,6 +22,8 @@ import {
   teams,
 } from '@/lib/db/schema';
 import type { Player } from '@/lib/types/player';
+import { stageFormat } from '@/lib/brackets/format';
+import { placeDecidedMatches, type DecidedMatch } from '@/lib/brackets/placements';
 
 export async function getPlayerByNumber(
   ex: Executor,
@@ -200,6 +203,8 @@ export interface PlacementMatchData {
   opponent2: { id?: number; result?: string } | null;
   opponent1TeamId: string | null;
   opponent2TeamId: string | null;
+  stageType?: string;
+  isLastRoundOfGroup?: boolean;
 }
 
 function sqlList(values: string[]) {
@@ -246,9 +251,14 @@ export async function getCompletedProfileData(
         'opponent1', bm.opponent1,
         'opponent2', bm.opponent2,
         'opponent1TeamId', bp1.team_id,
-        'opponent2TeamId', bp2.team_id
+        'opponent2TeamId', bp2.team_id,
+        'stageType', bs.type,
+        'isLastRoundOfGroup', br.number = (
+          select max(lr.number) from ${bracket_round} lr where lr.group_id = bm.group_id
+        )
       ))
       from ${bracket_match} bm
+      inner join ${bracket_stage} bs on bs.id = bm.stage_id
       inner join ${bracket_round} br on br.id = bm.round_id
       inner join ${bracket_group} bg on bg.id = bm.group_id
       left join ${bracket_participant} bp1
@@ -283,52 +293,21 @@ export function calculateEventPlacements(
   const eventMatches = matches.filter((match) => match.eventId === eventId);
   if (eventMatches.length === 0) return [];
 
-  const placements: EventPlacementData[] = [];
-  const placedTeamIds = new Set<string>();
-  const result = (match: PlacementMatchData): { winnerId?: string; loserId?: string } => {
-    if (match.opponent1?.result === 'win') {
-      return {
-        winnerId: match.opponent1TeamId ?? undefined,
-        loserId: match.opponent2TeamId ?? undefined,
-      };
-    }
-    if (match.opponent2?.result === 'win') {
-      return {
-        winnerId: match.opponent2TeamId ?? undefined,
-        loserId: match.opponent1TeamId ?? undefined,
-      };
-    }
-    return {};
-  };
-  const add = (teamId: string | undefined) => {
-    if (teamId && !placedTeamIds.has(teamId)) {
-      placements.push({ eventId, teamId, placement: placements.length + 1 });
-      placedTeamIds.add(teamId);
-    }
-  };
-
-  for (const match of eventMatches
-    .filter((item) => item.groupNumber === 3)
-    .sort((a, b) => b.roundNumber - a.roundNumber || b.id - a.id)) {
-    const { winnerId, loserId } = result(match);
-    add(winnerId);
-    add(loserId);
-  }
-
-  for (const groupNumber of [2, 1]) {
-    const rounds = [...new Set(
-      eventMatches.filter((item) => item.groupNumber === groupNumber).map((item) => item.roundNumber)
-    )].sort((a, b) => b - a);
-    for (const roundNumber of rounds) {
-      for (const match of eventMatches.filter(
-        (item) => item.groupNumber === groupNumber && item.roundNumber === roundNumber
-      )) {
-        add(result(match).loserId);
-      }
-    }
-  }
-
-  return placements;
+  const decided: DecidedMatch[] = eventMatches.map((match) => {
+    const opponent1Won = match.opponent1?.result === 'win';
+    const opponent2Won = match.opponent2?.result === 'win';
+    const team1 = match.opponent1TeamId ?? undefined;
+    const team2 = match.opponent2TeamId ?? undefined;
+    return {
+      id: match.id,
+      groupNumber: match.groupNumber,
+      roundNumber: match.roundNumber,
+      isLastRoundOfGroup: match.isLastRoundOfGroup ?? false,
+      winnerTeamId: opponent1Won ? team1 : opponent2Won ? team2 : undefined,
+      loserTeamId: opponent1Won ? team2 : opponent2Won ? team1 : undefined,
+    };
+  });
+  return placeDecidedMatches(eventId, stageFormat(eventMatches[0].stageType), decided);
 }
 
 function placementsForEvents(

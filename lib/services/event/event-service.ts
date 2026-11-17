@@ -1,6 +1,14 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { EventWithDetails, PayoutPlace, type TeamAssignment } from '@/lib/types/event';
+import {
+  DEFAULT_BRACKET_FORMAT_SETTINGS,
+  isGrandFinalGroup,
+  resolveBracketFormatSettings,
+  stageFormat,
+  type BracketFormat,
+  type BracketFormatSettings,
+} from '@/lib/brackets/format';
 import type { TeamPreview } from '@/lib/types/team';
 import {
   BadRequestError,
@@ -46,6 +54,7 @@ import { BRACKET_NOT_DECIDED_MESSAGE } from '@/lib/constants/event';
 import {
   computeEventPlacements,
   isBracketDecided,
+  isSingleEliminationDecided,
   type PlacementMatch,
   type PlacementOpponent,
 } from './placements';
@@ -58,6 +67,15 @@ import {
   type ProvidedPoolAssignment,
   type ProvidedTeamPairing,
 } from './preview';
+
+function bracketFormatSettingsOrThrow(
+  current: BracketFormatSettings,
+  patch: Partial<BracketFormatSettings>
+): BracketFormatSettings {
+  const resolved = resolveBracketFormatSettings(current, patch);
+  if ('error' in resolved) throw new BadRequestError(resolved.error);
+  return resolved;
+}
 
 /**
  * Ensure the current user is an admin of the event's league.
@@ -133,6 +151,8 @@ export async function createEvent(data: {
   bracket_frame_count: number;
   qualification_frame_count: number;
   double_grand_final?: boolean;
+  bracket_format?: BracketFormat;
+  third_place_match?: boolean;
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
@@ -152,6 +172,7 @@ export async function createEvent(data: {
   if (formatError) {
     throw new BadRequestError(formatError);
   }
+  const bracketSettings = bracketFormatSettingsOrThrow(DEFAULT_BRACKET_FORMAT_SETTINGS, data);
 
   // 2. Normalize and check access code uniqueness (across all leagues)
   const accessCode = await normalizeNewAccessCode(pg, data.access_code);
@@ -184,6 +205,7 @@ export async function createEvent(data: {
       const handicapEnabled = leagueHandicaps && handicap_enabled !== false;
       const created = await eventDb.createEvent(tx, {
         ...eventData,
+        ...bracketSettings,
         access_code: accessCode,
         event_date: formattedDate,
         entry_fee_per_player: entry_fee_per_player ?? null,
@@ -241,6 +263,8 @@ export interface CreateSecondChanceEventInput {
   putt_distance_ft?: number;
   bracket_frame_count?: number;
   double_grand_final?: boolean;
+  bracket_format?: BracketFormat;
+  third_place_match?: boolean;
   entry_fee_per_player?: number | null;
   admin_fees?: number | null;
   admin_fee_per_player?: number | null;
@@ -303,7 +327,7 @@ export async function createSecondChanceEvent(
         lane_count: input.lane_count ?? parent.lane_count,
         putt_distance_ft: input.putt_distance_ft ?? parent.putt_distance_ft,
         bracket_frame_count: input.bracket_frame_count ?? parent.bracket_frame_count,
-        double_grand_final: input.double_grand_final ?? parent.double_grand_final,
+        ...bracketFormatSettingsOrThrow(parent, input),
         qualification_round_enabled: false,
         qualification_frame_count: parent.qualification_frame_count,
         entry_fee_per_player: input.entry_fee_per_player ?? null,
@@ -455,9 +479,38 @@ function validateStatusFlow(currentStatus: string, newStatus: string): void {
 export interface UpdateEventSettingsPatch {
   status?: 'created' | 'pre-bracket' | 'completed';
   double_grand_final?: boolean;
+  bracket_format?: BracketFormat;
+  third_place_match?: boolean;
   team_size?: number;
   team_assignment?: TeamAssignment;
   force?: boolean;
+}
+
+/** Whether every decisive match in the generated bracket has a result. */
+function isGeneratedBracketDecided(
+  context: bracketDb.BracketResetContext | null,
+  matches: PlacementMatch[],
+  doubleGrandFinal: boolean
+): boolean {
+  if (!context) return false;
+  if (stageFormat(context.stage.type) === 'single_elimination') {
+    return isSingleEliminationDecided(context.groups, context.rounds, matches);
+  }
+  const grandFinalGroup = context.groups.find((group) => isGrandFinalGroup('double_elimination', group.number));
+  const grandFinalRounds = new Map(
+    context.rounds
+      .filter((round) => round.group_id === grandFinalGroup?.id)
+      .map((round) => [round.id, round.number])
+  );
+  const grandFinalMatches = context.matches
+    .filter((match) => grandFinalRounds.has(match.round_id) && match.number === 1)
+    .map((match) => ({
+      roundNumber: grandFinalRounds.get(match.round_id) as number,
+      status: match.status,
+      opponent1: match.opponent1 as PlacementOpponent | null,
+      opponent2: match.opponent2 as PlacementOpponent | null,
+    }));
+  return isBracketDecided(grandFinalMatches, doubleGrandFinal);
 }
 
 /**
@@ -506,6 +559,14 @@ export async function updateEventSettingsTx(
     throw new BadRequestError('The grand final format cannot be changed after the event is completed');
   }
 
+  const formatChanging =
+    (patch.bracket_format !== undefined && patch.bracket_format !== current.bracket_format) ||
+    (patch.third_place_match !== undefined && patch.third_place_match !== current.third_place_match);
+  if (formatChanging && current.status !== 'created' && current.status !== 'pre-bracket') {
+    throw new BadRequestError('Bracket format can only be changed before bracket play starts');
+  }
+  const bracketSettings = bracketFormatSettingsOrThrow(current, patch);
+
   if (patch.team_size !== undefined || patch.team_assignment !== undefined) {
     // Teams are formed when bracket play starts; after that the format is history.
     if (current.status !== 'created' && current.status !== 'pre-bracket') {
@@ -523,26 +584,7 @@ export async function updateEventSettingsTx(
   if (current.status === 'bracket' && patch.status === 'completed') {
     const context = await bracketDb.getBracketResetContext(tx, eventId);
     const participants = await bracketDb.getParticipantsForEvent(tx, eventId);
-    const grandFinalGroup = context?.groups.find((group) => group.number === 3);
-    const grandFinalRounds = new Map(
-      (context?.rounds ?? [])
-        .filter((round) => round.group_id === grandFinalGroup?.id)
-        .map((round) => [round.id, round.number])
-    );
-    const grandFinalMatches = (context?.matches ?? [])
-      .filter((match) => grandFinalRounds.has(match.round_id) && match.number === 1)
-      .map((match) => ({
-        roundNumber: grandFinalRounds.get(match.round_id) as number,
-        status: match.status,
-        opponent1: match.opponent1 as PlacementOpponent | null,
-        opponent2: match.opponent2 as PlacementOpponent | null,
-      }));
-
-    const effectiveDoubleGrandFinal = patch.double_grand_final ?? current.double_grand_final;
-    if (!patch.force && !isBracketDecided(grandFinalMatches, effectiveDoubleGrandFinal)) {
-      throw new ConflictError(BRACKET_NOT_DECIDED_MESSAGE);
-    }
-
+    const format = stageFormat(context?.stage.type);
     const matches: PlacementMatch[] = (context?.matches ?? []).map((match) => ({
       id: match.id,
       round_id: match.round_id,
@@ -550,8 +592,14 @@ export async function updateEventSettingsTx(
       opponent1: match.opponent1 as PlacementOpponent | null,
       opponent2: match.opponent2 as PlacementOpponent | null,
     }));
+
+    if (!patch.force && !isGeneratedBracketDecided(context, matches, bracketSettings.double_grand_final)) {
+      throw new ConflictError(BRACKET_NOT_DECIDED_MESSAGE);
+    }
+
     const placements = computeEventPlacements({
       eventId,
+      format,
       groups: context?.groups ?? [],
       rounds: context?.rounds ?? [],
       matches,
@@ -560,16 +608,22 @@ export async function updateEventSettingsTx(
     await eventPlacementDb.upsertEventPlacements(tx, placements);
   }
 
-  if (patch.double_grand_final === false && current.double_grand_final) {
+  if (!bracketSettings.double_grand_final && current.double_grand_final) {
     await archiveGrandFinalResetMatchTx(tx, eventId);
-  } else if (patch.double_grand_final === true && !current.double_grand_final) {
+  } else if (bracketSettings.double_grand_final && !current.double_grand_final) {
     await restoreGrandFinalResetMatchTx(tx, eventId);
   }
 
   await eventDb.updateEventSettings(tx, eventId, {
     ...(patch.status ? { status: patch.status } : {}),
-    ...(patch.double_grand_final !== undefined
-      ? { double_grand_final: patch.double_grand_final }
+    ...(bracketSettings.bracket_format !== current.bracket_format
+      ? { bracket_format: bracketSettings.bracket_format }
+      : {}),
+    ...(bracketSettings.double_grand_final !== current.double_grand_final
+      ? { double_grand_final: bracketSettings.double_grand_final }
+      : {}),
+    ...(bracketSettings.third_place_match !== current.third_place_match
+      ? { third_place_match: bracketSettings.third_place_match }
       : {}),
     ...(patch.team_size !== undefined ? { team_size: patch.team_size } : {}),
     ...(patch.team_assignment !== undefined ? { team_assignment: patch.team_assignment } : {}),
@@ -825,7 +879,7 @@ export async function startBracket(
     }
 
     await eventDb.setEventStatus(tx, eventId, 'bracket');
-    await createBracketTx(tx, eventId, current.double_grand_final);
+    await createBracketTx(tx, eventId, current);
     await autoAssignLanesTx(tx, eventId);
     // Best effort, for entries still without frames (e.g. a zone change during a
     // pre-bracket with no qualification). Last: it takes the league handicap lock.

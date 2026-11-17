@@ -187,7 +187,7 @@ describe('event service Drizzle port', () => {
   });
 
   describe('updateEventSettings team format', () => {
-    const config = { status: 'pre-bracket', team_size: 2, team_assignment: 'random_pairing', double_grand_final: true };
+    const config = { status: 'pre-bracket', team_size: 2, team_assignment: 'random_pairing', double_grand_final: true, bracket_format: 'double_elimination', third_place_match: false };
 
     beforeEach(() => {
       (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(createMockEventWithDetails({ status: 'pre-bracket' }));

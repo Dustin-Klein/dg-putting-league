@@ -14,7 +14,7 @@ import {
   DistanceField,
   EntryFeeField,
   EventDateField,
-  GrandFinalField,
+  BracketFormatField,
   LanesField,
   LocationField,
   QualificationField,
@@ -52,7 +52,9 @@ export function stepFields(step: StepId, values: CreateEventFormValues, ctx: Eve
         'bracket_frame_count',
         ...(ctx.leagueHandicaps ? ['handicap_enabled' as const] : []),
         ...(setupFieldApplies('putt_distance_ft', values) ? ['putt_distance_ft' as const] : []),
+        'bracket_format',
         'double_grand_final',
+        'third_place_match',
       ];
     case 'money':
       return ['entry_fee_per_player', 'admin_fee_per_player', 'admin_fees'];
@@ -176,7 +178,7 @@ export function GuidedStep({
         <>
           <Question title="How long is a bracket match?"><BracketFramesField /></Question>
           <Question title="How far do players putt?"><DistanceField ctx={ctx} /></Question>
-          <Question title="Grand final"><GrandFinalField /></Question>
+          <Question title="Bracket format"><BracketFormatField /></Question>
         </>
       )}
 

@@ -5,6 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import type { BracketFormat } from '@/lib/brackets/format';
 import type { Executor } from '@/lib/db/tx';
 import {
   bracket_group,
@@ -44,6 +45,8 @@ export interface SeedEventOptions {
   bonusPointEnabled?: boolean;
   bracketFrameCount?: number;
   doubleGrandFinal?: boolean;
+  bracketFormat?: BracketFormat;
+  thirdPlaceMatch?: boolean;
   leagueId?: string;
 }
 
@@ -72,7 +75,9 @@ export async function seedEvent(ex: Executor, opts: SeedEventOptions): Promise<S
       access_code: accessCode,
       bonus_point_enabled: opts.bonusPointEnabled ?? true,
       bracket_frame_count: opts.bracketFrameCount ?? 5,
-      double_grand_final: opts.doubleGrandFinal ?? true,
+      double_grand_final: opts.doubleGrandFinal ?? opts.bracketFormat !== 'single_elimination',
+      bracket_format: opts.bracketFormat ?? 'double_elimination',
+      third_place_match: opts.thirdPlaceMatch ?? false,
       status: opts.status ?? 'pre-bracket',
       // drizzle-kit renders these numeric NULL defaults as the string 'NULL'; pass them explicitly.
       entry_fee_per_player: null,
@@ -146,6 +151,8 @@ export interface SeedBracketOptions {
   teams: number;
   laneCount?: number;
   doubleGrandFinal?: boolean;
+  bracketFormat?: BracketFormat;
+  thirdPlaceMatch?: boolean;
   bonusPointEnabled?: boolean;
   bracketFrameCount?: number;
 }
@@ -159,6 +166,8 @@ export async function seedBracket(ex: Executor, opts: SeedBracketOptions): Promi
     players: opts.teams * 2,
     laneCount: opts.laneCount ?? 1,
     doubleGrandFinal: opts.doubleGrandFinal,
+    bracketFormat: opts.bracketFormat,
+    thirdPlaceMatch: opts.thirdPlaceMatch,
     bonusPointEnabled: opts.bonusPointEnabled,
     bracketFrameCount: opts.bracketFrameCount,
   });

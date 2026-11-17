@@ -1,5 +1,6 @@
 'use client';
 
+import { stageFormat } from '@/lib/brackets/format';
 import { useState } from 'react';
 import type { Match } from 'brackets-model';
 import { Status } from 'brackets-model';
@@ -221,7 +222,7 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         </div>
       )}
 
-      {isEditBracketMode && (
+      {isEditBracketMode && stageFormat(bracketData.bracket.stage?.type) === 'double_elimination' && (
         <div className="rounded-lg border p-4 w-fit">
           <div className="flex items-center justify-between gap-8">
             <div className="space-y-0.5">

@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils/utils';
 import { formatDisplayDate, isFutureOrToday } from '@/lib/utils/date-utils';
+import type { BracketFormat } from '@/lib/brackets/format';
 import { TEAM_SIZE_MAX, TEAM_SIZE_MIN } from '@/lib/types/event';
 import { teamAssignmentOptions } from '@/lib/utils/team-utils';
 import { generateAccessCode, teamSizeLabel, type EventSetupContext } from '@/lib/utils/event-setup';
@@ -445,16 +446,51 @@ export function DistanceField({ ctx }: { ctx: EventSetupContext }) {
   );
 }
 
-export function GrandFinalField() {
-  const { field } = useController<CreateEventFormValues, 'double_grand_final'>({ name: 'double_grand_final' });
+export function BracketFormatField() {
+  const { setValue } = useFormContext<CreateEventFormValues>();
+  const { field: format } = useController<CreateEventFormValues, 'bracket_format'>({ name: 'bracket_format' });
+  const { field: reset } = useController<CreateEventFormValues, 'double_grand_final'>({ name: 'double_grand_final' });
+  const { field: thirdPlace } = useController<CreateEventFormValues, 'third_place_match'>({ name: 'third_place_match' });
   const id = useId();
+  const single = format.value === 'single_elimination';
+  const choose = (next: BracketFormat) => {
+    format.onChange(next);
+    // Each format's extra match starts at its usual default.
+    setValue('double_grand_final', next === 'double_elimination');
+    setValue('third_place_match', false);
+  };
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl bg-muted px-4 py-3">
-      <label htmlFor={id} className="flex flex-col gap-0.5">
-        <span className="text-[15px] font-semibold">Bracket reset</span>
-        <span className="text-[13px] text-muted-foreground">If the losers-bracket team wins the final, play one more.</span>
-      </label>
-      <Switch id={id} checked={field.value} onCheckedChange={field.onChange} className="data-[state=checked]:bg-success" />
+    <div className="flex flex-col gap-2.5">
+      <div role="radiogroup" aria-label="Bracket format" className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <ChoiceCard
+          name="bracket_format"
+          checked={!single}
+          onSelect={() => choose('double_elimination')}
+          title="Double elimination"
+          description="Teams are out after two losses."
+        />
+        <ChoiceCard
+          name="bracket_format"
+          checked={single}
+          onSelect={() => choose('single_elimination')}
+          title="Single elimination"
+          description="One loss and a team is out."
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-muted px-4 py-3">
+        <label htmlFor={id} className="flex flex-col gap-0.5">
+          <span className="text-[15px] font-semibold">{single ? 'Third-place match' : 'Bracket reset'}</span>
+          <span className="text-[13px] text-muted-foreground">
+            {single ? 'The semifinal losers play for 3rd.' : 'If the losers-bracket team wins the final, play one more.'}
+          </span>
+        </label>
+        <Switch
+          id={id}
+          checked={single ? thirdPlace.value : reset.value}
+          onCheckedChange={single ? thirdPlace.onChange : reset.onChange}
+          className="data-[state=checked]:bg-success"
+        />
+      </div>
     </div>
   );
 }

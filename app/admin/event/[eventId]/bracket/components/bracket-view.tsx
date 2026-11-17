@@ -10,7 +10,8 @@ import type { EventStatus } from '@/lib/types/event';
 import { Status } from 'brackets-model';
 import { Eye, EyeOff } from 'lucide-react';
 import { MatchCard } from './match-card';
-import { GROUP_NAMES } from '@/lib/types/bracket';
+import { groupDisplayName } from '@/lib/types/bracket';
+import { groupRole, stageFormat, type GroupRole } from '@/lib/brackets/format';
 
 interface BracketViewProps {
   data: BracketWithTeams;
@@ -393,6 +394,7 @@ export function BracketView({
     frameCountMap = {},
     progressionSourceMap = {},
   } = data;
+  const format = stageFormat(bracket.stage?.type);
   const [ownHideFinished, setHideFinished] = useHideFinished();
   const isControlled = controlledHideFinished !== undefined;
   const hideFinished = isControlled ? controlledHideFinished : ownHideFinished;
@@ -589,8 +591,21 @@ export function BracketView({
     const totalVisibleRounds = labelRounds.length;
     const displayRoundNumber = labelIndex + 1;
 
-    // For winner's bracket
-    if (group.number === 1) {
+    const role = groupRole(format, group.number);
+
+    if (role === 'main') {
+      const roundsFromEnd = totalVisibleRounds - displayRoundNumber;
+      if (roundsFromEnd === 0) return 'Final';
+      if (roundsFromEnd === 1) return 'Semifinals';
+      if (roundsFromEnd === 2) return 'Quarterfinals';
+      return `Round ${displayRoundNumber}`;
+    }
+
+    if (role === 'third_place') {
+      return '3rd Place';
+    }
+
+    if (role === 'winners') {
       if (displayRoundNumber === totalVisibleRounds) {
         return 'WB Final';
       }
@@ -600,16 +615,14 @@ export function BracketView({
       return `WB Round ${displayRoundNumber}`;
     }
 
-    // For loser's bracket
-    if (group.number === 2) {
+    if (role === 'losers') {
       if (displayRoundNumber === totalVisibleRounds) {
         return 'LB Final';
       }
       return `LB Round ${displayRoundNumber}`;
     }
 
-    // For grand final
-    if (group.number === 3) {
+    if (role === 'grand_final') {
       if (displayRoundNumber === 1) {
         return 'Grand Final';
       }
@@ -621,10 +634,11 @@ export function BracketView({
 
   const idleMatchIds = useIdleMatchIds(groupsWithRounds);
 
-  // Separate groups into main brackets (winners/losers) and grand final
-  const winnersBracket = groupsWithRounds.find((g) => g.number === 1);
-  const losersBracket = groupsWithRounds.find((g) => g.number === 2);
-  const grandFinal = groupsWithRounds.find((g) => g.number === 3);
+  const groupWithRole = (role: GroupRole) => groupsWithRounds.find((g) => groupRole(format, g.number) === role);
+  // Single elimination has one main bracket; its third-place match sits where the grand final would.
+  const winnersBracket = groupWithRole('winners') ?? groupWithRole('main');
+  const losersBracket = groupWithRole('losers');
+  const grandFinal = groupWithRole('grand_final') ?? groupWithRole('third_place');
 
   const renderGroup = (group: GroupWithRounds) => {
     const roundLayouts = calculateGroupLayout(group, hideFinished);
@@ -635,7 +649,7 @@ export function BracketView({
     return (
       <div key={group.id} className={compact ? 'space-y-1' : 'space-y-4'}>
         <h2 className={`font-bold text-foreground ${compact ? 'text-base' : 'text-lg'}`}>
-          {GROUP_NAMES[group.number] || `Group ${group.number}`}
+          {groupDisplayName(format, group.number)}
         </h2>
 
         <div className={compact ? 'pb-1' : 'pb-4'}>

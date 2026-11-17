@@ -1,4 +1,8 @@
+import type { BracketFormat } from '@/lib/brackets/format';
+
 export type EventStatus = 'created' | 'pre-bracket' | 'bracket' | 'completed';
+
+export type { BracketFormat };
 
 /**
  * How bracket teams are drawn. Orthogonal to team size.
@@ -33,6 +37,9 @@ export interface Event {
   bracket_frame_count: number | null;
   qualification_frame_count: number;
   double_grand_final: boolean;
+  bracket_format: BracketFormat;
+  /** Single elimination only: play a third-place match between the semifinal losers. */
+  third_place_match: boolean;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;
@@ -68,6 +75,9 @@ export interface EventWithDetails {
   bracket_frame_count: number | null;
   qualification_frame_count: number;
   double_grand_final: boolean;
+  bracket_format: BracketFormat;
+  /** Single elimination only: play a third-place match between the semifinal losers. */
+  third_place_match: boolean;
   entry_fee_per_player: number | null;
   admin_fees: number | null;
   admin_fee_per_player: number | null;

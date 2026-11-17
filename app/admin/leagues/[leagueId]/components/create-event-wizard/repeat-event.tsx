@@ -23,7 +23,7 @@ import {
   DistanceField,
   EntryFeeField,
   EventDateField,
-  GrandFinalField,
+  BracketFormatField,
   LanesField,
   LocationField,
   QualificationField,
@@ -144,7 +144,7 @@ const EDIT_FIELDS: Record<SetupEdit, CreateEventField[]> = {
   team_assignment: ['team_assignment'],
   qualification: ['qualification_round_enabled', 'qualification_frame_count'],
   bracket_frames: ['bracket_frame_count'],
-  grand_final: ['double_grand_final'],
+  bracket_format: ['bracket_format', 'double_grand_final', 'third_place_match'],
   lanes: ['lane_count'],
   distance: ['handicap_enabled', 'putt_distance_ft'],
   location: ['location'],
@@ -157,7 +157,7 @@ const EDIT_TITLES: Record<SetupEdit, string> = {
   team_assignment: 'How teams are formed',
   qualification: 'Qualification round',
   bracket_frames: 'Match length',
-  grand_final: 'Grand final',
+  bracket_format: 'Bracket format',
   lanes: 'Lanes',
   distance: 'Putt distance',
   location: 'Location',
@@ -171,7 +171,7 @@ function EditFields({ edit, ctx }: { edit: SetupEdit; ctx: EventSetupContext }) 
     case 'team_assignment': return <TeamAssignmentField />;
     case 'qualification': return <QualificationField />;
     case 'bracket_frames': return <BracketFramesField />;
-    case 'grand_final': return <GrandFinalField />;
+    case 'bracket_format': return <BracketFormatField />;
     case 'lanes': return <LanesField />;
     case 'distance': return <DistanceField ctx={ctx} />;
     case 'location': return <LocationField />;
