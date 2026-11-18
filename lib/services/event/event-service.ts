@@ -19,7 +19,6 @@ import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@
 import { normalizeAccessCode, ACCESS_CODE_MIN_LENGTH } from '@/lib/utils/access-code';
 import {
   assignPoolsFromScores,
-  computePfaScores,
   computePlayerScoresDb,
   type PlayerScore,
 } from '@/lib/services/event-player';
@@ -288,14 +287,9 @@ export interface CreateSecondChanceEventInput {
 }
 
 /**
- * Create a singles second-chance event linked to an event in bracket play or completed,
- * entering every player knocked out of it so far (later knockouts are added with
- * syncSecondChancePlayers). Single elimination unless the input says otherwise. One per event.
- *
- * Only `player_id` carries over. The child has its own entry fee, so payment_type
- * starts NULL (the pre-bracket → bracket gate then asks for the second entry); pool
- * and qualification_seed stay NULL (singles, no qualification round); pfa_score is
- * computed fresh over the normal PFA window, which now includes the parent's frames.
+ * Create a singles second-chance event linked to an event in bracket play or completed.
+ * It starts with no players: the organizer enters knocked-out players one at a time with
+ * syncSecondChancePlayers. Single elimination unless the input says otherwise. One per event.
  *
  * Links are one level deep: a linked event can't have linked events of its own. No
  * CHECK can see the parent row, so this is the only place that rule is enforced.
@@ -326,9 +320,7 @@ export async function createSecondChanceEvent(
         throw new ConflictError('This event already has a second-chance event');
       }
 
-      const playerIds = await eligibleSecondChancePlayerIds(tx, link);
-      // During bracket play the roster can start empty and fill as players are knocked out.
-      if (playerIds.length === 0 && link.status === 'completed') {
+      if (link.status === 'completed' && (await eligibleSecondChancePlayerIds(tx, link)).length === 0) {
         throw new BadRequestError('No players are eligible for a second-chance event');
       }
 
@@ -368,13 +360,6 @@ export async function createSecondChanceEvent(
         if (!handicap?.settings.enabled) throw new BadRequestError('This league does not use distance handicaps');
         await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getLeagueZones(tx, link.league_id));
       }
-
-      const pfaScores = await computePfaScores(tx, playerIds);
-      await eventPlayerDb.insertScoredEventPlayers(tx, created.id, playerIds.map((playerId) => {
-        const { score, scoringMethod } = pfaScores.get(playerId)!;
-        return { player_id: playerId, pfa_score: score, scoring_method: scoringMethod };
-      }), created.putt_distance_ft);
-      await refreshEntrySnapshots(tx, created.id);
       return created;
     });
   } catch (error) {

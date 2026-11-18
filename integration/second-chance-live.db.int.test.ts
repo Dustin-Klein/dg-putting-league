@@ -95,7 +95,7 @@ describe('second chance during bracket play', () => {
     });
   });
 
-  it('enters losers-bracket losers only: a winners-bracket loss is not elimination', async () => {
+  it('offers losers-bracket losers only: a winners-bracket loss is not elimination', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
       const parent = await seedBracket(tx, { teams: 4, laneCount: 2 });
@@ -110,7 +110,8 @@ describe('second chance during bracket play', () => {
       const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode(), bracket_format: 'double_elimination' });
       expect(child.bracket_format).toBe('double_elimination');
       expect(child.double_grand_final).toBe(true);
-      expect(await entrantIds(tx, child.id)).toEqual(knockedOut);
+      expect(await entrantIds(tx, child.id)).toEqual([]);
+      expect((await getSecondChanceRoster(child.id)).pending.map((player) => player.player_id).sort()).toEqual(knockedOut);
     });
   });
 
@@ -142,6 +143,29 @@ describe('second chance during bracket play', () => {
     });
   });
 
+  it('adds one knocked-out player at a time, and only a pending one', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const parent = await seedBracket(tx, { teams: 4, bracketFormat: 'single_elimination' });
+      const semi = playableMatches(await getBracketSnapshot(tx, parent.eventId))[0];
+      await playMatch(tx, parent.eventId, semi.id, 'opponent1');
+      const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode() });
+      const [first, second] = (await getSecondChanceRoster(child.id)).pending;
+
+      const synced = await syncSecondChancePlayers(child.id, first.player_id);
+      expect(synced.added).toBe(1);
+      expect(synced.pending).toEqual([second]);
+      expect(await entrantIds(tx, child.id)).toEqual([first.player_id]);
+
+      await expect(syncSecondChancePlayers(child.id, first.player_id))
+        .rejects.toMatchObject({ name: 'BadRequestError', message: 'That player is already entered' });
+      const alive = parent.playerIds.find((id) => id !== first.player_id && id !== second.player_id)!;
+      await expect(syncSecondChancePlayers(child.id, alive))
+        .rejects.toMatchObject({ name: 'BadRequestError', message: 'That player has not been knocked out of the main event' });
+      expect(await entrantIds(tx, child.id)).toEqual([first.player_id]);
+    });
+  });
+
   it('flags, but never removes, an entrant whose knockout was reset in the main event', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
@@ -149,6 +173,7 @@ describe('second chance during bracket play', () => {
       const semi = playableMatches(await getBracketSnapshot(tx, parent.eventId))[0];
       await playMatch(tx, parent.eventId, semi.id, 'opponent1');
       const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode() });
+      await syncSecondChancePlayers(child.id);
       const entered = await entrantIds(tx, child.id);
       expect(entered).toHaveLength(2);
 
@@ -173,7 +198,7 @@ describe('second chance during bracket play', () => {
     });
   });
 
-  it('enters everyone but the winners of a completed event, and syncing adds nobody', async () => {
+  it('offers everyone but the winners of a completed event', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
       const parent = await seedBracket(tx, { teams: 4, laneCount: 2, bracketFormat: 'single_elimination' });
@@ -181,14 +206,12 @@ describe('second chance during bracket play', () => {
       await withTransaction(tx, (inner) => updateEventSettingsTx(inner, parent.eventId, { status: 'completed' }));
 
       const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode() });
-      const entered = await entrantIds(tx, child.id);
+      expect(await entrantIds(tx, child.id)).toEqual([]);
       // Doubles, four teams: everyone but the winning pair.
-      expect(entered).toHaveLength(6);
-
-      const roster = await getSecondChanceRoster(child.id);
-      expect(roster.pending).toEqual([]);
+      expect((await getSecondChanceRoster(child.id)).pending).toHaveLength(6);
+      expect((await syncSecondChancePlayers(child.id)).added).toBe(6);
+      expect((await getSecondChanceRoster(child.id)).pending).toEqual([]);
       expect((await syncSecondChancePlayers(child.id)).added).toBe(0);
-      expect(await entrantIds(tx, child.id)).toEqual(entered);
       expect((await getSecondChanceSummary(parent.eventId)).eliminated_count).toBe(6);
     });
   });

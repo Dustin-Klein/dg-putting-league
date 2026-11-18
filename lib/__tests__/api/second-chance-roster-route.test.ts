@@ -10,10 +10,11 @@ jest.mock('@/lib/services/event', () => ({
   getSecondChanceRoster: jest.fn(),
   syncSecondChancePlayers: jest.fn(),
 }));
-jest.mock('@/lib/middleware/rate-limit', () => ({ withStrictRateLimit: jest.fn(async () => null) }));
+jest.mock('@/lib/middleware/rate-limit', () => ({ withRateLimit: jest.fn(async () => null) }));
 jest.mock('@/lib/utils/request-id', () => ({ getRequestId: jest.fn() }));
 
-const request = (method: string) => new NextRequest('http://localhost/api/event/e1/second-chance/roster', { method });
+const request = (method: string, body?: string) =>
+  new NextRequest('http://localhost/api/event/e1/second-chance/roster', { method, body });
 const params = { params: Promise.resolve({ eventId: 'e1' }) };
 
 describe('second-chance read and sync routes', () => {
@@ -35,6 +36,21 @@ describe('second-chance read and sync routes', () => {
     const synced = await sync(request('POST'), params);
     expect(synced.status).toBe(200);
     expect(await synced.json()).toMatchObject({ added: 2 });
+    expect(syncSecondChancePlayers).toHaveBeenCalledWith('e1', undefined);
+  });
+
+  it('adds one player when player_id is given', async () => {
+    const playerId = '6f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f';
+    jest.mocked(syncSecondChancePlayers).mockResolvedValue({ parent_event_id: 'p', parent_status: 'bracket', status: 'created', pending: [], not_eliminated: [], can_sync: true, added: 1 });
+    const response = await sync(request('POST', JSON.stringify({ player_id: playerId })), params);
+    expect(response.status).toBe(200);
+    expect(syncSecondChancePlayers).toHaveBeenCalledWith('e1', playerId);
+  });
+
+  it('rejects an invalid player_id or body', async () => {
+    expect((await sync(request('POST', JSON.stringify({ player_id: 'nope' })), params)).status).toBe(400);
+    expect((await sync(request('POST', '{'), params)).status).toBe(400);
+    expect(syncSecondChancePlayers).not.toHaveBeenCalled();
   });
 
   it('maps service errors to client errors', async () => {

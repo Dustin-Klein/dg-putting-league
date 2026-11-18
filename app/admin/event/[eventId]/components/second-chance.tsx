@@ -25,6 +25,7 @@ import type { LaneWithMatch } from '@/lib/types/bracket';
 import type {
   EventStatus,
   EventWithDetails,
+  SecondChancePlayer,
   SecondChanceRoster,
   SecondChanceSummary,
 } from '@/lib/types/event';
@@ -117,8 +118,8 @@ function CreateSecondChanceDialog({
         <DialogHeader>
           <DialogTitle>Create second chance</DialogTitle>
           <DialogDescription>
-            A singles bracket for players knocked out of this event. Players knocked out later can be
-            added until its bracket starts. It plays on lanes it borrows from this event.
+            A singles bracket for players knocked out of this event. It starts empty: add knocked-out
+            players one at a time until its bracket starts. It plays on lanes it borrows from this event.
           </DialogDescription>
         </DialogHeader>
 
@@ -298,7 +299,7 @@ export function SecondChancePanel({ event }: { event: EventWithDetails }) {
           <CardDescription>
             {summary.child
               ? `${STATUS_LABELS[summary.child.status]} · ${knockedOut} ${event.status === 'completed' ? 'eligible' : 'knocked out so far'}`
-              : `${knockedOut} ${event.status === 'completed' ? 'eligible' : 'knocked out so far'}. Late knockouts can be added until its bracket starts.`}
+              : `${knockedOut} ${event.status === 'completed' ? 'eligible' : 'knocked out so far'}. Add them one at a time until its bracket starts.`}
           </CardDescription>
         </div>
         {summary.child ? (
@@ -334,7 +335,7 @@ export function SecondChanceRosterPanel({
 }) {
   const { toast } = useToast();
   const [roster, setRoster] = useState<SecondChanceRoster | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -348,19 +349,23 @@ export function SecondChanceRosterPanel({
     load();
   }, [load, event.status, event.players.length]);
 
-  const sync = async () => {
-    setSyncing(true);
+  const add = async (player: SecondChancePlayer) => {
+    setAddingId(player.player_id);
     try {
-      const result = await readJson<SecondChanceRoster & { added: number }>(
-        await fetch(`/api/event/${event.id}/second-chance/roster`, { method: 'POST' })
-      );
-      setRoster(result);
-      toast({ title: `Added ${result.added} player${result.added === 1 ? '' : 's'}` });
+      setRoster(await readJson<SecondChanceRoster & { added: number }>(
+        await fetch(`/api/event/${event.id}/second-chance/roster`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player_id: player.player_id }),
+        })
+      ));
+      toast({ title: `Added ${player.full_name}` });
       onPlayersAdded();
     } catch (err) {
-      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to add players' });
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Failed to add player' });
+      load();
     } finally {
-      setSyncing(false);
+      setAddingId(null);
     }
   };
 
@@ -379,22 +384,31 @@ export function SecondChanceRosterPanel({
             {roster?.parent_status === 'bracket' ? ', which is still in bracket play.' : '.'}
           </CardDescription>
         </div>
-        {roster?.can_sync && (
-          <Button onClick={sync} disabled={syncing || roster.pending.length === 0}>
-            {syncing ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
-            {roster.pending.length === 0
-              ? 'No new knockouts'
-              : `Add ${roster.pending.length} knocked-out player${roster.pending.length === 1 ? '' : 's'}`}
-          </Button>
-        )}
       </CardHeader>
-      {roster?.can_sync && (roster.pending.length > 0 || roster.not_eliminated.length > 0) && (
+      {roster?.can_sync && (
         <CardContent className="space-y-3 text-sm">
-          {roster.pending.length > 0 && (
-            <p>
-              <span className="text-muted-foreground">Knocked out, not entered yet: </span>
-              {roster.pending.map((player) => player.full_name).join(', ')}
-            </p>
+          {roster.pending.length === 0 ? (
+            <p className="text-muted-foreground">No knocked-out players waiting to be added.</p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-muted-foreground">Knocked out, not entered yet:</p>
+              <ul className="flex flex-wrap gap-2" aria-label="Knocked-out players">
+                {roster.pending.map((player) => (
+                  <li key={player.player_id}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => add(player)}
+                      disabled={addingId !== null}
+                      aria-label={`Add ${player.full_name}`}
+                    >
+                      {addingId === player.player_id ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+                      {player.full_name}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {roster.not_eliminated.length > 0 && (
             <p className="flex items-start gap-2 text-warning">

@@ -29,6 +29,7 @@ import {
   startBracket,
   updateEventSettingsTx,
 } from '@/lib/services/event/event-service';
+import { syncSecondChancePlayers } from '@/lib/services/event/second-chance';
 import { evaluateEventHandicaps } from '@/lib/services/handicap/evaluate';
 import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
 import {
@@ -879,6 +880,7 @@ describe('completed handicap events', () => {
         access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
       });
       expect(child.handicap_enabled).toBe(true);
+      await syncSecondChancePlayers(child.id);
       const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
       expect(entries.length).toBeGreaterThan(0);
       for (const entry of entries) {
@@ -901,6 +903,7 @@ describe('completed handicap events', () => {
         access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
       });
       expect(child.handicap_enabled).toBe(false);
+      await syncSecondChancePlayers(child.id);
       const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
       expect(entries.length).toBeGreaterThan(0);
       for (const entry of entries) expect(entry).toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '15.00' });
@@ -922,6 +925,7 @@ describe('completed handicap events', () => {
         putt_distance_ft: 18,
       });
       expect(child.handicap_enabled).toBe(false);
+      await syncSecondChancePlayers(child.id);
       const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
       expect(entries.length).toBeGreaterThan(0);
       for (const entry of entries) expect(entry).toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '18.00' });
@@ -942,6 +946,7 @@ describe('completed handicap events', () => {
         handicap_enabled: true,
       });
       expect(child.handicap_enabled).toBe(true);
+      await syncSecondChancePlayers(child.id);
       const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
       expect(entries.length).toBeGreaterThan(0);
       for (const entry of entries) {
