@@ -3,8 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 // Visual regression tests: screenshots of the main public and scoring pages,
 // compared with the baselines in e2e/visual/__screenshots__. They need the local
 // stack seeded with e2e/visual/seed.ts and a production build (`npm run build`)
-// made with the local Supabase env. Baselines are rendered on the CI runner;
-// regenerate them with the "Update visual baselines" workflow, not locally.
+// made with the local Supabase env. Baselines are rendered in the Playwright
+// Docker image (see .github/workflows/visual.yml); regenerate them with the
+// "Update visual baselines" workflow, not with a host browser.
 const baseURL = 'http://127.0.0.1:3000';
 const lightTheme = { cookies: [], origins: [{ origin: baseURL, localStorage: [{ name: 'theme', value: 'light' }] }] };
 

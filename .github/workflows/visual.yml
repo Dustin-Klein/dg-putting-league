@@ -4,8 +4,13 @@ name: Visual
 # seeded local Supabase stack and a production build. On failure the HTML report
 # with expected/actual/diff images is uploaded as the `visual-report` artifact.
 #
-# Baselines are rendered here, never locally (fonts and anti-aliasing differ by
-# machine). After an intended UI change, run this workflow on the PR branch with
+# The tests run inside the Playwright image matching the installed @playwright/test,
+# which pins the browser, system libraries and fonts. Installing those with
+# `playwright install --with-deps` instead pulls them from Ubuntu's apt mirrors,
+# which sometimes took over 6 minutes.
+#
+# Baselines are rendered here, never on a host browser (fonts and anti-aliasing
+# differ by machine). After an intended UI change, run this workflow on the PR branch with
 # "Update baselines" ticked: it commits the new screenshots to that branch.
 # Commits pushed with GITHUB_TOKEN don't trigger new runs, so the PR's new head
 # has no checks until the next push; close and reopen the PR to run them.
@@ -45,6 +50,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Pulled in the background so it overlaps Supabase start and the build.
+      - name: Pull Playwright image
+        run: |
+          image="mcr.microsoft.com/playwright:v$(node -p "require('@playwright/test/package.json').version")-noble"
+          echo "PLAYWRIGHT_IMAGE=$image" >> "$GITHUB_ENV"
+          nohup docker pull -q "$image" > /tmp/playwright-pull.log 2>&1 &
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v3
         with:
@@ -69,11 +81,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
+      # Runs as the runner's user so the files it writes stay removable by later steps.
       - name: Run visual tests
-        run: npm run test:visual -- ${{ inputs.update_baselines && '--update-snapshots' || '' }}
+        run: |
+          docker run --rm --network host --ipc host \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e CI -e DATABASE_URL -e NEXT_PUBLIC_SUPABASE_URL -e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+            -v "$PWD:/work" -w /work \
+            "$PLAYWRIGHT_IMAGE" \
+            npm run test:visual -- ${{ inputs.update_baselines && '--update-snapshots' || '' }}
 
       - name: Upload report
         if: failure()
