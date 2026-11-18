@@ -14,6 +14,7 @@ import {
   updateEventSettingsTx,
   validateEventStatusTransition,
 } from '@/lib/services/event/event-service';
+import { syncSecondChancePlayers } from '@/lib/services/event/second-chance';
 import type { EventWithDetails } from '@/lib/types/event';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { playOutBracket } from './db/play';
@@ -71,7 +72,7 @@ async function entrantsOf(tx: Executor, eventId: string) {
 }
 
 describe('createSecondChanceEvent', () => {
-  it('enters every player except the winning team, per player, as a singles event', async () => {
+  it('starts empty, then enters every player except the winning team, per player, as a singles event', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
       const parent = await completedDoublesEvent(tx);
@@ -89,6 +90,8 @@ describe('createSecondChanceEvent', () => {
         qualification_round_enabled: false,
         lane_count: 2,
       });
+      expect(await entrantsOf(tx, child.id)).toEqual([]);
+      await syncSecondChancePlayers(child.id);
       const entrants = await entrantsOf(tx, child.id);
       expect(entrants.map((e) => e.player_id).sort())
         .toEqual(parent.playerIds.filter((id) => !winners.includes(id)).sort());
@@ -111,6 +114,7 @@ describe('createSecondChanceEvent', () => {
       }
 
       const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode() });
+      await syncSecondChancePlayers(child.id);
 
       const entrants = await entrantsOf(tx, child.id);
       expect(entrants.length).toBeGreaterThan(0);
@@ -249,7 +253,7 @@ describe('cross-event locking (committed data, real concurrency)', () => {
       });
       const children = (await Promise.all(parents.map((parent) => eventDb.getChildEvents(db, parent.eventId)))).flat();
       expect(children).toHaveLength(1);
-      expect(await entrantsOf(db, children[0].id)).toHaveLength(2);
+      expect(await entrantsOf(db, children[0].id)).toEqual([]);
     } finally {
       check.mockImplementation(checkUnique);
     }

@@ -123,12 +123,18 @@ export async function getSecondChanceRoster(eventId: string): Promise<SecondChan
 }
 
 /**
- * Enter every player knocked out of the main event since the last sync. Never removes
- * anyone: a player who is no longer out of the main event is only reported, for the
- * organizer to remove. Seeding scores are recomputed for everyone when the bracket starts.
+ * Enter `playerId` (or, when omitted, every pending player) knocked out of the main event.
+ * Never removes anyone: a player who is no longer out of the main event is only reported,
+ * for the organizer to remove. Seeding scores are recomputed for everyone when the bracket starts.
+ *
+ * Only `player_id` carries over. The child has its own entry fee, so payment_type
+ * starts NULL (the pre-bracket → bracket gate then asks for the second entry); pool
+ * and qualification_seed stay NULL (singles, no qualification round); pfa_score is
+ * computed fresh over the normal PFA window, which now includes the parent's frames.
  */
 export async function syncSecondChancePlayers(
-  eventId: string
+  eventId: string,
+  playerId?: string
 ): Promise<SecondChanceRoster & { added: number }> {
   const { pg, user } = await authorizeEventAdmin(eventId);
   // parent_event_id never changes, so it is safe to read before taking the locks.
@@ -147,7 +153,13 @@ export async function syncSecondChancePlayers(
 
     const entered = new Set(await playerDb.getPlayerIdsInEvent(tx, eventId));
     const eligible = await eligibleSecondChancePlayerIds(tx, parent);
-    const newPlayerIds = eligible.filter((id) => !entered.has(id));
+    const pending = eligible.filter((id) => !entered.has(id));
+    if (playerId !== undefined && !pending.includes(playerId)) {
+      throw new BadRequestError(entered.has(playerId)
+        ? 'That player is already entered'
+        : 'That player has not been knocked out of the main event');
+    }
+    const newPlayerIds = playerId === undefined ? pending : [playerId];
     if (newPlayerIds.length > 0) {
       const pfaScores = await computePfaScores(tx, newPlayerIds);
       await eventPlayerDb.insertScoredEventPlayers(tx, eventId, newPlayerIds.map((playerId) => {
@@ -168,6 +180,7 @@ export async function syncSecondChancePlayers(
     action: 'sync_second_chance_players',
     eventId,
     parentEventId,
+    playerId,
     added,
     outcome: 'success',
   });
