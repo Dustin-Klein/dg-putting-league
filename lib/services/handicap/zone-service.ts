@@ -27,6 +27,20 @@ import { refreshEntrySnapshots } from './snapshot';
 // Reads
 // ---------------------------------------------------------------------------
 
+/** A zone's distance on the current ladder; a period keeps the distance it started at, which a ladder edit leaves stale. */
+function ladderDistance(zones: readonly { zone: number; distance_ft: number }[], zone: number, fallback: number): number {
+  return zones.find((z) => z.zone === zone)?.distance_ft ?? fallback;
+}
+
+/** Open demotion suggestions, shown at the zone's current ladder distance. */
+async function readOpenSuggestions(ex: Executor, leagueId: string, playerId?: string): Promise<ZoneSuggestion[]> {
+  const [suggestions, zones] = await Promise.all([
+    handicapDb.listOpenSuggestions(ex, leagueId, playerId),
+    handicapDb.getLeagueZones(ex, leagueId),
+  ]);
+  return suggestions.map((s) => ({ ...s, distance_ft: ladderDistance(zones, s.zone, s.distance_ft) }));
+}
+
 async function isLeagueAdmin(ex: Executor, leagueId: string, viewerId: string | null): Promise<boolean> {
   return viewerId !== null && (await getLeagueAdminRole(ex, leagueId, viewerId)) !== null;
 }
@@ -87,7 +101,7 @@ async function readPlayerHandicap(
     league_id: leagueId,
     league_name: leagueName,
     current_zone: open.zone,
-    distance_ft: zones.find((zone) => zone.zone === open.zone)?.distance_ft ?? open.distance_ft,
+    distance_ft: ladderDistance(zones, open.zone, open.distance_ft),
     max_zone: zones.length > 0 ? Math.max(...zones.map((zone) => zone.zone)) : open.zone,
     period: { since: open.started_at, stats, progress: eligibilityProgress(stats, settings) },
     promote_above_pct: settings.promote_above_pct,
@@ -96,7 +110,7 @@ async function readPlayerHandicap(
   };
   if (!isAdmin) return { ...base, history: history.map(toPublicPeriod) };
 
-  const [suggestion] = await handicapDb.listOpenSuggestions(ex, leagueId, playerId);
+  const [suggestion] = await readOpenSuggestions(ex, leagueId, playerId);
   return {
     ...base,
     history: history.map(toAdminPeriod),
@@ -150,10 +164,11 @@ export async function getPlayerHandicapsByNumber(
 /** The league roster (players with an entry or a zone in the league) with current zones. League admins only. */
 export async function getLeagueHandicapRoster(leagueId: string): Promise<LeagueRosterEntry[]> {
   const { pg } = await authorizeLeagueAdmin(leagueId);
-  const [stored, roster, suggestions] = await Promise.all([
+  const [stored, roster, suggestions, zones] = await Promise.all([
     handicapDb.getLeagueHandicapSettings(pg, leagueId),
     handicapDb.getLeagueRoster(pg, leagueId),
     handicapDb.listOpenSuggestions(pg, leagueId),
+    handicapDb.getLeagueZones(pg, leagueId),
   ]);
   const periodIds = roster.flatMap((row) => (row.period ? [row.period.id] : []));
   const counts = await handicapDb.getPeriodEntryCounts(pg, periodIds);
@@ -166,7 +181,7 @@ export async function getLeagueHandicapRoster(leagueId: string): Promise<LeagueR
       player_name: row.player_name,
       player_number: row.player_number,
       zone: row.period?.zone ?? null,
-      distance_ft: row.period?.distance_ft ?? null,
+      distance_ft: row.period ? ladderDistance(zones, row.period.zone, row.period.distance_ft) : null,
       period_started_at: row.period?.started_at ?? null,
       stats,
       progress: stats && stored ? eligibilityProgress(stats, stored.settings) : null,
@@ -178,7 +193,7 @@ export async function getLeagueHandicapRoster(leagueId: string): Promise<LeagueR
 /** Open demotion suggestions: the admin review queue. */
 export async function listZoneSuggestions(leagueId: string): Promise<ZoneSuggestion[]> {
   const { pg } = await authorizeLeagueAdmin(leagueId);
-  return handicapDb.listOpenSuggestions(pg, leagueId);
+  return readOpenSuggestions(pg, leagueId);
 }
 
 /**

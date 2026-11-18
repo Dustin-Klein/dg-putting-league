@@ -40,8 +40,10 @@ import {
 } from '@/lib/services/handicap/settings-service';
 import { lockQualificationEvent } from '@/lib/repositories/qualification-repository.db';
 import {
+  getLeagueHandicapRoster,
   getPlayerHandicap,
   getZoneSeedCandidates,
+  listZoneSuggestions,
   moveEntryZone,
   resolveZoneSuggestion,
   seedPlayerZones,
@@ -808,6 +810,25 @@ describe('demotion suggestions', () => {
       const open = await openSuggestions(tx, leagueId);
       expect(new Set(open.map((s) => s.player_id)).size).toBe(open.length);
       expect(open.every((s) => s.event_id === loud.eventId)).toBe(true);
+    });
+  });
+
+  it('show roster zones and suggestions at the current ladder distance after a ladder edit', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await eventWithSuggestions(tx);
+      await updateHandicapSettings(leagueId, {
+        settings: TEST_SETTINGS,
+        zones: [{ zone: 1, distance_ft: 20 }, { zone: 2, distance_ft: 26.5 }, { zone: 3, distance_ft: 34 }],
+      });
+      const ladder = new Map([[1, 20], [2, 26.5], [3, 34]]);
+
+      const roster = (await getLeagueHandicapRoster(leagueId)).filter((entry) => entry.zone !== null);
+      expect(roster.length).toBeGreaterThan(0);
+      for (const entry of roster) expect(entry.distance_ft).toBe(ladder.get(entry.zone!));
+      for (const suggestion of await listZoneSuggestions(leagueId)) {
+        expect(suggestion.distance_ft).toBe(ladder.get(suggestion.zone));
+      }
     });
   });
 });
