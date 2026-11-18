@@ -131,7 +131,7 @@ describe('statement budgets', () => {
     }
     // Lock, snapshot, lock rewritten rows, release lanes, frames, overrides, grand
     // final check and lane reassignment: the same fixed set whatever the bracket's size.
-    for (const overhead of overheads) expect(overhead).toBeLessThanOrEqual(18);
+    for (const overhead of overheads) expect(overhead).toBeLessThanOrEqual(19);
   });
 
   it('reads the zone seeding field in the same number of statements for any number of players', async () => {

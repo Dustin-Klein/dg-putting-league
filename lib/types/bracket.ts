@@ -140,7 +140,7 @@ export interface LaneLoans {
   role: 'main' | 'second_chance' | null;
   partner_event_id: string | null;
   /** main: its lanes lent to the second chance; second chance: the lanes it borrowed. */
-  lanes: Array<{ id: string; label: string; status: Lane['status'] }>;
+  lanes: Array<{ id: string; label: string; status: Lane['status']; after_match: boolean }>;
   /** main only: the second chance can still take lanes. */
   can_lend: boolean;
 }

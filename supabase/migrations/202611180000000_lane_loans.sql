@@ -5,7 +5,8 @@
 -- lanes. A loan moves a lane's use, not its ownership: lanes.event_id stays the
 -- main event (labels, history and the main event's lane numbering never change)
 -- while the borrowing event's lane queries also see its loaned lanes and the
--- lender's no longer do. A lane is on at most one loan.
+-- lender's no longer do. A lane is on at most one loan. A lane lent while the
+-- lender's match is on it stays the lender's until that match leaves it.
 --
 -- Deleting either event ends the loan (the lane row stays with its owner, or goes
 -- with it). The service resets the lane to idle first, so a lane is never left

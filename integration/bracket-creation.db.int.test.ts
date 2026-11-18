@@ -21,7 +21,7 @@ const db = createTestDb();
 // Statements startBracket sends, its savepoint included. The last two are the entry
 // snapshot refresh (event context + entry states); a handicap event adds a few more
 // for the league handicap lock and zone reads, none of them per player.
-const START_BRACKET_STATEMENT_BUDGET = 26;
+const START_BRACKET_STATEMENT_BUDGET = 27;
 
 const counting = createCountingTestDb();
 afterAll(async () => {

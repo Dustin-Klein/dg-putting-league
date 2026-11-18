@@ -35,7 +35,7 @@ import {
   createBracketTx,
   restoreGrandFinalResetMatchTx,
 } from '@/lib/services/bracket';
-import { autoAssignLanesTx, returnAllLanesTx } from '@/lib/services/lane';
+import { autoAssignLanesTx, lendLanesTx, returnAllLanesTx } from '@/lib/services/lane';
 import { lockEvent, lockEvents, lockLeagueHandicap, withTransaction, type Executor, type Tx } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
@@ -266,6 +266,8 @@ export async function createEvent(data: {
 
 export interface CreateSecondChanceEventInput {
   access_code: string;
+  /** Main-event lanes to lend it now; a lane in use moves once its match is done. */
+  lane_ids?: string[];
   /** Omitted settings are taken from the parent event. */
   event_date?: string;
   location?: string | null;
@@ -348,6 +350,8 @@ export async function createSecondChanceEvent(
         team_assignment: 'random_pairing',
         status: 'created',
       });
+
+      await lendLanesTx(tx, { parentId: parentEventId, childId: created.id }, created.status, input.lane_ids ?? []);
 
       if (parent.handicap_enabled) {
         await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getEventZoneDistances(tx, parentEventId));

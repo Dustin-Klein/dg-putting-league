@@ -15,7 +15,12 @@ SET status = CASE WHEN ln.status = 'maintenance' OR ln.maintenance_pending
                   ELSE 'idle'::putting_league.lane_status END,
     maintenance_pending = false
 FROM putting_league.lane_loans l
-WHERE ln.id = l.lane_id;
+WHERE ln.id = l.lane_id
+  -- Lent after the owner's current match: that match is still on it.
+  AND NOT EXISTS (
+    SELECT 1 FROM putting_league.bracket_match om
+    WHERE om.lane_id = ln.id AND om.event_id = ln.event_id
+  );
 
 DROP TABLE putting_league.lane_loans;
 
