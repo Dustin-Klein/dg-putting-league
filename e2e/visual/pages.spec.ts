@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
 
 async function snap(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready);
-  await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true, mask: [page.locator('[data-app-version]')] });
+  await expect(page).toHaveScreenshot(`${name}.png`, {
+    fullPage: true,
+    stylePath: path.join(__dirname, 'screenshot.css'),
+  });
 }
 
 test('home', async ({ page }) => {
