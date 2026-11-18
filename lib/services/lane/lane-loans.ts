@@ -7,6 +7,7 @@ import { lockMatchesOnLanes } from '@/lib/repositories/lane-repository.db';
 import { BadRequestError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import type { LaneLoans } from '@/lib/types/bracket';
+import type { EventStatus } from '@/lib/types/event';
 import { autoAssignLanesTx } from './lane-service';
 
 /** The main event and its second chance, from either side; null if `eventId` has neither. */
@@ -33,7 +34,7 @@ export async function getLaneLoans(eventId: string): Promise<LaneLoans> {
     return {
       role: 'main',
       partner_event_id: pair.childId,
-      lanes: lent.map(({ id, label, status }) => ({ id, label, status })),
+      lanes: lent.map(({ id, label, status, after_match }) => ({ id, label, status, after_match })),
       can_lend: child !== null && child.status !== 'completed',
     };
   }
@@ -41,7 +42,7 @@ export async function getLaneLoans(eventId: string): Promise<LaneLoans> {
   return {
     role: 'second_chance',
     partner_event_id: pair.parentId,
-    lanes: borrowed.map(({ id, label, status }) => ({ id, label, status })),
+    lanes: borrowed.map(({ id, label, status }) => ({ id, label, status, after_match: false })),
     can_lend: false,
   };
 }
@@ -58,12 +59,42 @@ async function lockPair(tx: Tx, pair: { parentId: string; childId: string }) {
 }
 
 /**
- * Lend idle lanes of a main event to its second chance. They leave the main event's
- * queue and the second chance's next matches are called to them.
+ * Lend lanes of a main event to its second chance, inside the caller's transaction,
+ * which holds both event locks and rows. An idle lane moves now; a lane with a
+ * main-event match on it moves once that match leaves it, and gets no other main-event
+ * match meanwhile. The second chance's next matches are called to the lanes it gets.
  */
-export async function lendLanes(eventId: string, requestedLaneIds: string[]): Promise<void> {
-  const { pg, user } = await authorizeEventAdmin(eventId);
+export async function lendLanesTx(
+  tx: Tx,
+  pair: { parentId: string; childId: string },
+  childStatus: EventStatus,
+  requestedLaneIds: string[]
+): Promise<void> {
   const laneIds = [...new Set(requestedLaneIds)];
+  if (laneIds.length === 0) return;
+  if (childStatus === 'completed') throw new BadRequestError('The second chance is already completed');
+
+  const owned = await laneDb.lockOwnedLanes(tx, pair.parentId, laneIds);
+  if (owned.length !== laneIds.length) throw new NotFoundError('Lane not found');
+  const inUse = new Set(await laneDb.getLanesInUseBy(tx, pair.parentId, laneIds));
+  for (const lane of owned) {
+    if (lane.to_event_id) throw new BadRequestError(`${lane.label} is already lent out`);
+    if (lane.status === 'maintenance' || lane.maintenance_pending) {
+      throw new BadRequestError(`${lane.label} is in maintenance; bring it back before lending it`);
+    }
+    if (lane.status === 'occupied' && !inUse.has(lane.id)) {
+      throw new BadRequestError(`${lane.label} is busy; try again in a moment`);
+    }
+  }
+
+  await laneDb.insertLaneLoans(tx, pair.parentId, pair.childId, laneIds);
+  await laneDb.touchLanes(tx, laneIds);
+  if (childStatus === 'bracket') await autoAssignLanesTx(tx, pair.childId);
+}
+
+/** Lend lanes to the second chance (see `lendLanesTx`). */
+export async function lendLanes(eventId: string, laneIds: string[]): Promise<void> {
+  const { pg, user } = await authorizeEventAdmin(eventId);
   const pair = await loanPair(pg, eventId);
   if (!pair || pair.parentId !== eventId) {
     throw new BadRequestError('Only a main event with a second chance can lend lanes');
@@ -71,21 +102,7 @@ export async function lendLanes(eventId: string, requestedLaneIds: string[]): Pr
 
   await withTransaction(pg, async (tx) => {
     const { child } = await lockPair(tx, pair);
-    if (child.status === 'completed') throw new BadRequestError('The second chance is already completed');
-
-    const owned = await laneDb.lockOwnedLanes(tx, pair.parentId, laneIds);
-    if (owned.length !== laneIds.length) throw new NotFoundError('Lane not found');
-    const inUse = new Set(await laneDb.getLanesInUseBy(tx, pair.parentId, laneIds));
-    for (const lane of owned) {
-      if (lane.to_event_id) throw new BadRequestError(`${lane.label} is already lent out`);
-      if (lane.status !== 'idle' || lane.maintenance_pending || inUse.has(lane.id)) {
-        throw new BadRequestError(`${lane.label} is not idle; only an idle lane can be lent`);
-      }
-    }
-
-    await laneDb.insertLaneLoans(tx, pair.parentId, pair.childId, laneIds);
-    await laneDb.touchLanes(tx, laneIds);
-    if (child.status === 'bracket') await autoAssignLanesTx(tx, pair.childId);
+    await lendLanesTx(tx, pair, child.status, laneIds);
   });
 
   logger.info('Lanes lent to second chance', {
@@ -95,7 +112,8 @@ export async function lendLanes(eventId: string, requestedLaneIds: string[]): Pr
 
 /**
  * Give lent lanes back to the main event, from either side. A lane with a
- * second-chance match on it stays lent until that match is done or moved.
+ * second-chance match on it stays lent until that match is done or moved; one still
+ * waiting for its main-event match to finish just stays with the main event.
  */
 export async function returnLanes(eventId: string, requestedLaneIds: string[]): Promise<void> {
   const { pg, user } = await authorizeEventAdmin(eventId);

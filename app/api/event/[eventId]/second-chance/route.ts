@@ -7,6 +7,7 @@ import { BRACKET_FORMATS } from '@/lib/brackets/format';
 
 const secondChanceSchema = z.object({
   access_code: z.string().trim().min(6).max(50),
+  lane_ids: z.array(z.uuid()).max(50).optional(),
   event_date: z.iso.date().optional(),
   location: z.string().nullable().optional(),
   lane_count: z.number().int().positive().optional(),

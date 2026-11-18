@@ -37,6 +37,14 @@ export async function lockEvent(tx: Tx, eventId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'event:' + eventId}, 0))`);
 }
 
+/** Take the event lock only if it is free right now; never waits, so it can't deadlock. */
+export async function tryLockEvent(tx: Tx, eventId: string): Promise<boolean> {
+  const [row] = await tx.execute<{ locked: boolean }>(
+    sql`select pg_try_advisory_xact_lock(hashtextextended(${'event:' + eventId}, 0)) as locked`
+  );
+  return row?.locked === true;
+}
+
 /**
  * Take the event lock for several events (e.g. a parent and its linked events) in
  * ascending event-id order. Only a total order on the lock key is deadlock-safe:

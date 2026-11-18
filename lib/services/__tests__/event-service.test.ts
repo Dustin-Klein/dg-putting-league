@@ -34,7 +34,7 @@ jest.mock('@/lib/db/tx', () => ({
   lockLeagueHandicap: jest.fn(),
 }));
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }));
-jest.mock('@/lib/services/lane', () => ({ autoAssignLanesTx: jest.fn(), returnAllLanesTx: jest.fn() }));
+jest.mock('@/lib/services/lane', () => ({ autoAssignLanesTx: jest.fn(), lendLanesTx: jest.fn(), returnAllLanesTx: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import * as eventDb from '@/lib/repositories/event-repository.db';

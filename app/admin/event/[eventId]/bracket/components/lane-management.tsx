@@ -230,6 +230,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   const isSecondChance = loans?.role === 'second_chance';
   const canLend = loans?.role === 'main' && loans.can_lend;
   const lentOut = loans?.role === 'main' ? loans.lanes : [];
+  const lentAfterMatch = new Set(lentOut.filter((lane) => lane.after_match).map((lane) => lane.id));
 
   const idleCount = lanes.filter((l) => l.status === 'idle').length;
   const occupiedCount = lanes.filter((l) => l.status === 'occupied').length;
@@ -362,11 +363,13 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
               size="sm"
               variant="outline"
               onClick={() => handleLoan('return', lane.id)}
-              disabled={actionLoading === lane.id || lane.status === 'occupied'}
-              title={lane.status === 'occupied' ? 'A second-chance match is on this lane' : undefined}
+              disabled={actionLoading === lane.id || (lane.status === 'occupied' && !lane.after_match)}
+              title={lane.after_match
+                ? 'Moves once its current match is done; keep it here instead'
+                : lane.status === 'occupied' ? 'A second-chance match is on this lane' : undefined}
             >
               <Undo2 className="mr-1 h-3 w-3" />
-              Return {lane.label}
+              {lane.after_match ? `Keep ${lane.label}` : `Return ${lane.label}`}
             </Button>
           ))}
         </div>
@@ -403,6 +406,9 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                   {state.label}
                   {lane.maintenance_pending && (
                     <span className="text-warning"> · Maintenance after this match</span>
+                  )}
+                  {lentAfterMatch.has(lane.id) && (
+                    <span className="text-info"> · Second chance after this match</span>
                   )}
                 </span>
               </div>
@@ -443,6 +449,17 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       <Unlock className="mr-1 h-3 w-3" />
                       Release
                     </Button>
+                    {canLend && !lane.maintenance_pending && !lentAfterMatch.has(lane.id) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLoan('lend', lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Share2 className="mr-1 h-3 w-3" />
+                        Second chance after this match
+                      </Button>
+                    )}
                     {lane.current_match_status === MatchStatus.Running ? (
                       <>
                         {lane.maintenance_pending ? (

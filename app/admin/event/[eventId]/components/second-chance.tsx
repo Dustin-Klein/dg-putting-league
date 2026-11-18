@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { BRACKET_FORMATS, type BracketFormat } from '@/lib/brackets/format';
 import { BRACKET_FORMAT_LABELS } from '@/lib/utils/bracket-format';
+import type { LaneWithMatch } from '@/lib/types/bracket';
 import type {
   EventStatus,
   EventWithDetails,
@@ -60,8 +61,24 @@ function CreateSecondChanceDialog({
   const [format, setFormat] = useState<BracketFormat>('single_elimination');
   const [extraMatch, setExtraMatch] = useState(false);
   const [entryFee, setEntryFee] = useState('');
+  const [lanes, setLanes] = useState<LaneWithMatch[] | null>(null);
+  const [laneIds, setLaneIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch(`/api/event/${event.id}/lanes`)
+      .then((response) => readJson<LaneWithMatch[]>(response))
+      .then((data) => { if (!cancelled) setLanes(data); })
+      .catch(() => { if (!cancelled) setLanes([]); });
+    return () => { cancelled = true; };
+  }, [open, event.id]);
+
+  const toggleLane = (laneId: string) =>
+    setLaneIds((current) => current.includes(laneId) ? current.filter((id) => id !== laneId) : [...current, laneId]);
+  const busyPicked = lanes?.filter((lane) => laneIds.includes(lane.id) && lane.status === 'occupied') ?? [];
 
   const submit = async () => {
     setSaving(true);
@@ -72,6 +89,7 @@ function CreateSecondChanceDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           access_code: accessCode,
+          lane_ids: laneIds,
           bracket_format: format,
           double_grand_final: format === 'double_elimination' && extraMatch,
           third_place_match: format === 'single_elimination' && extraMatch,
@@ -94,7 +112,7 @@ function CreateSecondChanceDialog({
           <DialogTitle>Create second chance</DialogTitle>
           <DialogDescription>
             A singles bracket for players knocked out of this event. Players knocked out later can be
-            added until its bracket starts. It plays on lanes you lend it from this event&apos;s lanes.
+            added until its bracket starts. It plays on lanes it borrows from this event.
           </DialogDescription>
         </DialogHeader>
 
@@ -128,6 +146,42 @@ function CreateSecondChanceDialog({
               </span>
             </div>
             <Switch id="sc-extra" checked={extraMatch} onCheckedChange={setExtraMatch} disabled={saving} />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label id="sc-lanes-label">Lanes</Label>
+            {lanes === null ? (
+              <span className="text-sm text-muted-foreground">Loading lanes…</span>
+            ) : lanes.length === 0 ? (
+              <span className="text-sm text-muted-foreground">This event has no lanes to lend.</span>
+            ) : (
+              <div role="group" aria-labelledby="sc-lanes-label" className="flex flex-wrap gap-2">
+                {lanes.map((lane) => {
+                  const picked = laneIds.includes(lane.id);
+                  const unavailable = lane.status === 'maintenance' || lane.maintenance_pending;
+                  return (
+                    <Button
+                      key={lane.id}
+                      type="button"
+                      size="sm"
+                      variant={picked ? 'default' : 'outline'}
+                      aria-pressed={picked}
+                      onClick={() => toggleLane(lane.id)}
+                      disabled={saving || unavailable}
+                      title={unavailable ? 'In maintenance' : lane.status === 'occupied' ? 'In use: moves once its match is done' : undefined}
+                    >
+                      {lane.label}
+                      {lane.status === 'occupied' && <span className="text-xs opacity-75">· in use</span>}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {busyPicked.length > 0
+                ? `${busyPicked.map((lane) => lane.label).join(', ')} ${busyPicked.length === 1 ? 'finishes its' : 'finish their'} current match first, then ${busyPicked.length === 1 ? 'moves' : 'move'} over. No new main-event match goes there.`
+                : 'You can lend or return lanes later from either event\'s lanes.'}
+            </span>
           </div>
 
           <div className="grid gap-1.5">

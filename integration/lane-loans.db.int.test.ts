@@ -79,7 +79,10 @@ async function laneIds(ex: Executor, eventId: string): Promise<string[]> {
   return (await getLanesForEvent(ex, eventId)).map((lane) => lane.id).sort();
 }
 
-/** No lane is on two open matches, an occupied lane has exactly one, and a lent lane never holds a lender's match. */
+/**
+ * No lane is on two open matches, an occupied lane has exactly one, and a lent lane
+ * holds a lender's match only while it waits for that match to finish.
+ */
 async function expectSharedLaneInvariants(ex: Executor, parentId: string, childId: string): Promise<void> {
   const allLanes = await ex.select().from(lanes).where(eq(lanes.event_id, parentId));
   const loans = new Map((await ex.select().from(lane_loans).where(eq(lane_loans.from_event_id, parentId)))
@@ -90,7 +93,8 @@ async function expectSharedLaneInvariants(ex: Executor, parentId: string, childI
     const open = onLane.filter((match) => OPEN.has(match.status));
     expect({ lane: lane.label, open: open.length }).toEqual({ lane: lane.label, open: lane.status === 'occupied' ? 1 : 0 });
     expect(onLane.length).toBe(open.length);
-    const user = loans.get(lane.id) ?? parentId;
+    const borrower = loans.get(lane.id);
+    const user = borrower && !onLane.some((match) => match.event_id === parentId) ? borrower : parentId;
     for (const match of onLane) expect({ lane: lane.label, event: match.event_id }).toEqual({ lane: lane.label, event: user });
   }
 }
@@ -117,18 +121,20 @@ describe('lane loans', () => {
     });
   });
 
-  it('only lends idle lanes, once', async () => {
+  it('lends a lane once, and not while it is in maintenance', async () => {
     await withRollback(db, async (tx) => {
       mockAuth.pg = tx;
       const { parent, childId } = await mainWithSecondChance(tx, 2);
-      const occupied = (await getLanesForEvent(tx, parent.eventId)).find((lane) => lane.status === 'occupied')!;
-      await expect(lendLanes(parent.eventId, [occupied.id])).rejects.toMatchObject({ name: 'BadRequestError' });
+      const [busy, other] = (await getLanesForEvent(tx, parent.eventId)).filter((lane) => lane.status === 'occupied');
+      await lendLanes(parent.eventId, [busy.id]);
+      await expect(lendLanes(parent.eventId, [busy.id])).rejects.toThrow('is already lent out');
 
-      await tx.update(lanes).set({ status: 'maintenance' }).where(eq(lanes.id, occupied.id));
-      await expect(lendLanes(parent.eventId, [occupied.id])).rejects.toMatchObject({ name: 'BadRequestError' });
+      await tx.update(bracket_match).set({ lane_id: null }).where(eq(bracket_match.lane_id, other.id));
+      await tx.update(lanes).set({ status: 'maintenance' }).where(eq(lanes.id, other.id));
+      await expect(lendLanes(parent.eventId, [other.id])).rejects.toThrow('is in maintenance');
 
       // The second chance can't lend, and can't add lanes of its own.
-      await expect(lendLanes(childId, [occupied.id])).rejects.toMatchObject({ name: 'BadRequestError' });
+      await expect(lendLanes(childId, [other.id])).rejects.toMatchObject({ name: 'BadRequestError' });
       await expect(addLanes(childId, 1)).rejects.toMatchObject({ name: 'BadRequestError' });
     });
   });
@@ -176,6 +182,69 @@ describe('lane loans', () => {
       // Back in the main event's queue: idle, or already called to its next match.
       expect(['idle', 'occupied']).toContain(lane.status);
       await expectSharedLaneInvariants(tx, parent.eventId, childId);
+    });
+  });
+
+  it('hands a lane lent mid-match to the second chance once that match is done', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { parent, childId } = await mainWithSecondChance(tx, 4);
+      await startSecondChance(tx, parent, childId);
+      const busy = (await getLanesForEvent(tx, parent.eventId)).find((lane) => lane.status === 'occupied')!;
+      const [mainMatch] = (await getBracketSnapshot(tx, parent.eventId)).matches.filter((match) => match.lane_id === busy.id);
+
+      await lendLanes(parent.eventId, [busy.id]);
+      // Still the main event's, with its match on it, until that match is done.
+      expect(await laneIds(tx, parent.eventId)).toContain(busy.id);
+      expect(await laneIds(tx, childId)).toEqual([]);
+      expect((await getLaneLoans(parent.eventId)).lanes).toEqual([
+        expect.objectContaining({ id: busy.id, status: 'occupied', after_match: true }),
+      ]);
+      await expectSharedLaneInvariants(tx, parent.eventId, childId);
+
+      await playMatch(tx, parent.eventId, mainMatch.id, 'opponent1');
+      expect(await laneIds(tx, parent.eventId)).not.toContain(busy.id);
+      expect(await laneIds(tx, childId)).toEqual([busy.id]);
+      const onLane = (await tx.select().from(bracket_match).where(eq(bracket_match.lane_id, busy.id)));
+      expect(onLane.map((match) => match.event_id)).toEqual([childId]);
+      expect((await getLaneLoans(parent.eventId)).lanes[0].after_match).toBe(false);
+      await expectSharedLaneInvariants(tx, parent.eventId, childId);
+    });
+  });
+
+  it('keeps a lane lent mid-match with the main event when the loan is called off', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { parent, childId } = await mainWithSecondChance(tx, 2);
+      const busy = (await getLanesForEvent(tx, parent.eventId)).find((lane) => lane.status === 'occupied')!;
+      await lendLanes(parent.eventId, [busy.id]);
+      await returnLanes(childId, [busy.id]);
+
+      const [lane] = await tx.select().from(lanes).where(eq(lanes.id, busy.id));
+      expect(lane.status).toBe('occupied');
+      expect(await tx.select().from(lane_loans).where(eq(lane_loans.lane_id, busy.id))).toEqual([]);
+      await expectSharedLaneInvariants(tx, parent.eventId, childId);
+    });
+  });
+
+  it('lends the lanes picked when the second chance is created', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const parent = await seedBracket(tx, { teams: 8, laneCount: 6, bracketFormat: 'single_elimination' });
+      const all = await getLanesForEvent(tx, parent.eventId);
+      const idle = all.find((lane) => lane.status === 'idle')!;
+      const busy = all.find((lane) => lane.status === 'occupied')!;
+
+      const child = await createSecondChanceEvent(parent.eventId, { access_code: accessCode(), lane_ids: [idle.id, busy.id] });
+      expect(await laneIds(tx, child.id)).toEqual([idle.id]);
+      const lent = (await getLaneLoans(parent.eventId)).lanes;
+      expect(lent.map((lane) => [lane.id, lane.after_match]).sort()).toEqual([[busy.id, true], [idle.id, false]].sort());
+
+      const [maintenance] = all.filter((lane) => lane.status === 'idle' && lane.id !== idle.id);
+      await tx.update(lanes).set({ status: 'maintenance' }).where(eq(lanes.id, maintenance.id));
+      await tx.delete(events).where(eq(events.id, child.id));
+      await expect(createSecondChanceEvent(parent.eventId, { access_code: accessCode(), lane_ids: [maintenance.id] }))
+        .rejects.toThrow('is in maintenance');
     });
   });
 
@@ -231,13 +300,17 @@ describe('lane loans under concurrent scoring (committed data)', () => {
     for (let round = 0; round < 6; round++) {
       const parentNext = playableMatches(await getBracketSnapshot(db, parent.eventId))[0];
       const childNext = playableMatches(await getBracketSnapshot(db, childId))[0];
-      const parentIdle = (await getLanesForEvent(db, parent.eventId)).find((lane) => lane.status === 'idle');
+      const parentLanes = await getLanesForEvent(db, parent.eventId);
+      const lentOut = new Set((await getLaneLoans(parent.eventId)).lanes.map((lane) => lane.id));
+      const parentIdle = parentLanes.find((lane) => lane.status === 'idle');
+      const parentBusy = parentLanes.find((lane) => lane.status === 'occupied' && !lentOut.has(lane.id));
       const borrowed = (await getLanesForEvent(db, childId)).find((lane) => lane.status === 'idle');
 
       const outcomes = await Promise.allSettled([
         parentNext ? playMatch(db, parent.eventId, parentNext.id, 'opponent1').then(() => 'play' as const) : null,
         childNext ? playMatch(db, childId, childNext.id, 'opponent1').then(() => 'play' as const) : null,
         parentIdle ? lendLanes(parent.eventId, [parentIdle.id]).then(() => 'lend' as const) : null,
+        parentBusy && round % 2 === 0 ? lendLanes(parent.eventId, [parentBusy.id]).then(() => 'lend' as const) : null,
         borrowed ? returnLanes(childId, [borrowed.id]).then(() => 'return' as const) : null,
       ]);
       for (const outcome of outcomes) {

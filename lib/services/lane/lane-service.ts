@@ -1,7 +1,7 @@
 import 'server-only';
 import { requireEventAdmin } from '@/lib/services/event';
 import { authorizeEventView, type Db } from '@/lib/services/auth';
-import { lockEvent, lockMatch, withTransaction, type Tx } from '@/lib/db/tx';
+import { lockEvent, lockMatch, tryLockEvent, withTransaction, type Tx } from '@/lib/db/tx';
 import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { fetchBracketStructure, getStageForEvent } from '@/lib/repositories/bracket-repository.db';
 import { getEventBracketConfig, getEventLink } from '@/lib/repositories/event-repository.db';
@@ -142,10 +142,21 @@ export async function getLanesWithMatches(
 }
 
 /**
- * Put idle lanes on unassigned Ready/Waiting matches, in play order. Runs inside the
- * caller's transaction, which must hold the event lock. Returns the number assigned.
+ * Put idle lanes on unassigned Ready/Waiting matches, in play order, then call the
+ * second chance's next matches to lanes that just passed to it. Runs inside the
+ * caller's transaction, which must hold the event lock. Returns the number assigned
+ * to this event.
  */
 export async function autoAssignLanesTx(tx: Tx, eventId: string): Promise<number> {
+  const assigned = await assignIdleLanesTx(tx, eventId);
+  for (const borrowerId of await laneDb.getBorrowersWithIdleLentLanes(tx, eventId)) {
+    // Out of lock order, so only if free: a busy borrower assigns them itself next time.
+    if (await tryLockEvent(tx, borrowerId)) await assignIdleLanesTx(tx, borrowerId);
+  }
+  return assigned;
+}
+
+async function assignIdleLanesTx(tx: Tx, eventId: string): Promise<number> {
   const event = await getEventBracketConfig(tx, eventId, { lock: 'share' });
   if (event?.status !== 'bracket') {
     // Event is no longer in bracket play - skip lane assignment
