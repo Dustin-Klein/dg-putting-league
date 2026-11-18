@@ -20,6 +20,8 @@ interface BracketViewProps {
   onMatchClick?: (match: Match, displayNumber: number) => void;
   compact?: boolean;
   isEditMode?: boolean;
+  /** Viewer can only look at results: matches with scores are clickable regardless of event status. */
+  readOnly?: boolean;
   /** When set, the caller owns the "Hide finished" toggle and the built-in one is not rendered. */
   hideFinished?: boolean;
 }
@@ -378,12 +380,30 @@ export function HideFinishedToggle({
   );
 }
 
+interface MatchClickContext {
+  eventStatus?: EventStatus;
+  isEditMode: boolean;
+  readOnly: boolean;
+}
+
+export function isMatchClickable(status: Status, { eventStatus, isEditMode, readOnly }: MatchClickContext): boolean {
+  const isFinished = status === Status.Completed || status === Status.Archived;
+  if (readOnly) return status === Status.Running || isFinished;
+  return (
+    status === Status.Ready ||
+    status === Status.Running ||
+    (eventStatus === 'bracket' && isFinished) ||
+    (isEditMode && eventStatus === 'bracket' && (status === Status.Waiting || status === Status.Locked))
+  );
+}
+
 export function BracketView({
   data,
   eventStatus,
   onMatchClick,
   compact = false,
   isEditMode = false,
+  readOnly = false,
   hideFinished: controlledHideFinished,
 }: BracketViewProps) {
   const {
@@ -690,17 +710,12 @@ export function BracketView({
                           onDeckPosition={onDeckPositions.get(match.id)}
                           onClick={() => onMatchClick?.(match, matchNumberMap.get(match.id) || 0)}
                           isClickable={
-                            !!onMatchClick && (
-                              match.status === Status.Ready ||
-                              match.status === Status.Running ||
-                              (eventStatus === 'bracket' &&
-                                (match.status === Status.Completed || match.status === Status.Archived)) ||
-                              (isEditMode && eventStatus === 'bracket' &&
-                                (match.status === Status.Waiting || match.status === Status.Locked))
-                            )
+                            !!onMatchClick &&
+                            isMatchClickable(match.status, { eventStatus, isEditMode, readOnly })
                           }
                           isCorrectionMode={
                             !!onMatchClick &&
+                            !readOnly &&
                             eventStatus === 'bracket' &&
                             (match.status === Status.Completed || match.status === Status.Archived)
                           }
