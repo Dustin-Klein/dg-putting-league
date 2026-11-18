@@ -3,6 +3,7 @@ import { Barlow_Condensed, Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MainNav } from "@/components/main-nav";
+import { SiteFooter } from "@/components/site-footer";
 import { Suspense } from "react";
 import "./globals.css";
 
@@ -32,7 +33,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${barlowCondensed.variable}`} suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${inter.className} flex min-h-dvh flex-col`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -45,6 +46,7 @@ export default function RootLayout({
           <main className="flex-1">
             {children}
           </main>
+          <SiteFooter />
           <Toaster />
         </ThemeProvider>
       </body>

@@ -79,6 +79,7 @@ async function handleSession(request: NextRequest) {
     !/^\/api\/player(?:s)?(?:\/|$)/.test(request.nextUrl.pathname) &&
     !/^\/leagues(?:\/|$)/.test(request.nextUrl.pathname) &&
     !/^\/event(?:\/|$)/.test(request.nextUrl.pathname) &&
+    !/^\/whats-new(?:\/|$)/.test(request.nextUrl.pathname) &&
     !/^\/api\/public(?:\/|$)/.test(request.nextUrl.pathname)
   ) {
     // no user, potentially respond by redirecting the user to the login page
