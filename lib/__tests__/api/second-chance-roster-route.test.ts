@@ -20,7 +20,7 @@ describe('second-chance read and sync routes', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('returns the main event summary', async () => {
-    jest.mocked(getSecondChanceSummary).mockResolvedValue({ status: 'bracket', eliminated_count: 3, child: null, can_create: true });
+    jest.mocked(getSecondChanceSummary).mockResolvedValue({ status: 'bracket', eliminated_count: 3, child: null, can_create: true, zones_available: false });
     const response = await getSummary(request('GET'), params);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ eliminated_count: 3 });

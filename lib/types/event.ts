@@ -107,6 +107,8 @@ export interface SecondChanceSummary {
   eliminated_count: number;
   child: { id: string; status: EventStatus; event_date: string } | null;
   can_create: boolean;
+  /** A second chance can putt from zones: the main event does, or its league uses them. */
+  zones_available: boolean;
 }
 
 export interface SecondChancePlayer {

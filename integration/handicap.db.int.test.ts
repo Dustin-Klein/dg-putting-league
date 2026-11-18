@@ -906,6 +906,57 @@ describe('completed handicap events', () => {
       for (const entry of entries) expect(entry).toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '15.00' });
     });
   });
+
+  it('let a zones parent\'s second-chance event putt from one distance', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const parent = await handicapEvent(tx, leagueId, await newPlayers(tx, 8), { distances: [20, 26, 32] });
+      await playEvent(tx, parent);
+      await complete(tx, parent.eventId);
+
+      const child = await createSecondChanceEvent(parent.eventId, {
+        access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+        handicap_enabled: false,
+        putt_distance_ft: 18,
+      });
+      expect(child.handicap_enabled).toBe(false);
+      const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) expect(entry).toMatchObject({ zone: null, zone_period_id: null, putt_distance_ft: '18.00' });
+    });
+  });
+
+  it('let a one-distance parent\'s second-chance event use zones, only in a zones league', async () => {
+    await withRollback(db, async (tx) => {
+      mockAuth.pg = tx;
+      const { leagueId } = await seedLeague(tx);
+      await enableHandicaps(tx, leagueId);
+      const parent = await handicapEvent(tx, leagueId, await newPlayers(tx, 8), { handicap: false });
+      await playEvent(tx, parent);
+      await complete(tx, parent.eventId);
+
+      const child = await createSecondChanceEvent(parent.eventId, {
+        access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+        handicap_enabled: true,
+      });
+      expect(child.handicap_enabled).toBe(true);
+      const entries = await tx.select().from(event_players).where(eq(event_players.event_id, child.id));
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(entry.zone).not.toBeNull();
+        expect(entry.zone_period_id).not.toBeNull();
+      }
+      await tx.delete(events).where(eq(events.id, child.id));
+
+      await setSettings(tx, leagueId, { enabled: false });
+      await expect(createSecondChanceEvent(parent.eventId, {
+        access_code: `sc${randomUUID().replace(/-/g, '').slice(0, 10)}`,
+        handicap_enabled: true,
+      })).rejects.toThrow('This league does not use distance handicaps');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
