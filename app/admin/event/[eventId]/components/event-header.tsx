@@ -13,7 +13,8 @@ import { NextStatusButton } from '@/components/next-status-button';
 import { zoneColorClass } from '@/components/zone-badge';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { eventFormatParts, formatMoney } from '@/lib/utils/event-setup';
-import { bracketProgress, headerStats, type BracketProgress, type HeaderStat } from '@/lib/utils/event-progress';
+import { bracketProgress, headerStats, laneChips, type BracketProgress, type HeaderStat, type LaneChips } from '@/lib/utils/event-progress';
+import type { Lane } from '@/lib/types/bracket';
 import type { EventStatus, EventWithDetails } from '@/lib/types/event';
 import { ZoneDistancesPopover, useEventHandicap } from './event-handicap';
 import { useEventBracket } from './event-bracket-context';
@@ -188,7 +189,56 @@ function Stat({ label, children, first }: { label: React.ReactNode; children: Re
 
 const big = 'font-score text-[34px] leading-none font-bold tabular-nums';
 
-const LANE_STATE_LABEL = { in_play: 'in play', open: 'open', maintenance: 'in maintenance' } as const;
+const LANE_STATE_LABEL = { in_play: 'in play', open: 'open', maintenance: 'in maintenance', lent: 'lent to the second chance' } as const;
+
+function LaneChipRow({ chips }: { chips: LaneChips }) {
+  return (
+    <>
+      <span className="flex flex-wrap gap-1.5">
+        {chips.lanes.map((lane) => (
+          <span
+            key={lane.id}
+            title={`${lane.label}: ${LANE_STATE_LABEL[lane.state]}`}
+            className={cn(
+              'flex h-[30px] min-w-[26px] items-center justify-center rounded-md px-1 font-score text-lg font-bold',
+              lane.state === 'in_play' && 'bg-success text-background',
+              lane.state === 'open' && 'border-[1.5px] border-dashed border-muted-foreground/60 text-muted-foreground',
+              lane.state === 'maintenance' && 'bg-warning/20 text-warning line-through',
+              lane.state === 'lent' && 'bg-info/15 text-info'
+            )}
+          >
+            {lane.label.replace(/^Lane\s*/i, '')}
+            <span className="sr-only">: {LANE_STATE_LABEL[lane.state]}</span>
+          </span>
+        ))}
+      </span>
+      <span className="text-[13px] text-muted-foreground">
+        {chips.lanesInPlay} in play
+        {chips.lanesInMaintenance > 0 && ` · ${chips.lanesInMaintenance} in maintenance`}
+        {chips.lanesLent > 0 && <span className="text-info"> · {chips.lanesLent} at second chance</span>}
+      </span>
+    </>
+  );
+}
+
+/** A second chance's borrowed lanes, before its bracket data has any. */
+function useBorrowedLanes(event: EventWithDetails, skip: boolean): LaneChips | null {
+  const [chips, setChips] = useState<LaneChips | null>(null);
+  const enabled = event.link_type === 'second_chance' && !skip;
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = () => fetch(`/api/event/${event.id}/lanes`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then((lanes: Lane[]) => { if (!cancelled) setChips(laneChips(lanes)); })
+      .catch(() => {});
+    load();
+    // Lending happens on the main event, which this page doesn't subscribe to.
+    const timer = setInterval(load, 20000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [enabled, event.id, event.status]);
+  return enabled ? chips : null;
+}
 
 function DistanceStat({ event, first }: { event: EventWithDetails; first: boolean }) {
   const handicap = useEventHandicap();
@@ -236,20 +286,24 @@ function DistanceStat({ event, first }: { event: EventWithDetails; first: boolea
   );
 }
 
-/** A second chance plays only on lanes its main event lends it. */
-function laneCountLabel(event: EventWithDetails): string | number {
-  return event.link_type === 'second_chance' ? 'Borrowed' : event.lane_count;
+/** A second chance's lanes, borrowed from its main event. */
+function SecondChanceLanes({ chips }: { chips: LaneChips | null }) {
+  if (!chips) return <span className={big}>–</span>;
+  if (chips.lanes.length === 0) return <span className="text-[15px] font-semibold text-muted-foreground">None lent yet</span>;
+  return <LaneChipRow chips={chips} />;
 }
 
 function StatCell({
   stat,
   event,
   bracket,
+  borrowed,
   first,
 }: {
   stat: HeaderStat;
   event: EventWithDetails;
   bracket: BracketProgress | null;
+  borrowed: LaneChips | null;
   first: boolean;
 }) {
   const players = event.players;
@@ -280,7 +334,13 @@ function StatCell({
       );
     }
     case 'lanes':
-      return <Stat label="Lanes" first={first}><span className={big}>{laneCountLabel(event)}</span></Stat>;
+      return (
+        <Stat label="Lanes" first={first}>
+          {event.link_type === 'second_chance'
+            ? <SecondChanceLanes chips={borrowed} />
+            : <span className={big}>{event.lane_count}</span>}
+        </Stat>
+      );
     case 'matches':
       return (
         <Stat label="Matches played" first={first}>
@@ -294,31 +354,11 @@ function StatCell({
       return (
         <Stat label="Lanes" first={first}>
           {bracket && bracket.lanes.length > 0 ? (
-            <>
-              <span className="flex flex-wrap gap-1.5">
-                {bracket.lanes.map((lane) => (
-                  <span
-                    key={lane.id}
-                    title={`${lane.label}: ${LANE_STATE_LABEL[lane.state]}`}
-                    className={cn(
-                      'flex h-[30px] min-w-[26px] items-center justify-center rounded-md px-1 font-score text-lg font-bold',
-                      lane.state === 'in_play' && 'bg-success text-background',
-                      lane.state === 'open' && 'border-[1.5px] border-dashed border-muted-foreground/60 text-muted-foreground',
-                      lane.state === 'maintenance' && 'bg-warning/20 text-warning line-through'
-                    )}
-                  >
-                    {lane.label.replace(/^Lane\s*/i, '')}
-                    <span className="sr-only">: {LANE_STATE_LABEL[lane.state]}</span>
-                  </span>
-                ))}
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                {bracket.lanesInPlay} in play
-                {bracket.lanesInMaintenance > 0 && ` · ${bracket.lanesInMaintenance} in maintenance`}
-              </span>
-            </>
+            <LaneChipRow chips={bracket} />
+          ) : event.link_type === 'second_chance' ? (
+            <SecondChanceLanes chips={borrowed} />
           ) : (
-            <span className={big}>{laneCountLabel(event)}</span>
+            <span className={big}>{event.lane_count}</span>
           )}
         </Stat>
       );
@@ -337,6 +377,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
   const isAdmin = event.viewer_is_admin === true;
   const bracketContext = useEventBracket();
   const bracket = event.status === 'bracket' && bracketContext?.bracketData ? bracketProgress(bracketContext.bracketData) : null;
+  const borrowed = useBorrowedLanes(event, (bracket?.lanes.length ?? 0) > 0);
   const qualification = useQualificationProgress(event);
   const trackProgress = event.status === 'bracket'
     ? (bracket ? { done: bracket.played, total: bracket.total } : null)
@@ -385,7 +426,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
         style={{ '--stat-columns': stats.length } as React.CSSProperties}
       >
         {stats.map((stat, index) => (
-          <StatCell key={stat} stat={stat} event={event} bracket={bracket} first={index === 0} />
+          <StatCell key={stat} stat={stat} event={event} bracket={bracket} borrowed={borrowed} first={index === 0} />
         ))}
       </dl>
     </div>

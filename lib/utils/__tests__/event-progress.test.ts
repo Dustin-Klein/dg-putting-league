@@ -78,6 +78,18 @@ describe('bracketProgress', () => {
     ]);
     expect(progress).toMatchObject({ lanesInPlay: 1, lanesInMaintenance: 1 });
   });
+
+  it('keeps lanes lent to the second chance in line, marked lent', () => {
+    const data = bracket([], [{ label: 'Lane 1', status: 'occupied' }, { label: 'Lane 3', status: 'idle' }]);
+    data.lentLanes = [{ id: 'lent', label: 'Lane 2', status: 'occupied' }];
+    const progress = bracketProgress(data);
+    expect(progress.lanes.map((lane) => [lane.label, lane.state])).toEqual([
+      ['Lane 1', 'in_play'],
+      ['Lane 2', 'lent'],
+      ['Lane 3', 'open'],
+    ]);
+    expect(progress).toMatchObject({ lanesInPlay: 1, lanesLent: 1 });
+  });
 });
 
 describe('headerStats', () => {

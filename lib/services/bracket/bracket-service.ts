@@ -15,6 +15,7 @@ import { getTeamsForSeeding } from '@/lib/repositories/team-repository.db';
 import {
   assignLane,
   getLanesForEvent,
+  getLanesLentOut,
   lockEventLanes,
   releaseMatchLane,
   releaseMatchLanes,
@@ -43,6 +44,7 @@ import type { BracketFormatSettings } from '@/lib/brackets/format';
 import type {
   BracketWithTeams,
   Lane,
+  LentLaneSummary,
   MatchProgressionSources,
 } from '@/lib/types/bracket';
 
@@ -634,15 +636,17 @@ export async function getBracketWithTeams(eventId: string): Promise<{
   progressionSourceMap: Record<number, MatchProgressionSources>;
   lanes: Lane[];
   laneMap: Record<string, string>;
+  lentLanes: LentLaneSummary[];
 }> {
   const { pg } = await requireEventAdmin(eventId);
 
-  const [bracketStructure, teams, event, accessCode, lanes] = await Promise.all([
+  const [bracketStructure, teams, event, accessCode, lanes, lentOut] = await Promise.all([
     bracketDb.fetchBracketStructure(pg, eventId),
     getFullTeamsForEvent(pg, eventId),
     getEventById(pg, eventId),
     getEventAccessCode(pg, eventId),
     getLanesForEvent(pg, eventId),
+    getLanesLentOut(pg, eventId),
   ]);
   if (!bracketStructure) {
     throw new NotFoundError('Bracket not found for this event');
@@ -704,6 +708,8 @@ export async function getBracketWithTeams(eventId: string): Promise<{
     bracketFrameCount: event?.bracket_frame_count ?? undefined,
     lanes,
     laneMap: Object.fromEntries(lanes.map((lane) => [lane.id, lane.label])),
+    // A lane lent after its match is still in `lanes` until that match leaves it.
+    lentLanes: lentOut.filter((lane) => !lane.after_match).map(({ id, label, status }) => ({ id, label, status })),
     frameCountMap,
     progressionSourceMap,
   };

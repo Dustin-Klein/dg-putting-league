@@ -231,6 +231,19 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
   const canLend = loans?.role === 'main' && loans.can_lend;
   const lentOut = loans?.role === 'main' ? loans.lanes : [];
   const lentAfterMatch = new Set(lentOut.filter((lane) => lane.after_match).map((lane) => lane.id));
+  const lentNow = lentOut.filter((lane) => !lane.after_match);
+  // Every lane of the venue in one list; lanes at the second chance keep their place.
+  const rows: Array<{ lane: LaneWithMatch; lent: boolean }> = [
+    ...lanes.map((lane) => ({ lane, lent: false })),
+    ...lentNow.map((lane) => ({
+      lane: {
+        ...lane, event_id: eventId, maintenance_pending: false,
+        current_match_id: null, current_match_number: null, current_match_status: null,
+      } as LaneWithMatch,
+      lent: true,
+    })),
+  ].sort((a, b) => a.lane.label.localeCompare(b.lane.label, undefined, { numeric: true }));
+  const secondChanceHref = loans?.partner_event_id ? `/admin/event/${loans.partner_event_id}/bracket` : null;
 
   const idleCount = lanes.filter((l) => l.status === 'idle').length;
   const occupiedCount = lanes.filter((l) => l.status === 'occupied').length;
@@ -279,7 +292,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
       {/* Header bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>{lanes.length} total</span>
+          <span>{lanes.length + lentNow.length} total</span>
           <span aria-hidden="true">·</span>
           <span>{idleCount} idle</span>
           <span aria-hidden="true">·</span>
@@ -288,6 +301,12 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
             <>
               <span aria-hidden="true">·</span>
               <span>{maintenanceCount} maintenance</span>
+            </>
+          )}
+          {lentNow.length > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-info">{lentNow.length} at second chance</span>
             </>
           )}
         </div>
@@ -349,33 +368,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
         </p>
       )}
 
-      {lentOut.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed px-5 py-3 text-sm">
-          <Share2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          <span className="text-muted-foreground">Lent to the</span>
-          <NextLink href={`/admin/event/${loans!.partner_event_id}/bracket`} className="text-info underline-offset-4 hover:underline">
-            second chance
-          </NextLink>
-          <span className="text-muted-foreground">:</span>
-          {lentOut.map((lane) => (
-            <Button
-              key={lane.id}
-              size="sm"
-              variant="outline"
-              onClick={() => handleLoan('return', lane.id)}
-              disabled={actionLoading === lane.id || (lane.status === 'occupied' && !lane.after_match)}
-              title={lane.after_match
-                ? 'Moves once its current match is done; keep it here instead'
-                : lane.status === 'occupied' ? 'A second-chance match is on this lane' : undefined}
-            >
-              <Undo2 className="mr-1 h-3 w-3" />
-              {lane.after_match ? `Keep ${lane.label}` : `Return ${lane.label}`}
-            </Button>
-          ))}
-        </div>
-      )}
-
-      {lanes.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             {isSecondChance ? 'No lanes yet. Lend some from the main event.' : 'No lanes yet. Add lanes to get started.'}
@@ -383,12 +376,18 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
         </div>
       ) : (
         <div className="flex flex-col divide-y divide-muted rounded-2xl border bg-card">
-          {lanes.map((lane) => {
-            const state = laneState(lane);
+          {rows.map(({ lane, lent }) => {
+            const state = lent
+              ? {
+                  tile: 'bg-info/15 text-info',
+                  tone: 'text-info',
+                  label: `At the second chance · ${lane.status === 'occupied' ? 'match on lane' : lane.status === 'maintenance' ? 'maintenance' : 'idle'}`,
+                }
+              : laneState(lane);
             return (
             <div
               key={lane.id}
-              data-state={lane.status}
+              data-state={lent ? 'lent' : lane.status}
               className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5"
             >
               <span
@@ -413,6 +412,25 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                 </span>
               </div>
 
+              {lent ? (
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                {secondChanceHref && (
+                  <Button size="sm" variant="ghost" asChild>
+                    <NextLink href={secondChanceHref}>Open second chance</NextLink>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleLoan('return', lane.id)}
+                  disabled={actionLoading === lane.id || lane.status === 'occupied'}
+                  title={lane.status === 'occupied' ? 'A second-chance match is on this lane' : undefined}
+                >
+                  <Undo2 className="mr-1 h-3 w-3" />
+                  Take back
+                </Button>
+              </div>
+              ) : (
               <div className="ml-auto flex flex-wrap items-center gap-1.5">
                 {lane.status === 'idle' && (
                   <>
@@ -458,6 +476,17 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                       >
                         <Share2 className="mr-1 h-3 w-3" />
                         Second chance after this match
+                      </Button>
+                    )}
+                    {lentAfterMatch.has(lane.id) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLoan('return', lane.id)}
+                        disabled={actionLoading === lane.id}
+                      >
+                        <Undo2 className="mr-1 h-3 w-3" />
+                        Keep here
                       </Button>
                     )}
                     {lane.current_match_status === MatchStatus.Running ? (
@@ -565,6 +594,7 @@ export function LaneManagement({ eventId }: LaneManagementProps) {
                   </Button>
                 )}
               </div>
+              )}
             </div>
             );
           })}
