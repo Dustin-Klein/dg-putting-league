@@ -268,6 +268,11 @@ export interface CreateSecondChanceEventInput {
   access_code: string;
   /** Main-event lanes to lend it now; a lane in use moves once its match is done. */
   lane_ids?: string[];
+  /**
+   * Zones or one distance. Omitted: like the parent. Zones copy tonight's distances
+   * from a zones parent, or start from the league ladder.
+   */
+  handicap_enabled?: boolean;
   /** Omitted settings are taken from the parent event. */
   event_date?: string;
   location?: string | null;
@@ -327,11 +332,12 @@ export async function createSecondChanceEvent(
         throw new BadRequestError('No players are eligible for a second-chance event');
       }
 
-      // A second-chance event continues the parent's night: it inherits the parent's
+      // By default a second-chance event continues the parent's night: the parent's
       // handicap flag and distances, not the league's current setting.
+      const handicapEnabled = input.handicap_enabled ?? parent.handicap_enabled;
       const created = await eventDb.createEvent(tx, {
         league_id: link.league_id,
-        handicap_enabled: parent.handicap_enabled,
+        handicap_enabled: handicapEnabled,
         parent_event_id: parentEventId,
         link_type: 'second_chance',
         access_code: accessCode,
@@ -353,8 +359,14 @@ export async function createSecondChanceEvent(
 
       await lendLanesTx(tx, { parentId: parentEventId, childId: created.id }, created.status, input.lane_ids ?? []);
 
-      if (parent.handicap_enabled) {
+      if (handicapEnabled && parent.handicap_enabled) {
         await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getEventZoneDistances(tx, parentEventId));
+      } else if (handicapEnabled) {
+        // After the lane locks: the league handicap lock is always last.
+        await lockLeagueHandicap(tx, link.league_id);
+        const handicap = await handicapDb.getLeagueHandicapSettings(tx, link.league_id);
+        if (!handicap?.settings.enabled) throw new BadRequestError('This league does not use distance handicaps');
+        await handicapDb.replaceEventZoneDistances(tx, created.id, await handicapDb.getLeagueZones(tx, link.league_id));
       }
 
       const pfaScores = await computePfaScores(tx, playerIds);

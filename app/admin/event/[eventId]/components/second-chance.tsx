@@ -49,10 +49,12 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function CreateSecondChanceDialog({
   event,
+  zonesAvailable,
   open,
   onOpenChange,
 }: {
   event: EventWithDetails;
+  zonesAvailable: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -61,6 +63,8 @@ function CreateSecondChanceDialog({
   const [format, setFormat] = useState<BracketFormat>('single_elimination');
   const [extraMatch, setExtraMatch] = useState(false);
   const [entryFee, setEntryFee] = useState('');
+  const [zones, setZones] = useState(event.handicap_enabled === true && zonesAvailable);
+  const [distance, setDistance] = useState(String(event.putt_distance_ft));
   const [lanes, setLanes] = useState<LaneWithMatch[] | null>(null);
   const [laneIds, setLaneIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +94,8 @@ function CreateSecondChanceDialog({
         body: JSON.stringify({
           access_code: accessCode,
           lane_ids: laneIds,
+          handicap_enabled: zones,
+          ...(zones ? {} : { putt_distance_ft: Number(distance) }),
           bracket_format: format,
           double_grand_final: format === 'double_elimination' && extraMatch,
           third_place_match: format === 'single_elimination' && extraMatch,
@@ -146,6 +152,44 @@ function CreateSecondChanceDialog({
               </span>
             </div>
             <Switch id="sc-extra" checked={extraMatch} onCheckedChange={setExtraMatch} disabled={saving} />
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="sc-distance-mode">Putting distance</Label>
+            <div className="flex gap-2">
+              <Select
+                value={zones ? 'zones' : 'fixed'}
+                onValueChange={(value) => setZones(value === 'zones')}
+                disabled={saving || !zonesAvailable}
+              >
+                <SelectTrigger id="sc-distance-mode" className="flex-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {zonesAvailable && <SelectItem value="zones">Zones (handicap distances)</SelectItem>}
+                  <SelectItem value="fixed">One distance for everyone</SelectItem>
+                </SelectContent>
+              </Select>
+              {!zones && (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="sc-distance"
+                    type="number"
+                    min={1}
+                    step="0.5"
+                    value={distance}
+                    onChange={(e) => setDistance(e.target.value)}
+                    disabled={saving}
+                    aria-label="Distance in feet"
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">ft</span>
+                </div>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {zones
+                ? event.handicap_enabled ? 'Same zone distances as tonight\'s main event.' : 'Zone distances from the league ladder.'
+                : event.handicap_enabled ? 'Everyone putts from the same distance, whatever their zone.' : 'Same as the main event unless you change it.'}
+            </span>
           </div>
 
           <div className="grid gap-1.5">
@@ -219,7 +263,7 @@ function CreateSecondChanceDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={submit} disabled={saving || accessCode.trim().length < 6}>
+          <Button onClick={submit} disabled={saving || accessCode.trim().length < 6 || (!zones && !(Number(distance) > 0))}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             Create second chance
           </Button>
@@ -269,7 +313,12 @@ export function SecondChancePanel({ event }: { event: EventWithDetails }) {
         )}
       </CardHeader>
       {summary.can_create && (
-        <CreateSecondChanceDialog event={event} open={dialogOpen} onOpenChange={setDialogOpen} />
+        <CreateSecondChanceDialog
+          event={event}
+          zonesAvailable={summary.zones_available}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
       )}
     </Card>
   );

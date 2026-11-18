@@ -9,6 +9,7 @@ import * as eventPlacementDb from '@/lib/repositories/event-placement-repository
 import * as bracketDb from '@/lib/repositories/bracket-repository.db';
 import * as teamDb from '@/lib/repositories/team-repository.db';
 import * as playerDb from '@/lib/repositories/player-repository.db';
+import * as handicapDb from '@/lib/repositories/handicap-repository.db';
 import { stageFormat } from '@/lib/brackets/format';
 import { decidedMatchesOf, type PlacementOpponent } from '@/lib/brackets/placements';
 import { eliminatedTeamIds } from '@/lib/brackets/elimination';
@@ -58,18 +59,21 @@ export async function getSecondChanceSummary(parentEventId: string): Promise<Sec
   const link = await eventDb.getEventLink(pg, parentEventId);
   if (!link) throw new NotFoundError('Event not found');
   if (link.parent_event_id !== null) {
-    return { status: link.status, eliminated_count: 0, child: null, can_create: false };
+    return { status: link.status, eliminated_count: 0, child: null, can_create: false, zones_available: false };
   }
 
-  const [child, eligible] = await Promise.all([
+  const [child, eligible, event, handicap] = await Promise.all([
     eventDb.getSecondChanceChild(pg, parentEventId),
     eligibleSecondChancePlayerIds(pg, link),
+    eventDb.getEventById(pg, parentEventId),
+    handicapDb.getLeagueHandicapSettings(pg, link.league_id),
   ]);
   return {
     status: link.status,
     eliminated_count: eligible.length,
     child,
     can_create: child === null && (link.status === 'bracket' || link.status === 'completed'),
+    zones_available: event?.handicap_enabled === true || handicap?.settings.enabled === true,
   };
 }
 
