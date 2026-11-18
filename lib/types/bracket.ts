@@ -55,6 +55,8 @@ export interface BracketWithTeams {
   participantTeamMap: Record<number, Team>;
   lanes: Lane[];
   laneMap: Record<string, string>;
+  /** Admin view of a main event: its lanes lent to the second chance (not in `lanes`). */
+  lentLanes?: LentLaneSummary[];
   eventStatus?: EventStatus;
   accessCode?: string;
   bracketFrameCount?: number;
@@ -132,6 +134,12 @@ export function getStatusColor(status: number): string {
     default:
       return 'bg-muted text-muted-foreground';
   }
+}
+
+export interface LentLaneSummary {
+  id: string;
+  label: string;
+  status: Lane['status'];
 }
 
 /** Lanes shared between a main event and its second chance, from one side (admin only). */

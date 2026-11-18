@@ -1,14 +1,40 @@
 import { Status } from 'brackets-model';
-import type { BracketWithTeams } from '@/lib/types/bracket';
+import type { BracketWithTeams, Lane } from '@/lib/types/bracket';
 import type { EventStatus } from '@/lib/types/event';
 
-export interface BracketProgress {
-  played: number;
-  total: number;
+export type LaneChipState = 'in_play' | 'open' | 'maintenance' | 'lent';
+
+export interface LaneChips {
   lanesInPlay: number;
   lanesInMaintenance: number;
-  lanes: Array<{ id: string; label: string; state: 'in_play' | 'open' | 'maintenance' }>;
+  lanesLent: number;
+  lanes: Array<{ id: string; label: string; state: LaneChipState }>;
+}
+
+export interface BracketProgress extends LaneChips {
+  played: number;
+  total: number;
   teams: number;
+}
+
+type LaneLike = { id: string; label: string; status: Lane['status'] };
+
+/** Lanes in label order with their state; `lent` are a main event's lanes lent to its second chance. */
+export function laneChips(lanes: readonly LaneLike[], lent: readonly LaneLike[] = []): LaneChips {
+  const chips = [
+    ...lanes.map((lane) => ({
+      id: lane.id,
+      label: lane.label,
+      state: lane.status === 'occupied' ? 'in_play' as const : lane.status === 'maintenance' ? 'maintenance' as const : 'open' as const,
+    })),
+    ...lent.map((lane) => ({ id: lane.id, label: lane.label, state: 'lent' as const })),
+  ].sort((x, y) => x.label.localeCompare(y.label, undefined, { numeric: true }));
+  return {
+    lanesInPlay: chips.filter((lane) => lane.state === 'in_play').length,
+    lanesInMaintenance: chips.filter((lane) => lane.state === 'maintenance').length,
+    lanesLent: lent.length,
+    lanes: chips,
+  };
 }
 
 type Opponent = { id: number | null; result?: string } | null;
@@ -40,20 +66,10 @@ export function bracketProgress(data: BracketWithTeams): BracketProgress {
     if (filled && (match.status === Status.Completed || match.status === Status.Archived)) played += 1;
   }
 
-  const lanes = [...data.lanes]
-    .sort((x, y) => x.label.localeCompare(y.label, undefined, { numeric: true }))
-    .map((lane) => ({
-      id: lane.id,
-      label: lane.label,
-      state: lane.status === 'occupied' ? 'in_play' as const : lane.status === 'maintenance' ? 'maintenance' as const : 'open' as const,
-    }));
-
   return {
     played,
     total,
-    lanesInPlay: lanes.filter((lane) => lane.state === 'in_play').length,
-    lanesInMaintenance: lanes.filter((lane) => lane.state === 'maintenance').length,
-    lanes,
+    ...laneChips(data.lanes, data.lentLanes),
     teams: data.teams.length,
   };
 }
