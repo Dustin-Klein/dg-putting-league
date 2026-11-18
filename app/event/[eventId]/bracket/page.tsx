@@ -259,6 +259,7 @@ export default function PublicBracketPage({
               data={bracketData}
               eventStatus={bracketData.eventStatus}
               onMatchClick={handleMatchClick}
+              readOnly
               compact
               hideFinished={hideFinished}
             />
@@ -299,6 +300,7 @@ export default function PublicBracketPage({
             data={bracketData}
             eventStatus={bracketData.eventStatus}
             onMatchClick={handleMatchClick}
+            readOnly
             hideFinished={hideFinished}
           />
         </BracketCanvas>

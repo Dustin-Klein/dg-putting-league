@@ -97,8 +97,8 @@ export function MatchResultsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader className="pr-8 text-left">
           <DialogTitle>Match {match.number} Results</DialogTitle>
           <DialogDescription>Frame-by-frame results</DialogDescription>
         </DialogHeader>
@@ -116,8 +116,8 @@ export function MatchResultsDialog({
             {/* Score Summary */}
             <Card>
               <CardContent className="pt-6">
-                <div className="flex items-center justify-around text-center">
-                  <div>
+                <div className="flex items-center justify-around gap-3 text-center">
+                  <div className="min-w-0 flex-1 break-words">
                     <div className="text-sm text-muted-foreground mb-1">
                       #{matchDetails.team_one?.seed} {matchDetails.team_one?.pool_combo}
                     </div>
@@ -129,7 +129,7 @@ export function MatchResultsDialog({
                     </div>
                   </div>
                   <div className="text-2xl text-muted-foreground">vs</div>
-                  <div>
+                  <div className="min-w-0 flex-1 break-words">
                     <div className="text-sm text-muted-foreground mb-1">
                       #{matchDetails.team_two?.seed} {matchDetails.team_two?.pool_combo}
                     </div>
