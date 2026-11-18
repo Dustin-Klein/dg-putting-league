@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { ZoneBadge } from '@/components/zone-badge';
 import { cn } from '@/lib/utils/utils';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
 
@@ -188,7 +189,10 @@ export function MatchResultsDialog({
                             {sortBySlot(matchDetails.team_one.players).map((player) => (
                               <tr key={player.event_player_id} className="border-b">
                                 <td className="p-3">
-                                  <div className="font-medium">{player.player.full_name}</div>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span className="font-medium">{player.player.full_name}</span>
+                                    <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+                                  </div>
                                   {player.pool && (
                                     <div className="text-xs text-muted-foreground">
                                       {poolLabel(player.pool)}
@@ -230,7 +234,10 @@ export function MatchResultsDialog({
                             {sortBySlot(matchDetails.team_two.players).map((player) => (
                               <tr key={player.event_player_id} className="border-b">
                                 <td className="p-3">
-                                  <div className="font-medium">{player.player.full_name}</div>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span className="font-medium">{player.player.full_name}</span>
+                                    <ZoneBadge zone={player.zone} distanceFt={player.putt_distance_ft} size="sm" />
+                                  </div>
                                   {player.pool && (
                                     <div className="text-xs text-muted-foreground">
                                       {poolLabel(player.pool)}
