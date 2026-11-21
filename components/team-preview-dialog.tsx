@@ -22,6 +22,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { PoolBadge } from '@/components/pool-badge';
 import { formatScore, ManualTeamEditor } from '@/components/manual-team-editor';
+import { RosterCheckStep } from '@/components/roster-check-step';
 import { cn } from '@/lib/utils/utils';
 import { EventWithDetails } from '@/lib/types/event';
 import type { TeamPreview, TeamPreviewPlayer } from '@/lib/types/team';
@@ -81,6 +82,21 @@ function saveDraft(eventId: string, preview: TeamPreview, draft: TeamDraft) {
   }
 }
 
+/** Kept teams (registration was reopened) first, then empty teams for the newcomers. */
+function keptDraft(preview: TeamPreview): TeamDraft | null {
+  if (preview.keptTeamCount == null || preview.teamPairings.length === 0) return null;
+  const draft = teamDraftFromPairings(preview.teamPairings);
+  const empty = emptyTeamDraft(preview.players.length, preview.teamSize);
+  return [...draft, ...empty.slice(draft.length)];
+}
+
+function bracketSizeNote(teams: number): string {
+  let size = 2;
+  while (size < teams) size *= 2;
+  const byes = size - teams;
+  return `${teams} teams · ${byes === 0 ? 'no byes' : `${byes} bye${byes === 1 ? '' : 's'}`} in a ${size} bracket`;
+}
+
 export function TeamPreviewDialog({
   event,
   open,
@@ -95,6 +111,8 @@ export function TeamPreviewDialog({
   const [isConfirming, setIsConfirming] = useState(false);
   const [previewData, setPreviewData] = useState<TeamPreview | null>(null);
   const [draft, setDraft] = useState<TeamDraft | null>(null);
+  // The roster check comes first; the draw is fetched behind it.
+  const [step, setStep] = useState<'check' | 'teams'>('check');
 
   const isManual = previewData?.teamAssignment === 'manual';
 
@@ -114,7 +132,7 @@ export function TeamPreviewDialog({
       setPreviewData(data);
       setDraft(
         data.teamAssignment === 'manual'
-          ? loadDraft(event.id, data) ?? emptyTeamDraft(data.players.length, data.teamSize)
+          ? loadDraft(event.id, data) ?? keptDraft(data) ?? emptyTeamDraft(data.players.length, data.teamSize)
           : null
       );
     } catch (error) {
@@ -211,6 +229,7 @@ export function TeamPreviewDialog({
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
+      setStep('check');
       setPreviewData(null);
       setDrawPreview(null);
       setDraft(null);
@@ -225,165 +244,187 @@ export function TeamPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[680px]">
-        <DialogHeader className="gap-1.5 px-5 pt-[22px] pb-4 pr-14 text-left sm:px-7">
-          <DialogTitle className="font-score text-[34px] leading-none">
-            {isManual ? 'Build teams' : 'Team preview'}
-          </DialogTitle>
-          <DialogDescription>
-            {previewData && `${describeTeamFormat(previewData.teamSize, previewData.teamAssignment)}. `}
-            {isManual
-              ? 'Put every player on a team, then start bracket play. Seeds follow combined score.'
-              : 'Seeds follow combined score. Reshuffle for a new draw.'}
-          </DialogDescription>
-        </DialogHeader>
+        {step === 'check' ? (
+          <RosterCheckStep event={event} onContinue={() => setStep('teams')} onCancel={() => handleOpenChange(false)} />
+        ) : (
+          <>
+            <DialogHeader className="gap-1.5 px-5 pt-[22px] pb-4 pr-14 text-left sm:px-7">
+              <DialogTitle className="font-score text-[34px] leading-none">
+                {isManual ? 'Build teams' : 'Team preview'}
+              </DialogTitle>
+              <DialogDescription>
+                {previewData && `${describeTeamFormat(previewData.teamSize, previewData.teamAssignment)}. `}
+                {previewData?.keptTeamCount != null
+                  ? `${previewData.keptTeamCount} team${previewData.keptTeamCount === 1 ? '' : 's'} kept from the first draw. New players are paired below; seeds are recalculated.`
+                  : isManual
+                    ? 'Put every player on a team, then start bracket play. Seeds follow combined score.'
+                    : 'Seeds follow combined score. Reshuffle for a new draw.'}
+              </DialogDescription>
+              {previewData && previewData.teamPairings.length > 1 && previewData.keptTeamCount != null && (
+                <span className="self-start rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  {bracketSizeNote(previewData.teamPairings.length)}
+                </span>
+              )}
+            </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : previewData && isManual && draft ? (
-            <div className="px-5 pb-4 sm:px-7">
-              <ManualTeamEditor
-                players={previewData.players}
-                draft={draft}
-                onChange={updateDraft}
-                disabled={isProcessing}
-              />
-            </div>
-          ) : previewData ? (
-            <Table className="text-[15px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-16 pl-5 sm:pl-7">Seed</TableHead>
-                  <TableHead>{previewData.teamSize === 1 ? 'Player' : 'Team members'}</TableHead>
-                  <TableHead className="pr-5 text-right sm:pr-7">{previewData.teamSize === 1 ? 'Score' : 'Combined'}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {previewData.teamPairings.map((team) => {
-                  const members = sortBySlot(team.members)
-                    .map((member) => playerById.get(member.eventPlayerId))
-                    .filter((player): player is TeamPreviewPlayer => player !== undefined);
-
-                  return (
-                    <TableRow key={team.seed} className="border-muted hover:bg-transparent">
-                      <TableCell className="py-3.5 pl-5 font-score text-[28px] leading-none font-bold tabular-nums sm:pl-7">
-                        {team.seed}
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <div className="flex flex-col gap-1.5">
-                          {members.map((player) => (
-                            <div key={player.eventPlayerId} className="flex items-center gap-2">
-                              <PoolBadge pool={player.pool} className="text-[11px]" />
-                              <span>{player.playerName}</span>
-                              <span
-                                className={cn(
-                                  'text-[13px] tabular-nums',
-                                  player.scoringMethod === 'default' ? 'text-muted-foreground/70' : 'text-muted-foreground'
-                                )}
-                              >
-                                {formatScore(player)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3.5 pr-5 text-right sm:pr-7">
-                        <CombinedTotal members={members} />
-                      </TableCell>
+            <div className="min-h-0 flex-1 overflow-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : previewData && isManual && draft ? (
+                <div className="px-5 pb-4 sm:px-7">
+                  <ManualTeamEditor
+                    players={previewData.players}
+                    draft={draft}
+                    onChange={updateDraft}
+                    disabled={isProcessing}
+                  />
+                </div>
+              ) : previewData ? (
+                <Table className="text-[15px]">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-16 pl-5 sm:pl-7">Seed</TableHead>
+                      <TableHead>{previewData.teamSize === 1 ? 'Player' : 'Team members'}</TableHead>
+                      <TableHead className="pr-5 text-right sm:pr-7">{previewData.teamSize === 1 ? 'Score' : 'Combined'}</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : null}
-        </div>
+                  </TableHeader>
+                  <TableBody>
+                    {previewData.teamPairings.map((team) => {
+                      const members = sortBySlot(team.members)
+                        .map((member) => playerById.get(member.eventPlayerId))
+                        .filter((player): player is TeamPreviewPlayer => player !== undefined);
 
-        {isManual && draftProblem && (
-          <p className="px-5 pb-3 text-center text-sm text-muted-foreground sm:px-7">{draftProblem}</p>
-        )}
+                      return (
+                        <TableRow
+                          key={team.seed}
+                          className={cn(
+                            'border-muted hover:bg-transparent',
+                            previewData.newTeamSeeds?.includes(team.seed) && 'bg-info/10'
+                          )}
+                        >
+                          <TableCell className="py-3.5 pl-5 font-score text-[28px] leading-none font-bold tabular-nums sm:pl-7">
+                            {team.seed}
+                            {previewData.newTeamSeeds?.includes(team.seed) && (
+                              <span className="ml-1.5 align-middle font-sans text-[11px] font-bold tracking-wide text-info uppercase">New</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3.5">
+                            <div className="flex flex-col gap-1.5">
+                              {members.map((player) => (
+                                <div key={player.eventPlayerId} className="flex items-center gap-2">
+                                  <PoolBadge pool={player.pool} className="text-[11px]" />
+                                  <span>{player.playerName}</span>
+                                  <span
+                                    className={cn(
+                                      'text-[13px] tabular-nums',
+                                      player.scoringMethod === 'default' ? 'text-muted-foreground/70' : 'text-muted-foreground'
+                                    )}
+                                  >
+                                    {formatScore(player)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3.5 pr-5 text-right sm:pr-7">
+                            <CombinedTotal members={members} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              ) : null}
+            </div>
 
-        <DialogFooter className="flex-wrap items-center gap-2.5 border-t px-5 py-[18px] sm:px-7">
-          {isManual ? (
-            <>
-              {drawPreview && (
-                <Button
-                  variant="outline"
-                  onClick={handleBackToDraw}
-                  disabled={isProcessing}
-                  className="w-full sm:w-auto"
-                >
-                  <Undo2 className="mr-2 h-4 w-4" />
-                  Back to draw
-                </Button>
+            {isManual && draftProblem && (
+              <p className="px-5 pb-3 text-center text-sm text-muted-foreground sm:px-7">{draftProblem}</p>
+            )}
+
+            <DialogFooter className="flex-wrap items-center gap-2.5 border-t px-5 py-[18px] sm:px-7">
+              {isManual ? (
+                <>
+                  {drawPreview && (
+                    <Button
+                      variant="outline"
+                      onClick={handleBackToDraw}
+                      disabled={isProcessing}
+                      className="w-full sm:w-auto"
+                    >
+                      <Undo2 className="mr-2 h-4 w-4" />
+                      Back to draw
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => previewData && updateDraft(emptyTeamDraft(previewData.players.length, previewData.teamSize))}
+                    disabled={isProcessing || !previewData}
+                    className="w-full sm:w-auto"
+                  >
+                    <Eraser className="mr-2 h-4 w-4" />
+                    Clear
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleFillRandomly}
+                    disabled={isProcessing || !previewData}
+                    className="w-full sm:w-auto"
+                  >
+                    <Shuffle className="mr-2 h-4 w-4" />
+                    Fill open slots
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleRegenerate}
+                    disabled={isProcessing}
+                    className="w-full sm:w-auto"
+                  >
+                    {isRegenerating ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Shuffle className="mr-2 h-4 w-4" />
+                    )}
+                    Reshuffle
+                  </Button>
+                  {previewData && previewData.teamSize > 1 && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleEditManually}
+                      disabled={isProcessing}
+                      className="w-full sm:w-auto"
+                      title="Hand-pick teams, starting from this draw"
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Build teams by hand
+                    </Button>
+                  )}
+                </>
               )}
+              <span className="hidden flex-auto sm:block" aria-hidden="true" />
               <Button
                 variant="outline"
-                onClick={() => previewData && updateDraft(emptyTeamDraft(previewData.players.length, previewData.teamSize))}
-                disabled={isProcessing || !previewData}
-                className="w-full sm:w-auto"
-              >
-                <Eraser className="mr-2 h-4 w-4" />
-                Clear
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleFillRandomly}
-                disabled={isProcessing || !previewData}
-                className="w-full sm:w-auto"
-              >
-                <Shuffle className="mr-2 h-4 w-4" />
-                Fill open slots
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleRegenerate}
+                onClick={() => handleOpenChange(false)}
                 disabled={isProcessing}
                 className="w-full sm:w-auto"
               >
-                {isRegenerating ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Shuffle className="mr-2 h-4 w-4" />
-                )}
-                Reshuffle
+                Cancel
               </Button>
-              {previewData && previewData.teamSize > 1 && (
-                <Button
-                  variant="ghost"
-                  onClick={handleEditManually}
-                  disabled={isProcessing}
-                  className="w-full sm:w-auto"
-                  title="Hand-pick teams, starting from this draw"
-                >
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Build teams by hand
-                </Button>
-              )}
-            </>
-          )}
-          <span className="hidden flex-auto sm:block" aria-hidden="true" />
-          <Button
-            variant="outline"
-            onClick={() => handleOpenChange(false)}
-            disabled={isProcessing}
-            className="w-full sm:w-auto"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isProcessing || !previewData || (isManual && draftProblem !== null)}
-            className="w-full sm:w-auto"
-          >
-            {isConfirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Start bracket play
-          </Button>
-        </DialogFooter>
+              <Button
+                onClick={handleConfirm}
+                disabled={isProcessing || !previewData || (isManual && draftProblem !== null)}
+                className="w-full sm:w-auto"
+              >
+                {isConfirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Start bracket play
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

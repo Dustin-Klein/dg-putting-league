@@ -22,6 +22,16 @@ export interface Team {
   pool_combo: string;
   created_at: string;
   team_members: TeamMember[];
+  /** Players swapped onto the team during bracket play, oldest first. */
+  substitutions?: TeamSubstitution[];
+}
+
+export interface TeamSubstitution {
+  slot: number;
+  out_player_name: string;
+  in_event_player_id: string;
+  reason: 'missed_registration' | 'left_early' | 'injury' | 'wrong_player';
+  created_at: string;
 }
 
 /**
@@ -65,4 +75,8 @@ export interface TeamPreview {
   teamAssignment: import('./event').TeamAssignment;
   players: TeamPreviewPlayer[];
   teamPairings: TeamPairing[];
+  /** Registration was reopened keeping the announced teams: how many were kept. */
+  keptTeamCount?: number;
+  /** With kept teams: seeds of the teams formed from new players. */
+  newTeamSeeds?: number[];
 }

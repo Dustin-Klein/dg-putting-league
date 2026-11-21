@@ -12,6 +12,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { MatchCard } from './match-card';
 import { groupDisplayName } from '@/lib/types/bracket';
 import { groupRole, stageFormat, type GroupRole } from '@/lib/brackets/format';
+import { buildMatchNumbers, isHiddenMatch as isHiddenByeOrUnplayed } from '@/lib/brackets/match-numbering';
 
 interface BracketViewProps {
   data: BracketWithTeams;
@@ -127,29 +128,7 @@ function getTeamForParticipant(
 }
 
 function isByeMatch(match: Match): boolean {
-  // BYE: opponent is literally `null` (not an object like {id:null})
-  // TBD: opponent is an object like {id:null} or {id:null,position:X}
-  const opp1IsLiterallyNull = match.opponent1 === null;
-  const opp2IsLiterallyNull = match.opponent2 === null;
-
-  // Hide if one opponent is null (BYE match)
-  // Hide if both opponents are null (empty/unused match slot)
-  if (opp1IsLiterallyNull || opp2IsLiterallyNull) {
-    return true;
-  }
-
-  // Hide archived matches that were never played (no scores recorded)
-  // This handles the grand final reset match when WB champion wins the first GF
-  if (match.status === Status.Archived) {
-    const opp1 = match.opponent1 as { score?: number } | null;
-    const opp2 = match.opponent2 as { score?: number } | null;
-    const hasScores = opp1?.score !== undefined || opp2?.score !== undefined;
-    if (!hasScores) {
-      return true;
-    }
-  }
-
-  return false;
+  return isHiddenByeOrUnplayed(match);
 }
 
 function isHiddenMatch(match: Match, hideFinished: boolean): boolean {
@@ -469,24 +448,11 @@ export function BracketView({
     return result.sort((a, b) => a.number - b.number);
   }, [bracket, participantTeamMap]);
 
-  // Compute sequential match numbers for visible matches across all groups
-  const matchNumberMap = useMemo(() => {
-    const map = new Map<number | string, number>();
-    let matchNumber = 1;
-
-    // Process groups in order (winners, losers, grand final)
-    for (const group of groupsWithRounds) {
-      for (const round of group.rounds) {
-        for (const match of round.matches) {
-          if (!isByeMatch(match)) {
-            map.set(match.id, matchNumber++);
-          }
-        }
-      }
-    }
-
-    return map;
-  }, [groupsWithRounds]);
+  // M-numbers for visible matches across all groups (late-filled byes numbered last).
+  const matchNumberMap = useMemo(
+    () => buildMatchNumbers(bracket.groups, bracket.rounds, bracket.matches as unknown as Parameters<typeof buildMatchNumbers>[2]),
+    [bracket]
+  );
 
   const normalizedMatchNumberMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -702,13 +668,13 @@ export function BracketView({
                           match={match}
                           team1={match.team1}
                           team2={match.team2}
-                          matchNumber={matchNumberMap.get(match.id) || 0}
+                          matchNumber={matchNumberMap.get(Number(match.id)) || 0}
                           opponent1Placeholder={placeholderMap.get(match.id)?.opponent1}
                           opponent2Placeholder={placeholderMap.get(match.id)?.opponent2}
                           laneLabel={match.lane_id ? laneMap[match.lane_id] : undefined}
                           isIdle={idleMatchIds.has(match.id)}
                           onDeckPosition={onDeckPositions.get(match.id)}
-                          onClick={() => onMatchClick?.(match, matchNumberMap.get(match.id) || 0)}
+                          onClick={() => onMatchClick?.(match, matchNumberMap.get(Number(match.id)) || 0)}
                           isClickable={
                             !!onMatchClick &&
                             isMatchClickable(match.status, { eventStatus, isEditMode, readOnly })

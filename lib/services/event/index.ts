@@ -2,3 +2,4 @@ export * from './event-service';
 export * from './placements';
 export * from './preview';
 export * from './second-chance';
+export * from './reopen-registration';

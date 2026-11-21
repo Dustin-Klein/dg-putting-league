@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
-import { event_players, events, league_admins, player_profiles, players, qualification_frames, qualification_rounds, team_members, teams } from '@/lib/db/schema';
+import { event_players, events, league_admins, player_profiles, players, qualification_frames, qualification_rounds, team_member_substitutions, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { BadRequestError, InternalError, NotFoundError } from '@/lib/errors';
 import type { BracketFormat, EventLinkType, EventStatus, PayoutPlace, TeamAssignment } from '@/lib/types/event';
@@ -212,6 +212,31 @@ export async function getEventWithPlayers(
         slot: row.slot,
         joined_at: toIsoTimestamp(row.joined_at),
         event_player: eventPlayer,
+      });
+    }
+  }
+
+  if (teamsById.size > 0) {
+    const substitutions = await ex
+      .select({
+        team_id: team_member_substitutions.team_id,
+        slot: team_member_substitutions.slot,
+        out_player_name: players.full_name,
+        in_event_player_id: team_member_substitutions.in_event_player_id,
+        reason: team_member_substitutions.reason,
+        created_at: team_member_substitutions.created_at,
+      })
+      .from(team_member_substitutions)
+      .innerJoin(players, eq(players.id, team_member_substitutions.out_player_id))
+      .where(eq(team_member_substitutions.event_id, eventId))
+      .orderBy(asc(team_member_substitutions.created_at));
+    for (const { team_id, created_at, reason, ...rest } of substitutions) {
+      const team = teamsById.get(team_id);
+      if (!team) continue;
+      (team.substitutions ??= []).push({
+        ...rest,
+        reason: reason as NonNullable<Team['substitutions']>[number]['reason'],
+        created_at: toIsoTimestamp(created_at),
       });
     }
   }
@@ -490,8 +515,17 @@ export async function getEventBracketConfig(
   return rows[0] ?? null;
 }
 
-export async function setEventStatus(ex: Executor, eventId: string, status: EventStatus): Promise<void> {
-  await ex.update(events).set({ status }).where(eq(events.id, eventId));
+/** Set the status; `clearReopenedTeamDraft` drops the kept teams in the same statement. */
+export async function setEventStatus(
+  ex: Executor,
+  eventId: string,
+  status: EventStatus,
+  opts: { clearReopenedTeamDraft?: boolean } = {}
+): Promise<void> {
+  await ex
+    .update(events)
+    .set({ status, ...(opts.clearReopenedTeamDraft ? { reopened_team_draft: null } : {}) })
+    .where(eq(events.id, eventId));
 }
 
 export async function updateEventSettings(
@@ -529,4 +563,19 @@ export async function getEventAccess(ex: Executor, eventId: string, userId: stri
     and(eq(league_admins.league_id, events.league_id), userId === null ? sql`false` : eq(league_admins.user_id, userId))
   ).where(eq(events.id, eventId)).limit(1);
   return rows[0] ?? null;
+}
+
+/** Teams kept from before registration was reopened (see reopenRegistration). */
+export interface ReopenedTeamDraft {
+  seed: number;
+  members: Array<{ event_player_id: string; slot: number; pool: 'A' | 'B' | null }>;
+}
+
+export async function getReopenedTeamDraft(ex: Executor, eventId: string): Promise<ReopenedTeamDraft[] | null> {
+  const [row] = await ex.select({ draft: events.reopened_team_draft }).from(events).where(eq(events.id, eventId)).limit(1);
+  return (row?.draft as ReopenedTeamDraft[] | null) ?? null;
+}
+
+export async function setReopenedTeamDraft(ex: Executor, eventId: string, draft: ReopenedTeamDraft[] | null): Promise<void> {
+  await ex.update(events).set({ reopened_team_draft: draft }).where(eq(events.id, eventId));
 }
