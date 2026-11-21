@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Plus, X, Loader2, UserPlus, Trophy, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Plus, X, Loader2, UserPlus, Trophy, ChevronUp, ChevronDown, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -413,6 +413,14 @@ export function PlayerManagement({
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="mr-auto text-2xl font-bold">Players</h2>
         {showZoneColumn && <ZoneLadderChip />}
+        {isAdmin && event.status === 'pre-bracket' && (
+          <Button variant="outline" asChild>
+            <Link href={`/admin/event/${event.id}/roster`}>
+              <Monitor className="mr-2 h-4 w-4" />
+              Show roster
+            </Link>
+          </Button>
+        )}
         {isAdmin && event.status === 'pre-bracket' && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
