@@ -1,18 +1,27 @@
+'use client';
+
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { PoolBadge } from '@/components/pool-badge';
 import { EventWithDetails } from '@/lib/types/event';
-import type { TeamMember } from '@/lib/types/team';
+import type { Team, TeamMember } from '@/lib/types/team';
 import { poolLabel, sortBySlot } from '@/lib/utils/team-utils';
-import { Trophy, Users } from 'lucide-react';
+import { ArrowLeftRight, Trophy, Users } from 'lucide-react';
 import { EntryZoneCell } from './event-handicap';
+import { SubstituteDialog } from './substitute-dialog';
 
 interface TeamDisplayProps {
   event: EventWithDetails;
   isAdmin?: boolean;
+  /** Called after a substitution, to reload the event. */
+  onChanged?: () => void;
 }
 
-export function TeamDisplay({ event }: TeamDisplayProps) {
+export function TeamDisplay({ event, isAdmin = false, onChanged }: TeamDisplayProps) {
   const teams = event.teams || [];
+  const [substituteTeam, setSubstituteTeam] = useState<Team | null>(null);
+  const canSubstitute = isAdmin && event.status === 'bracket';
   const pooled = event.team_size === 2 && event.team_assignment === 'random_pairing';
   const formationDetail =
     event.team_size === 1
@@ -62,6 +71,7 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                 <span key={header} className="flex-1 text-center">{header}</span>
               ))}
               <span className="w-10 text-right shrink-0">Total</span>
+              {canSubstitute && <span className="w-8 shrink-0" aria-hidden="true" />}
             </div>,
             ...columnTeams.map((team) => {
               const members = sortBySlot(team.team_members);
@@ -72,21 +82,33 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
               return (
                 <div key={team.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded border bg-card text-card-foreground text-sm">
                   <span className="font-score text-base font-bold text-primary tabular-nums w-7 shrink-0">#{team.seed}</span>
-                  {members.map((member) => (
+                  {members.map((member) => {
+                    const subbedFor = team.substitutions?.findLast((sub) => sub.in_event_player_id === member.event_player_id);
+                    return (
                     <div key={member.event_player_id} className="flex items-center gap-1 min-w-0 flex-1">
                       <PoolBadge
                         pool={member.event_player.pool}
                         className="h-4 w-4 p-0 flex items-center justify-center text-[9px] shrink-0"
                       />
-                      <span className="truncate font-medium">
+                      <span className="truncate font-medium" title={subbedFor ? `${subbedFor.out_player_name} → ${member.event_player.player.full_name}` : undefined}>
                         {member.event_player.player.full_name}
                       </span>
+                      {subbedFor && (
+                        <span
+                          className="shrink-0 rounded bg-info/15 px-1 text-[9px] font-bold tracking-wide text-info uppercase"
+                          title={`Substituted in for ${subbedFor.out_player_name}`}
+                        >
+                          Sub
+                          <span className="sr-only"> for {subbedFor.out_player_name}</span>
+                        </span>
+                      )}
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         ({hasScore(member) ? member.event_player.pfa_score!.toFixed(2) : 'X'})
                       </span>
                       {event.handicap_enabled && <EntryZoneCell entry={member.event_player} compact />}
                     </div>
-                  ))}
+                    );
+                  })}
                   <span className="font-score tabular-nums font-bold text-xs shrink-0 w-10 text-right">
                     {members.every(hasScore) ? (
                       combinedScore.toFixed(2)
@@ -94,12 +116,35 @@ export function TeamDisplay({ event }: TeamDisplayProps) {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </span>
+                  {canSubstitute && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      onClick={() => setSubstituteTeam(team)}
+                      aria-label={`Substitute a player on seed ${team.seed}`}
+                      title="Substitute a player"
+                    >
+                      <ArrowLeftRight className="size-4" />
+                    </Button>
+                  )}
                 </div>
               );
             }),
           ];
         })}
       </div>
+
+      {canSubstitute && (
+        <SubstituteDialog
+          event={event}
+          team={substituteTeam}
+          teams={teams}
+          open={substituteTeam !== null}
+          onOpenChange={(open) => { if (!open) setSubstituteTeam(null); }}
+          onDone={() => onChanged?.()}
+        />
+      )}
 
       <div className="bg-muted/50 rounded-lg p-4">
         <h3 className="font-medium mb-2">Team Generation Details</h3>

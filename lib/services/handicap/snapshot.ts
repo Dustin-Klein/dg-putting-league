@@ -1,6 +1,6 @@
 import 'server-only';
 import { InternalError } from '@/lib/errors';
-import { lockLeagueHandicap, type Tx } from '@/lib/db/tx';
+import { lockLeagueHandicap, type Executor, type Tx } from '@/lib/db/tx';
 import * as handicapDb from '@/lib/repositories/handicap-repository.db';
 import type { ZoneDefinition } from '@/lib/types/handicap';
 
@@ -128,4 +128,32 @@ export async function ensureOpenPeriods(
   const created = await handicapDb.getOpenPeriods(tx, leagueId, missing);
   for (const [playerId, period] of created) periods.set(playerId, period);
   return periods;
+}
+
+/**
+ * The zone and distance each player would get if entered in the event now, without
+ * writing anything (no period is opened). Callers authorize first.
+ */
+export async function previewEntryZones(
+  ex: Executor,
+  eventId: string,
+  playerIds: readonly string[]
+): Promise<Map<string, { zone: number | null; putt_distance_ft: number }>> {
+  const event = await handicapDb.getEventHandicapContext(ex, eventId);
+  if (!event) throw new InternalError('Event not found for zone preview');
+  if (!event.handicap_enabled) {
+    return new Map(playerIds.map((id) => [id, { zone: null, putt_distance_ft: event.putt_distance_ft }]));
+  }
+  const [periods, eventZones, leagueZones, settings] = await Promise.all([
+    handicapDb.getOpenPeriods(ex, event.league_id, playerIds),
+    handicapDb.getEventZoneDistances(ex, eventId),
+    handicapDb.getLeagueZones(ex, event.league_id),
+    handicapDb.getLeagueHandicapSettings(ex, event.league_id),
+  ]);
+  const distanceOf = zoneDistanceLookup(eventZones, leagueZones);
+  return new Map(playerIds.map((id) => {
+    const zone = periods.get(id)?.zone ?? settings?.settings.default_zone ?? null;
+    const distance = zone == null ? undefined : distanceOf(zone) ?? periods.get(id)?.distance_ft;
+    return [id, { zone, putt_distance_ft: distance ?? event.putt_distance_ft }];
+  }));
 }

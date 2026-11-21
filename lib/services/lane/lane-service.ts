@@ -8,6 +8,7 @@ import { getEventBracketConfig, getEventLink } from '@/lib/repositories/event-re
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { Status } from 'brackets-model';
+import { buildMatchNumbers } from '@/lib/brackets/match-numbering';
 import type { Lane, LaneWithMatch } from '@/lib/types/bracket';
 
 export type { Lane, LaneWithMatch } from '@/lib/types/bracket';
@@ -37,70 +38,22 @@ export async function getEventLanes(eventId: string): Promise<Lane[]> {
   return laneDb.getLanesForEvent(pg, eventId);
 }
 
-interface BracketMatch {
-  id: number;
-  round_id: number;
-  number: number;
-  status: number;
-  opponent1: unknown;
-  opponent2: unknown;
-}
-
 /**
- * Checks if a match is a bye (hidden in bracket view).
- * Mirrors the client-side isByeMatch logic in bracket-view.tsx.
- */
-function isByeMatch(match: BracketMatch): boolean {
-  if (match.opponent1 === null || match.opponent2 === null) {
-    return true;
-  }
-  if (match.status === Status.Archived) {
-    const opp1 = match.opponent1 as { score?: number } | null;
-    const opp2 = match.opponent2 as { score?: number } | null;
-    if (opp1?.score === undefined && opp2?.score === undefined) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Build a bidirectional map between match database IDs and display numbers.
- * Mirrors the sequential numbering in bracket-view.tsx.
+ * Bidirectional map between match database IDs and display numbers (the same numbering
+ * as the bracket view: see buildMatchNumbers).
  */
 async function buildMatchDisplayMap(
   pg: Db,
   eventId: string
 ): Promise<{ idToDisplay: Map<number, number>; displayToId: Map<number, number> }> {
-  const idToDisplay = new Map<number, number>();
-  const displayToId = new Map<number, number>();
-
   const bracket = await fetchBracketStructure(pg, eventId);
-  if (!bracket) return { idToDisplay, displayToId };
-
-  const { groups, rounds, matches } = bracket;
-
-  let displayNumber = 1;
-  for (const group of groups) {
-    const groupRounds = rounds
-      .filter((r) => Number(r.group_id) === Number(group.id))
-      .sort((a, b) => a.number - b.number);
-
-    for (const round of groupRounds) {
-      const roundMatches = (matches as BracketMatch[])
-        .filter((m) => m.round_id === round.id)
-        .sort((a, b) => a.number - b.number);
-
-      for (const match of roundMatches) {
-        if (!isByeMatch(match)) {
-          idToDisplay.set(match.id, displayNumber);
-          displayToId.set(displayNumber, match.id);
-          displayNumber++;
-        }
-      }
-    }
-  }
-
+  if (!bracket) return { idToDisplay: new Map(), displayToId: new Map() };
+  const idToDisplay = buildMatchNumbers(
+    bracket.groups,
+    bracket.rounds,
+    bracket.matches as unknown as Parameters<typeof buildMatchNumbers>[2]
+  );
+  const displayToId = new Map([...idToDisplay].map(([id, display]) => [display, id]));
   return { idToDisplay, displayToId };
 }
 

@@ -64,6 +64,8 @@ export const bracket_match = putting_league.table("bracket_match", {
 	score_override_2: integer(),
 	score_override_reason: text(),
 	score_override_by: uuid(),
+	late_entry_at: timestamp({ withTimezone: true, mode: 'string' }),
+	held_at: timestamp({ withTimezone: true, mode: 'string' }),
 }, (table) => [
 	check("bracket_match_score_override_pair_check", sql`((score_override_1 IS NULL) AND (score_override_2 IS NULL)) OR ((score_override_1 IS NOT NULL) AND (score_override_2 IS NOT NULL) AND (score_override_1 >= 0) AND (score_override_2 >= 0))`),
 	check("bracket_match_status_check", sql`(status >= 0) AND (status <= 5)`),
@@ -294,6 +296,7 @@ export const events = putting_league.table("events", {
 	handicap_enabled: boolean().default(false).notNull(),
 	bracket_format: bracket_format().default('double_elimination').notNull(),
 	third_place_match: boolean().default(false).notNull(),
+	reopened_team_draft: jsonb(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),
@@ -673,6 +676,54 @@ export const rate_limits = putting_league.table("rate_limits", {
 	reset_at: timestamp({ withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
 	index("idx_rate_limits_reset_at").using("btree", table.reset_at.asc().nullsLast().op("timestamptz_ops")),
+]);
+
+export const team_member_substitutions = putting_league.table("team_member_substitutions", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	event_id: uuid().notNull(),
+	team_id: uuid().notNull(),
+	slot: smallint().notNull(),
+	out_player_id: uuid().notNull(),
+	out_event_player_id: uuid(),
+	in_event_player_id: uuid().notNull(),
+	reason: text().notNull(),
+	created_by: uuid(),
+	created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	check("team_member_substitutions_reason_check", sql`reason = ANY (ARRAY['missed_registration'::text, 'left_early'::text, 'injury'::text, 'wrong_player'::text])`),
+	check("team_member_substitutions_slot_check", sql`slot >= 1`),
+	foreignKey({
+			columns: [table.created_by],
+			foreignColumns: [users.id],
+			name: "team_member_substitutions_created_by_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.event_id],
+			foreignColumns: [events.id],
+			name: "team_member_substitutions_event_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.in_event_player_id],
+			foreignColumns: [event_players.id],
+			name: "team_member_substitutions_in_event_player_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.out_event_player_id],
+			foreignColumns: [event_players.id],
+			name: "team_member_substitutions_out_event_player_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.out_player_id],
+			foreignColumns: [players.id],
+			name: "team_member_substitutions_out_player_id_fkey"
+		}),
+	foreignKey({
+			columns: [table.team_id],
+			foreignColumns: [teams.id],
+			name: "team_member_substitutions_team_id_fkey"
+		}).onDelete("cascade"),
+	index("idx_team_member_substitutions_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
+	index("idx_team_member_substitutions_team").using("btree", table.team_id.asc().nullsLast().op("uuid_ops")),
 ]);
 
 export const team_members = putting_league.table("team_members", {

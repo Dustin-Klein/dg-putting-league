@@ -125,3 +125,71 @@ export function validatePoolPairing(input: {
     }
   }
 }
+
+export interface KeptTeam {
+  members: Array<{ event_player_id: string; slot: number; pool: 'A' | 'B' | null }>;
+}
+
+export interface KeptTeamPreview {
+  players: Array<PlayerScore & { pool: 'A' | 'B' | null }>;
+  teamPairings: TeamPairing[];
+  keptTeamCount: number;
+  /** Seeds of the teams formed from newcomers. */
+  newTeamSeeds: number[];
+}
+
+/**
+ * The draw after registration was reopened with "keep teams": every kept team whose
+ * members are all still registered stays as it was; everyone else (newcomers, and the
+ * partner of anyone who left) is paired among themselves, highest score first. For
+ * pool-paired doubles kept members keep their pool and newcomers split top half A,
+ * bottom half B, so they always pair. Seeds are recomputed over every team.
+ */
+export function keptTeamPreview(input: {
+  scores: PlayerScore[];
+  kept: KeptTeam[];
+  teamSize: number;
+  pooled: boolean;
+}): KeptTeamPreview {
+  const { scores, kept, teamSize, pooled } = input;
+  const byId = new Map(scores.map((score) => [score.eventPlayerId, score]));
+  const keptTeams = kept.filter(
+    (team) => team.members.length === teamSize && team.members.every((m) => byId.has(m.event_player_id))
+  );
+  const keptPool = new Map(keptTeams.flatMap((team) => team.members.map((m) => [m.event_player_id, m.pool] as const)));
+  const newcomers = scores
+    .filter((score) => !keptPool.has(score.eventPlayerId))
+    .sort((a, b) => b.pfaScore - a.pfaScore);
+
+  const newcomerPool = new Map<string, 'A' | 'B' | null>();
+  const newTeams: TeamPairing[] = [];
+  if (pooled) {
+    const half = Math.ceil(newcomers.length / 2);
+    const poolA = newcomers.slice(0, half);
+    const poolB = newcomers.slice(half);
+    poolA.forEach((p) => newcomerPool.set(p.eventPlayerId, 'A'));
+    poolB.forEach((p) => newcomerPool.set(p.eventPlayerId, 'B'));
+    for (let i = 0; i < Math.min(poolA.length, poolB.length); i++) {
+      newTeams.push(buildTeamPairing([poolA[i], poolB[i]]));
+    }
+  } else {
+    newcomers.forEach((p) => newcomerPool.set(p.eventPlayerId, null));
+    for (let i = 0; i + teamSize <= newcomers.length; i += teamSize) {
+      newTeams.push(buildTeamPairing(newcomers.slice(i, i + teamSize)));
+    }
+  }
+
+  const keptPairings = keptTeams.map((team) =>
+    buildTeamPairing([...team.members].sort((a, b) => a.slot - b.slot).map((m) => byId.get(m.event_player_id)!))
+  );
+  const teamPairings = seedTeams([...keptPairings, ...newTeams]);
+  return {
+    players: scores.map((score) => ({
+      ...score,
+      pool: pooled ? (keptPool.get(score.eventPlayerId) ?? newcomerPool.get(score.eventPlayerId) ?? null) : null,
+    })),
+    teamPairings,
+    keptTeamCount: keptPairings.length,
+    newTeamSeeds: newTeams.map((team) => team.seed),
+  };
+}

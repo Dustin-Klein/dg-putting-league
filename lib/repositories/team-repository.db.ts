@@ -1,9 +1,19 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { chunks } from '@/lib/db/batch';
-import { bracket_participant, event_players, player_profiles, players, team_members, teams } from '@/lib/db/schema';
+import {
+  bracket_participant,
+  event_players,
+  frame_results,
+  player_profiles,
+  players,
+  qualification_frames,
+  team_member_substitutions,
+  team_members,
+  teams,
+} from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import type { Team } from '@/lib/types/team';
 
@@ -352,4 +362,127 @@ export async function getTeamsForSeeding(
     .select({ id: teams.id, seed: teams.seed, pool_combo: teams.pool_combo })
     .from(teams)
     .where(eq(teams.event_id, eventId));
+}
+
+export interface TeamMemberRow {
+  team_id: string;
+  event_player_id: string;
+  player_id: string;
+  slot: number;
+  role: string | null;
+  pool: 'A' | 'B' | null;
+}
+
+/** Members of one of the event's teams, in slot order. */
+export async function getTeamMembersInEvent(ex: Executor, eventId: string, teamId: string): Promise<TeamMemberRow[]> {
+  return ex
+    .select({
+      team_id: team_members.team_id,
+      event_player_id: team_members.event_player_id,
+      player_id: event_players.player_id,
+      slot: team_members.slot,
+      role: team_members.role,
+      pool: event_players.pool,
+    })
+    .from(team_members)
+    .innerJoin(teams, eq(teams.id, team_members.team_id))
+    .innerJoin(event_players, eq(event_players.id, team_members.event_player_id))
+    .where(and(eq(teams.id, teamId), eq(teams.event_id, eventId), eq(event_players.event_id, eventId)))
+    .orderBy(asc(team_members.slot));
+}
+
+/** The bracket participant id of one of the event's teams, or null before the bracket exists. */
+export async function getParticipantIdForTeam(ex: Executor, eventId: string, teamId: string): Promise<number | null> {
+  const [row] = await ex
+    .select({ id: bracket_participant.id })
+    .from(bracket_participant)
+    .where(and(eq(bracket_participant.tournament_id, eventId), eq(bracket_participant.team_id, teamId)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/** Whether the event entry is on any team. */
+export async function isEntryOnTeam(ex: Executor, eventPlayerId: string): Promise<boolean> {
+  const [row] = await ex
+    .select({ n: count() })
+    .from(team_members)
+    .where(eq(team_members.event_player_id, eventPlayerId));
+  return (row?.n ?? 0) > 0;
+}
+
+/** Frames recorded for an entry anywhere (bracket matches and qualification). */
+export async function countEntryFrames(ex: Executor, eventPlayerId: string): Promise<number> {
+  const [[bracket], [qualification]] = await Promise.all([
+    ex.select({ n: count() }).from(frame_results).where(eq(frame_results.event_player_id, eventPlayerId)),
+    ex.select({ n: count() }).from(qualification_frames).where(eq(qualification_frames.event_player_id, eventPlayerId)),
+  ]);
+  return (bracket?.n ?? 0) + (qualification?.n ?? 0);
+}
+
+/** Put `inEventPlayerId` in the slot `outEventPlayerId` holds on the team, with the same role. */
+export async function replaceTeamMember(
+  ex: Executor,
+  teamId: string,
+  outEventPlayerId: string,
+  inEventPlayerId: string
+): Promise<void> {
+  const updated = await ex
+    .update(team_members)
+    .set({ event_player_id: inEventPlayerId, joined_at: sql`now()` })
+    .where(and(eq(team_members.team_id, teamId), eq(team_members.event_player_id, outEventPlayerId)))
+    .returning({ team_id: team_members.team_id });
+  if (updated.length !== 1) throw new Error('Team member to replace not found');
+}
+
+export type SubstitutionReason = 'missed_registration' | 'left_early' | 'injury' | 'wrong_player';
+
+export async function insertSubstitution(
+  ex: Executor,
+  row: {
+    event_id: string;
+    team_id: string;
+    slot: number;
+    out_player_id: string;
+    out_event_player_id: string | null;
+    in_event_player_id: string;
+    reason: SubstitutionReason;
+    created_by: string | null;
+  }
+): Promise<void> {
+  await ex.insert(team_member_substitutions).values(row);
+}
+
+/** Whether the player was subbed out of the event (they can't come back into its bracket). */
+export async function wasSubbedOut(ex: Executor, eventId: string, playerId: string): Promise<boolean> {
+  const [row] = await ex
+    .select({ n: count() })
+    .from(team_member_substitutions)
+    .where(and(eq(team_member_substitutions.event_id, eventId), eq(team_member_substitutions.out_player_id, playerId)));
+  return (row?.n ?? 0) > 0;
+}
+
+/** Delete every team of the event (members, placements and substitutions cascade). */
+export async function deleteTeamsForEvent(ex: Executor, eventId: string): Promise<void> {
+  await ex.delete(teams).where(eq(teams.event_id, eventId));
+}
+
+/**
+ * Rename a team (and its bracket participant) from its current members, in slot order,
+ * e.g. after a substitution. Returns the new name.
+ */
+export async function renameTeamFromMembers(ex: Executor, eventId: string, teamId: string): Promise<string> {
+  const rows = await ex
+    .select({ name: players.full_name })
+    .from(team_members)
+    .innerJoin(event_players, eq(event_players.id, team_members.event_player_id))
+    .innerJoin(players, eq(players.id, event_players.player_id))
+    .where(eq(team_members.team_id, teamId))
+    .orderBy(asc(team_members.slot));
+  const name = rows.map((row) => row.name).join(' & ');
+  await ex.update(teams).set({ pool_combo: name }).where(and(eq(teams.id, teamId), eq(teams.event_id, eventId)));
+  await ex
+    .update(bracket_participant)
+    .set({ name })
+    .where(and(eq(bracket_participant.team_id, teamId), eq(bracket_participant.tournament_id, eventId)));
+  return name;
 }

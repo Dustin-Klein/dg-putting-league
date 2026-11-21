@@ -8,7 +8,7 @@ import { PaymentType } from '@/lib/types/player';
 import { EventWithDetails } from '@/lib/types/event';
 import { withTransaction, type Executor } from '@/lib/db/tx';
 import * as eventPlayerRepo from '@/lib/repositories/event-player-repository.db';
-import { refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
+import { previewEntryZones, refreshEntrySnapshots } from '@/lib/services/handicap/snapshot';
 
 /** Number of months of historical frame data used for PFA scoring */
 export const PFA_LOOKBACK_MONTHS = 18;
@@ -60,6 +60,19 @@ export async function addPlayerToEvent(eventId: string, playerId: string) {
     await refreshEntrySnapshots(tx, eventId, { entryIds: [insertedId] });
     return eventPlayerRepo.getEventPlayer(tx, eventId, insertedId);
   });
+}
+
+/**
+ * The zone and distance each player would putt from if entered now (admin), for
+ * showing the difference before a substitution or late add. Writes nothing.
+ */
+export async function previewPlayerZones(
+  eventId: string,
+  playerIds: string[]
+): Promise<Array<{ player_id: string; zone: number | null; putt_distance_ft: number }>> {
+  const { pg } = await requireEventAdmin(eventId);
+  const preview = await previewEntryZones(pg, eventId, playerIds);
+  return playerIds.map((playerId) => ({ player_id: playerId, ...preview.get(playerId)! }));
 }
 
 /**

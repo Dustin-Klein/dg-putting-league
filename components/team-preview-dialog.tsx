@@ -82,6 +82,21 @@ function saveDraft(eventId: string, preview: TeamPreview, draft: TeamDraft) {
   }
 }
 
+/** Kept teams (registration was reopened) first, then empty teams for the newcomers. */
+function keptDraft(preview: TeamPreview): TeamDraft | null {
+  if (preview.keptTeamCount == null || preview.teamPairings.length === 0) return null;
+  const draft = teamDraftFromPairings(preview.teamPairings);
+  const empty = emptyTeamDraft(preview.players.length, preview.teamSize);
+  return [...draft, ...empty.slice(draft.length)];
+}
+
+function bracketSizeNote(teams: number): string {
+  let size = 2;
+  while (size < teams) size *= 2;
+  const byes = size - teams;
+  return `${teams} teams · ${byes === 0 ? 'no byes' : `${byes} bye${byes === 1 ? '' : 's'}`} in a ${size} bracket`;
+}
+
 export function TeamPreviewDialog({
   event,
   open,
@@ -117,7 +132,7 @@ export function TeamPreviewDialog({
       setPreviewData(data);
       setDraft(
         data.teamAssignment === 'manual'
-          ? loadDraft(event.id, data) ?? emptyTeamDraft(data.players.length, data.teamSize)
+          ? loadDraft(event.id, data) ?? keptDraft(data) ?? emptyTeamDraft(data.players.length, data.teamSize)
           : null
       );
     } catch (error) {
@@ -239,10 +254,17 @@ export function TeamPreviewDialog({
               </DialogTitle>
               <DialogDescription>
                 {previewData && `${describeTeamFormat(previewData.teamSize, previewData.teamAssignment)}. `}
-                {isManual
-                  ? 'Put every player on a team, then start bracket play. Seeds follow combined score.'
-                  : 'Seeds follow combined score. Reshuffle for a new draw.'}
+                {previewData?.keptTeamCount != null
+                  ? `${previewData.keptTeamCount} team${previewData.keptTeamCount === 1 ? '' : 's'} kept from the first draw. New players are paired below; seeds are recalculated.`
+                  : isManual
+                    ? 'Put every player on a team, then start bracket play. Seeds follow combined score.'
+                    : 'Seeds follow combined score. Reshuffle for a new draw.'}
               </DialogDescription>
+              {previewData && previewData.teamPairings.length > 1 && previewData.keptTeamCount != null && (
+                <span className="self-start rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  {bracketSizeNote(previewData.teamPairings.length)}
+                </span>
+              )}
             </DialogHeader>
 
             <div className="min-h-0 flex-1 overflow-auto">
@@ -275,9 +297,18 @@ export function TeamPreviewDialog({
                         .filter((player): player is TeamPreviewPlayer => player !== undefined);
 
                       return (
-                        <TableRow key={team.seed} className="border-muted hover:bg-transparent">
+                        <TableRow
+                          key={team.seed}
+                          className={cn(
+                            'border-muted hover:bg-transparent',
+                            previewData.newTeamSeeds?.includes(team.seed) && 'bg-info/10'
+                          )}
+                        >
                           <TableCell className="py-3.5 pl-5 font-score text-[28px] leading-none font-bold tabular-nums sm:pl-7">
                             {team.seed}
+                            {previewData.newTeamSeeds?.includes(team.seed) && (
+                              <span className="ml-1.5 align-middle font-sans text-[11px] font-bold tracking-wide text-info uppercase">New</span>
+                            )}
                           </TableCell>
                           <TableCell className="py-3.5">
                             <div className="flex flex-col gap-1.5">
