@@ -45,6 +45,8 @@ export interface BracketResetContextRound {
 
 export interface BracketResetContextMatch extends BracketMatchForReset {
   stage_id: number;
+  lane_id?: string | null;
+  held_at?: string | null;
 }
 
 export interface BracketResetContext {
@@ -490,6 +492,7 @@ export async function getBracketResetContext(
         opponent1: bracket_match.opponent1,
         opponent2: bracket_match.opponent2,
         lane_id: bracket_match.lane_id,
+        held_at: bracket_match.held_at,
       })
       .from(bracket_match)
       .where(and(eq(bracket_match.event_id, eventId), eq(bracket_match.stage_id, stage.id)))
@@ -535,4 +538,80 @@ export async function getGrandFinalGroupId(ex: Executor, eventId: string, groupN
     .where(and(eq(bracket_stage.tournament_id, eventId), eq(bracket_group.number, groupNumber)))
     .limit(1);
   return rows[0]?.id ?? null;
+}
+
+/**
+ * Ids of the participant's matches that aren't finished (status below Completed), for
+ * locking before a change to the team.
+ */
+export async function getUnfinishedMatchIdsForParticipant(
+  ex: Executor,
+  eventId: string,
+  participantId: number
+): Promise<number[]> {
+  const rows = await ex
+    .select({ id: bracket_match.id })
+    .from(bracket_match)
+    .where(
+      and(
+        eq(bracket_match.event_id, eventId),
+        sql`${bracket_match.status} < ${Status.Completed}`,
+        sql`(${bracket_match.opponent1}->>'id' = ${String(participantId)} or ${bracket_match.opponent2}->>'id' = ${String(participantId)})`
+      )
+    )
+    .orderBy(asc(bracket_match.id));
+  return rows.map((row) => row.id);
+}
+
+/** Ids of every match of the event, ascending (for locking them all). */
+export async function getMatchIdsForEvent(ex: Executor, eventId: string): Promise<number[]> {
+  const rows = await ex
+    .select({ id: bracket_match.id })
+    .from(bracket_match)
+    .where(eq(bracket_match.event_id, eventId))
+    .orderBy(asc(bracket_match.id));
+  return rows.map((row) => row.id);
+}
+
+/** Add a bracket participant for one of the event's teams; returns its id. */
+export async function insertParticipant(ex: Executor, eventId: string, name: string, teamId: string): Promise<number> {
+  const [row] = await ex
+    .insert(bracket_participant)
+    .values({ tournament_id: eventId, name, team_id: teamId })
+    .returning({ id: bracket_participant.id });
+  return row.id;
+}
+
+/**
+ * Write rebuilt match rows as given (structural `position` included), clearing any
+ * hold. `lateEntry` rows were byes and get the late-entry time that numbers them last.
+ * Callers hold the event lock and the match locks.
+ */
+export async function rewriteMatches(
+  ex: Executor,
+  eventId: string,
+  rows: ReadonlyArray<{ id: number; status: number; opponent1: MatchOpponent; opponent2: MatchOpponent; lateEntry: boolean }>
+): Promise<void> {
+  for (const row of rows) {
+    await ex
+      .update(bracket_match)
+      .set({
+        status: row.status,
+        opponent1: row.opponent1,
+        opponent2: row.opponent2,
+        held_at: null,
+        ...(row.lateEntry ? { late_entry_at: sql`clock_timestamp()` } : {}),
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(and(eq(bracket_match.id, row.id), eq(bracket_match.event_id, eventId)));
+  }
+}
+
+/** Hold or release matches (held matches get no lane automatically). */
+export async function setMatchesHeld(ex: Executor, eventId: string, matchIds: number[], held: boolean): Promise<void> {
+  if (matchIds.length === 0) return;
+  await ex
+    .update(bracket_match)
+    .set({ held_at: held ? sql`coalesce(${bracket_match.held_at}, now())` : null })
+    .where(and(eq(bracket_match.event_id, eventId), inArray(bracket_match.id, matchIds)));
 }

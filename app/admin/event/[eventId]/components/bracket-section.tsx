@@ -15,6 +15,8 @@ import { RefreshCw, Maximize2, Settings, Pencil, MapPin, DollarSign, Eraser, X }
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
+import type { EventWithDetails } from '@/lib/types/event';
+import { MissedPlayerMenu } from './missed-player';
 
 interface MatchWithTeamInfo extends Match {
   team1?: Team;
@@ -26,9 +28,18 @@ interface BracketSectionProps {
   eventId: string;
   isAdmin?: boolean;
   doubleGrandFinal?: boolean;
+  /** For the "Missed a player?" options (admin). */
+  event?: EventWithDetails;
+  onEventChanged?: () => void;
 }
 
-export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: initialDoubleGrandFinal = true }: BracketSectionProps) {
+export function BracketSection({
+  eventId,
+  isAdmin = false,
+  doubleGrandFinal: initialDoubleGrandFinal = true,
+  event,
+  onEventChanged,
+}: BracketSectionProps) {
   const { bracketData, loading, error, refresh: refreshBracket } = useRequiredEventBracket();
   const [selectedMatch, setSelectedMatch] = useState<MatchWithTeamInfo | null>(null);
   const [lastDisplayNumber, setLastDisplayNumber] = useState<number | undefined>(undefined);
@@ -150,7 +161,10 @@ export function BracketSection({ eventId, isAdmin = false, doubleGrandFinal: ini
         <h2 className="text-2xl font-bold">
           {bracketData.bracket.stage.name}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {isAdmin && event && bracketData.eventStatus === 'bracket' && (
+            <MissedPlayerMenu event={event} onEventChanged={() => onEventChanged?.()} />
+          )}
           <Button
             variant="outline"
             size="sm"

@@ -169,7 +169,9 @@ export function MatchCard({
   const team1IsWinner = isComplete && opponent1?.result === 'win';
   const team2IsWinner = isComplete && opponent2?.result === 'win';
 
-  const showOnDeck = onDeckPosition !== undefined && onDeckPosition > 0 && !laneLabel && !isIdle &&
+  const isHeld = Boolean((match as { held_at?: string | null }).held_at) && !laneLabel &&
+    (match.status === Status.Ready || match.status === Status.Waiting || match.status === Status.Locked);
+  const showOnDeck = !isHeld && onDeckPosition !== undefined && onDeckPosition > 0 && !laneLabel && !isIdle &&
     (match.status === Status.Ready || match.status === Status.Waiting);
 
   const laneNumber = laneLabel?.match(/\d+/)?.[0] || laneLabel;
@@ -252,9 +254,9 @@ export function MatchCard({
         ) : (
           <span
             className="text-[10px] font-bold leading-none uppercase"
-            title={isIdle ? 'Lane assigned 2+ minutes ago and scoring has not started' : undefined}
+            title={isIdle ? 'Lane assigned 2+ minutes ago and scoring has not started' : isHeld ? 'Held by the organizer: no lane until released' : undefined}
           >
-            {state === 'running' ? 'Live' : state === 'called' ? 'Called' : state === 'idle' ? 'Idle' : isComplete ? 'Final' : ''}
+            {state === 'running' ? 'Live' : state === 'called' ? 'Called' : state === 'idle' ? 'Idle' : isComplete ? 'Final' : isHeld ? 'Held' : ''}
           </span>
         )}
       </div>

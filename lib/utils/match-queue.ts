@@ -19,7 +19,7 @@ export function compareMatchQueue(a: QueueEntry, b: QueueEntry): number {
     Number(a.id) - Number(b.id);
 }
 
-export type QueuedMatch = Match & { lane_id?: string | null; updated_at?: string | null };
+export type QueuedMatch = Match & { lane_id?: string | null; updated_at?: string | null; held_at?: string | null };
 
 /** Derive the next batch from the existing snapshot, without any additional reads. */
 export function getOnDeckMatchIds(
@@ -32,7 +32,8 @@ export function getOnDeckMatchIds(
   if (eventStatus !== 'bracket' || usableLanes === 0) return new Set();
   const roundNumbers = new Map(rounds.map(round => [round.id, round.number]));
   return new Set(matches
-    .filter(match => match.lane_id == null &&
+    // Held matches get no lane automatically (see lane auto-assignment).
+    .filter(match => match.lane_id == null && !match.held_at &&
       (match.status === Status.Ready || match.status === Status.Waiting) &&
       match.opponent1?.id != null && match.opponent2?.id != null &&
       roundNumbers.has(match.round_id))

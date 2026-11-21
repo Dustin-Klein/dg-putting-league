@@ -100,6 +100,37 @@ export async function insertScoredEventPlayers(
   })));
 }
 
+/**
+ * Enter a player who joins after teams exist (a substitute or a late team), with their
+ * seeding score, pool and payment set at once.
+ */
+export async function insertLateEventPlayer(
+  ex: Executor,
+  eventId: string,
+  entrant: {
+    player_id: string;
+    putt_distance_ft: number;
+    pool: 'A' | 'B' | null;
+    pfa_score: number;
+    scoring_method: 'qualification' | 'pfa' | 'default';
+    payment_type: PaymentType | null;
+  }
+): Promise<string> {
+  const [row] = await ex.insert(event_players)
+    .values({
+      event_id: eventId,
+      player_id: entrant.player_id,
+      putt_distance_ft: String(entrant.putt_distance_ft),
+      pool: entrant.pool,
+      pfa_score: String(entrant.pfa_score),
+      scoring_method: entrant.scoring_method,
+      payment_type: entrant.payment_type,
+    })
+    .returning({ id: event_players.id });
+  if (!row) throw new InternalError('Failed to add player to event');
+  return row.id;
+}
+
 export async function getEventPlayer(ex: Executor, eventId: string, eventPlayerId: string): Promise<EventPlayer> {
   const [row] = await ex.select({ eventPlayer: event_players, player: joinedPlayerColumns })
     .from(event_players)
@@ -217,4 +248,11 @@ export async function applyPlayerScores(
 
   const missing = [...expected].find((id) => !updated.has(id));
   if (missing) throw new NotFoundError(`Event player not found: ${missing}`);
+}
+
+/** Clear the seeding scores and pools recorded when bracket play started. */
+export async function clearPlayerScores(ex: Executor, eventId: string): Promise<void> {
+  await ex.update(event_players)
+    .set({ pool: null, pfa_score: null, scoring_method: null })
+    .where(eq(event_players.event_id, eventId));
 }

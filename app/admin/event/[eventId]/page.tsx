@@ -15,10 +15,12 @@ function EventContent({
   event,
   isAdmin,
   onPlayersUpdate,
+  onRefresh,
 }: {
   event: EventWithDetails;
   isAdmin: boolean;
   onPlayersUpdate: (players: EventWithDetails['players']) => void;
+  onRefresh: () => void;
 }) {
   const hasEntryFee = event.entry_fee_per_player != null;
 
@@ -52,11 +54,17 @@ function EventContent({
         </div>
 
         <TabsContent value="bracket" className="space-y-4">
-          <BracketSection eventId={event.id} isAdmin={isAdmin} doubleGrandFinal={event.double_grand_final} />
+          <BracketSection
+            eventId={event.id}
+            isAdmin={isAdmin}
+            doubleGrandFinal={event.double_grand_final}
+            event={event}
+            onEventChanged={onRefresh}
+          />
         </TabsContent>
 
         <TabsContent value="teams">
-          <TeamDisplay event={event} isAdmin={isAdmin} />
+          <TeamDisplay event={event} isAdmin={isAdmin} onChanged={onRefresh} />
         </TabsContent>
       </Tabs>
     );
@@ -190,7 +198,7 @@ export default function EventPage({
       <EventHeader event={event} onStatusUpdate={handleStatusUpdate} />
       {secondChance && <div className="mt-6">{secondChance}</div>}
       <div className="mt-8">
-        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} />
+        <EventContent event={event} isAdmin={isAdmin} onPlayersUpdate={handlePlayersUpdate} onRefresh={handleRefresh} />
       </div>
     </>
   );

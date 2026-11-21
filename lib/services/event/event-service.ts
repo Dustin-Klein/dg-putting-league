@@ -60,6 +60,7 @@ import {
 import { eligibleSecondChancePlayerIds } from './second-chance';
 import {
   assertRosterCurrent,
+  keptTeamPreview,
   resolvePoolAssignments,
   validatePoolPairing,
   validateTeamComposition,
@@ -693,6 +694,26 @@ export async function previewTeams(eventId: string): Promise<TeamPreview> {
 
   const format: TeamFormat = { teamSize: event.team_size, teamAssignment: event.team_assignment };
   const playerScores = await computePlayerScoresDb(pg, eventId, event);
+
+  const kept = await eventDb.getReopenedTeamDraft(pg, eventId);
+  if (kept) {
+    const preview = keptTeamPreview({ scores: playerScores, kept, teamSize: format.teamSize, pooled: usesPools(format) });
+    return {
+      teamSize: format.teamSize,
+      teamAssignment: format.teamAssignment,
+      players: preview.players.map((player) => ({
+        eventPlayerId: player.eventPlayerId,
+        playerName: player.playerName,
+        pfaScore: player.pfaScore,
+        scoringMethod: player.scoringMethod,
+        pool: player.pool,
+      })),
+      teamPairings: preview.teamPairings,
+      keptTeamCount: preview.keptTeamCount,
+      newTeamSeeds: preview.newTeamSeeds,
+    };
+  }
+
   const entrants: Array<PlayerScore & { pool: 'A' | 'B' | null }> = usesPools(format)
     ? assignPoolsFromScores(playerScores)
     : playerScores.map((player) => ({ ...player, pool: null }));
@@ -907,7 +928,7 @@ export async function startBracket(
       await laneDb.insertLanes(tx, eventId, current.lane_count);
     }
 
-    await eventDb.setEventStatus(tx, eventId, 'bracket');
+    await eventDb.setEventStatus(tx, eventId, 'bracket', { clearReopenedTeamDraft: true });
     await createBracketTx(tx, eventId, current);
     await autoAssignLanesTx(tx, eventId);
     // Best effort, for entries still without frames (e.g. a zone change during a

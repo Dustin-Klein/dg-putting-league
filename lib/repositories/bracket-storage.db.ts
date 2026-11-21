@@ -434,3 +434,12 @@ export async function insertGeneratedBracket(
     }
   }
 }
+
+/**
+ * Delete the event's whole bracket: its stage (groups, rounds, matches and match games
+ * cascade) and participants. Frames of those matches must already be gone.
+ */
+export async function deleteBracketRows(ex: Executor, eventId: string): Promise<void> {
+  await ex.delete(bracket_stage).where(eq(bracket_stage.tournament_id, eventId));
+  await ex.delete(bracket_participant).where(eq(bracket_participant.tournament_id, eventId));
+}
