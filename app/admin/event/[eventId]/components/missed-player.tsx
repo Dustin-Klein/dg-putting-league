@@ -103,10 +103,7 @@ export function MissedPlayerMenu({ event, onEventChanged }: { event: EventWithDe
   const { summary, reload } = useByes(event.id, bracketData);
   const [dialog, setDialog] = useState<'substitute' | 'fill' | 'reopen' | null>(null);
 
-  const scoringStarted = useMemo(() => (bracketData?.bracket.matches ?? []).some((match) =>
-    match.status === Status.Running ||
-    (match.status === Status.Completed && !isHiddenMatch(match))
-  ), [bracketData]);
+  const scoredCount = useMemo(() => (bracketData ? scoredMatches(bracketData).length : 0), [bracketData]);
   const openByes = summary?.byes.filter((bye) => bye.open) ?? [];
   const teamCount = event.teams?.length ?? 0;
 
@@ -154,9 +151,12 @@ export function MissedPlayerMenu({ event, onEventChanged }: { event: EventWithDe
           <MenuOption
             icon={<RotateCcw className="size-[18px]" />}
             title="Reopen registration"
-            detail="Undo the bracket, add the player, draw again. Only while no frames are scored."
-            status={scoringStarted ? 'Not available · scoring has started' : 'Available · no frames scored'}
-            available={!scoringStarted}
+            detail="Undo the bracket, add the player, draw again. Any scores entered so far are deleted."
+            status={scoredCount > 0
+              ? `Available · deletes scores from ${scoredCount} match${scoredCount === 1 ? '' : 'es'}`
+              : 'Available · no frames scored'}
+            available
+            warn={scoredCount > 0}
             onSelect={() => setDialog('reopen')}
           />
         </DropdownMenuContent>
@@ -183,6 +183,7 @@ export function MissedPlayerMenu({ event, onEventChanged }: { event: EventWithDe
       )}
       <ReopenRegistrationDialog
         event={event}
+        bracket={bracketData ?? null}
         open={dialog === 'reopen'}
         onOpenChange={(open) => setDialog(open ? 'reopen' : null)}
         onDone={onEventChanged}
@@ -197,6 +198,7 @@ function MenuOption({
   detail,
   status,
   available,
+  warn = false,
   onSelect,
 }: {
   icon: React.ReactNode;
@@ -204,6 +206,8 @@ function MenuOption({
   detail: string;
   status: string;
   available: boolean;
+  /** Available, but with a cost worth reading first. */
+  warn?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -220,7 +224,7 @@ function MenuOption({
       <span className={cn('flex flex-col gap-[3px]', !available && 'opacity-60')}>
         <span className="text-[15px] font-bold">{title}</span>
         <span className="text-[13px] leading-[1.4] text-muted-foreground">{detail}</span>
-        <span className={cn('text-xs font-bold', available ? 'text-success' : 'text-muted-foreground')}>{status}</span>
+        <span className={cn('text-xs font-bold', !available ? 'text-muted-foreground' : warn ? 'text-warning' : 'text-success')}>{status}</span>
       </span>
     </DropdownMenuItem>
   );
@@ -395,14 +399,24 @@ function FillByeDialog({
   );
 }
 
-/** Take the event back to registration while nothing is scored (mockup 2B). */
+/** Matches with any score: running, or finished and actually played (not a bye). */
+function scoredMatches(bracket: BracketWithTeams) {
+  return bracket.bracket.matches.filter((match) =>
+    match.status === Status.Running ||
+    (match.status >= Status.Completed && !isHiddenMatch(match))
+  );
+}
+
+/** Take the event back to registration (mockup 2B); scores entered so far are deleted. */
 function ReopenRegistrationDialog({
   event,
+  bracket,
   open,
   onOpenChange,
   onDone,
 }: {
   event: EventWithDetails;
+  bracket: BracketWithTeams | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDone: () => void;
@@ -410,7 +424,18 @@ function ReopenRegistrationDialog({
   const { toast } = useToast();
   const [keepTeams, setKeepTeams] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const teamCount = event.teams?.length ?? 0;
+  const numbers = useMemo(
+    () => (bracket ? buildMatchNumbers(bracket.bracket.groups, bracket.bracket.rounds, bracket.bracket.matches as never) : new Map<number, number>()),
+    [bracket]
+  );
+  const scored = useMemo(() => (bracket ? scoredMatches(bracket) : []), [bracket]);
+  const hasScores = scored.length > 0;
+
+  useEffect(() => {
+    if (open) setConfirmDiscard(false);
+  }, [open]);
 
   const submit = async () => {
     try {
@@ -418,10 +443,14 @@ function ReopenRegistrationDialog({
       const response = await fetch(`/api/event/${event.id}/reopen-registration`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_teams: keepTeams }),
+        body: JSON.stringify({ keep_teams: keepTeams, discard_scores: hasScores && confirmDiscard }),
       });
       if (!response.ok) throw new Error(await readError(response, 'Could not reopen registration'));
-      toast({ title: 'Registration reopened', description: 'Add the missed player, then start bracket play again.' });
+      const result: { discardedMatches: number } = await response.json();
+      toast({
+        title: 'Registration reopened',
+        description: `${result.discardedMatches > 0 ? `Scores from ${result.discardedMatches} match${result.discardedMatches === 1 ? '' : 'es'} deleted. ` : ''}Add the missed player, then start bracket play again.`,
+      });
       onOpenChange(false);
       onDone();
     } catch (error) {
@@ -450,15 +479,53 @@ function ReopenRegistrationDialog({
             The event goes back to Registration so you can add the missed player, then you start the bracket again.
           </DialogDescription>
         </DialogHeader>
-        <div className="rounded-[10px] bg-success/10 px-3 py-2 text-sm font-semibold text-success">
-          No frames have been scored in any match
-        </div>
+        {hasScores ? (
+          <div className="flex flex-col gap-2 rounded-[10px] border border-destructive/40 bg-destructive/10 px-3 py-2.5">
+            <span className="text-sm font-semibold text-destructive">
+              Scores from {scored.length} match{scored.length === 1 ? '' : 'es'} will be deleted
+            </span>
+            <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[13px]">
+              {scored.map((match) => {
+                const opp1 = match.opponent1 as { id?: number | null } | null;
+                const opp2 = match.opponent2 as { id?: number | null } | null;
+                const number = numbers.get(Number(match.id));
+                return (
+                  <li key={match.id}>
+                    <span className="font-semibold">{number ? `M${number}` : 'Match'}</span>
+                    {' · '}{bracket ? `${seedLabel(bracket, opp1?.id ?? null)} vs ${seedLabel(bracket, opp2?.id ?? null)}` : ''}
+                    <span className="text-muted-foreground">{match.status === Status.Running ? ' · in progress' : ' · final'}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <span className="text-[13px] text-muted-foreground">
+              Tell the scorers to stop: their scorecards close. These matches are played again in the new bracket.
+            </span>
+            <label className="mt-1 flex cursor-pointer items-start gap-2 text-[13px] font-semibold">
+              <input
+                type="checkbox"
+                className="mt-px size-4 flex-none accent-destructive"
+                checked={confirmDiscard}
+                onChange={(e) => setConfirmDiscard(e.target.checked)}
+              />
+              Delete these scores
+            </label>
+          </div>
+        ) : (
+          <div className="rounded-[10px] bg-success/10 px-3 py-2 text-sm font-semibold text-success">
+            No frames have been scored in any match
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-semibold">What happens</span>
           <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] leading-[1.45] text-muted-foreground">
             <li>The bracket and lane assignments are removed. The public bracket is hidden until it starts again.</li>
-            <li>Players, payments, zones and qualification scores are kept.</li>
-            <li>The second chance is untouched (nobody has been knocked out yet).</li>
+            <li>Players, payments and zones are kept.</li>
+            <li>
+              {hasScores
+                ? 'Anyone already entered in the second chance stays entered; it lists them as still in the main event.'
+                : 'The second chance is untouched (nobody has been knocked out yet).'}
+            </li>
           </ul>
         </div>
         <fieldset className="flex flex-col gap-2">
@@ -468,9 +535,13 @@ function ReopenRegistrationDialog({
         </fieldset>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={submit} disabled={saving}>
+          <Button
+            onClick={submit}
+            disabled={saving || (hasScores && !confirmDiscard)}
+            variant={hasScores ? 'destructive' : 'default'}
+          >
             {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Reopen registration
+            {hasScores ? 'Delete scores and reopen' : 'Reopen registration'}
           </Button>
         </DialogFooter>
       </DialogContent>

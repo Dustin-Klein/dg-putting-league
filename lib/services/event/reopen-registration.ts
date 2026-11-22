@@ -16,29 +16,43 @@ function isBye(match: { opponent1: unknown; opponent2: unknown }): boolean {
   return match.opponent1 === null || match.opponent2 === null;
 }
 
+export interface ReopenOptions {
+  keepTeams: boolean;
+  /** Required once any match has a score: those scores are deleted with the bracket. */
+  discardScores?: boolean;
+}
+
+export interface ReopenResult {
+  keptTeams: number;
+  /** Matches whose scores were deleted. */
+  discardedMatches: number;
+}
+
 /**
- * Take an event from bracket play back to registration, before any scoring, so a missed
- * player can be added and the bracket drawn again. Players, payments, zones and
- * qualification scores stay; the bracket, its lane assignments and the teams go. With
- * `keepTeams`, the next start keeps the announced teams and pairs only the newcomers.
+ * Take an event from bracket play back to registration so a missed player can be added
+ * and the bracket drawn again. Players, payments and zones stay; the bracket, its lane
+ * assignments, any scores and the teams go. With `keepTeams`, the next start keeps the
+ * announced teams and pairs only the newcomers.
  *
  * This is the only path from bracket back to pre-bracket; the status PATCH never allows it.
  */
-export async function reopenRegistration(eventId: string, options: { keepTeams: boolean }): Promise<void> {
+export async function reopenRegistration(eventId: string, options: ReopenOptions): Promise<ReopenResult> {
   const { pg, user } = await requireEventAdmin(eventId);
-  const kept = await reopenRegistrationDb(pg, eventId, options);
+  const result = await reopenRegistrationDb(pg, eventId, options);
   logger.info('Registration reopened', {
     userId: user.id,
     action: 'reopen_registration',
     eventId,
     keepTeams: options.keepTeams,
-    keptTeams: kept,
+    keptTeams: result.keptTeams,
+    discardedMatches: result.discardedMatches,
     outcome: 'success',
   });
+  return result;
 }
 
-/** `reopenRegistration` for a caller that has authorized as event admin. Returns the teams kept. */
-export function reopenRegistrationDb(ex: Executor, eventId: string, options: { keepTeams: boolean }): Promise<number> {
+/** `reopenRegistration` for a caller that has authorized as event admin. */
+export function reopenRegistrationDb(ex: Executor, eventId: string, options: ReopenOptions): Promise<ReopenResult> {
   return withTransaction(ex, async (tx) => {
     await lockEvent(tx, eventId);
     const config = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
@@ -51,17 +65,19 @@ export function reopenRegistrationDb(ex: Executor, eventId: string, options: { k
       throw new ConflictError('The second chance has already started, so registration can’t be reopened');
     }
 
-    // Every match locked, so a first frame can't land between this check and the delete.
+    // Every match locked, so a frame can't land between this check and the delete.
     const matchIds = await bracketDb.getMatchIdsForEvent(tx, eventId);
     const locked = await lockMatches(tx, matchIds, eventId);
     const frames = await getFrameCountsForMatches(tx, matchIds);
-    const played = [...locked.values()].some((match) =>
+    const scored = [...locked.values()].filter((match) =>
       (frames[match.id] ?? 0) > 0 ||
       match.status === Status.Running ||
       (match.status >= Status.Completed && match.status !== Status.Archived && !isBye(match))
-    );
-    if (played) {
-      throw new ConflictError('Scoring has started, so registration can’t be reopened. Substitute or fill a bye instead.');
+    ).length;
+    if (scored > 0 && !options.discardScores) {
+      throw new ConflictError(
+        `${scored} match${scored === 1 ? ' has' : 'es have'} scores. Reopening deletes them; confirm to continue.`
+      );
     }
 
     let keptTeams = 0;
@@ -85,7 +101,8 @@ export function reopenRegistrationDb(ex: Executor, eventId: string, options: { k
     await deleteBracketRows(tx, eventId);
     await teamDb.deleteTeamsForEvent(tx, eventId);
     await eventPlayerDb.clearPlayerScores(tx, eventId);
+    // Frames and results go with the bracket matches (ON DELETE CASCADE).
     await eventDb.setEventStatus(tx, eventId, 'pre-bracket');
-    return keptTeams;
+    return { keptTeams, discardedMatches: scored };
   });
 }
