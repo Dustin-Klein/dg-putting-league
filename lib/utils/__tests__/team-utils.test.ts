@@ -60,8 +60,8 @@ describe('team drafts', () => {
 
 describe('toStartBracketRequest', () => {
   const players = [
-    { eventPlayerId: 'a', playerName: 'A', pfaScore: 1, scoringMethod: 'pfa' as const, pool: 'A' as const },
-    { eventPlayerId: 'b', playerName: 'B', pfaScore: 2, scoringMethod: 'pfa' as const, pool: 'B' as const },
+    { eventPlayerId: 'a', playerName: 'A', pfaScore: 1, scoringMethod: 'pfa' as const, pool: 'A' as const, zone: null, puttDistanceFt: null },
+    { eventPlayerId: 'b', playerName: 'B', pfaScore: 2, scoringMethod: 'pfa' as const, pool: 'B' as const, zone: null, puttDistanceFt: null },
   ];
   const teamPairings = [{ seed: 1, poolCombo: 'A & B', combinedScore: 3, members: [{ eventPlayerId: 'a', slot: 1 }, { eventPlayerId: 'b', slot: 2 }] }];
 

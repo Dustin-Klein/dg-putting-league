@@ -55,8 +55,8 @@ export interface TeamPairing {
 }
 
 /**
- * A player as the team preview shows them: server-computed score, and a pool
- * only for the random doubles draw.
+ * A player as the team preview shows them: server-computed score, a pool only for
+ * the random doubles draw, and the entry's zone snapshot (null without handicaps).
  */
 export interface TeamPreviewPlayer {
   eventPlayerId: string;
@@ -64,6 +64,8 @@ export interface TeamPreviewPlayer {
   pfaScore: number;
   scoringMethod: 'qualification' | 'pfa' | 'default';
   pool: 'A' | 'B' | null;
+  zone: number | null;
+  puttDistanceFt: number | null;
 }
 
 /**

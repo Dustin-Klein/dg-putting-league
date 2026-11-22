@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import { PoolBadge } from '@/components/pool-badge';
+import { ZoneBadge } from '@/components/zone-badge';
 import { formatScore, ManualTeamEditor } from '@/components/manual-team-editor';
 import { RosterCheckStep } from '@/components/roster-check-step';
 import { cn } from '@/lib/utils/utils';
@@ -321,9 +322,10 @@ export function TeamPreviewDialog({
                           <TableCell className="py-3.5">
                             <div className="flex flex-col gap-1.5">
                               {members.map((player) => (
-                                <div key={player.eventPlayerId} className="flex items-center gap-2">
+                                <div key={player.eventPlayerId} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                   <PoolBadge pool={player.pool} className="text-[11px]" />
                                   <span>{player.playerName}</span>
+                                  <ZoneBadge zone={player.zone} distanceFt={player.puttDistanceFt} size="sm" />
                                   <span
                                     className={cn(
                                       'text-[13px] tabular-nums',

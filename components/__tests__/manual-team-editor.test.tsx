@@ -5,10 +5,10 @@ import type { TeamPreviewPlayer } from '@/lib/types/team';
 import type { TeamDraft } from '@/lib/utils/team-utils';
 
 const players: TeamPreviewPlayer[] = [
-  { eventPlayerId: 'a', playerName: 'Alice', pfaScore: 3.1, scoringMethod: 'pfa', pool: null },
-  { eventPlayerId: 'b', playerName: 'Bob', pfaScore: 2.4, scoringMethod: 'pfa', pool: null },
-  { eventPlayerId: 'c', playerName: 'Cy', pfaScore: 0, scoringMethod: 'default', pool: null },
-  { eventPlayerId: 'd', playerName: 'Di', pfaScore: 1.5, scoringMethod: 'pfa', pool: null },
+  { eventPlayerId: 'a', playerName: 'Alice', pfaScore: 3.1, scoringMethod: 'pfa', pool: null, zone: 2, puttDistanceFt: 27 },
+  { eventPlayerId: 'b', playerName: 'Bob', pfaScore: 2.4, scoringMethod: 'pfa', pool: null, zone: null, puttDistanceFt: null },
+  { eventPlayerId: 'c', playerName: 'Cy', pfaScore: 0, scoringMethod: 'default', pool: null, zone: null, puttDistanceFt: null },
+  { eventPlayerId: 'd', playerName: 'Di', pfaScore: 1.5, scoringMethod: 'pfa', pool: null, zone: null, puttDistanceFt: null },
 ];
 
 describe('ManualTeamEditor', () => {
@@ -37,6 +37,12 @@ describe('ManualTeamEditor', () => {
     render(<ManualTeamEditor players={players} draft={[['a', 'b'], ['c', 'd']]} onChange={jest.fn()} />);
     expect(screen.getByText('= 5.50', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('Incomplete')).toBeInTheDocument();
+  });
+
+  it('shows the zone of a player who has one', () => {
+    render(<ManualTeamEditor players={players} draft={[['a', 'b'], ['c', 'd']]} onChange={jest.fn()} />);
+    expect(screen.getByLabelText('Zone 2, 27 feet')).toBeInTheDocument();
+    expect(screen.getAllByText(/Zone \d/)).toHaveLength(1);
   });
 });
 
