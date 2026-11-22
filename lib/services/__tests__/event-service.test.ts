@@ -34,6 +34,10 @@ jest.mock('@/lib/db/tx', () => ({
   lockLeagueHandicap: jest.fn(),
 }));
 jest.mock('next/navigation', () => ({ redirect: jest.fn() }));
+jest.mock('@/lib/repositories/event-player-repository.db', () => ({
+  ...jest.requireActual('@/lib/repositories/event-player-repository.db'),
+  getPfaScoresBulk: jest.fn(async () => new Map()),
+}));
 jest.mock('@/lib/services/lane', () => ({ autoAssignLanesTx: jest.fn(), lendLanesTx: jest.fn(), returnAllLanesTx: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
@@ -43,7 +47,7 @@ import { lockEvents, lockLeagueHandicap } from '@/lib/db/tx';
 import { returnAllLanesTx } from '@/lib/services/lane';
 import {
   createEvent, deleteEvent, getEventForViewer, getEventsByLeagueId, getEventWithPlayers,
-  requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
+  previewTeams, requireEventAdmin, updateEvent, updateEventSettings, validateEventStatusTransition,
 } from '../event/event-service';
 
 describe('event service Drizzle port', () => {
@@ -101,6 +105,34 @@ describe('event service Drizzle port', () => {
       { seed: 1, members: [{ event_player_id: 'ep-1', slot: 1, pool: 'A' }, { event_player_id: 'ep-2', slot: 2, pool: 'B' }] },
     ]);
     await expect(getEventForViewer('event-1')).resolves.toMatchObject({ kept_teams: [['ep-1', 'ep-2']] });
+  });
+
+  describe('previewTeams zones', () => {
+    function handicapEvent() {
+      const players = createMockEventPlayers(2, 'event-1').map((player, i) =>
+        i === 0 ? { ...player, zone: 3, putt_distance_ft: 33 } : { ...player, zone: null });
+      return createMockEventWithDetails({ status: 'pre-bracket', team_size: 2, team_assignment: 'manual' }, players);
+    }
+
+    it("gives each previewed player their entry's zone", async () => {
+      (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(handicapEvent());
+      (eventDb.getReopenedTeamDraft as jest.Mock).mockResolvedValue(null);
+      const preview = await previewTeams('event-1');
+      expect(preview.players).toEqual([
+        expect.objectContaining({ eventPlayerId: 'event-player-1', zone: 3, puttDistanceFt: 33 }),
+        expect.objectContaining({ eventPlayerId: 'event-player-2', zone: null }),
+      ]);
+    });
+
+    it('gives zones with kept teams after registration was reopened', async () => {
+      (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(handicapEvent());
+      (eventDb.getReopenedTeamDraft as jest.Mock).mockResolvedValue([
+        { seed: 1, members: [{ event_player_id: 'event-player-1', slot: 1, pool: null }, { event_player_id: 'event-player-2', slot: 2, pool: null }] },
+      ]);
+      const preview = await previewTeams('event-1');
+      expect(preview.keptTeamCount).toBe(1);
+      expect(preview.players).toContainEqual(expect.objectContaining({ eventPlayerId: 'event-player-1', zone: 3, puttDistanceFt: 33 }));
+    });
   });
 
   it('hides access code and payment type from a public viewer', async () => {

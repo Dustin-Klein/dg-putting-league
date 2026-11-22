@@ -698,6 +698,11 @@ export async function previewTeams(eventId: string): Promise<TeamPreview> {
 
   const format: TeamFormat = { teamSize: event.team_size, teamAssignment: event.team_assignment };
   const playerScores = await computePlayerScoresDb(pg, eventId, event);
+  const entryById = new Map((event.players ?? []).map((entry) => [entry.id, entry]));
+  const zoneOf = (eventPlayerId: string) => ({
+    zone: entryById.get(eventPlayerId)?.zone ?? null,
+    puttDistanceFt: entryById.get(eventPlayerId)?.putt_distance_ft ?? null,
+  });
 
   const kept = await eventDb.getReopenedTeamDraft(pg, eventId);
   if (kept) {
@@ -711,6 +716,7 @@ export async function previewTeams(eventId: string): Promise<TeamPreview> {
         pfaScore: player.pfaScore,
         scoringMethod: player.scoringMethod,
         pool: player.pool,
+        ...zoneOf(player.eventPlayerId),
       })),
       teamPairings: preview.teamPairings,
       keptTeamCount: preview.keptTeamCount,
@@ -732,6 +738,7 @@ export async function previewTeams(eventId: string): Promise<TeamPreview> {
       pfaScore: entrant.pfaScore,
       scoringMethod: entrant.scoringMethod,
       pool: entrant.pool,
+      ...zoneOf(entrant.eventPlayerId),
     })),
     teamPairings,
   };

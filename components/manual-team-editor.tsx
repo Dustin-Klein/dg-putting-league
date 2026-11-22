@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ZoneBadge } from '@/components/zone-badge';
 import type { TeamPreviewPlayer } from '@/lib/types/team';
 import type { TeamDraft } from '@/lib/utils/team-utils';
 
@@ -103,6 +104,7 @@ export function ManualTeamEditor({ players, draft, onChange, disabled = false }:
                 title="Add to the first open slot"
               >
                 {player.playerName}
+                <ZoneBadge zone={player.zone} distanceFt={player.puttDistanceFt} size="sm" className="ml-1" />
                 <span className="ml-1 text-xs text-muted-foreground">{formatScore(player)}</span>
               </Button>
             ))}
@@ -125,7 +127,10 @@ export function ManualTeamEditor({ players, draft, onChange, disabled = false }:
                 const player = eventPlayerId ? playerById.get(eventPlayerId) : undefined;
                 return player ? (
                   <div key={slotIndex} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="font-medium truncate">{player.playerName}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="font-medium truncate">{player.playerName}</span>
+                      <ZoneBadge zone={player.zone} distanceFt={player.puttDistanceFt} size="sm" />
+                    </span>
                     <span className="flex items-center gap-1 shrink-0">
                       <span className="text-xs text-muted-foreground">{formatScore(player)}</span>
                       <Button
@@ -154,7 +159,7 @@ export function ManualTeamEditor({ players, draft, onChange, disabled = false }:
                     <SelectContent>
                       {unassigned.map((option) => (
                         <SelectItem key={option.eventPlayerId} value={option.eventPlayerId}>
-                          {option.playerName} ({formatScore(option)})
+                          {option.playerName} ({formatScore(option)}{option.zone != null && `, zone ${option.zone}`})
                         </SelectItem>
                       ))}
                     </SelectContent>
