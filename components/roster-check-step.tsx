@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatMoney } from '@/lib/utils/event-setup';
 import { cn } from '@/lib/utils/utils';
+import { KeptTeamsNotice } from '@/components/kept-teams-notice';
 import { teamSizeShortfallMessage } from '@/lib/services/team/composition';
 import type { EventWithDetails } from '@/lib/types/event';
 import {
@@ -80,6 +81,7 @@ export function RosterCheckStep({
       </DialogHeader>
 
       <div className="min-h-0 flex-1 overflow-auto px-5 pb-4 sm:px-7">
+        <KeptTeamsNotice event={event} className="mb-3" />
         <ul className="m-0 flex list-none flex-col overflow-hidden rounded-xl border p-0">
           <CheckRow state={split.unpaid === 0 && !shortfall ? 'ok' : 'warn'} title={countTitle}>
             <span className="text-[13px] text-muted-foreground">

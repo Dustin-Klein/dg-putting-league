@@ -70,6 +70,11 @@ export interface EventWithDetails {
   access_code?: string | null;
   /** Whether the requesting user administers the event's league (see getEventForViewer). */
   viewer_is_admin?: boolean;
+  /**
+   * Admins only, while registration is reopened with "keep teams": the event_player ids of
+   * each kept team. The next start keeps these pairs and pairs everyone else among themselves.
+   */
+  kept_teams?: string[][] | null;
   bonus_point_enabled: boolean;
   qualification_round_enabled: boolean;
   bracket_frame_count: number | null;

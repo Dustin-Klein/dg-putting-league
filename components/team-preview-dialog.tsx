@@ -254,16 +254,24 @@ export function TeamPreviewDialog({
               </DialogTitle>
               <DialogDescription>
                 {previewData && `${describeTeamFormat(previewData.teamSize, previewData.teamAssignment)}. `}
-                {previewData?.keptTeamCount != null
-                  ? `${previewData.keptTeamCount} team${previewData.keptTeamCount === 1 ? '' : 's'} kept from the first draw. New players are paired below; seeds are recalculated.`
+                {previewData?.keptTeamCount != null && !isManual
+                  ? 'Seeds are recalculated over every team.'
                   : isManual
                     ? 'Put every player on a team, then start bracket play. Seeds follow combined score.'
                     : 'Seeds follow combined score. Reshuffle for a new draw.'}
               </DialogDescription>
-              {previewData && previewData.teamPairings.length > 1 && previewData.keptTeamCount != null && (
-                <span className="self-start rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                  {bracketSizeNote(previewData.teamPairings.length)}
-                </span>
+              {previewData?.keptTeamCount != null && !isManual && (
+                <div role="status" className="mt-2 flex flex-col gap-1 rounded-xl border border-info/40 bg-info/10 px-4 py-3 text-sm leading-[1.45]">
+                  <span className="font-semibold">
+                    Registration was reopened: {previewData.keptTeamCount} team{previewData.keptTeamCount === 1 ? '' : 's'} kept as announced
+                  </span>
+                  <span className="text-muted-foreground">
+                    {(previewData.newTeamSeeds?.length ?? 0) === 0
+                      ? 'No new teams.'
+                      : `${previewData.newTeamSeeds!.length} new team${previewData.newTeamSeeds!.length === 1 ? '' : 's'} from the players added since, marked New.`}
+                    {previewData.teamPairings.length > 1 && ` ${bracketSizeNote(previewData.teamPairings.length)}.`}
+                  </span>
+                </div>
               )}
             </DialogHeader>
 
@@ -378,7 +386,7 @@ export function TeamPreviewDialog({
                 </>
               ) : (
                 <>
-                  <Button
+                  {previewData?.keptTeamCount == null && <Button
                     variant="outline"
                     onClick={handleRegenerate}
                     disabled={isProcessing}
@@ -390,7 +398,7 @@ export function TeamPreviewDialog({
                       <Shuffle className="mr-2 h-4 w-4" />
                     )}
                     Reshuffle
-                  </Button>
+                  </Button>}
                   {previewData && previewData.teamSize > 1 && (
                     <Button
                       variant="ghost"

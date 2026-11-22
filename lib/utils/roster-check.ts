@@ -135,3 +135,18 @@ export function formatMinutesAgo(at: number, now: number): string {
   if (minutes === 1) return '1 min ago';
   return `${minutes} min ago`;
 }
+
+export interface KeptTeamsStatus {
+  /** Kept teams whose members are all still registered. */
+  keptCount: number;
+  /** Players who will be paired among themselves: newcomers, and partners of anyone who left. */
+  needTeam: EventPlayer[];
+}
+
+/** Mirrors keptTeamPreview: a kept team survives only if every member is still registered. */
+export function keptTeamsStatus(players: readonly EventPlayer[], keptTeams: readonly string[][]): KeptTeamsStatus {
+  const registered = new Set(players.map((player) => player.id));
+  const intact = keptTeams.filter((team) => team.length > 0 && team.every((id) => registered.has(id)));
+  const onKeptTeam = new Set(intact.flat());
+  return { keptCount: intact.length, needTeam: players.filter((player) => !onKeptTeam.has(player.id)) };
+}
