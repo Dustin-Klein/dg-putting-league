@@ -167,7 +167,7 @@ export function PlayerManagement({
           case 'registered':
             return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
           case 'paid': {
-            const order: Record<string, number> = { unpaid: 0, cash: 1, electronic: 2 };
+            const order: Record<string, number> = { unpaid: 0, cash: 1, electronic: 2, waived: 3 };
             const aVal = order[a.payment_type ?? 'unpaid'] ?? 0;
             const bVal = order[b.payment_type ?? 'unpaid'] ?? 0;
             return dir * (aVal - bVal);
@@ -715,6 +715,7 @@ export function PlayerManagement({
                           <SelectItem value="unpaid">Not paid</SelectItem>
                           <SelectItem value="cash">Cash</SelectItem>
                           <SelectItem value="electronic">Electronic</SelectItem>
+                          <SelectItem value="waived">Waived</SelectItem>
                         </SelectContent>
                       </Select>
                       {updatingPayment.has(eventPlayer.id) && (

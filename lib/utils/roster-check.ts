@@ -73,6 +73,7 @@ export function zoneCounts(players: readonly Pick<EventPlayer, 'zone'>[]): Array
 export interface PaymentSplit {
   cash: number;
   electronic: number;
+  waived: number;
   unpaid: number;
   /** Cash expected in the box: cash entries × entry fee. Null when the event has no fee. */
   cashTotal: number | null;
@@ -84,10 +85,12 @@ export function paymentSplit(
 ): PaymentSplit {
   const cash = players.filter((p) => p.payment_type === 'cash').length;
   const electronic = players.filter((p) => p.payment_type === 'electronic').length;
+  const waived = players.filter((p) => p.payment_type === 'waived').length;
   return {
     cash,
     electronic,
-    unpaid: players.length - cash - electronic,
+    waived,
+    unpaid: players.length - cash - electronic - waived,
     cashTotal: entryFee != null ? cash * Number(entryFee) : null,
   };
 }

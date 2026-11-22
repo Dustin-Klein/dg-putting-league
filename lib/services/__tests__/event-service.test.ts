@@ -287,6 +287,15 @@ describe('event service Drizzle port', () => {
       return createMockEventWithDetails({ status: 'pre-bracket', team_size: teamSize }, players);
     }
 
+    it('treats waived players as paid', async () => {
+      const event = paidEvent(4, 2);
+      event.players[0].payment_type = 'waived';
+      await expect(validateEventStatusTransition('event-1', 'bracket', event, pg as never)).resolves.toBeUndefined();
+      event.players[1].payment_type = null;
+      await expect(validateEventStatusTransition('event-1', 'bracket', event, pg as never))
+        .rejects.toThrow('All players must be marked as paid before starting bracket play');
+    });
+
     it.each([
       [1, 1], [1, 5], [2, 4], [2, 8], [3, 6], [3, 9],
     ])('allows team size %i with %i players', async (teamSize, playerCount) => {

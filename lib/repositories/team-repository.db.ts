@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { chunks } from '@/lib/db/batch';
+import type { PaymentType } from '@/lib/types/player';
 import {
   bracket_participant,
   event_players,
@@ -236,7 +237,7 @@ export async function getFullTeamsForEvent(ex: Executor, eventId: string, includ
           id: row.event_player_id,
           event_id: row.event_id,
           player_id: row.player_id,
-          ...(includePaymentType ? { payment_type: row.payment_type as 'cash' | 'electronic' | null } : { payment_type: null }),
+          ...(includePaymentType ? { payment_type: row.payment_type as PaymentType | null } : { payment_type: null }),
           pool: row.pool,
           pfa_score: toNumber(row.pfa_score),
           scoring_method: row.scoring_method as 'qualification' | 'pfa' | 'default' | null,

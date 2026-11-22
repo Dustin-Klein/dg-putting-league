@@ -1,4 +1,5 @@
-export type PaymentType = 'cash' | 'electronic';
+export const PAYMENT_TYPES = ['cash', 'electronic', 'waived'] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
 
 /**
  * Player from the players table

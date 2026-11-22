@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { addPlayerToEvent, removePlayerFromEvent, updatePlayerPayment } from '@/lib/services/event-player';
 import { BadRequestError, handleError } from '@/lib/errors';
+import { PAYMENT_TYPES } from '@/lib/types/player';
 
 export async function POST(
   req: Request,
@@ -47,7 +48,7 @@ export async function PATCH(
   try {
     const { eventId, playerId } = await params;
 
-    const schema = z.object({ paymentType: z.enum(['cash', 'electronic']).nullable() });
+    const schema = z.object({ paymentType: z.enum(PAYMENT_TYPES).nullable() });
     const body = await req.json().catch(() => {
       throw new BadRequestError('Invalid request data');
     });

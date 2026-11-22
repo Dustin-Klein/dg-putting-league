@@ -56,12 +56,13 @@ export function PaymentToggle({
   const options: Array<{ value: PaymentType | null; label: string }> = [
     { value: 'cash', label: 'Cash' },
     { value: 'electronic', label: 'Electronic' },
+    { value: 'waived', label: 'Waived' },
     { value: null, label: 'Not yet' },
   ];
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className="mb-1.5 text-[13px] font-semibold">{legend}</legend>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         {options.map((option) => (
           <Button
             key={option.label}

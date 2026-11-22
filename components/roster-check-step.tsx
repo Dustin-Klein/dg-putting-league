@@ -85,7 +85,8 @@ export function RosterCheckStep({
         <ul className="m-0 flex list-none flex-col overflow-hidden rounded-xl border p-0">
           <CheckRow state={split.unpaid === 0 && !shortfall ? 'ok' : 'warn'} title={countTitle}>
             <span className="text-[13px] text-muted-foreground">
-              {split.cash} cash{split.cashTotal != null && ` (${formatMoney(split.cashTotal)})`} · {split.electronic} electronic.
+              {split.cash} cash{split.cashTotal != null && ` (${formatMoney(split.cashTotal)})`} · {split.electronic} electronic
+              {split.waived > 0 && ` · ${split.waived} waived`}.
               {' '}Does that match the cash box and payment app?
             </span>
             {shortfall && <span className="text-[13px] font-medium text-warning">{shortfall}.</span>}
