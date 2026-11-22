@@ -138,13 +138,17 @@ export function RosterScreen({ eventId }: { eventId: string }) {
       ) : (
         <ol
           aria-label="Registered players"
-          className="m-0 grid min-h-0 flex-1 list-none grid-flow-col grid-cols-4 gap-x-7 gap-y-0.5 rounded-2xl border bg-card px-6 py-5"
-          style={{ gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))` }}
+          className="m-0 grid min-h-0 flex-1 list-none content-start justify-center gap-x-6 gap-y-2 rounded-2xl border bg-card px-6 py-5"
+          style={{
+            gridAutoFlow: 'column',
+            gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 720px))`,
+            gridTemplateRows: `repeat(${layout.rows}, minmax(0, ${layout.rowMaxPx}px))`,
+          }}
         >
           {currentPage.map((row) => (
             <li
               key={row.eventPlayerId}
-              className="-mx-2.5 flex min-w-0 items-center justify-between gap-3 rounded-lg px-2.5"
+              className="flex min-h-0 min-w-0 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/40 px-4"
             >
               <span className="truncate font-medium" style={{ fontSize: layout.fontPx }}>
                 {row.name}

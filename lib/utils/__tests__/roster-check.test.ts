@@ -44,9 +44,11 @@ describe('rosterRows', () => {
 describe('rosterLayout', () => {
   const rows = (n: number) => rosterRows(Array.from({ length: n }, (_, i) => entry(String(i), `Player ${i}`)));
 
-  it('fills four columns top to bottom and shrinks the font as the roster grows', () => {
-    expect(rosterLayout(rows(32))).toMatchObject({ rows: 8, fontPx: 34 });
-    expect(rosterLayout(rows(48))).toMatchObject({ rows: 12, fontPx: 26 });
+  it('adds columns as the roster grows, up to four, and shrinks the font', () => {
+    expect(rosterLayout(rows(9))).toMatchObject({ columns: 2, rows: 5, fontPx: 34 });
+    expect(rosterLayout(rows(24))).toMatchObject({ columns: 3, rows: 8, fontPx: 34 });
+    expect(rosterLayout(rows(36))).toMatchObject({ columns: 4, rows: 9, fontPx: 30 });
+    expect(rosterLayout(rows(48))).toMatchObject({ columns: 4, rows: 12, fontPx: 26 });
     expect(rosterLayout(rows(64)).pages).toHaveLength(1);
   });
 
