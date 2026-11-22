@@ -1,8 +1,10 @@
 import type { EventPlayer } from '@/lib/types/player';
 
-export const ROSTER_COLUMNS = 4;
+export const ROSTER_MAX_COLUMNS = 4;
 /** Rows per column before the screen pages: 4 × 16 names fit a 1080p TV. */
 export const ROSTER_MAX_ROWS = 16;
+/** Up to this many per column before another column is added, so small rosters stay large. */
+const ROSTER_ROWS_BEFORE_NEW_COLUMN = 10;
 
 export interface RosterRow {
   eventPlayerId: string;
@@ -39,20 +41,25 @@ export function rosterRows(players: readonly EventPlayer[]): RosterRow[] {
 
 export interface RosterLayout {
   pages: RosterRow[][];
+  columns: number;
   /** Rows per column on each page (column-major: read down, then across). */
   rows: number;
   /** Name font size in px: larger for short rosters, so names read from the back of the room. */
   fontPx: number;
+  /** Tallest a row gets; rows shrink below this when the screen is short. */
+  rowMaxPx: number;
 }
 
 export function rosterLayout(rows: readonly RosterRow[]): RosterLayout {
-  const perPage = ROSTER_COLUMNS * ROSTER_MAX_ROWS;
+  const perPage = ROSTER_MAX_COLUMNS * ROSTER_MAX_ROWS;
   const pages: RosterRow[][] = [];
   for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage));
   if (pages.length === 0) pages.push([]);
-  const rowsPerColumn = Math.max(1, Math.ceil(Math.min(rows.length, perPage) / ROSTER_COLUMNS));
+  const onPage = Math.min(rows.length, perPage);
+  const columns = Math.min(ROSTER_MAX_COLUMNS, Math.max(2, Math.ceil(onPage / ROSTER_ROWS_BEFORE_NEW_COLUMN)));
+  const rowsPerColumn = Math.max(1, Math.ceil(onPage / columns));
   const fontPx = rowsPerColumn <= 8 ? 34 : rowsPerColumn <= 10 ? 30 : rowsPerColumn <= 12 ? 26 : rowsPerColumn <= 14 ? 23 : 20;
-  return { pages, rows: rowsPerColumn, fontPx };
+  return { pages, columns, rows: rowsPerColumn, fontPx, rowMaxPx: Math.round(fontPx * 1.3 + 24) };
 }
 
 export function zoneCounts(players: readonly Pick<EventPlayer, 'zone'>[]): Array<{ zone: number; count: number }> {
