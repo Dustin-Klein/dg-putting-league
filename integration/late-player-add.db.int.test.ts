@@ -1,6 +1,5 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
-  bracket_match,
   bracket_stage,
   event_players,
   events,
@@ -12,7 +11,7 @@ import {
 } from '@/lib/db/schema';
 import type { Executor } from '@/lib/db/tx';
 import { buildMatchNumbers } from '@/lib/brackets/match-numbering';
-import { fillByeDb, getOpenByesDb, setByeHoldDb } from '@/lib/services/bracket/fill-bye';
+import { fillByeDb, getOpenByesDb } from '@/lib/services/bracket/fill-bye';
 import { reopenRegistrationDb } from '@/lib/services/event/reopen-registration';
 import { substituteTeamMemberDb } from '@/lib/services/team/substitution';
 import { recordFrameScores } from '@/lib/services/scoring/score-submission';
@@ -158,11 +157,8 @@ describe('filling a Round 1 bye', () => {
       expect(opponentId(filled.opponent1)).not.toBeNull();
       expect(opponentId(filled.opponent2)).not.toBeNull();
       expect(filled.status).toBe(MatchStatus.Ready);
-      expect(filled.late_entry_at).not.toBeNull();
 
-      const numbersAfter = numbersOf(after);
-      for (const [id, n] of numbersBefore) expect(numbersAfter.get(id)).toBe(n);
-      expect(numbersAfter.size).toBe(numbersBefore.size + 2);
+      expect(numbersOf(after).size).toBe(numbersBefore.size + 2);
       expect((await getOpenByesDb(tx, event.eventId)).byes).toHaveLength(0);
 
       const [team] = await tx.select().from(teams).where(eq(teams.id, result.teamId));
@@ -191,39 +187,6 @@ describe('filling a Round 1 bye', () => {
         playerIds: await newPlayers(tx, 2),
         payments: [null, null],
       })).rejects.toMatchObject({ name: 'ConflictError' });
-    });
-  });
-
-  it('holds the matches that would close the bye: no lane until released or filled', async () => {
-    await withRollback(db, async (tx) => {
-      const event = await seedBracket(tx, { teams: 7, laneCount: 4 });
-      const [bye] = (await getOpenByesDb(tx, event.eventId)).byes;
-      await setByeHoldDb(tx, event.eventId, bye.byeMatchId, true);
-      expect((await getOpenByesDb(tx, event.eventId)).byes[0].held).toBe(true);
-
-      // The Round 1 match feeding the bye team's next match finishes: that match is Ready but held.
-      let snapshot = await getBracketSnapshot(tx, event.eventId);
-      const held = await tx.select().from(bracket_match)
-        .where(and(eq(bracket_match.event_id, event.eventId), inArray(bracket_match.id, bye.holdMatchIds)));
-      expect(held.every((m) => m.held_at != null)).toBe(true);
-      for (;;) {
-        const roundOne = playableMatches(snapshot).filter((m) => m.group_number === 1 && m.round_number === 1);
-        if (roundOne.length === 0) break;
-        await playMatch(tx, event.eventId, roundOne[0].id, higherSeedWins(roundOne[0]));
-        snapshot = await getBracketSnapshot(tx, event.eventId);
-      }
-      const nextMatch = snapshot.matches.find((m) => bye.holdMatchIds.includes(m.id) && m.group_number === 1)!;
-      expect(nextMatch.status).toBe(MatchStatus.Ready);
-      expect(nextMatch.lane_id).toBeNull();
-
-      const result = await fillByeDb(tx, event.eventId, {
-        byeMatchId: bye.byeMatchId,
-        playerIds: await newPlayers(tx, 2),
-        payments: ['cash', 'cash'],
-      });
-      const released = await tx.select({ held_at: bracket_match.held_at }).from(bracket_match)
-        .where(inArray(bracket_match.id, result.matchIds));
-      expect(released.every((m) => m.held_at === null)).toBe(true);
     });
   });
 });
@@ -290,7 +253,8 @@ describe('race: fill a bye vs. the first frame of the match it changes', () => {
         await playMatch(db, event.eventId, roundOne[0].id, higherSeedWins(roundOne[0]));
       }
       const next = (await getBracketSnapshot(db, event.eventId)).matches
-        .find((m) => bye.holdMatchIds.includes(m.id) && m.status === MatchStatus.Ready)!;
+        .find((m) => m.group_number === 1 && m.round_number === 2 && m.status === MatchStatus.Ready &&
+          [opponentId(m.opponent1), opponentId(m.opponent2)].includes(bye.participantId))!;
       const team1 = await getParticipantPlayers(db, event.eventId, opponentId(next.opponent1)!);
       const team2 = await getParticipantPlayers(db, event.eventId, opponentId(next.opponent2)!);
 

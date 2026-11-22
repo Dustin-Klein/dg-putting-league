@@ -42,7 +42,6 @@ interface OpenBye {
   open: boolean;
   closedReason: string | null;
   closesWhen: ByeClosingMatch | null;
-  held: boolean;
 }
 
 interface ByesSummary {
@@ -252,9 +251,6 @@ function FillByeDialog({
   const [payments, setPayments] = useState<Array<PaymentType | null>>([]);
   const [zones, setZones] = useState<Map<string, ZonePreview>>(new Map());
   const [saving, setSaving] = useState(false);
-  const [holding, setHolding] = useState(false);
-  // Shown at once; the summary catches up after the server answers.
-  const [heldOverride, setHeldOverride] = useState<boolean | null>(null);
   const numbers = useMemo(
     () => buildMatchNumbers(bracket.bracket.groups, bracket.bracket.rounds, bracket.bracket.matches as never),
     [bracket]
@@ -287,26 +283,6 @@ function FillByeDialog({
   const byeTeam = bye ? seedLabel(bracket, bye.participantId) : null;
   const newSeed = (event.teams?.length ?? 0) + 1;
   const closing = bye?.closesWhen ? closingText(bracket, bye.closesWhen, summary?.frameCount ?? 5, numbers) : null;
-
-  const toggleHold = async (hold: boolean) => {
-    if (!bye) return;
-    try {
-      setHolding(true);
-      setHeldOverride(hold);
-      const response = await fetch(`/api/event/${event.id}/bracket/byes/hold`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bye_match_id: bye.byeMatchId, hold }),
-      });
-      if (!response.ok) throw new Error(await readError(response, 'Could not change the hold'));
-      await onSummary();
-    } catch (error) {
-      toast({ title: 'Hold not changed', description: error instanceof Error ? error.message : undefined, variant: 'destructive' });
-    } finally {
-      setHeldOverride(null);
-      setHolding(false);
-    }
-  };
 
   const submit = async () => {
     if (!bye || picked.length !== size) return;
@@ -365,16 +341,6 @@ function FillByeDialog({
               ) : (
                 <span className="text-[13px] font-bold">Closes when {byeTeam}&apos;s next match starts</span>
               )}
-              <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold">
-                <input
-                  type="checkbox"
-                  className="size-[18px] accent-primary"
-                  checked={heldOverride ?? bye.held}
-                  disabled={holding}
-                  onChange={(e) => void toggleHold(e.target.checked)}
-                />
-                Hold {byeTeam}&apos;s next match until I decide
-              </label>
             </div>
           )}
 
@@ -409,7 +375,7 @@ function FillByeDialog({
           {bye && (
             <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] leading-[1.45] text-muted-foreground">
               <li>Joins as seed {newSeed}. {byeTeam} plays Round 1 instead of waiting.</li>
-              <li>Announced match numbers don&apos;t change; the new matches are numbered last.</li>
+              <li>Match numbers after the new match move up by one.</li>
               {event.team_size === 2 && event.team_assignment === 'random_pairing' && (
                 <li>The higher-scoring player takes the Pool A slot.</li>
               )}

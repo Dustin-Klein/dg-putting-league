@@ -7,8 +7,6 @@ interface NumberingMatch {
   status: number;
   opponent1: unknown;
   opponent2: unknown;
-  /** Set when the match stopped being a bye because a late team took the bye. */
-  late_entry_at?: string | null;
 }
 
 /**
@@ -27,8 +25,7 @@ export function isHiddenMatch(match: Pick<NumberingMatch, 'opponent1' | 'opponen
 
 /**
  * The M-number of every visible match: groups (winners, losers, finals), rounds and
- * matches in order. Matches that became real when a late team filled a bye are numbered
- * after all the others, in fill order, so numbers already announced never move.
+ * matches in order.
  */
 export function buildMatchNumbers(
   groups: ReadonlyArray<{ id: number | string; number: number }>,
@@ -49,17 +46,8 @@ export function buildMatchNumbers(
   }
 
   let next = 1;
-  const late: NumberingMatch[] = [];
   for (const match of ordered) {
-    if (isHiddenMatch(match)) continue;
-    if (match.late_entry_at) {
-      late.push(match);
-      continue;
-    }
-    numbers.set(Number(match.id), next++);
+    if (!isHiddenMatch(match)) numbers.set(Number(match.id), next++);
   }
-  // Stable sort: matches filled together keep bracket order.
-  late.sort((a, b) => Date.parse(a.late_entry_at!) - Date.parse(b.late_entry_at!));
-  for (const match of late) numbers.set(Number(match.id), next++);
   return numbers;
 }

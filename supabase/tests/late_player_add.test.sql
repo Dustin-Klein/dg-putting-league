@@ -16,8 +16,6 @@ SELECT ok(
 );
 
 -- bracket_match gains app-owned columns; clients keep reading bracket_match as before.
-SELECT has_column('putting_league', 'bracket_match', 'late_entry_at', 'bracket_match.late_entry_at exists');
-SELECT has_column('putting_league', 'bracket_match', 'held_at', 'bracket_match.held_at exists');
 
 -- events.reopened_team_draft is not granted to clients (column-level SELECT on events).
 SELECT ok(
