@@ -7,6 +7,7 @@ import {
 } from '@/lib/services/qualification/qualification-service';
 import { closeDb, createCountingTestDb, createTestDb, withRollback } from './db/harness';
 import { cleanupLeague, seedEvent, type SeededEvent } from './db/seed';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 const db = createTestDb(10);
 const seeded: SeededEvent[] = [];
@@ -35,6 +36,7 @@ describe('qualification transactional scoring', () => {
         qualification_round_id: round.id,
         event_id: seededEvent.eventId,
         event_player_id: seededEvent.eventPlayerIds[0],
+        ...entryZoneStamp(seededEvent.eventPlayerIds[0]),
         frame_number: 1,
         putts_made: 1,
         points_earned: 1,
@@ -44,6 +46,7 @@ describe('qualification transactional scoring', () => {
         qualification_round_id: round.id,
         event_id: seededEvent.eventId,
         event_player_id: seededEvent.eventPlayerIds[0],
+        ...entryZoneStamp(seededEvent.eventPlayerIds[0]),
         frame_number: 99,
         putts_made: 1,
         points_earned: 1,

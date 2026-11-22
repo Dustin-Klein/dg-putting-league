@@ -155,6 +155,17 @@ export async function getOrCreateFrameId(
   return created.id;
 }
 
+/**
+ * The entry's zone period and distance at insert time, for a new frame row. Upserts
+ * leave them out of their update set: a re-scored frame keeps the zone it was putted from.
+ */
+export function entryZoneStamp(eventPlayerId: string) {
+  return {
+    zone_period_id: sql`(select ep.zone_period_id from ${event_players} ep where ep.id = ${eventPlayerId}::uuid)`,
+    putt_distance_ft: sql`(select ep.putt_distance_ft from ${event_players} ep where ep.id = ${eventPlayerId}::uuid)`,
+  };
+}
+
 export interface FrameScoreInput {
   event_player_id: string;
   putts_made: number;
@@ -189,6 +200,7 @@ export async function upsertFrameResults(
     putts_made: r.putts_made,
     points_earned: r.points_earned,
     order_in_frame: existingOrder.get(r.event_player_id) ?? ++nextOrder,
+    ...entryZoneStamp(r.event_player_id),
   }));
 
   await ex

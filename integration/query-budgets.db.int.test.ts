@@ -23,6 +23,7 @@ import type { Executor } from '@/lib/db/tx';
 import { closeDb, createCountingTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, getParticipantPlayers, seedBracket, seedLeague } from './db/seed';
 import { expectLaneInvariants, opponentId, playMatch, playableMatches } from './db/play';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 // resetMatchResult authorizes with requireEventAdmin; hand it the test transaction instead.
 const mockAdmin: { tx?: Executor } = {};
@@ -168,6 +169,7 @@ describe('statement budgets', () => {
         const [frame] = await tx.insert(match_frames).values({ frame_number: 1 }).returning({ id: match_frames.id });
         await tx.insert(frame_results).values(entries.map((entry) => ({
           match_frame_id: frame.id, event_player_id: entry.id, putts_made: 2, points_earned: 2, order_in_frame: 1,
+          ...entryZoneStamp(entry.id),
         })));
 
         let listed = 0;
