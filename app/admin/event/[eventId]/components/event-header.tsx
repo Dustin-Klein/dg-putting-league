@@ -326,10 +326,14 @@ function StatCell({
       const fee = Number(event.entry_fee_per_player ?? 0);
       const cash = players.filter((player) => player.payment_type === 'cash').length * fee;
       const electronic = players.filter((player) => player.payment_type === 'electronic').length * fee;
+      const waived = players.filter((player) => player.payment_type === 'waived').length * fee;
       return (
         <Stat label={`Pot · ${formatMoney(fee)} entry`} first={first}>
-          <span className={big}>{formatMoney(cash + electronic)}</span>
-          <span className="text-[13px] text-muted-foreground">{formatMoney(cash)} cash · {formatMoney(electronic)} electronic</span>
+          <span className={big}>{formatMoney(cash + electronic + waived)}</span>
+          <span className="text-[13px] text-muted-foreground">
+            <span className="whitespace-nowrap">{formatMoney(cash)} cash</span> · <span className="whitespace-nowrap">{formatMoney(electronic)} electronic</span>
+            {waived > 0 && <> · <span className="whitespace-nowrap">{formatMoney(waived)} waived</span></>}
+          </span>
         </Stat>
       );
     }

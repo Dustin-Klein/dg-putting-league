@@ -228,7 +228,7 @@ export const event_players = putting_league.table("event_players", {
 	handicap_note: text(),
 	distance_override: boolean().default(false).notNull(),
 }, (table) => [
-	check("event_players_payment_type_check", sql`payment_type = ANY (ARRAY['cash'::text, 'electronic'::text])`),
+	check("event_players_payment_type_check", sql`payment_type = ANY (ARRAY['cash'::text, 'electronic'::text, 'waived'::text])`),
 	check("event_players_putt_distance_ft_check", sql`putt_distance_ft > (0)::numeric`),
 	check("event_players_scoring_method_check", sql`scoring_method = ANY (ARRAY['qualification'::text, 'pfa'::text, 'default'::text])`),
 	foreignKey({

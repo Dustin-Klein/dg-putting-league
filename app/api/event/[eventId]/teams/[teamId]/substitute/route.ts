@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { substituteTeamMember } from '@/lib/services/team/substitution';
 import { BadRequestError, handleError } from '@/lib/errors';
+import { PAYMENT_TYPES } from '@/lib/types/player';
 
 const substituteSchema = z.object({
   out_event_player_id: z.uuid(),
   player_id: z.uuid(),
-  payment_type: z.enum(['cash', 'electronic']).nullable(),
+  payment_type: z.enum(PAYMENT_TYPES).nullable(),
   reason: z.enum(['missed_registration', 'left_early', 'injury', 'wrong_player']),
 });
 

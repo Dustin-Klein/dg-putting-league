@@ -64,6 +64,7 @@ function event(overrides: Partial<EventWithDetails> = {}): EventWithDetails {
 }
 
 const stats = () => within(screen.getAllByRole('definition')[0].closest('dl')!);
+const potBreakdown = () => stats().getByText(/cash$/).parentElement!.textContent;
 
 beforeEach(() => {
   global.fetch = jest.fn().mockResolvedValue({
@@ -79,11 +80,18 @@ describe('EventHeader', () => {
     expect(screen.getByLabelText('K7QM4R')).toBeInTheDocument();
     expect(stats().getByText('1 unpaid')).toBeInTheDocument();
     expect(stats().getByText('$20')).toBeInTheDocument();
-    expect(stats().getByText('$10 cash · $10 electronic')).toBeInTheDocument();
+    expect(potBreakdown()).toBe('$10 cash · $10 electronic');
     expect(stats().getByText('15 ft')).toBeInTheDocument();
     expect(screen.queryByText(/Bonus/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Qualification Round/)).not.toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('counts waived players as paid and into the pot', () => {
+    render(<EventHeader event={event({ players: [player('a', 'cash'), player('b', 'electronic'), player('c', 'waived')] })} />);
+    expect(stats().getByText('all paid')).toBeInTheDocument();
+    expect(stats().getByText('$30')).toBeInTheDocument();
+    expect(potBreakdown()).toBe('$10 cash · $10 electronic · $10 waived');
   });
 
   it('hides money without an entry fee', () => {

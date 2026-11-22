@@ -68,8 +68,13 @@ describe('paymentSplit', () => {
       entry('3', 'C', { payment_type: 'electronic' }),
       entry('4', 'D', { payment_type: null }),
     ];
-    expect(paymentSplit(players, 10)).toEqual({ cash: 2, electronic: 1, unpaid: 1, cashTotal: 20 });
+    expect(paymentSplit(players, 10)).toEqual({ cash: 2, electronic: 1, waived: 0, unpaid: 1, cashTotal: 20 });
     expect(paymentSplit(players, null).cashTotal).toBeNull();
+  });
+
+  it('counts waived separately, not as unpaid or cash', () => {
+    const players = [entry('1', 'A', { payment_type: 'cash' }), entry('2', 'B', { payment_type: 'waived' })];
+    expect(paymentSplit(players, 10)).toEqual({ cash: 1, electronic: 0, waived: 1, unpaid: 0, cashTotal: 10 });
   });
 });
 
