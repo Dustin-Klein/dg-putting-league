@@ -15,15 +15,6 @@ import { recordRosterShown, rosterLayout, rosterRows, zoneCounts } from '@/lib/u
 const POLL_MS = 10_000;
 const PAGE_MS = 15_000;
 
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
-
 /**
  * Full-screen "find your name and check your zone" list for the venue TV, shown while
  * registration is open so a missed or wrongly zoned player speaks up before teams are drawn.
@@ -34,7 +25,6 @@ export function RosterScreen({ eventId }: { eventId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [page, setPage] = useState(0);
-  const now = useNow(30_000);
 
   const load = useCallback(async (signal: AbortSignal) => {
     const response = await fetch(`/api/event/${eventId}`, { signal });
@@ -79,7 +69,7 @@ export function RosterScreen({ eventId }: { eventId: string }) {
     };
   }, [exit]);
 
-  const rows = useMemo(() => (event ? rosterRows(event.players, now) : []), [event, now]);
+  const rows = useMemo(() => (event ? rosterRows(event.players) : []), [event]);
   const layout = useMemo(() => rosterLayout(rows), [rows]);
   const zones = useMemo(() => zoneCounts(event?.players ?? []), [event]);
 
@@ -154,23 +144,10 @@ export function RosterScreen({ eventId }: { eventId: string }) {
           {currentPage.map((row) => (
             <li
               key={row.eventPlayerId}
-              className={cn(
-                '-mx-2.5 flex min-w-0 items-center justify-between gap-3 rounded-lg px-2.5',
-                row.isNew && 'bg-gold/15'
-              )}
+              className="-mx-2.5 flex min-w-0 items-center justify-between gap-3 rounded-lg px-2.5"
             >
-              <span className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className={cn('truncate', row.isNew ? 'font-bold text-gold' : 'font-medium')}
-                  style={{ fontSize: layout.fontPx }}
-                >
-                  {row.name}
-                </span>
-                {row.isNew && (
-                  <span className="flex-none rounded-[5px] bg-gold px-1.5 py-0.5 text-xs font-bold tracking-[0.06em] text-board uppercase">
-                    New
-                  </span>
-                )}
+              <span className="truncate font-medium" style={{ fontSize: layout.fontPx }}>
+                {row.name}
               </span>
               {showZones && <ZoneBadge zone={row.zone} distanceFt={row.distanceFt} size="lg" className="flex-none" />}
               {showZones && row.zone == null && (
