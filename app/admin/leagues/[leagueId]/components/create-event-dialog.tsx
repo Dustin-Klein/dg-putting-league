@@ -172,7 +172,7 @@ export function CreateEventDialog({
     <>
       <Button onClick={openDialog}>Create Event</Button>
       <Dialog open={open} onOpenChange={(next) => !isLoading && setOpen(next)}>
-        <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:rounded-none sm:max-w-[720px]">
+        <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 max-sm:h-(--vvh) max-sm:max-h-none max-sm:max-w-none max-sm:rounded-none sm:max-w-[720px]">
           <DialogHeader className="gap-0.5 border-b px-5 py-[22px] pr-14 text-left sm:px-7">
             <DialogTitle className="font-score text-[32px] leading-none">New event</DialogTitle>
             <DialogDescription>{leagueName ?? 'Create a new event for this league.'}</DialogDescription>

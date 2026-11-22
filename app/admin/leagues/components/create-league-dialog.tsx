@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { LeagueForm, type FormValues } from './LeagueForm';
 
@@ -55,23 +56,24 @@ export function CreateLeagueDialog() {
   return (
     <>
       <Button onClick={() => setOpen(true)}>Create League</Button>
-      {open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New League</h2>
-            <p className="text-muted-foreground mb-6">
-              Fill in the details below to create a new league.
-            </p>
+      <Dialog open={open} onOpenChange={(next) => !isLoading && setOpen(next)}>
+        <DialogContent
+          className="bg-background sm:max-w-2xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-xl">Create New League</DialogTitle>
+            <DialogDescription>Fill in the details below to create a new league.</DialogDescription>
+          </DialogHeader>
 
-            <LeagueForm
-              onSubmit={handleSubmit}
-              onCancel={() => setOpen(false)}
-              isLoading={isLoading}
-              submitButtonText="Create League"
-            />
-          </div>
-        </div>
-      )}
+          <LeagueForm
+            onSubmit={handleSubmit}
+            onCancel={() => setOpen(false)}
+            isLoading={isLoading}
+            submitButtonText="Create League"
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

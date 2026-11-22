@@ -439,7 +439,7 @@ export function MatchScoringDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(
-        "max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto",
+        "grid-cols-[minmax(0,1fr)]",
         scoringMode === 'frames' ? "sm:max-w-4xl" : "sm:max-w-md"
       )}>
         <DialogHeader className="gap-1 pr-8 text-left">

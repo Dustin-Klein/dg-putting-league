@@ -83,6 +83,9 @@
 @layer base {
   /* Scoreboard design: docs/plans/09-redesign-canvas/Foundations.dc.html. Dark is the default. */
   :root {
+    /* Visible viewport, kept in sync with the on-screen keyboard by VisualViewportSync. */
+    --vvh: 100dvh;
+    --vv-top: 0px;
     --background: 80 13% 95%;
     --foreground: 215 27% 9%;
     --card: 0 0% 100%;

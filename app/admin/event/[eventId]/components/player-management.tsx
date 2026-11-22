@@ -431,7 +431,7 @@ export function PlayerManagement({
                 Add Player
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent placement="top" className="flex flex-col sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Add Player to Event</DialogTitle>
               </DialogHeader>
@@ -472,8 +472,8 @@ export function PlayerManagement({
                   )}
 
                   {searchQuery && !isSearching && searchResults.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <div className="max-h-60 overflow-y-auto space-y-2">
+                    <div className="mt-4 flex min-h-0 flex-col gap-2">
+                      <div className="min-h-0 max-h-60 overflow-y-auto overscroll-contain space-y-2">
                         {searchResults.map((player) => (
                           <div
                             key={player.id}

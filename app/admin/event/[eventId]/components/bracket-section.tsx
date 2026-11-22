@@ -310,7 +310,7 @@ export function BracketSection({
       />
 
       <Dialog open={isLaneDialogOpen} onOpenChange={setIsLaneDialogOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Lane Management</DialogTitle>
           </DialogHeader>
@@ -319,7 +319,7 @@ export function BracketSection({
       </Dialog>
 
       <Dialog open={isPayoutsDialogOpen} onOpenChange={setIsPayoutsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Payouts</DialogTitle>
           </DialogHeader>
