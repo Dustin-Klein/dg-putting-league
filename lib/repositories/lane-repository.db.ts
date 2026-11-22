@@ -190,7 +190,6 @@ export async function getUnassignedReadyMatches(ex: Executor, stageId: number): 
         eq(bracket_match.stage_id, stageId),
         inArray(bracket_match.status, [Status.Ready, Status.Waiting]),
         isNull(bracket_match.lane_id),
-        isNull(bracket_match.held_at),
         sql`${bracket_match.opponent1}->>'id' is not null`,
         sql`${bracket_match.opponent2}->>'id' is not null`
       )

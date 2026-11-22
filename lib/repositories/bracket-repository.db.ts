@@ -46,7 +46,6 @@ export interface BracketResetContextRound {
 export interface BracketResetContextMatch extends BracketMatchForReset {
   stage_id: number;
   lane_id?: string | null;
-  held_at?: string | null;
 }
 
 export interface BracketResetContext {
@@ -492,7 +491,6 @@ export async function getBracketResetContext(
         opponent1: bracket_match.opponent1,
         opponent2: bracket_match.opponent2,
         lane_id: bracket_match.lane_id,
-        held_at: bracket_match.held_at,
       })
       .from(bracket_match)
       .where(and(eq(bracket_match.event_id, eventId), eq(bracket_match.stage_id, stage.id)))
@@ -583,14 +581,13 @@ export async function insertParticipant(ex: Executor, eventId: string, name: str
 }
 
 /**
- * Write rebuilt match rows as given (structural `position` included), clearing any
- * hold. `lateEntry` rows were byes and get the late-entry time that numbers them last.
+ * Write rebuilt match rows as given (structural `position` included).
  * Callers hold the event lock and the match locks.
  */
 export async function rewriteMatches(
   ex: Executor,
   eventId: string,
-  rows: ReadonlyArray<{ id: number; status: number; opponent1: MatchOpponent; opponent2: MatchOpponent; lateEntry: boolean }>
+  rows: ReadonlyArray<{ id: number; status: number; opponent1: MatchOpponent; opponent2: MatchOpponent }>
 ): Promise<void> {
   for (const row of rows) {
     await ex
@@ -599,19 +596,8 @@ export async function rewriteMatches(
         status: row.status,
         opponent1: row.opponent1,
         opponent2: row.opponent2,
-        held_at: null,
-        ...(row.lateEntry ? { late_entry_at: sql`clock_timestamp()` } : {}),
         updated_at: sql`clock_timestamp()`,
       })
       .where(and(eq(bracket_match.id, row.id), eq(bracket_match.event_id, eventId)));
   }
-}
-
-/** Hold or release matches (held matches get no lane automatically). */
-export async function setMatchesHeld(ex: Executor, eventId: string, matchIds: number[], held: boolean): Promise<void> {
-  if (matchIds.length === 0) return;
-  await ex
-    .update(bracket_match)
-    .set({ held_at: held ? sql`coalesce(${bracket_match.held_at}, now())` : null })
-    .where(and(eq(bracket_match.event_id, eventId), inArray(bracket_match.id, matchIds)));
 }

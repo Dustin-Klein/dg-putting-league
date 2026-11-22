@@ -64,8 +64,6 @@ export const bracket_match = putting_league.table("bracket_match", {
 	score_override_2: integer(),
 	score_override_reason: text(),
 	score_override_by: uuid(),
-	late_entry_at: timestamp({ withTimezone: true, mode: 'string' }),
-	held_at: timestamp({ withTimezone: true, mode: 'string' }),
 }, (table) => [
 	check("bracket_match_score_override_pair_check", sql`((score_override_1 IS NULL) AND (score_override_2 IS NULL)) OR ((score_override_1 IS NOT NULL) AND (score_override_2 IS NOT NULL) AND (score_override_1 >= 0) AND (score_override_2 >= 0))`),
 	check("bracket_match_status_check", sql`(status >= 0) AND (status <= 5)`),

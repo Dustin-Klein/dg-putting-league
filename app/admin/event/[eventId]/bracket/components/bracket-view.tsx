@@ -448,7 +448,7 @@ export function BracketView({
     return result.sort((a, b) => a.number - b.number);
   }, [bracket, participantTeamMap]);
 
-  // M-numbers for visible matches across all groups (late-filled byes numbered last).
+  // M-numbers for visible matches across all groups.
   const matchNumberMap = useMemo(
     () => buildMatchNumbers(bracket.groups, bracket.rounds, bracket.matches as unknown as Parameters<typeof buildMatchNumbers>[2]),
     [bracket]

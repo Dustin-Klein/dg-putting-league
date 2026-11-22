@@ -53,9 +53,6 @@ export interface OpenBye {
   closedReason: string | null;
   /** What closes this bye next (null once closed). */
   closesWhen: ByeClosingMatch | null;
-  held: boolean;
-  /** Matches held for this bye (the matches a fill would change). */
-  holdMatchIds: number[];
 }
 
 export interface OpenByesSummary {
@@ -144,7 +141,6 @@ async function describeByes(ex: Executor, eventId: string, context: BracketReset
       }
     }
     candidates.sort((a, b) => urgency(b) - urgency(a) || a.matchId - b.matchId);
-    const holdMatchIds = changed.map((m) => m.id);
     byes.push({
       byeMatchId: match.id,
       participantId,
@@ -153,8 +149,6 @@ async function describeByes(ex: Executor, eventId: string, context: BracketReset
       open: closedReason === null,
       closedReason,
       closesWhen: closedReason ? null : candidates[0] ?? null,
-      held: changed.some((m) => m.held_at != null),
-      holdMatchIds,
     });
   }
   byes.sort((a, b) => (a.seed ?? 0) - (b.seed ?? 0));
@@ -182,34 +176,6 @@ export async function getOpenByesDb(pg: Executor, eventId: string): Promise<Open
   return { ...summary, frameCount: event.bracket_frame_count };
 }
 
-/**
- * Hold (or release) the matches a fill of this bye would change, so none of them gets a
- * lane while the organizer finds the missed player. A held match already on a lane, not
- * yet started, gives the lane back.
- */
-export async function setByeHold(eventId: string, byeMatchId: number, hold: boolean): Promise<OpenByesSummary> {
-  const { pg, user } = await requireEventAdmin(eventId);
-  await setByeHoldDb(pg, eventId, byeMatchId, hold);
-  logger.info('Bye hold changed', { userId: user.id, action: 'bye_hold', eventId, byeMatchId, hold, outcome: 'success' });
-  return getOpenByesDb(pg, eventId);
-}
-
-export function setByeHoldDb(ex: Executor, eventId: string, byeMatchId: number, hold: boolean): Promise<void> {
-  return withTransaction(ex, async (tx) => {
-    await lockEvent(tx, eventId);
-    await requireBracketPlay(tx, eventId);
-    await lockMatches(tx, await bracketDb.getMatchIdsForEvent(tx, eventId), eventId);
-    const summary = await describeByes(tx, eventId, await requireBracketContext(tx, eventId));
-    const bye = summary.byes.find((b) => b.byeMatchId === byeMatchId);
-    if (!bye) throw new NotFoundError('That bye was not found');
-    if (hold && !bye.open) throw new ConflictError(bye.closedReason ?? 'That bye is closed');
-    await bracketDb.setMatchesHeld(tx, eventId, bye.holdMatchIds, hold);
-    await lockEventLanes(tx, eventId);
-    if (hold) await releaseMatchLanes(tx, eventId, bye.holdMatchIds);
-    await autoAssignLanesTx(tx, eventId);
-  });
-}
-
 async function requireBracketPlay(tx: Tx, eventId: string) {
   const config = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
   if (!config) throw new NotFoundError('Event not found');
@@ -233,8 +199,7 @@ export interface FillByeResult {
 /**
  * Enter a new team (usually a missed player and the floater) into a Round 1 bye during
  * bracket play: the team with the bye plays them instead of waiting. Allowed only while
- * no match the fill changes has started. Matches keep their ids and announced numbers;
- * the ones that stop being byes are numbered after every other match.
+ * no match the fill changes has started. Matches keep their ids.
  */
 export async function fillBye(eventId: string, input: FillByeInput): Promise<FillByeResult> {
   const { pg, user } = await requireEventAdmin(eventId);
@@ -328,7 +293,6 @@ export function fillByeDb(ex: Executor, eventId: string, input: FillByeInput): P
       status: r.status,
       opponent1: r.opponent1 as bracketDb.MatchOpponent,
       opponent2: r.opponent2 as bracketDb.MatchOpponent,
-      lateEntry: r.becameVisible,
     })));
     await autoAssignLanesTx(tx, eventId);
     // Last: the new players' own zones, under the league handicap lock.
