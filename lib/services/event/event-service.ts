@@ -120,12 +120,16 @@ export async function getEventWithPlayers(eventId: string) {
  */
 export async function getEventForViewer(eventId: string): Promise<EventWithDetails> {
   const { pg, isAdmin } = await authorizeEventView(eventId, 'event');
-  const [event, accessCode] = await Promise.all([
+  const [event, accessCode, keptDraft] = await Promise.all([
     eventDb.getEventWithPlayers(pg, eventId, { includePaymentType: isAdmin }) as Promise<EventWithDetails>,
     isAdmin ? eventDb.getEventAccessCode(pg, eventId) : Promise.resolve(null),
+    isAdmin ? eventDb.getReopenedTeamDraft(pg, eventId) : Promise.resolve(null),
   ]);
 
-  return { ...event, access_code: accessCode, viewer_is_admin: isAdmin };
+  const kept_teams = keptDraft && event.status === 'pre-bracket'
+    ? keptDraft.map((team) => team.members.map((member) => member.event_player_id))
+    : null;
+  return { ...event, access_code: accessCode, viewer_is_admin: isAdmin, kept_teams };
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { EventPlayer } from '@/lib/types/player';
 import {
   formatMinutesAgo,
+  keptTeamsStatus,
   paymentSplit,
   playersNotShown,
   rosterLayout,
@@ -89,5 +90,15 @@ describe('zoneCounts and playersNotShown', () => {
   it('formats minutes ago', () => {
     expect(formatMinutesAgo(NOW - 10_000, NOW)).toBe('just now');
     expect(formatMinutesAgo(NOW - 12 * 60_000, NOW)).toBe('12 min ago');
+  });
+});
+
+describe('keptTeamsStatus', () => {
+  it('counts intact kept teams and lists everyone else as needing a team', () => {
+    const players = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => entry(id, id.toUpperCase()));
+    // c's partner (x) left, so c needs a new partner along with newcomers e and f.
+    const status = keptTeamsStatus(players, [['a', 'b'], ['c', 'x'], ['d']]);
+    expect(status.keptCount).toBe(2);
+    expect(status.needTeam.map((p) => p.id)).toEqual(['c', 'e', 'f']);
   });
 });

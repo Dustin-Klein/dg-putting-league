@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { KeptTeamsNotice } from '@/components/kept-teams-notice';
 import Link from 'next/link';
 import { Search, Plus, X, Loader2, UserPlus, Trophy, ChevronUp, ChevronDown, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -410,6 +411,7 @@ export function PlayerManagement({
 
   return (
     <div className="space-y-6">
+      {isAdmin && <KeptTeamsNotice event={event} />}
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="mr-auto text-2xl font-bold">Players</h2>
         {showZoneColumn && <ZoneLadderChip />}
