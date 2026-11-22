@@ -1,7 +1,5 @@
 import type { EventPlayer } from '@/lib/types/player';
 
-/** Names added this recently get a "New" tag on the roster screen. */
-export const NEW_ENTRY_WINDOW_MS = 5 * 60 * 1000;
 export const ROSTER_COLUMNS = 4;
 /** Rows per column before the screen pages: 4 × 16 names fit a 1080p TV. */
 export const ROSTER_MAX_ROWS = 16;
@@ -11,7 +9,6 @@ export interface RosterRow {
   name: string;
   zone: number | null;
   distanceFt: number | null;
-  isNew: boolean;
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
@@ -20,7 +17,7 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
  * Every registered player, sorted by name. Two players with the same name get their
  * player number appended so each can find their own row.
  */
-export function rosterRows(players: readonly EventPlayer[], now: number): RosterRow[] {
+export function rosterRows(players: readonly EventPlayer[]): RosterRow[] {
   const nameCounts = new Map<string, number>();
   for (const player of players) {
     const key = player.player.full_name.trim().toLowerCase();
@@ -35,7 +32,6 @@ export function rosterRows(players: readonly EventPlayer[], now: number): Roster
         name: duplicate ? `${name} #${player.player.player_number}` : name,
         zone: player.zone ?? null,
         distanceFt: player.zone != null ? player.putt_distance_ft ?? null : null,
-        isNew: now - Date.parse(player.created_at) < NEW_ENTRY_WINDOW_MS,
       };
     })
     .sort((a, b) => collator.compare(a.name, b.name) || a.eventPlayerId.localeCompare(b.eventPlayerId));
