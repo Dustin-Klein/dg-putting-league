@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MainNav } from "@/components/main-nav";
 import { SiteFooter } from "@/components/site-footer";
+import { VisualViewportSync } from "@/components/visual-viewport-sync";
 import { Suspense } from "react";
 import "./globals.css";
 
@@ -48,6 +49,7 @@ export default function RootLayout({
           </main>
           <SiteFooter />
           <Toaster />
+          <VisualViewportSync />
         </ThemeProvider>
       </body>
     </html>

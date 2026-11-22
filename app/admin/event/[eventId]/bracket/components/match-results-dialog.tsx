@@ -98,7 +98,7 @@ export function MatchResultsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-4xl">
         <DialogHeader className="pr-8 text-left">
           <DialogTitle>Match {match.number} Results</DialogTitle>
           <DialogDescription>Frame-by-frame results</DialogDescription>

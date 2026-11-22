@@ -244,7 +244,7 @@ export function TeamPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[680px]">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[680px]">
         {step === 'check' ? (
           <RosterCheckStep event={event} onContinue={() => setStep('teams')} onCancel={() => handleOpenChange(false)} />
         ) : (

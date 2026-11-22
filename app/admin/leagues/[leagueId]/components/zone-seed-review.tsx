@@ -61,7 +61,7 @@ export function ZoneSeedReview({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
+      <DialogContent placement="top" className="flex flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Review starting zones</DialogTitle>
           <DialogDescription>Pick a zone to override the cuts for one player. Overrides stay when the cuts move.</DialogDescription>

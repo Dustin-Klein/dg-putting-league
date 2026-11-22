@@ -209,7 +209,7 @@ export function SubstituteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]">
         <DialogHeader className="gap-1 px-5 pt-[22px] pb-3 pr-14 text-left sm:px-6">
           <DialogTitle className="text-[22px] font-bold">
             Substitute a player{selectedTeam ? ` · Seed ${selectedTeam.seed}` : ''}
