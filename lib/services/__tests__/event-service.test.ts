@@ -7,7 +7,7 @@ jest.mock('@/lib/services/auth', () => ({
   authorizeLeagueAdmin: jest.fn(),
 }));
 jest.mock('@/lib/repositories/event-repository.db', () => ({
-  getEventWithPlayers: jest.fn(), getEventAccessCode: jest.fn(), getEventsByLeagueId: jest.fn(),
+  getEventWithPlayers: jest.fn(), getEventAccessCode: jest.fn(), getReopenedTeamDraft: jest.fn(), getEventsByLeagueId: jest.fn(),
   isAccessCodeUnique: jest.fn(), getEventLeagueId: jest.fn(), createEvent: jest.fn(),
   copyEventPlayers: jest.fn(), deleteEvent: jest.fn(), getQualificationRound: jest.fn(),
   getQualificationFrameCounts: jest.fn(), getEventById: jest.fn(), updateEvent: jest.fn(),
@@ -94,10 +94,20 @@ describe('event service Drizzle port', () => {
     expect(eventDb.getEventWithPlayers).toHaveBeenCalledWith(pg, 'event-1', { includePaymentType: true });
   });
 
+  it('gives admins the kept teams while registration is reopened', async () => {
+    (authorizeEventView as jest.Mock).mockResolvedValue({ user, event: {}, isAdmin: true, pg });
+    (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(createMockEventWithDetails({ id: 'event-1', status: 'pre-bracket' }));
+    (eventDb.getReopenedTeamDraft as jest.Mock).mockResolvedValue([
+      { seed: 1, members: [{ event_player_id: 'ep-1', slot: 1, pool: 'A' }, { event_player_id: 'ep-2', slot: 2, pool: 'B' }] },
+    ]);
+    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ kept_teams: [['ep-1', 'ep-2']] });
+  });
+
   it('hides access code and payment type from a public viewer', async () => {
     (eventDb.getEventWithPlayers as jest.Mock).mockResolvedValue(createMockEventWithDetails({ id: 'event-1' }));
-    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: null, viewer_is_admin: false });
+    await expect(getEventForViewer('event-1')).resolves.toMatchObject({ access_code: null, viewer_is_admin: false, kept_teams: null });
     expect(eventDb.getEventAccessCode).not.toHaveBeenCalled();
+    expect(eventDb.getReopenedTeamDraft).not.toHaveBeenCalled();
     expect(eventDb.getEventWithPlayers).toHaveBeenCalledWith(pg, 'event-1', { includePaymentType: false });
   });
 
