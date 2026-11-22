@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import {
   bracket_stage,
   event_players,
   events,
+  frame_results,
   lanes,
   players,
   team_member_substitutions,
@@ -195,8 +196,8 @@ describe('reopening registration', () => {
   it('goes back to pre-bracket with players kept, the bracket and teams removed and the teams remembered', async () => {
     await withRollback(db, async (tx) => {
       const event = await seedBracket(tx, { teams: 4, laneCount: 2 });
-      const kept = await reopenRegistrationDb(tx, event.eventId, { keepTeams: true });
-      expect(kept).toBe(4);
+      const result = await reopenRegistrationDb(tx, event.eventId, { keepTeams: true });
+      expect(result).toEqual({ keptTeams: 4, discardedMatches: 0 });
 
       const [row] = await tx.select({ status: events.status, draft: events.reopened_team_draft }).from(events)
         .where(eq(events.id, event.eventId));
@@ -212,7 +213,7 @@ describe('reopening registration', () => {
     });
   });
 
-  it('refuses once a frame has been scored', async () => {
+  it('once a frame is scored, refuses unless told to delete the scores, then deletes them', async () => {
     await withRollback(db, async (tx) => {
       const event = await seedBracket(tx, { teams: 4, laneCount: 2 });
       const [first] = playableMatches(await getBracketSnapshot(tx, event.eventId));
@@ -227,6 +228,17 @@ describe('reopening registration', () => {
       });
       await expect(reopenRegistrationDb(tx, event.eventId, { keepTeams: false }))
         .rejects.toMatchObject({ name: 'ConflictError' });
+      // A finished match too, so the count covers both.
+      const [second] = playableMatches(await getBracketSnapshot(tx, event.eventId)).filter((m) => m.id !== first.id);
+      await playMatch(tx, event.eventId, second.id, higherSeedWins(second));
+
+      const result = await reopenRegistrationDb(tx, event.eventId, { keepTeams: true, discardScores: true });
+      expect(result).toEqual({ keptTeams: 4, discardedMatches: 2 });
+      const [row] = await tx.select({ status: events.status }).from(events).where(eq(events.id, event.eventId));
+      expect(row.status).toBe('pre-bracket');
+      expect(await tx.select().from(frame_results).where(inArray(frame_results.bracket_match_id, [first.id, second.id]))).toHaveLength(0);
+      const laneRows = await tx.select().from(lanes).where(eq(lanes.event_id, event.eventId));
+      expect(laneRows.every((lane) => lane.status === 'idle')).toBe(true);
     });
   });
 });
