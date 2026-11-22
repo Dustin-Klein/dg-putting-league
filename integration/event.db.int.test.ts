@@ -11,6 +11,7 @@ import {
 } from '@/lib/services/event/event-service';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { seedEvent } from './db/seed';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 const mockAuth: { tx?: Executor; isAdmin: boolean } = { isAdmin: false };
 const mockRepo = { failCopy: false };
@@ -201,9 +202,9 @@ describe('event Drizzle repository and service', () => {
         { bracket_match_id: null, frame_number: 2 },
       ]).returning({ id: match_frames.id });
       await tx.insert(frame_results).values([
-        { match_frame_id: ownFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 3, points_earned: 4, order_in_frame: 1 },
-        { match_frame_id: sharedFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 1, points_earned: 1, order_in_frame: 1 },
-        { match_frame_id: sharedFrame.id, event_player_id: other.eventPlayerIds[0], putts_made: 2, points_earned: 2, order_in_frame: 2 },
+        { match_frame_id: ownFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 3, points_earned: 4, order_in_frame: 1, ...entryZoneStamp(deleted.eventPlayerIds[0]) },
+        { match_frame_id: sharedFrame.id, event_player_id: deleted.eventPlayerIds[0], putts_made: 1, points_earned: 1, order_in_frame: 1, ...entryZoneStamp(deleted.eventPlayerIds[0]) },
+        { match_frame_id: sharedFrame.id, event_player_id: other.eventPlayerIds[0], putts_made: 2, points_earned: 2, order_in_frame: 2, ...entryZoneStamp(other.eventPlayerIds[0]) },
       ]);
 
       await deleteEventService(deleted.eventId);

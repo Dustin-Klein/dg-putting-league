@@ -2,6 +2,7 @@ import { event_players, frame_results, match_frames } from '@/lib/db/schema';
 import { getPfaScoresBulk } from '@/lib/repositories/event-player-repository.db';
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { seedEvent } from './db/seed';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 const db = createTestDb();
 afterAll(() => closeDb(db));
@@ -24,6 +25,7 @@ describe('event-player Drizzle repository', () => {
       await tx.insert(frame_results).values({
         match_frame_id: historicalFrame.id,
         event_player_id: secondEntry.id,
+        ...entryZoneStamp(secondEntry.id),
         bracket_match_id: null,
         putts_made: 3,
         points_earned: 4,

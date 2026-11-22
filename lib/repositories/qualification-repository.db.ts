@@ -4,6 +4,7 @@ import type { Executor } from '@/lib/db/tx';
 import { events, event_players, players, qualification_frames, qualification_rounds } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
 import { InternalError, NotFoundError } from '@/lib/errors';
+import { entryZoneStamp } from './frame-repository.db';
 
 export interface QualificationRound {
   id: string;
@@ -41,7 +42,18 @@ function mapRound(row: typeof qualification_rounds.$inferSelect): QualificationR
 }
 
 function mapFrame(row: typeof qualification_frames.$inferSelect): QualificationFrame {
-  return { ...row, recorded_at: toIsoTimestamp(row.recorded_at) };
+  // Explicit fields: the zone stamp columns are server-only, and frames reach public scoring screens.
+  return {
+    id: row.id,
+    qualification_round_id: row.qualification_round_id,
+    event_id: row.event_id,
+    event_player_id: row.event_player_id,
+    frame_number: row.frame_number,
+    putts_made: row.putts_made,
+    points_earned: row.points_earned,
+    recorded_by: row.recorded_by,
+    recorded_at: toIsoTimestamp(row.recorded_at),
+  };
 }
 
 /**
@@ -194,6 +206,7 @@ export async function recordQualificationFrame(
     points_earned: data.pointsEarned,
     recorded_by: data.recordedBy ?? null,
     recorded_at: sql`now()`,
+    ...entryZoneStamp(data.eventPlayerId),
   }).onConflictDoUpdate({
     target: [qualification_frames.event_player_id, qualification_frames.frame_number],
     set: {
@@ -235,6 +248,7 @@ export async function recordQualificationFrames(
     points_earned: row.pointsEarned,
     recorded_by: null,
     recorded_at: sql`now()`,
+    ...entryZoneStamp(row.eventPlayerId),
   }))).onConflictDoUpdate({
     target: [qualification_frames.event_player_id, qualification_frames.frame_number],
     set: {

@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, sql, type SQL } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { chunks } from '@/lib/db/batch';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
@@ -289,6 +289,35 @@ export async function closePeriods(
   return closed;
 }
 
+/** Refresh closed periods' end stats, keeping the other fields (who evaluated them). */
+export async function updateClosedPeriodStats(
+  ex: Executor,
+  updates: ReadonlyArray<{ id: string; stats: Record<string, unknown> }>
+): Promise<void> {
+  for (const batch of chunks(updates)) {
+    const values = sql.join(batch.map((u) => sql`(${u.id}::uuid, ${JSON.stringify(u.stats)}::jsonb)`), sql`, `);
+    await ex.execute(sql`
+      update ${player_zone_periods} as p
+      set end_stats = coalesce(p.end_stats, '{}'::jsonb) || v.stats
+      from (values ${values}) as v(id, stats)
+      where p.id = v.id and p.ended_at is not null`);
+  }
+}
+
+/** Every zone period the event's frames (bracket and qualification) were putted in. */
+export async function getEventFramePeriodIds(ex: Executor, eventId: string): Promise<string[]> {
+  const rows = await ex.execute<{ id: string }>(sql`
+    select fr.zone_period_id as id
+    from ${frame_results} fr
+    join ${event_players} ep on ep.id = fr.event_player_id
+    where ep.event_id = ${eventId} and fr.zone_period_id is not null
+    union
+    select qf.zone_period_id
+    from ${qualification_frames} qf
+    where qf.event_id = ${eventId} and qf.zone_period_id is not null`);
+  return rows.map((row) => row.id);
+}
+
 export async function getPeriodHistory(ex: Executor, playerId: string, leagueId: string): Promise<ZonePeriodRow[]> {
   const rows = await ex.select().from(player_zone_periods)
     .where(and(eq(player_zone_periods.player_id, playerId), eq(player_zone_periods.league_id, leagueId)))
@@ -360,13 +389,15 @@ export interface EntrySnapshot {
 
 /**
  * Write entry snapshots in one statement per chunk. An entry with a recorded frame
- * is never changed (the first putt freezes the snapshot), whatever the caller read.
+ * is never changed (the first putt freezes the snapshot), whatever the caller read,
+ * unless `includeFramed` (a mid-event zone move: frames keep their own stamp).
  * Returns the ids actually updated.
  */
 export async function applyEntrySnapshots(
   ex: Executor,
   eventId: string,
-  snapshots: readonly EntrySnapshot[]
+  snapshots: readonly EntrySnapshot[],
+  opts: { includeFramed?: boolean } = {}
 ): Promise<string[]> {
   const updated: string[] = [];
   for (const batch of chunks(snapshots)) {
@@ -380,8 +411,9 @@ export async function applyEntrySnapshots(
           putt_distance_ft = v.putt_distance_ft, distance_override = v.distance_override
       from (values ${values}) as v(id, zone, zone_period_id, putt_distance_ft, distance_override)
       where ep.id = v.id and ep.event_id = ${eventId}
+        ${opts.includeFramed ? sql`` : sql`
         and not exists (select 1 from ${frame_results} fr where fr.event_player_id = ep.id)
-        and not exists (select 1 from ${qualification_frames} qf where qf.event_player_id = ep.id)
+        and not exists (select 1 from ${qualification_frames} qf where qf.event_player_id = ep.id)`}
       returning ep.id`);
     updated.push(...rows.map((row) => row.id));
   }
@@ -478,8 +510,44 @@ const entryCountJoins = sql`
   ) m on true`;
 
 /**
- * Per-entry counts for each period, in one statement for the whole set: entries
- * played under the period, not excluded, in completed events.
+ * Per-entry counts keyed by one column of each frame's zone stamp, so an entry whose
+ * zone changed mid-event yields one row per zone (or distance) it putted from. A
+ * bracket match with frames on both sides of a move counts toward both.
+ * `frames` limits the frame rows read (alias `x`); `entries` filters entries and events.
+ */
+function stampedEntryCounts(key: 'zone_period_id' | 'putt_distance_ft', frames: SQL, entries: SQL) {
+  const column = sql.raw(`x.${key}`);
+  return sql`
+    with seg as (
+      select x.event_player_id, ${column}::text as key, count(*) as frames, sum(x.putts_made) as putts_made,
+        count(distinct x.bracket_match_id) filter (
+          where bm.status in (${sql.join(FINISHED_MATCH_STATUSES.map((s) => sql`${s}`), sql`, `)})
+        ) as matches,
+        0 as q_frames, 0 as q_putts_made
+      from ${frame_results} x
+      left join ${bracket_match} bm on bm.id = x.bracket_match_id
+      where ${frames}
+      group by x.event_player_id, ${column}
+      union all
+      select x.event_player_id, ${column}::text, 0, 0, 0, count(*), sum(x.putts_made)
+      from ${qualification_frames} x
+      where ${frames}
+      group by x.event_player_id, ${column}
+    )
+    select s.key, e.id as event_id, e.event_date, e.created_at as event_created_at,
+      sum(s.frames) as frames, coalesce(sum(s.putts_made), 0) as frame_putts_made,
+      sum(s.q_frames) as qualification_frames, coalesce(sum(s.q_putts_made), 0) as qualification_putts_made,
+      sum(s.matches) as matches
+    from seg s
+    join ${event_players} ep on ep.id = s.event_player_id
+    join ${events} e on e.id = ep.event_id
+    where ${entries}
+    group by s.key, ep.id, e.id`;
+}
+
+/**
+ * Per-entry counts for each period, in one statement for the whole set: frames putted
+ * in the period, from entries not excluded, in completed events.
  */
 export async function getPeriodEntryCounts(
   ex: Executor,
@@ -488,13 +556,11 @@ export async function getPeriodEntryCounts(
   const result = new Map<string, EntryCounts[]>(periodIds.map((id) => [id, []]));
   if (periodIds.length === 0) return result;
   const ids = sql.join([...new Set(periodIds)].map((id) => sql`${id}::uuid`), sql`, `);
-  const rows = await ex.execute<CountsRow>(sql`
-    select ep.zone_period_id as key, ${entryCountColumns}
-    from ${event_players} ep
-    ${entryCountJoins}
-    where ep.zone_period_id in (${ids})
-      and not ep.exclude_from_handicap
-      and e.status = 'completed'`);
+  const rows = await ex.execute<CountsRow>(stampedEntryCounts(
+    'zone_period_id',
+    sql`x.zone_period_id in (${ids})`,
+    sql`not ep.exclude_from_handicap and e.status = 'completed'`
+  ));
   for (const row of rows) result.get(row.key)?.push(mapCounts(row));
   return result;
 }
@@ -509,13 +575,11 @@ export async function getCareerEntryCounts(
   playerId: string,
   leagueId: string | null
 ): Promise<Map<number, EntryCounts[]>> {
-  const rows = await ex.execute<CountsRow>(sql`
-    select ep.putt_distance_ft::text as key, ${entryCountColumns}
-    from ${event_players} ep
-    ${entryCountJoins}
-    where ep.player_id = ${playerId}
-      and e.status = 'completed'
-      ${leagueId ? sql`and e.league_id = ${leagueId}` : sql``}`);
+  const rows = await ex.execute<CountsRow>(stampedEntryCounts(
+    'putt_distance_ft',
+    sql`x.event_player_id in (select pe.id from ${event_players} pe where pe.player_id = ${playerId})`,
+    sql`e.status = 'completed' ${leagueId ? sql`and e.league_id = ${leagueId}` : sql``}`
+  ));
   const result = new Map<number, EntryCounts[]>();
   for (const row of rows) {
     const distance = Number(row.key);

@@ -1,6 +1,7 @@
 import { frame_results } from '@/lib/db/schema';
 import {
   getFrameCountsForMatches,
+  entryZoneStamp,
   getFrameResultsForMatch,
   getOrCreateFrameWithResults,
 } from '@/lib/repositories/frame-repository.db';
@@ -26,6 +27,7 @@ describe('frame repository (Drizzle)', () => {
       await tx.insert(frame_results).values({
         match_frame_id: first.id,
         event_player_id: eventPlayerId,
+        ...entryZoneStamp(eventPlayerId),
         bracket_match_id: match.id,
         putts_made: 2,
         points_earned: 2,

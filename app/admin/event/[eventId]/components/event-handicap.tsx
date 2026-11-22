@@ -233,7 +233,7 @@ export function zoneLadderText(view: EventHandicapView | null | undefined): stri
   return view.zones.map((zone) => formatDistanceFt(zone.distance_ft)).join(' / ');
 }
 
-/** Move the player to another zone: league-wide, and tonight until their first frame. */
+/** Move the player to another zone: league-wide, and tonight from their next frame. */
 function EntryZonePicker({ entry, busy, setBusy }: {
   entry: EventPlayer;
   busy: string | null;
@@ -246,7 +246,7 @@ function EntryZonePicker({ entry, busy, setBusy }: {
   if (!view || view.zones.length === 0) return null;
 
   const name = entry.player.full_name;
-  const tonight = isBeforeBracket(event);
+  const tonight = event.status !== 'completed';
   const targetDistance = view.zones.find((zone) => zone.zone === target)?.distance_ft;
 
   const move = async () => {
@@ -307,7 +307,7 @@ function EntryZonePicker({ entry, busy, setBusy }: {
       {target === null ? (
         <p className="text-xs text-muted-foreground">
           Changes their zone in the league
-          {tonight ? ', and tonight if they haven\'t putted yet.' : ' from their next event.'}
+          {tonight ? ', and tonight from their next frame.' : ' from their next event.'}
         </p>
       ) : (
         <>
@@ -331,7 +331,7 @@ function EntryZonePicker({ entry, busy, setBusy }: {
           </div>
           <p className="text-xs text-muted-foreground">
             {tonight
-              ? `From ${targetDistance !== undefined ? `${formatDistanceFt(targetDistance)} ft` : `Zone ${target}`} tonight (if they haven't putted yet) and in future events.`
+              ? `From ${targetDistance !== undefined ? `${formatDistanceFt(targetDistance)} ft` : `Zone ${target}`} on their next frame tonight and in future events. Frames already scored stay with their current zone.`
               : 'Applies from their next event.'}
           </p>
         </>

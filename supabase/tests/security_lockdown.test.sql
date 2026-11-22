@@ -182,7 +182,8 @@ SELECT is_empty(
 );
 
 SELECT table_privs_are('putting_league', 'bracket_match', 'anon', ARRAY['SELECT']);
-SELECT table_privs_are('putting_league', 'frame_results', 'anon', ARRAY['SELECT']);
+-- Column-level since 202611230000000_frame_zone_stamp (see frame_zone_stamp.test.sql).
+SELECT table_privs_are('putting_league', 'frame_results', 'anon', ARRAY[]::text[]);
 SELECT table_privs_are('putting_league', 'league_admins', 'authenticated', ARRAY['SELECT']);
 SELECT table_privs_are('putting_league', 'player_profiles', 'anon', ARRAY['SELECT']);
 SELECT table_privs_are('putting_league', 'rate_limits', 'anon', ARRAY[]::text[]);

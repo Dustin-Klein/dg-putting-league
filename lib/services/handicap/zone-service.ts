@@ -483,8 +483,10 @@ export async function resolveZoneSuggestion(
 
 /**
  * Move an event entry's player to a zone from the event page. The league zone changes
- * as with `setPlayerZone`; an entry without frames before the bracket also takes the
- * new zone tonight (dropping any hand-set distance). Returns whether tonight changed.
+ * as with `setPlayerZone`, and until the event is completed the entry takes the new
+ * zone at once (dropping any hand-set distance), even mid-event: frames already
+ * scored keep the zone they were putted from, later ones use the new one. Returns
+ * whether tonight changed.
  */
 export async function moveEntryZone(
   eventId: string,
@@ -498,7 +500,8 @@ export async function moveEntryZone(
 
   return withTransaction(pg, async (tx) => {
     await lockEvent(tx, eventId);
-    // FOR UPDATE waits out an in-flight first qualification frame, as for a distance override.
+    // FOR UPDATE waits out in-flight scoring (it holds the row FOR SHARE), so no frame
+    // commits with the old stamp after the move, nor the new stamp before it.
     const config = await eventDb.getEventBracketConfig(tx, eventId, { lock: 'update' });
     const event = await handicapDb.getEventHandicapContext(tx, eventId);
     if (!config || !event) throw new NotFoundError('Event not found');
@@ -506,9 +509,9 @@ export async function moveEntryZone(
     const [entry] = await handicapDb.getEntrySnapshotStates(tx, eventId, [eventPlayerId]);
     if (!entry) throw new NotFoundError('Player not found in this event');
 
-    const tonight = (event.status === 'created' || event.status === 'pre-bracket') && !entry.has_frames;
+    const tonight = event.status !== 'completed';
     await applyPlayerZone(tx, event.league_id, entry.player_id, zone, trimmed, user.id, { allowSame: tonight });
-    if (tonight) await refreshEntrySnapshots(tx, eventId, { entryIds: [entry.id] });
+    if (tonight) await refreshEntrySnapshots(tx, eventId, { entryIds: [entry.id], includeFramed: true });
     return { applied_tonight: tonight };
   });
 }

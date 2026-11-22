@@ -19,6 +19,7 @@ import { getPlayerProfile } from '@/lib/services/player-statistics/player-statis
 import { closeDb, createTestDb, withRollback } from './db/harness';
 import { playOutBracket } from './db/play';
 import { seedBracket, seedEvent, type Opponent } from './db/seed';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 const db = createTestDb();
 afterAll(() => closeDb(db));
@@ -60,6 +61,7 @@ describe('player statistics profile', () => {
       await tx.insert(frame_results).values({
         match_frame_id: historicalFrame.id,
         event_player_id: targetEventPlayerId,
+        ...entryZoneStamp(targetEventPlayerId),
         bracket_match_id: null,
         putts_made: 2,
         points_earned: 2,

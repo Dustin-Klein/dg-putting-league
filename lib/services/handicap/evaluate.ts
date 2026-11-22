@@ -12,7 +12,7 @@ export { decideZoneChange, appliesAutomatically, type Decision } from './decisio
 /**
  * Evaluate every player of a completed handicap event (plan 06 §6), inside the
  * completion transaction. Event completion and admin action are the only two writers
- * of a zone: nothing during a live event moves anyone.
+ * of a zone: nothing but an admin moves anyone during a live event.
  *
  * Precondition: the event row is already `completed` in this transaction, so the
  * period queries (completed events only) include its frames.
@@ -23,7 +23,10 @@ export { decideZoneChange, appliesAutomatically, type Decision } from './decisio
  *   event has evaluations" means it was evaluated.
  * - A player whose entry was played under a period that has since closed is recorded
  *   as skipped ('period_changed'); an entry the organizer excluded is skipped
- *   ('excluded') and not decided on earlier events' evidence either.
+ *   ('excluded') and not decided on earlier events' evidence either. An entry moved
+ *   mid-event from the event page is on the new period and is decided on it.
+ * - A period an admin closed during the event was closed before tonight's frames
+ *   counted; its end stats are recomputed now that they do.
  * - Promotions are applied; demotions are applied only with `auto_demote_enabled`,
  *   otherwise they stay open as suggestions for an admin.
  * - An eligible evaluation supersedes the player's open suggestion, before the new
@@ -128,6 +131,16 @@ export async function evaluateEventHandicaps(tx: Tx, eventId: string): Promise<E
     throw new InternalError('A zone period changed during evaluation');
   }
   await handicapDb.insertOpenPeriods(tx, event.league_id, moves);
+
+  const openIds = new Set([...openPeriods.values()].map((period) => period.id));
+  const closedDuringEvent = (await handicapDb.getEventFramePeriodIds(tx, eventId)).filter((id) => !openIds.has(id));
+  if (closedDuringEvent.length > 0) {
+    const closedCounts = await handicapDb.getPeriodEntryCounts(tx, closedDuringEvent);
+    await handicapDb.updateClosedPeriodStats(tx, closedDuringEvent.map((id) => ({
+      id,
+      stats: { ...combinePeriodStats(closedCounts.get(id) ?? [], settings) },
+    })));
+  }
 
   return getEvaluationSummary(tx, eventId);
 }

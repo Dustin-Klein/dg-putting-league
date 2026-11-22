@@ -13,7 +13,10 @@ import type { ZoneDefinition } from '@/lib/types/handicap';
  * 1. Refresh before the first putt: at `created → pre-bracket` (authoritative) and at
  *    bracket start (best effort), entries pick up any zone change since they were written.
  * 2. Freeze from the first recorded frame: no write changes zone, distance or period
- *    of an entry that has a frame. `applyEntrySnapshots` enforces it in SQL.
+ *    of an entry that has a frame (`applyEntrySnapshots` enforces it in SQL), except an
+ *    admin's mid-event zone move (`moveEntryZone`). That is safe because every frame
+ *    stamps the entry's period and distance when it is first scored, and stats read
+ *    the stamp: frames before the move stay with the old zone.
  *
  * Callers authorize and hold any event lock they need; this takes the league handicap
  * lock (last in the lock order) for handicap events.
@@ -33,19 +36,20 @@ export function zoneDistanceLookup(
 
 /**
  * Bring the event's entries (or the given ones) in line with the players' current
- * zones. Entries with recorded frames are left alone. For an event without handicaps
- * every entry putts from the event distance and has no zone.
+ * zones. Entries with recorded frames are left alone unless `includeFramed`. For an
+ * event without handicaps every entry putts from the event distance and has no zone.
  */
 export async function refreshEntrySnapshots(
   tx: Tx,
   eventId: string,
-  opts: { entryIds?: readonly string[] } = {}
+  opts: { entryIds?: readonly string[]; includeFramed?: boolean } = {}
 ): Promise<void> {
   const event = await handicapDb.getEventHandicapContext(tx, eventId);
   if (!event) throw new InternalError('Event not found for snapshot');
 
   const states = (await handicapDb.getEntrySnapshotStates(tx, eventId, opts.entryIds))
-    .filter((state) => !state.has_frames);
+    .filter((state) => opts.includeFramed || !state.has_frames);
+  const write = { includeFramed: opts.includeFramed };
   if (states.length === 0) return;
 
   if (!event.handicap_enabled) {
@@ -61,7 +65,7 @@ export async function refreshEntrySnapshots(
         putt_distance_ft: state.distance_override ? state.putt_distance_ft : event.putt_distance_ft,
         distance_override: state.distance_override,
       }));
-    await handicapDb.applyEntrySnapshots(tx, eventId, snapshots);
+    await handicapDb.applyEntrySnapshots(tx, eventId, snapshots, write);
     return;
   }
 
@@ -97,7 +101,7 @@ export async function refreshEntrySnapshots(
       distance_override: keepOverride,
     });
   }
-  await handicapDb.applyEntrySnapshots(tx, eventId, snapshots);
+  await handicapDb.applyEntrySnapshots(tx, eventId, snapshots, write);
 }
 
 /**

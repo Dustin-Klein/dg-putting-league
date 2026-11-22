@@ -8,6 +8,7 @@ import { closeDb, createTestDb, withRollback } from './db/harness';
 import { getBracketSnapshot, getParticipantPlayers, seedBracket } from './db/seed';
 import { expectScoresMatchFrames, getMatch, opponentId, playMatch, playableMatches, scoreMatch } from './db/play';
 import type { Executor } from '@/lib/db/tx';
+import { entryZoneStamp } from '@/lib/repositories/frame-repository.db';
 
 const db = createTestDb();
 afterAll(() => closeDb(db));
@@ -168,6 +169,7 @@ describe('recordFrameScores', () => {
       await tx.insert(frame_results).values({
         match_frame_id: frame10.id,
         event_player_id: team1[0],
+        ...entryZoneStamp(team1[0]),
         bracket_match_id: match.id,
         putts_made: 1,
         points_earned: 1,

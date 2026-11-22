@@ -330,9 +330,12 @@ export const frame_results = putting_league.table("frame_results", {
 	points_earned: integer().notNull(),
 	order_in_frame: smallint().notNull(),
 	recorded_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	zone_period_id: uuid(),
+	putt_distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
 }, (table) => [
 	check("frame_results_order_in_frame_check", sql`order_in_frame >= 1`),
 	check("frame_results_points_earned_check", sql`(points_earned >= 0) AND (points_earned <= 4)`),
+	check("frame_results_putt_distance_ft_check", sql`putt_distance_ft > (0)::numeric`),
 	check("frame_results_putts_made_check", sql`(putts_made >= 0) AND (putts_made <= 3)`),
 	foreignKey({
 			columns: [table.bracket_match_id],
@@ -349,10 +352,16 @@ export const frame_results = putting_league.table("frame_results", {
 			foreignColumns: [match_frames.id],
 			name: "frame_results_match_frame_id_fkey"
 		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.zone_period_id],
+			foreignColumns: [player_zone_periods.id],
+			name: "frame_results_zone_period_id_fkey"
+		}).onDelete("set null"),
 	index("idx_frame_results_bracket_match").using("btree", table.bracket_match_id.asc().nullsLast().op("int4_ops")),
-	index("idx_frame_results_event_player_recorded").using("btree", table.event_player_id.asc().nullsLast().op("uuid_ops"), table.recorded_at.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_frame_results_event_player_recorded").using("btree", table.event_player_id.asc().nullsLast().op("timestamptz_ops"), table.recorded_at.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_frame_results_match_frame").using("btree", table.match_frame_id.asc().nullsLast().op("uuid_ops")),
 	index("idx_frame_results_match_frame_player").using("btree", table.match_frame_id.asc().nullsLast().op("uuid_ops"), table.event_player_id.asc().nullsLast().op("uuid_ops")),
+	index("idx_frame_results_zone_period").using("btree", table.zone_period_id.asc().nullsLast().op("uuid_ops")).where(sql`(zone_period_id IS NOT NULL)`),
 	unique("frame_results_match_frame_id_event_player_id_key").on(table.match_frame_id, table.event_player_id),
 ]);
 
@@ -617,9 +626,12 @@ export const qualification_frames = putting_league.table("qualification_frames",
 	points_earned: integer().notNull(),
 	recorded_by: uuid(),
 	recorded_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	zone_period_id: uuid(),
+	putt_distance_ft: numeric({ precision: 5, scale:  2 }).notNull(),
 }, (table) => [
 	check("qualification_frames_frame_number_check", sql`frame_number > 0`),
 	check("qualification_frames_points_earned_check", sql`(points_earned >= 0) AND (points_earned <= 4)`),
+	check("qualification_frames_putt_distance_ft_check", sql`putt_distance_ft > (0)::numeric`),
 	check("qualification_frames_putts_made_check", sql`(putts_made >= 0) AND (putts_made <= 3)`),
 	foreignKey({
 			columns: [table.event_id],
@@ -641,9 +653,15 @@ export const qualification_frames = putting_league.table("qualification_frames",
 			foreignColumns: [users.id],
 			name: "qualification_frames_recorded_by_fkey"
 		}),
+	foreignKey({
+			columns: [table.zone_period_id],
+			foreignColumns: [player_zone_periods.id],
+			name: "qualification_frames_zone_period_id_fkey"
+		}).onDelete("set null"),
 	index("idx_qualification_frames_event").using("btree", table.event_id.asc().nullsLast().op("uuid_ops")),
 	index("idx_qualification_frames_event_player").using("btree", table.event_player_id.asc().nullsLast().op("uuid_ops")),
 	index("idx_qualification_frames_round").using("btree", table.qualification_round_id.asc().nullsLast().op("uuid_ops")),
+	index("idx_qualification_frames_zone_period").using("btree", table.zone_period_id.asc().nullsLast().op("uuid_ops")).where(sql`(zone_period_id IS NOT NULL)`),
 	unique("qualification_frames_event_player_id_frame_number_key").on(table.event_player_id, table.frame_number),
 ]);
 
