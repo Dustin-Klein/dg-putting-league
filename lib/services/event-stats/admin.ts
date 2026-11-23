@@ -112,19 +112,24 @@ function range(values: readonly number[]): RangeStat | null {
 
 /** The two spread statistics for one event's entries. */
 function spreadOf(
-  entries: readonly { teamId: string | null; frames: number; points: number }[],
+  entries: readonly { teamId: string | null; slot: number | null; entryId: string; frames: number; points: number }[],
   framesPerMatch: number
 ): { playerSd: number | null; players: number; teamSd: number | null; teams: number } {
   const ppf = entries.filter((e) => !isSmallSample(e.frames)).map((e) => pointsPerFrame(e.points, e.frames)!);
-  const byTeam = new Map<string, { frames: number; points: number }[]>();
+  // One contribution per team slot: a substitute and the player they replaced share it.
+  const byTeam = new Map<string, Map<number | string, { frames: number; points: number }>>();
   for (const entry of entries) {
     if (!entry.teamId) continue;
-    const list = byTeam.get(entry.teamId) ?? [];
-    list.push(entry);
-    byTeam.set(entry.teamId, list);
+    const slots = byTeam.get(entry.teamId) ?? new Map();
+    const key = entry.slot ?? entry.entryId;
+    const slot = slots.get(key) ?? { frames: 0, points: 0 };
+    slot.frames += entry.frames;
+    slot.points += entry.points;
+    slots.set(key, slot);
+    byTeam.set(entry.teamId, slots);
   }
   const teamValues = [...byTeam.values()]
-    .map((members) => teamPointsPerMatch(members, framesPerMatch))
+    .map((slots) => teamPointsPerMatch([...slots.values()], framesPerMatch))
     .filter((value): value is number => value !== null);
   return { playerSd: standardDeviation(ppf), players: ppf.length, teamSd: standardDeviation(teamValues), teams: teamValues.length };
 }
@@ -144,7 +149,7 @@ export function buildAnalytics(input: {
   const current = spreadOf(
     snapshot.entries.map((entry) => {
       const counts = entryStats.get(entry.id)?.counts;
-      return { teamId: entry.team_id, frames: counts?.frames ?? 0, points: counts?.points ?? 0 };
+      return { teamId: entry.team_id, slot: entry.slot, entryId: entry.id, frames: counts?.frames ?? 0, points: counts?.points ?? 0 };
     }),
     fpm
   );
@@ -157,7 +162,10 @@ export function buildAnalytics(input: {
   const leaguePlayer: number[] = [];
   const leagueTeam: number[] = [];
   for (const rows of byEvent.values()) {
-    const spread = spreadOf(rows.map((r) => ({ teamId: r.team_id, frames: r.frames, points: r.points })), rows[0].frames_per_match);
+    const spread = spreadOf(
+      rows.map((r) => ({ teamId: r.team_id, slot: r.slot, entryId: r.entry_id, frames: r.frames, points: r.points })),
+      rows[0].frames_per_match
+    );
     if (spread.playerSd !== null) leaguePlayer.push(spread.playerSd);
     if (spread.teamSd !== null) leagueTeam.push(spread.teamSd);
   }
@@ -196,6 +204,8 @@ export function buildAnalytics(input: {
       const counts = entryStats.get(entry.id)?.counts;
       const seasonCounts = season.players.get(entry.player_id)?.counts;
       if (!counts || isSmallSample(counts.frames) || !seasonCounts || isSmallSample(seasonCounts.reliableFrames)) continue;
+      // Mixed-distance event frames aren't comparable with a one-zone season baseline.
+      if ((entryStats.get(entry.id)?.groups.size ?? 0) > 1) continue;
       scatter.push({
         entry_id: entry.id,
         name: entry.full_name,

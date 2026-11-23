@@ -94,6 +94,8 @@ export interface PlayerRow {
   /** Most regulation-frame points in one match with a full set of regulation frames. */
   best_match: number | null;
   small_sample: boolean;
+  /** Frames from more than one zone or distance (a mid-event zone move); no season comparison then. */
+  zone_moved: boolean;
   season: SeasonLine | null;
 }
 
@@ -206,6 +208,7 @@ export interface AdminTeamRow {
   wins: number;
   losses: number;
   line: StatLine;
+  /** Members holding a team slot that has no frames this event. */
   zero_frame_members: string[];
 }
 

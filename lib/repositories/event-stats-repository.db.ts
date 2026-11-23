@@ -163,7 +163,7 @@ export async function getEventStatsSnapshot(ex: Executor, eventId: string): Prom
         select json_agg(json_build_object(
           'id', ep.id, 'player_id', ep.player_id, 'player_number', p.player_number,
           'full_name', p.full_name, 'zone', ep.zone, 'putt_distance_ft', ep.putt_distance_ft,
-          'team_id', coalesce(tm.team_id, sub.team_id), 'slot', tm.slot
+          'team_id', coalesce(tm.team_id, sub.team_id), 'slot', coalesce(tm.slot, sub.slot)
         ) order by p.full_name, ep.id)
         from ${event_players} ep
         join ${players} p on p.id = ep.player_id
@@ -172,7 +172,7 @@ export async function getEventStatsSnapshot(ex: Executor, eventId: string): Prom
           order by m.slot limit 1
         ) tm on true
         left join lateral (
-          select s.team_id from ${team_member_substitutions} s
+          select s.team_id, s.slot from ${team_member_substitutions} s
           where s.out_event_player_id = ep.id and tm.team_id is null
           order by s.created_at desc limit 1
         ) sub on true
@@ -386,6 +386,8 @@ export interface HistoryEntryRow {
   event_id: string;
   entry_id: string;
   team_id: string | null;
+  /** Team slot; a substitute shares the slot of the player they replaced. */
+  slot: number | null;
   frames_per_match: number;
   frames: number;
   points: number;
@@ -400,16 +402,22 @@ export async function getLeagueHistoryEntries(
   event: Pick<StatsEventRow, 'id' | 'league_id' | 'event_date' | 'created_at' | 'handicap_enabled'>
 ): Promise<HistoryEntryRow[]> {
   const rows = await ex.execute<HistoryEntryRow & Record<string, unknown>>(sql`
-    select e.id as event_id, ep.id as entry_id, tm.team_id, e.bracket_frame_count as frames_per_match,
+    select e.id as event_id, ep.id as entry_id, coalesce(tm.team_id, sub.team_id) as team_id,
+      coalesce(tm.slot, sub.slot) as slot, e.bracket_frame_count as frames_per_match,
       count(fr.id)::int as frames, coalesce(sum(fr.points_earned), 0)::int as points
     from ${event_players} ep
     join ${events} e on e.id = ep.event_id
     left join lateral (
-      select m.team_id from ${team_members} m where m.event_player_id = ep.id order by m.slot limit 1
+      select m.team_id, m.slot from ${team_members} m where m.event_player_id = ep.id order by m.slot limit 1
     ) tm on true
+    left join lateral (
+      select s.team_id, s.slot from ${team_member_substitutions} s
+      where s.out_event_player_id = ep.id and tm.team_id is null
+      order by s.created_at desc limit 1
+    ) sub on true
     left join ${frame_results} fr on fr.event_player_id = ep.id and fr.bracket_match_id is not null
     where ${earlierCompletedEvents(event)} and e.handicap_enabled = ${event.handicap_enabled}
-    group by e.id, ep.id, tm.team_id
+    group by e.id, ep.id, tm.team_id, tm.slot, sub.team_id, sub.slot
   `);
   return rows.map((row) => ({
     ...row,
