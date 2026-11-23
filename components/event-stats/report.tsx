@@ -277,7 +277,7 @@ export function PlayersTable({
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <Link href={`/player/${p.player_number}`} className="truncate text-sm font-semibold hover:underline">{p.name}</Link>
               <span className="text-xs text-muted-foreground">
-                {formatFt(p.distance_ft)} · {p.line.frames} frames{p.line.threes !== null ? ` · ${p.line.threes}× 3-for-3` : ''}
+                {formatFt(p.distance_ft)}{p.zone_moved ? ' (moved mid-event)' : ''} · {p.line.frames} frames{p.line.threes !== null ? ` · ${p.line.threes}× 3-for-3` : ''}
                 {p.season?.make_rate != null ? ` · season ${formatRate(p.season.make_rate)}` : ''}
               </span>
               {flagsFor?.(p.entry_id)}
@@ -318,6 +318,7 @@ export function PlayersTable({
                   <span className="inline-flex items-center gap-2">
                     {p.zone !== null && <ZoneBadge zone={p.zone} distanceFt={null} size="sm" />}
                     <span className="text-muted-foreground">{formatFt(p.distance_ft)}</span>
+                    {p.zone_moved && <span className="text-xs text-muted-foreground">· moved mid-event</span>}
                   </span>
                 </td>
                 <td className={cn(td, num, 'font-semibold')}>{formatRate(p.line.make_rate)}</td>

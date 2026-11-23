@@ -106,6 +106,45 @@ describe('buildEventStats', () => {
     expect(warnings.filter((w) => w.kind === 'zero_frames')).toHaveLength(2);
   });
 
+  it('counts a substitute and the player they replaced as one team slot', () => {
+    const s = snapshot({
+      entries: [entry('a1', 'A'), entry('a2', 'A', { slot: 2 }), entry('a3', 'A', { slot: 2 }), entry('b1', 'B'), entry('b2', 'B', { slot: 2 })],
+      teams: [{ id: 'A', seed: 1, placement: null }, { id: 'B', seed: 2, placement: null }],
+      matches: [completed('A', 'B', 20, 10, { id: 1 }), completed('A', 'B', 20, 10, { id: 2 })],
+      frames: [
+        frames('a1', 1, 5, 2), frames('a2', 1, 5, 2), frames('b1', 1, 5, 1), frames('b2', 1, 5, 1),
+        // a3 replaced a2 before match 2.
+        frames('a1', 2, 5, 2), frames('a3', 2, 5, 2), frames('b1', 2, 5, 1), frames('b2', 2, 5, 1),
+      ],
+    });
+    const { report, warnings, teams } = buildEventStats(s, null);
+    expect(report.standings.find((t) => t.team_id === 'A')!.line.points_per_match).toBe(20);
+    expect(teams.find((t) => t.team_id === 'A')!.zero_frame_members).toEqual([]);
+    expect(warnings.filter((w) => w.kind === 'zero_frames')).toEqual([]);
+  });
+
+  it('marks a player who moved zones mid-event and drops their season comparison', () => {
+    const s = snapshot({
+      event: eventRow({ handicap_enabled: true }),
+      entries: [entry('a1', 'A', { zone: 3, putt_distance_ft: 33 }), entry('b1', 'B', { zone: 2, putt_distance_ft: 27 })],
+      teams: [{ id: 'A', seed: 1, placement: null }, { id: 'B', seed: 2, placement: null }],
+      zoneDistances: [{ zone: 2, distance_ft: 27 }, { zone: 3, distance_ft: 33 }],
+      matches: [completed('A', 'B', 20, 10, { id: 1 }), completed('A', 'B', 20, 10, { id: 2 })],
+      frames: [
+        frames('a1', 1, 5, 3, { zone: 2, distance: 27 }), frames('a1', 2, 5, 2, { zone: 3, distance: 33 }),
+        frames('b1', 1, 5, 1, { zone: 2, distance: 27 }), frames('b1', 2, 5, 1, { zone: 2, distance: 27 }),
+      ],
+    });
+    const line = { label: 'x', frames: 50, make_rate: 0.5, points_per_match: 10 };
+    const season = { field: null, players: new Map([['player-a1', { counts: { frames: 50, points: 100, reliableFrames: 50, reliableMade: 75 }, line }], ['player-b1', { counts: { frames: 50, points: 100, reliableFrames: 50, reliableMade: 75 }, line }]]) };
+    const { report } = buildEventStats(s, season);
+    const a1 = report.players.find((p) => p.entry_id === 'a1')!;
+    expect(a1.zone_moved).toBe(true);
+    expect(a1.season).toBeNull();
+    expect(report.players.find((p) => p.entry_id === 'b1')!).toMatchObject({ zone_moved: false, season: line });
+    expect(report.zone_groups.map((g) => [g.zone, g.players])).toEqual([[2, 2], [3, 1]]);
+  });
+
   it('handles teams of 1 and 3', () => {
     const singles = snapshot({
       event: eventRow({ team_size: 1, bracket_format: 'single_elimination', double_grand_final: false }),
@@ -251,8 +290,8 @@ describe('admin report pieces', () => {
       teams: model.teams,
       season,
       history: [
-        { event_id: 'old', entry_id: 'x1', team_id: 'X', frames_per_match: 5, frames: 10, points: 30 },
-        { event_id: 'old', entry_id: 'x2', team_id: 'Y', frames_per_match: 5, frames: 10, points: 10 },
+        { event_id: 'old', entry_id: 'x1', team_id: 'X', slot: 1, frames_per_match: 5, frames: 10, points: 30 },
+        { event_id: 'old', entry_id: 'x2', team_id: 'Y', slot: 1, frames_per_match: 5, frames: 10, points: 10 },
       ],
     });
     expect(analytics.spread.player_ppf_sd).toBeCloseTo(1);

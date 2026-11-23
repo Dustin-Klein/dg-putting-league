@@ -66,6 +66,7 @@ const player = (p: PlayerRow): PlayerRow => ({
   matches: p.matches,
   best_match: p.best_match,
   small_sample: p.small_sample,
+  zone_moved: p.zone_moved,
   season: season(p.season),
 });
 

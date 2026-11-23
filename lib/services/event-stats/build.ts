@@ -47,6 +47,8 @@ import type { SeasonContext } from './season';
 export interface EntryStats {
   entry: StatsEntryRow;
   counts: FrameCounts;
+  /** (zone, distance) groups the entry's frames fall in. */
+  groups: Set<string>;
   matchIds: Set<number>;
   matchLines: PlayerMatchLine[];
 }
@@ -131,7 +133,7 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
   const statsFor = (entry: StatsEntryRow): EntryStats => {
     let stats = entryStats.get(entry.id);
     if (!stats) {
-      stats = { entry, counts: emptyCounts(), matchIds: new Set(), matchLines: [] };
+      stats = { entry, counts: emptyCounts(), groups: new Set(), matchIds: new Set(), matchLines: [] };
       entryStats.set(entry.id, stats);
     }
     return stats;
@@ -170,6 +172,7 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
 
     const zone = event.handicap_enabled ? (agg.zone ?? entry.zone) : null;
     const key = `${zone ?? '-'}:${agg.distance_ft}`;
+    stats.groups.add(key);
     const group = groupCounts.get(key) ?? { zone, distance: agg.distance_ft, total: emptyCounts(), byEntry: new Map() };
     addCounts(group.total, counts);
     group.byEntry.set(entry.id, addCounts(group.byEntry.get(entry.id) ?? emptyCounts(), counts));
@@ -189,6 +192,15 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
   }
   const member = (entry: StatsEntryRow): StatsMember => ({ entry_id: entry.id, player_number: entry.player_number, name: entry.full_name });
   const teamName = (teamId: string | null) => sideLabel((teamId ? membersByTeam.get(teamId) ?? [] : []).map((e) => e.full_name));
+  /** A team's entries by slot: a substitute and the player they replaced share one slot. */
+  const slotsOf = (teamId: string): StatsEntryRow[][] => {
+    const bySlot = new Map<number | string, StatsEntryRow[]>();
+    for (const entry of membersByTeam.get(teamId) ?? []) {
+      const key = entry.slot ?? entry.id;
+      bySlot.set(key, [...(bySlot.get(key) ?? []), entry]);
+    }
+    return [...bySlot.values()];
+  };
 
   // --- Official results --------------------------------------------------------
   const record = new Map<string, { wins: number; losses: number }>();
@@ -255,9 +267,9 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
     }
     if (row.frame_count > 0) {
       const missing = [row.team1_id, row.team2_id]
-        .flatMap((teamId) => (teamId ? membersByTeam.get(teamId) ?? [] : []))
-        .filter((entry) => !match.entriesWithFrames.has(entry.id))
-        .map((entry) => entry.full_name);
+        .flatMap((teamId) => (teamId ? slotsOf(teamId) : []))
+        .filter((slot) => !slot.some((entry) => match.entriesWithFrames.has(entry.id)))
+        .map((slot) => slot.map((entry) => entry.full_name).join(' / '));
       if (missing.length > 0) {
         warnings.push({
           kind: 'zero_frames',
@@ -298,6 +310,7 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
     const counts = stats?.counts ?? emptyCounts();
     const small = isSmallSample(counts.frames);
     const best = stats ? bestMatch(stats.matchLines, fpm) : null;
+    const moved = (stats?.groups.size ?? 0) > 1;
     players.push({
       entry_id: entry.id,
       player_number: entry.player_number,
@@ -309,7 +322,8 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
       matches: stats?.matchIds.size ?? 0,
       best_match: small || !best ? null : best.regulationPoints,
       small_sample: small,
-      season: season?.players.get(entry.player_id)?.line ?? null,
+      zone_moved: moved,
+      season: moved ? null : season?.players.get(entry.player_id)?.line ?? null,
     });
   }
   players.sort((a, b) => (a.zone ?? 0) - (b.zone ?? 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -321,9 +335,11 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
     const members = membersByTeam.get(team.id) ?? [];
     const memberCounts = members.map((entry) => entryStats.get(entry.id)?.counts ?? emptyCounts());
     const counts = sumCounts(memberCounts);
+    const slots = slotsOf(team.id);
+    const slotCounts = slots.map((slot) => sumCounts(slot.map((entry) => entryStats.get(entry.id)?.counts ?? emptyCounts())));
     const line: StatLine = {
       ...toStatLine(counts, reliable, fpm),
-      points_per_match: teamPointsPerMatch(memberCounts, fpm),
+      points_per_match: teamPointsPerMatch(slotCounts, fpm),
     };
     const r = record.get(team.id) ?? { wins: 0, losses: 0 };
     const live = event.status === 'bracket';
@@ -347,7 +363,7 @@ export function buildEventStats(snapshot: EventStatsSnapshot, season: SeasonCont
       losses: r.losses,
       line,
       zero_frame_members: counts.frames > 0
-        ? members.filter((_, i) => memberCounts[i].frames === 0).map((entry) => entry.full_name)
+        ? slots.filter((_, i) => slotCounts[i].frames === 0).flatMap((slot) => slot.map((entry) => entry.full_name))
         : [],
     });
   }
