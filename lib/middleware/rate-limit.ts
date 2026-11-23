@@ -54,6 +54,15 @@ const publicBracketConfig: RateLimitConfig = {
   maxRequests: 1000,
 };
 
+/**
+ * Public event stats. The live page polls about every 30 s, so a venue's shared IP
+ * stays far below this; the limit only stops runaway clients.
+ */
+const publicStatsConfig: RateLimitConfig = {
+  windowMs: 60 * 1000,
+  maxRequests: 600,
+};
+
 function getClientIp(request: Request): string {
   // request.ip is available on Vercel/Edge runtime but not in all environments
   const ip = (request as NextRequest & { ip?: string }).ip;
@@ -130,6 +139,12 @@ export async function withPublicBracketRateLimit(
   request: Request
 ): Promise<NextResponse | null> {
   return withRateLimit(request, 'public:bracket', publicBracketConfig);
+}
+
+export async function withPublicStatsRateLimit(
+  request: Request
+): Promise<NextResponse | null> {
+  return withRateLimit(request, 'public:stats', publicStatsConfig);
 }
 
 const ACCESS_CODE_FAILURE_KEY = 'score:access-code-failure';

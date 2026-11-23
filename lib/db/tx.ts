@@ -21,7 +21,7 @@ export type Executor = Db | Tx;
 export function withTransaction<T>(
   ex: Executor,
   fn: (tx: Tx) => Promise<T>,
-  opts?: { isolationLevel?: 'read committed' | 'serializable' }
+  opts?: { isolationLevel?: 'read committed' | 'repeatable read' | 'serializable'; accessMode?: 'read only' | 'read write' }
 ): Promise<T> {
   if ('rollback' in ex) {
     return ex.transaction(fn);

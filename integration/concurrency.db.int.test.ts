@@ -191,3 +191,44 @@ describe('race: event completion vs. bracket writes', () => {
     ).rejects.toThrow('Event is not in bracket play');
   });
 });
+
+describe('race: event stats vs. scoring', () => {
+  it('always reads one consistent snapshot while frames are being scored', async () => {
+    const { getEventStatsSnapshot } = await import('@/lib/repositories/event-stats-repository.db');
+    const { buildEventStats } = await import('@/lib/services/event-stats/build');
+    const event = await newBracket(4);
+    const snap = await getBracketSnapshot(db, event.eventId);
+    const live = snap.matches.filter(
+      (m) => m.status === MatchStatus.Ready && opponentId(m.opponent1) != null && opponentId(m.opponent2) != null
+    ).slice(0, 2);
+    const sides = await Promise.all(live.map(async (m) => [
+      ...(await getParticipantPlayers(db, event.eventId, opponentId(m.opponent1)!)),
+      ...(await getParticipantPlayers(db, event.eventId, opponentId(m.opponent2)!)),
+    ]));
+
+    const scoring = (async () => {
+      for (let frame = 1; frame <= 5; frame++) {
+        await Promise.all(live.map((m, i) => recordFrameScores(db, {
+          eventId: event.eventId,
+          matchId: m.id,
+          frameNumber: frame,
+          scorer: 'public',
+          scores: sides[i].map((id) => ({ event_player_id: id, putts_made: frame % 4 })),
+        })));
+      }
+    })();
+    const reads = (async () => {
+      for (let i = 0; i < 20; i++) {
+        const snapshot = (await getEventStatsSnapshot(db, event.eventId))!;
+        const { report } = buildEventStats(snapshot, null);
+        const playerFrames = report.players.reduce((t, p) => t + p.line.frames, 0);
+        const matchFrames = snapshot.matches.reduce((t, m) => t + m.frame_count, 0);
+        expect(report.field.frames).toBe(playerFrames);
+        expect(playerFrames).toBe(matchFrames);
+        // Every frame is scored for all four players at once.
+        expect(playerFrames % 4).toBe(0);
+      }
+    })();
+    await Promise.all([scoring, reads]);
+  });
+});

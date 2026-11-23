@@ -1,5 +1,6 @@
 import 'server-only';
 import { Status } from 'brackets-model';
+import { isByeMatch } from '@/lib/brackets/match-state';
 import { lockEvent, lockMatches, withTransaction, type Executor } from '@/lib/db/tx';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as eventPlayerDb from '@/lib/repositories/event-player-repository.db';
@@ -11,10 +12,6 @@ import { lockEventLanes, resetOccupiedLanesToIdle } from '@/lib/repositories/lan
 import { BadRequestError, ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/utils/logger';
 import { requireEventAdmin } from './event-service';
-
-function isBye(match: { opponent1: unknown; opponent2: unknown }): boolean {
-  return match.opponent1 === null || match.opponent2 === null;
-}
 
 export interface ReopenOptions {
   keepTeams: boolean;
@@ -72,7 +69,7 @@ export function reopenRegistrationDb(ex: Executor, eventId: string, options: Reo
     const scored = [...locked.values()].filter((match) =>
       (frames[match.id] ?? 0) > 0 ||
       match.status === Status.Running ||
-      (match.status >= Status.Completed && match.status !== Status.Archived && !isBye(match))
+      (match.status >= Status.Completed && match.status !== Status.Archived && !isByeMatch(match))
     ).length;
     if (scored > 0 && !options.discardScores) {
       throw new ConflictError(

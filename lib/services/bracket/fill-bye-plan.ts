@@ -2,6 +2,7 @@ import { BracketsManager } from 'brackets-manager';
 import type { InputStage, StageSettings, StageType } from 'brackets-model';
 import { Status } from 'brackets-model';
 import { MemoryBracketStorage } from './memory-bracket-storage';
+import { isByeMatch } from '@/lib/brackets/match-state';
 
 /**
  * Filling a Round 1 bye: the bracket is rebuilt in memory with the new participant in
@@ -58,9 +59,7 @@ export class FillByePlanFailure extends Error {
 
 const WINNERS_GROUP = 1;
 
-export function isByeMatch(match: Pick<PlanMatch, 'opponent1' | 'opponent2'>): boolean {
-  return match.opponent1 === null || match.opponent2 === null;
-}
+export { isByeMatch };
 
 function key(groupNumber: number, roundNumber: number, matchNumber: number): string {
   return `${groupNumber}:${roundNumber}:${matchNumber}`;

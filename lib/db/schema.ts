@@ -295,6 +295,7 @@ export const events = putting_league.table("events", {
 	bracket_format: bracket_format().default('double_elimination').notNull(),
 	third_place_match: boolean().default(false).notNull(),
 	reopened_team_draft: jsonb(),
+	putt_counts_reliable: boolean().default(true).notNull(),
 }, (table) => [
 	check("access_code_normalized", sql`access_code = lower(TRIM(BOTH FROM access_code))`),
 	check("events_bracket_frame_count_check", sql`(bracket_frame_count > 0) AND (bracket_frame_count <= 10)`),

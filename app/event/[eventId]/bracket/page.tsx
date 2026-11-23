@@ -287,6 +287,7 @@ export default function PublicBracketPage({
         onRefresh={bracketRefresh.refresh}
         isRefreshing={loading}
         onPresent={enterPresentationMode}
+        statsHref={eventId ? `/event/${eventId}/stats` : undefined}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
