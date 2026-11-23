@@ -81,7 +81,7 @@ export default async function PublicLeaguePage({
                   <th scope="col" className="px-2 py-3.5">Location</th>
                   <th scope="col" className="px-2 py-3.5">Participants</th>
                   <th scope="col" className="px-2 py-3.5">Status</th>
-                  <th scope="col" className="px-5 py-3.5 text-right"><span className="sr-only">Bracket</span></th>
+                  <th scope="col" className="px-5 py-3.5 text-right"><span className="sr-only">Bracket and stats</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -94,10 +94,17 @@ export default async function PublicLeaguePage({
                       <td className="px-2 py-3.5 tabular-nums">{event.participant_count}</td>
                       <td className="px-2 py-3.5"><EventStatusBadge status={event.status} /></td>
                       <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                        {hasBracket && (
-                          <Link href={`/event/${event.id}/bracket`} className="font-semibold text-info hover:underline">
-                            {event.status === 'bracket' ? 'Live bracket' : 'View Bracket'} →
-                          </Link>
+                        {hasBracket ? (
+                          <span className="inline-flex gap-4">
+                            <Link href={`/event/${event.id}/bracket`} className="font-semibold text-info hover:underline">
+                              {event.status === 'bracket' ? 'Live bracket' : 'View Bracket'} →
+                            </Link>
+                            <Link href={`/event/${event.id}/stats`} className="font-semibold text-info hover:underline">
+                              Stats →
+                            </Link>
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No stats yet</span>
                         )}
                       </td>
                     </tr>

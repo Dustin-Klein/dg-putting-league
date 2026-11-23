@@ -412,6 +412,8 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
               <>
                 {' · '}
                 <Link href={`/event/${event.id}/bracket`} className="text-info hover:underline">Public bracket</Link>
+                {' · '}
+                <Link href={`/event/${event.id}/stats`} className="text-info hover:underline">Public stats</Link>
               </>
             )}
           </p>

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EntryZoneCell, EventHandicapProvider, EventHandicapSummary } from './components/event-handicap';
 import { EventBracketProvider } from './components/event-bracket-context';
 import { SecondChancePanel, SecondChanceRosterPanel } from './components/second-chance';
+import { EventStatsTab } from './components/event-stats-tab';
 
 function EventContent({
   event,
@@ -26,7 +27,7 @@ function EventContent({
 
   if (event.status === 'completed') {
     const entries = new Map(event.players.map((entry) => [entry.id, entry]));
-    return (
+    const results = (
       <div className="space-y-8">
         <ResultsDisplay
           eventId={event.id}
@@ -41,6 +42,19 @@ function EventContent({
         <EventHandicapSummary />
       </div>
     );
+    if (!isAdmin) return results;
+    return (
+      <Tabs defaultValue="results" className="w-full">
+        <div className="flex justify-center mb-6">
+          <TabsList>
+            <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="stats">Stats</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="results">{results}</TabsContent>
+        <TabsContent value="stats"><EventStatsTab eventId={event.id} /></TabsContent>
+      </Tabs>
+    );
   }
 
   if (event.status === 'bracket') {
@@ -50,6 +64,7 @@ function EventContent({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="teams">Teams ({event.teams?.length || 0})</TabsTrigger>
+            {isAdmin && <TabsTrigger value="stats">Stats</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -66,6 +81,12 @@ function EventContent({
         <TabsContent value="teams">
           <TeamDisplay event={event} isAdmin={isAdmin} onChanged={onRefresh} />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="stats">
+            <EventStatsTab eventId={event.id} />
+          </TabsContent>
+        )}
       </Tabs>
     );
   }

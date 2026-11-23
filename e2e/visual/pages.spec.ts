@@ -50,6 +50,12 @@ test('bracket', async ({ page }) => {
   await snap(page, 'bracket');
 });
 
+test('event stats', async ({ page }) => {
+  await page.goto(`/event/${seed.eventId}/stats`);
+  await expect(page.getByRole('heading', { name: 'Players' })).toBeVisible();
+  await snap(page, 'event-stats');
+});
+
 test('players', async ({ page }) => {
   await page.goto('/players');
   // The page lists nothing until a search.

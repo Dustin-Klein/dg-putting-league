@@ -1,6 +1,7 @@
 'use client';
 
-import { ChevronLeft, Presentation, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, ChevronLeft, Presentation, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface BracketToolbarProps {
@@ -11,6 +12,8 @@ interface BracketToolbarProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   onPresent: () => void;
+  /** Link to the event's public stats report. */
+  statsHref?: string;
 }
 
 const MIN_SCALE = 25;
@@ -25,6 +28,7 @@ export function BracketToolbar({
   onRefresh,
   isRefreshing,
   onPresent,
+  statsHref,
 }: BracketToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2.5 md:gap-4">
@@ -77,6 +81,14 @@ export function BracketToolbar({
         <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
         <span className="max-md:sr-only">Refresh</span>
       </Button>
+      {statsHref && (
+        <Button variant="outline" asChild className="max-md:size-11 max-md:px-0">
+          <Link href={statsHref} aria-label="Stats">
+            <BarChart3 className="size-4" />
+            <span className="max-md:sr-only">Stats</span>
+          </Link>
+        </Button>
+      )}
       <Button onClick={onPresent} className="max-md:hidden">
         <Presentation className="size-4" />
         Present on TV
