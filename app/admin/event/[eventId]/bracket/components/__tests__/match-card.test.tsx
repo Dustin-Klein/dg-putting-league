@@ -11,23 +11,28 @@ beforeAll(() => {
 
 it('shows a steady on-deck indicator in the match-number column and removes it when assigned or running', () => {
   const { container, rerender } = render(<MatchCard match={match} matchNumber={1} onDeckPosition={1} />);
-  const label = screen.getByLabelText('On deck #1');
+  const label = screen.getByLabelText('On deck');
   expect(label.parentElement).toHaveTextContent('M1');
-  expect(label).toHaveTextContent('#1');
+  expect(label).toHaveTextContent('On deck');
   rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={2} />);
-  expect(screen.getByLabelText('On deck #2')).toHaveTextContent('#2');
+  expect(screen.getByLabelText('In the hole')).toHaveTextContent('In the hole');
+  rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={3} />);
+  expect(screen.getByLabelText('Up #3')).toBeInTheDocument();
+  rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={5} />);
+  expect(screen.getByLabelText('Up #5')).toBeInTheDocument();
+  rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={2} />);
   expect(container.querySelector('[data-state="on-deck"]')).toBeInTheDocument();
   expect(container.querySelector('.border-on-deck')).toBeInTheDocument();
   expect(container.querySelector('.animate-pulse-ring')).toBeNull();
   rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={1} laneLabel="Lane 1" />);
-  expect(screen.queryByLabelText('On deck #1')).toBeNull();
+  expect(screen.queryByLabelText('On deck')).toBeNull();
   expect(container.querySelector('[data-state="called"]')).toBeInTheDocument();
   expect(container.querySelector('.border-warning.animate-pulse-ring')).toBeInTheDocument();
   rerender(<MatchCard match={{ ...match, status: Status.Running }} matchNumber={1} onDeckPosition={1} />);
-  expect(screen.queryByLabelText('On deck #1')).toBeNull();
+  expect(screen.queryByLabelText('On deck')).toBeNull();
   expect(container.querySelector('[data-state="running"]')).toHaveClass('border-success');
   rerender(<MatchCard match={match} matchNumber={1} onDeckPosition={1} isIdle />);
-  expect(screen.queryByLabelText('On deck #1')).toBeNull();
+  expect(screen.queryByLabelText('On deck')).toBeNull();
   expect(container.querySelector('[data-state="idle"]')).toBeInTheDocument();
   expect(container.querySelector('.border-destructive.animate-pulse-ring-fast')).toBeInTheDocument();
 });

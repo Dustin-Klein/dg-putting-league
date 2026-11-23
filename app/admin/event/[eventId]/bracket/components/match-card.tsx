@@ -138,6 +138,13 @@ const STRIP_CLASSES = {
   waiting: 'text-muted-foreground',
 } as const;
 
+const QUEUE_LABELS = ['On deck', 'In the hole'];
+
+/** Baseball-style name for a lane-queue position; past the named spots, fall back to the number. */
+function onDeckLabel(position: number): string {
+  return QUEUE_LABELS[position - 1] ?? `Up #${position}`;
+}
+
 export function MatchCard({
   match,
   team1,
@@ -237,12 +244,11 @@ export function MatchCard({
         )}
         {showOnDeck && (
           <span
-            className="text-[9px] leading-tight text-center font-bold whitespace-nowrap uppercase"
-            aria-label={`On deck #${onDeckPosition}`}
-            title={`On deck #${onDeckPosition} in automatic lane assignment order`}
+            className="px-0.5 text-[9px] leading-tight text-center font-bold uppercase"
+            aria-label={onDeckLabel(onDeckPosition)}
+            title={`${onDeckLabel(onDeckPosition)}: #${onDeckPosition} in automatic lane assignment order`}
           >
-            On deck
-            <span className="block font-score text-base leading-none tabular-nums">#{onDeckPosition}</span>
+            {onDeckLabel(onDeckPosition)}
           </span>
         )}
         {hasFrames ? (
