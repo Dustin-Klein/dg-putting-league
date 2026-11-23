@@ -324,7 +324,7 @@ function placementsForEvents(
   ];
 }
 
-function calculateMatchRecords(
+export function calculateMatchRecords(
   matches: PlacementMatchData[],
   teamIds: string[]
 ): Map<string, { wins: number; losses: number }> {
@@ -332,6 +332,8 @@ function calculateMatchRecords(
   const records = new Map<string, { wins: number; losses: number }>();
 
   for (const match of matches) {
+    // A bye is stored as a finished match with a 'win' and no opponent; it was never played.
+    if (match.opponent1?.id == null || match.opponent2?.id == null) continue;
     for (const [teamId, opponent] of [
       [match.opponent1TeamId, match.opponent1],
       [match.opponent2TeamId, match.opponent2],

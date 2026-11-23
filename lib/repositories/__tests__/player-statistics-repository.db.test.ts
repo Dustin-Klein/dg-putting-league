@@ -1,5 +1,6 @@
 import {
   calculateEventPlacements,
+  calculateMatchRecords,
   type PlacementMatchData,
 } from '../player-statistics-repository.db';
 
@@ -48,5 +49,27 @@ describe('calculateEventPlacements', () => {
       { eventId: 'event-1', teamId: 'team-2', placement: 2 },
       { eventId: 'event-1', teamId: 'team-3', placement: 3 },
     ]);
+  });
+});
+
+describe('calculateMatchRecords', () => {
+  it('counts played wins and losses per event and team', () => {
+    const records = calculateMatchRecords(
+      [match({}), match({ id: 2, opponent1: { id: 1, result: 'loss' }, opponent2: { id: 2, result: 'win' } })],
+      ['team-1']
+    );
+    expect(records).toEqual(new Map([['event-1:team-1', { wins: 1, losses: 1 }]]));
+  });
+
+  it('does not count a bye as a win', () => {
+    const records = calculateMatchRecords(
+      [
+        match({ id: 1, opponent2: null, opponent2TeamId: null }),
+        match({ id: 2, opponent1: null, opponent1TeamId: null, opponent2: { id: 1, result: 'win' }, opponent2TeamId: 'team-1' }),
+        match({ id: 3 }),
+      ],
+      ['team-1']
+    );
+    expect(records).toEqual(new Map([['event-1:team-1', { wins: 1, losses: 0 }]]));
   });
 });
