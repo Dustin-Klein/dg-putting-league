@@ -450,11 +450,10 @@ export function MatchesSectionView({ stats }: { stats: PublicEventStats }) {
 }
 
 export function ReportFooter({ stats }: { stats: PublicEventStats }) {
+  if (stats.event.putt_counts_reliable) return null;
   return (
     <footer className="flex flex-col gap-1 border-t pt-4 text-xs text-muted-foreground">
-      {!stats.event.putt_counts_reliable && <span>Imported scores: points only. Make %, putts mix and 3-for-3 aren&apos;t available for this event.</span>}
-      <span>Stats follow the event entry, not the physical thrower.</span>
-      <span>Results use official match scores; player stats use scored frames.</span>
+      <span>Imported scores: points only. Make %, putts mix and 3-for-3 aren&apos;t available for this event.</span>
     </footer>
   );
 }
