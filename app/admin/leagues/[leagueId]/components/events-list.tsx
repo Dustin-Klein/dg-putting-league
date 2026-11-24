@@ -12,7 +12,9 @@ import { StatusTrack } from '@/components/event-status-track';
 import { LeagueTimeline, TimelineBranch } from '@/components/league/league-timeline';
 import { SecondChanceMark } from '@/components/league/second-chance-mark';
 import { useToast } from '@/components/ui/use-toast';
-import { eventDistanceLabel, formatMoney, type EventSetupContext } from '@/lib/utils/event-setup';
+import { eventDistanceLabel, type EventSetupContext } from '@/lib/utils/event-setup';
+import { MoneyNote } from '@/components/league/money-note';
+import { LentLanes } from '@/components/league/lent-lanes';
 import { groupEventsIntoNights, type LeagueNight } from '@/lib/utils/league-nights';
 import { cn } from '@/lib/utils/utils';
 
@@ -39,17 +41,6 @@ function eventMeta(event: AdminLeagueEvent) {
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-/** Unpaid players until everyone has paid, then the pot once the night is over. */
-function MoneyNote({ event }: { event: AdminLeagueEvent }) {
-  if (event.participant_count === 0) return null;
-  const unpaid = event.participant_count - event.paid_count;
-  if (unpaid > 0) return <span className="text-[13px] font-semibold text-warning">{unpaid} unpaid</span>;
-  if (event.status === 'completed' && event.entry_fee_per_player) {
-    return <span className="text-[13px] text-muted-foreground">{formatMoney(event.paid_count * event.entry_fee_per_player)} pot</span>;
-  }
-  return <span className="text-[13px] text-muted-foreground">all paid</span>;
 }
 
 /** The main event most recently finished or still in bracket play may still get a second chance. */
@@ -173,19 +164,7 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
             <Link href={`/admin/event/${event.id}`} className="min-w-[140px] flex-[1_1_160px] text-[15px] hover:underline">
               <SecondChanceMark iconClassName="size-[15px]" />
             </Link>
-            {event.borrowed_lane_labels.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
-                Lanes lent
-                {event.borrowed_lane_labels.map((label) => (
-                  <span
-                    key={label}
-                    className="flex h-7 min-w-[26px] items-center justify-center rounded-md border border-info bg-info/15 px-1 font-score text-[17px] font-bold text-info"
-                  >
-                    {label.replace(/^Lane\s*/i, '')}
-                  </span>
-                ))}
-              </span>
-            )}
+            <LentLanes labels={event.borrowed_lane_labels} />
             {actions(event, true)}
           </div>
           <div className="flex flex-wrap items-end gap-x-7 gap-y-2">

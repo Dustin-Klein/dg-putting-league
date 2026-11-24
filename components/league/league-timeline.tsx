@@ -1,16 +1,10 @@
 import { cn } from '@/lib/utils/utils';
 import { formatDateParts, formatDisplayDate } from '@/lib/utils/date-utils';
-import type { LeagueNight } from '@/lib/utils/league-nights';
+import { nightState, type LeagueNight } from '@/lib/utils/league-nights';
 import type { EventStatus } from '@/lib/types/event';
+import type { NightState } from '@/lib/types/league';
 
 type NightEvent = { id: string; event_date: string; status: EventStatus };
-
-type NightState = 'live' | 'done' | 'upcoming';
-
-function nightState(night: LeagueNight<NightEvent>): NightState {
-  if ([night.main, ...night.secondChances].some((event) => event.status === 'bracket')) return 'live';
-  return night.main.status === 'completed' ? 'done' : 'upcoming';
-}
 
 const DOT: Record<NightState, string> = {
   live: 'bg-success ring-success/25',
