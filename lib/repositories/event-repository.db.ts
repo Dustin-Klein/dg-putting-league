@@ -261,17 +261,25 @@ export async function getEventLeagueId(ex: Executor, eventId: string): Promise<s
 export async function getEventsByLeagueId(
   ex: Executor,
   leagueId: string
-): Promise<Array<EventData & { participant_count: number }>> {
+): Promise<Array<EventData & { participant_count: number; paid_count: number }>> {
   const [eventRows, countRows] = await Promise.all([
     ex.select(eventSelection).from(events).where(eq(events.league_id, leagueId)).orderBy(desc(events.event_date)),
-    ex.select({ event_id: event_players.event_id, participant_count: count(event_players.id) })
+    ex.select({
+      event_id: event_players.event_id,
+      participant_count: count(event_players.id),
+      paid_count: count(event_players.payment_type),
+    })
       .from(event_players)
       .innerJoin(events, eq(events.id, event_players.event_id))
       .where(eq(events.league_id, leagueId))
       .groupBy(event_players.event_id),
   ]);
-  const counts = new Map(countRows.map((row) => [row.event_id, Number(row.participant_count)]));
-  return eventRows.map((row) => ({ ...mapEvent(row), participant_count: counts.get(row.id) ?? 0 }));
+  const counts = new Map(countRows.map((row) => [row.event_id, row]));
+  return eventRows.map((row) => ({
+    ...mapEvent(row),
+    participant_count: Number(counts.get(row.id)?.participant_count ?? 0),
+    paid_count: Number(counts.get(row.id)?.paid_count ?? 0),
+  }));
 }
 
 function normalizeEventPatch(data: Record<string, unknown>): typeof events.$inferInsert {

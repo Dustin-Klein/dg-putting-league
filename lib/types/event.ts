@@ -133,3 +133,9 @@ export interface SecondChanceRoster {
   /** Players can be added until the second-chance bracket starts. */
   can_sync: boolean;
 }
+
+/** Bracket matches played out of those that will be played (byes and an unused final reset excluded). */
+export interface MatchProgress {
+  played: number;
+  total: number;
+}

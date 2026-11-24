@@ -1,6 +1,6 @@
 import { Status } from 'brackets-model';
 import type { BracketWithTeams, Lane } from '@/lib/types/bracket';
-import type { EventStatus } from '@/lib/types/event';
+import type { EventStatus, MatchProgress } from '@/lib/types/event';
 
 export type LaneChipState = 'in_play' | 'open' | 'maintenance' | 'lent';
 
@@ -39,13 +39,20 @@ export function laneChips(lanes: readonly LaneLike[], lent: readonly LaneLike[] 
 
 type Opponent = { id: number | null; result?: string } | null;
 
+type Id = number | string;
+type ProgressMatch = { round_id: Id; status: number; opponent1: unknown; opponent2: unknown };
+
 /**
  * Matches played out of matches that will be played. Byes (a null opponent) never
  * count. The grand-final reset counts only once the losers-bracket team has won the
  * first final: an unused reset keeps both teams but is archived unplayed.
  */
-export function bracketProgress(data: BracketWithTeams): BracketProgress {
-  const { groups, rounds, matches } = data.bracket;
+export function matchProgress(bracket: {
+  groups: ReadonlyArray<{ id: Id; number: number }>;
+  rounds: ReadonlyArray<{ id: Id; group_id: Id; number: number }>;
+  matches: ReadonlyArray<ProgressMatch>;
+}): MatchProgress {
+  const { groups, rounds, matches } = bracket;
   const finalGroup = groups.find((group) => group.number === 3);
   const finalRound = (number: number) =>
     finalGroup ? rounds.find((round) => round.group_id === finalGroup.id && round.number === number) : undefined;
@@ -65,10 +72,12 @@ export function bracketProgress(data: BracketWithTeams): BracketProgress {
     const filled = a.id !== null && b.id !== null;
     if (filled && (match.status === Status.Completed || match.status === Status.Archived)) played += 1;
   }
+  return { played, total };
+}
 
+export function bracketProgress(data: BracketWithTeams): BracketProgress {
   return {
-    played,
-    total,
+    ...matchProgress(data.bracket),
     ...laneChips(data.lanes, data.lentLanes),
     teams: data.teams.length,
   };

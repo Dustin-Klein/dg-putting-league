@@ -40,3 +40,12 @@ export const isFutureOrToday = (date: Date): boolean => {
   today.setHours(0, 0, 0, 0);
   return date >= today;
 };
+
+/** Month ("NOV"), day ("19") and year of a date-only string, for stacked date labels. */
+export const formatDateParts = (date: string): { month: string; day: string; year: number } => {
+  const dateObj = parseLocalDate(date);
+  return { month: format(dateObj, 'MMM').toUpperCase(), day: format(dateObj, 'd'), year: dateObj.getFullYear() };
+};
+
+/** Month and day without the year (e.g., "Nov 19"). */
+export const formatMonthDay = (date: string): string => format(parseLocalDate(date), 'MMM d');

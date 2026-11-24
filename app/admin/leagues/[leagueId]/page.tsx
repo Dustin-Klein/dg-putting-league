@@ -43,7 +43,13 @@ export default async function LeagueEventsPage({
       isOwner={isOwner}
       handicap={{ leagueHandicaps: handicapConfig.settings.enabled, zones: handicapConfig.zones }}
       leagueId={params.leagueId}
-      initialTab={(await searchParams).tab === 'handicaps' && isAdmin ? 'handicaps' : 'events'}
+      initialTab={initialTab((await searchParams).tab, isAdmin, isOwner)}
     />
   );
+}
+
+function initialTab(tab: string | string[] | undefined, isAdmin: boolean, isOwner: boolean) {
+  if (tab === 'handicaps' && isAdmin) return 'handicaps';
+  if (tab === 'admins' && isOwner) return 'admins';
+  return 'events';
 }

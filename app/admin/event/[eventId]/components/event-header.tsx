@@ -10,12 +10,13 @@ import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils/utils';
 import { NextStatusButton } from '@/components/next-status-button';
+import { StatusTrack } from '@/components/event-status-track';
 import { zoneColorClass } from '@/components/zone-badge';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { eventFormatParts, formatMoney } from '@/lib/utils/event-setup';
 import { bracketProgress, headerStats, laneChips, type BracketProgress, type HeaderStat, type LaneChips } from '@/lib/utils/event-progress';
 import type { Lane } from '@/lib/types/bracket';
-import type { EventStatus, EventWithDetails } from '@/lib/types/event';
+import type { EventWithDetails } from '@/lib/types/event';
 import { ZoneDistancesPopover, useEventHandicap } from './event-handicap';
 import { useEventBracket } from './event-bracket-context';
 
@@ -128,53 +129,6 @@ function ScoringCode({ code }: { code: string }) {
         </span>
       </div>
     </div>
-  );
-}
-
-const PHASES: Array<{ status: EventStatus; label: (qualifying: boolean) => string }> = [
-  { status: 'created', label: () => 'Registration' },
-  { status: 'pre-bracket', label: (qualifying) => (qualifying ? 'Qualifying' : 'Pre-bracket') },
-  { status: 'bracket', label: () => 'Bracket' },
-  { status: 'completed', label: () => 'Done' },
-];
-
-function StatusTrack({
-  event,
-  progress,
-}: {
-  event: EventWithDetails;
-  progress: { done: number; total: number } | null;
-}) {
-  const current = PHASES.findIndex((phase) => phase.status === event.status);
-  return (
-    <ol aria-label="Event status" className="grid w-full max-w-[624px] grid-cols-4 gap-1.5">
-      {PHASES.map((phase, index) => {
-        const done = index < current || event.status === 'completed';
-        const active = index === current && event.status !== 'completed';
-        const fraction = active && progress && progress.total > 0 ? progress.done / progress.total : 0;
-        return (
-          <li
-            key={phase.status}
-            aria-current={index === current ? 'step' : undefined}
-            className={cn(
-              'flex min-w-0 flex-col gap-1.5 text-[13px] font-semibold',
-              active ? 'font-bold' : done ? 'text-foreground/80' : 'text-muted-foreground'
-            )}
-          >
-            <span className="h-1 overflow-hidden rounded-full bg-input" aria-hidden="true">
-              <span
-                className={cn('block h-full rounded-full', done ? 'bg-success' : active ? 'bg-success' : 'bg-transparent')}
-                style={{ width: done ? '100%' : active ? `${Math.max(fraction * 100, 6)}%` : '0%' }}
-              />
-            </span>
-            <span className="truncate">
-              {phase.label(event.qualification_round_enabled)}
-              {active && progress ? ` · ${progress.done} of ${progress.total}` : ''}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -423,7 +377,7 @@ export function EventHeader({ event, onStatusUpdate }: { event: EventWithDetails
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <StatusTrack event={event} progress={trackProgress} />
+        <StatusTrack status={event.status} qualifying={event.qualification_round_enabled} progress={trackProgress} />
         <NextStatusButton event={event} onStatusUpdate={onStatusUpdate} />
       </div>
 

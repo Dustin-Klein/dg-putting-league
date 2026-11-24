@@ -236,9 +236,9 @@ export async function getLeagueWithEvents(
   ex: Executor,
   leagueId: string,
   viewerUserId: string | null
-): Promise<PublicLeagueDetail | null> {
+): Promise<Omit<PublicLeagueDetail, 'events'> & { events: Array<Omit<PublicEvent, 'match_progress'>> } | null> {
   const leagueRows = await ex
-    .select({ id: leagues.id, name: leagues.name })
+    .select({ id: leagues.id, name: leagues.name, city: leagues.city })
     .from(leagues)
     .where(eq(leagues.id, leagueId))
     .limit(1);
@@ -251,6 +251,8 @@ export async function getLeagueWithEvents(
       event_date: events.event_date,
       location: events.location,
       status: events.status,
+      parent_event_id: events.parent_event_id,
+      link_type: events.link_type,
     })
     .from(events)
     .where(and(eq(events.league_id, leagueId), eventVisibleTo(viewerUserId)))
@@ -267,7 +269,7 @@ export async function getLeagueWithEvents(
   const participantsByEvent = new Map(
     participantRows.map((row) => [row.event_id, Number(row.participant_count)])
   );
-  const publicEvents: PublicEvent[] = eventRows.map((event) => ({
+  const publicEvents = eventRows.map((event) => ({
     ...event,
     participant_count: participantsByEvent.get(event.id) ?? 0,
   }));

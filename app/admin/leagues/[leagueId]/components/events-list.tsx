@@ -4,22 +4,59 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/button';
-import type { EventData } from '@/lib/repositories/event-repository.db';
+import type { AdminLeagueEvent } from '@/lib/services/event';
 import { CreateEventDialog } from './create-event-dialog';
-import { Trash2 } from 'lucide-react';
-import { EventStatusBadge, StatusBadge } from '@/components/status-badge';
+import { Plus, Trash2 } from 'lucide-react';
+import { StatusBadge } from '@/components/status-badge';
+import { StatusTrack } from '@/components/event-status-track';
+import { LeagueTimeline, TimelineBranch } from '@/components/league/league-timeline';
+import { SecondChanceMark } from '@/components/league/second-chance-mark';
 import { useToast } from '@/components/ui/use-toast';
-import { eventDistanceLabel, type EventSetupContext } from '@/lib/utils/event-setup';
+import { eventDistanceLabel, formatMoney, type EventSetupContext } from '@/lib/utils/event-setup';
+import { groupEventsIntoNights, type LeagueNight } from '@/lib/utils/league-nights';
 import { cn } from '@/lib/utils/utils';
 
-type EventWithParticipantCount = EventData & { participant_count: number };
-
 interface EventsListProps {
-  events: EventWithParticipantCount[] | null;
+  events: AdminLeagueEvent[] | null;
   leagueId: string;
   leagueName?: string;
   isAdmin?: boolean;
   handicap?: EventSetupContext;
+}
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+function eventMeta(event: AdminLeagueEvent) {
+  const isSecondChance = event.link_type === 'second_chance';
+  return [
+    plural(event.participant_count, 'player'),
+    event.match_progress
+      ? `${event.match_progress.played}/${event.match_progress.total} matches`
+      : !isSecondChance && plural(event.lane_count, 'lane'),
+    eventDistanceLabel(event),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Unpaid players until everyone has paid, then the pot once the night is over. */
+function MoneyNote({ event }: { event: AdminLeagueEvent }) {
+  if (event.participant_count === 0) return null;
+  const unpaid = event.participant_count - event.paid_count;
+  if (unpaid > 0) return <span className="text-[13px] font-semibold text-warning">{unpaid} unpaid</span>;
+  if (event.status === 'completed' && event.entry_fee_per_player) {
+    return <span className="text-[13px] text-muted-foreground">{formatMoney(event.paid_count * event.entry_fee_per_player)} pot</span>;
+  }
+  return <span className="text-[13px] text-muted-foreground">all paid</span>;
+}
+
+/** The main event most recently finished or still in bracket play may still get a second chance. */
+function canAddSecondChance(night: LeagueNight<AdminLeagueEvent>, latestCompletedId: string | undefined) {
+  const { main } = night;
+  if (main.parent_event_id !== null || night.secondChances.length > 0) return false;
+  return main.status === 'bracket' || main.id === latestCompletedId;
 }
 
 export function EventsList({ events = [], leagueId, leagueName, isAdmin = false, handicap }: EventsListProps) {
@@ -32,7 +69,7 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
     }
 
     setDeletingEventId(eventId);
-    
+
     try {
       const response = await fetch(`/api/event/${eventId}`, {
         method: 'DELETE',
@@ -75,105 +112,102 @@ export function EventsList({ events = [], leagueId, leagueName, isAdmin = false,
     );
   }
 
-  // Newest first, as the list is ordered.
-  const completedEvents = events.filter((event) => event.status === 'completed');
+  const nights = groupEventsIntoNights(events);
+  const latestCompletedId = events.find((event) => event.status === 'completed' && event.parent_event_id === null)?.id;
 
-  return (
-    <section aria-labelledby="events-heading" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="events-heading" className="text-xl font-bold">Events</h2>
-        {isAdmin && (
-          <CreateEventDialog
-            leagueId={leagueId}
-            leagueName={leagueName}
-            completedEvents={completedEvents}
-            templateEvent={completedEvents.find((event) => event.parent_event_id === null) ?? null}
-            handicap={handicap}
-          />
-        )}
-      </div>
-      {withLinkedEventsNested(events).map(({ event, nested }) => (
-        <article
-          key={event.id}
-          className={cn(
-            'flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border bg-card px-5 py-[18px]',
-            nested && 'ml-6 border-dashed'
-          )}
+  const actions = (event: AdminLeagueEvent, secondChance: boolean) => (
+    <span className="flex items-center gap-1">
+      <Button variant="outline" asChild className={cn(secondChance && 'border-info/60 text-info hover:text-info')}>
+        <Link href={`/admin/event/${event.id}`}>Open</Link>
+      </Button>
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => handleDeleteEvent(event.id)}
+          disabled={deletingEventId === event.id}
         >
-          <div className="flex min-w-[200px] flex-[1_1_220px] flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <Link
-                href={`/admin/event/${event.id}`}
-                className="font-score text-2xl leading-none font-bold hover:underline"
-              >
-                {formatDisplayDate(event.event_date)}
-              </Link>
-              <EventStatusBadge status={event.status} />
-              {event.link_type === 'second_chance' && (
-                <StatusBadge tone="outline">Second Chance</StatusBadge>
-              )}
-              {event.qualification_round_enabled && (
-                <StatusBadge tone="outline">Qualification Round</StatusBadge>
-              )}
-            </div>
-            {event.location && (
-              <span className="text-sm text-muted-foreground">{event.location}</span>
-            )}
-          </div>
-          <div className="flex gap-6">
-            <EventStat value={event.participant_count || 0} label="Participants" />
-            <EventStat value={event.lane_count} label="Lanes" />
-            <EventStat value={eventDistanceLabel(event)} label="Distance" />
-          </div>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button variant="outline" asChild>
-              <Link href={`/admin/event/${event.id}`}>
-                View Details
-              </Link>
-            </Button>
-            {isAdmin && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:bg-destructive/10"
-                onClick={() => handleDeleteEvent(event.id)}
-                disabled={deletingEventId === event.id}
-              >
-                <Trash2 className="h-4 w-4" />
-                <span className="sr-only">Delete event</span>
-              </Button>
-            )}
-          </div>
-        </article>
-      ))}
-    </section>
+          <Trash2 className="h-4 w-4" />
+          <span className="sr-only">Delete event on {formatDisplayDate(event.event_date)}</span>
+        </Button>
+      )}
+    </span>
   );
-}
 
-/** Each linked event right after its parent, so a second chance reads as part of its night. */
-function withLinkedEventsNested<T extends { id: string; parent_event_id: string | null }>(
-  events: T[]
-): Array<{ event: T; nested: boolean }> {
-  const ids = new Set(events.map((event) => event.id));
-  const childrenOf = new Map<string, T[]>();
-  for (const event of events) {
-    if (event.parent_event_id && ids.has(event.parent_event_id)) {
-      childrenOf.set(event.parent_event_id, [...(childrenOf.get(event.parent_event_id) ?? []), event]);
-    }
-  }
-  return events
-    .filter((event) => !event.parent_event_id || !ids.has(event.parent_event_id))
-    .flatMap((event) => [
-      { event, nested: false },
-      ...(childrenOf.get(event.id) ?? []).map((child) => ({ event: child, nested: true })),
-    ]);
-}
+  const track = (event: AdminLeagueEvent) => (
+    <StatusTrack
+      compact
+      status={event.status}
+      qualifying={event.qualification_round_enabled}
+      progress={event.match_progress && { done: event.match_progress.played, total: event.match_progress.total }}
+      className="flex-[1_1_240px]"
+    />
+  );
 
-function EventStat({ value, label }: { value: React.ReactNode; label: string }) {
   return (
-    <div className="flex flex-col">
-      <span className="font-score text-[22px] leading-none font-bold tabular-nums">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
+    <LeagueTimeline
+      nights={nights}
+      renderMain={(event) => {
+        const secondChance = event.link_type === 'second_chance';
+        return (
+          <div className="flex flex-col gap-3 px-[18px] py-4">
+            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+              <Link href={`/admin/event/${event.id}`} className="min-w-[140px] flex-[1_1_160px] text-base font-bold hover:underline">
+                {secondChance ? <SecondChanceMark /> : 'Main event'}
+              </Link>
+              {event.qualification_round_enabled && <StatusBadge tone="outline">Qualification round</StatusBadge>}
+              {actions(event, false)}
+            </div>
+            <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
+              {track(event)}
+              <span className="text-sm text-muted-foreground">{eventMeta(event)}</span>
+              <MoneyNote event={event} />
+            </div>
+          </div>
+        );
+      }}
+      renderSecondChance={(event) => (
+        <div className="flex flex-col gap-2.5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link href={`/admin/event/${event.id}`} className="min-w-[140px] flex-[1_1_160px] text-[15px] hover:underline">
+              <SecondChanceMark iconClassName="size-[15px]" />
+            </Link>
+            {event.borrowed_lane_labels.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+                Lanes lent
+                {event.borrowed_lane_labels.map((label) => (
+                  <span
+                    key={label}
+                    className="flex h-7 min-w-[26px] items-center justify-center rounded-md border border-info bg-info/15 px-1 font-score text-[17px] font-bold text-info"
+                  >
+                    {label.replace(/^Lane\s*/i, '')}
+                  </span>
+                ))}
+              </span>
+            )}
+            {actions(event, true)}
+          </div>
+          <div className="flex flex-wrap items-end gap-x-7 gap-y-2">
+            {track(event)}
+            <span className="text-[13px] text-muted-foreground">{eventMeta(event)}</span>
+            <MoneyNote event={event} />
+          </div>
+        </div>
+      )}
+      after={(night) =>
+        isAdmin && canAddSecondChance(night, latestCompletedId) && (
+          <TimelineBranch dashed>
+            <Link
+              href={`/admin/event/${night.main.id}`}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border-[1.5px] border-dashed border-input px-4 text-sm font-bold text-info hover:bg-info/10"
+            >
+              <Plus className="size-[15px]" strokeWidth={2.5} aria-hidden="true" />
+              Add second chance
+            </Link>
+          </TimelineBranch>
+        )
+      }
+    />
   );
 }
