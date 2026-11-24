@@ -34,7 +34,7 @@ test('login', async ({ page }) => {
 
 test('leagues', async ({ page }) => {
   await page.goto('/leagues');
-  await expect(page.getByText('Thursday Night Putting')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Thursday Night Putting', exact: true })).toBeVisible();
   await snap(page, 'leagues');
 });
 
