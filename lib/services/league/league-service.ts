@@ -42,9 +42,9 @@ export async function getPublicLeagueWithEvents(leagueId: string): Promise<Publi
   const progress = await bracketRepo.getBracketProgressRows(pg, live);
   return {
     ...league,
-    events: league.events.map((event) => {
+    events: league.events.map(({ double_grand_final, ...event }) => {
       const rows = progress.get(event.id);
-      return { ...event, match_progress: rows ? matchProgress(rows) : null };
+      return { ...event, match_progress: rows ? matchProgress(rows, double_grand_final) : null };
     }),
   };
 }

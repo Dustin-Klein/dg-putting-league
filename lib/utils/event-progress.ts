@@ -45,13 +45,14 @@ type ProgressMatch = { round_id: Id; status: number; opponent1: unknown; opponen
 /**
  * Matches played out of matches that will be played. Byes (a null opponent) never
  * count. The grand-final reset counts only once the losers-bracket team has won the
- * first final: an unused reset keeps both teams but is archived unplayed.
+ * first final: an unused reset keeps both teams but is archived unplayed. With a single
+ * grand final the reset never counts, even if it was played before the switch.
  */
 export function matchProgress(bracket: {
   groups: ReadonlyArray<{ id: Id; number: number }>;
   rounds: ReadonlyArray<{ id: Id; group_id: Id; number: number }>;
   matches: ReadonlyArray<ProgressMatch>;
-}): MatchProgress {
+}, doubleGrandFinal = true): MatchProgress {
   const { groups, rounds, matches } = bracket;
   const finalGroup = groups.find((group) => group.number === 3);
   const finalRound = (number: number) =>
@@ -67,7 +68,7 @@ export function matchProgress(bracket: {
     const a = match.opponent1 as Opponent;
     const b = match.opponent2 as Opponent;
     if (a === null || b === null) continue;
-    if (resetRound && match.round_id === resetRound.id && !resetNeeded) continue;
+    if (resetRound && match.round_id === resetRound.id && (!doubleGrandFinal || !resetNeeded)) continue;
     total += 1;
     const filled = a.id !== null && b.id !== null;
     if (filled && (match.status === Status.Completed || match.status === Status.Archived)) played += 1;

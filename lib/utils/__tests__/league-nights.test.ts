@@ -1,6 +1,6 @@
 import { groupEventsIntoNights } from '../league-nights';
 
-const event = (id: string, parent_event_id: string | null = null) => ({ id, parent_event_id });
+const event = (id: string, parent_event_id: string | null = null, event_date = '2026-10-08') => ({ id, parent_event_id, event_date });
 
 describe('groupEventsIntoNights', () => {
   it('attaches linked events to their main event in list order', () => {
@@ -20,6 +20,14 @@ describe('groupEventsIntoNights', () => {
     expect(groupEventsIntoNights([event('sc', 'hidden'), event('other')])).toEqual([
       { main: event('sc', 'hidden'), secondChances: [] },
       { main: event('other'), secondChances: [] },
+    ]);
+  });
+
+  it('makes a linked event on another day its own night', () => {
+    const later = event('sc', 'main', '2026-10-09');
+    expect(groupEventsIntoNights([later, event('main')])).toEqual([
+      { main: later, secondChances: [] },
+      { main: event('main'), secondChances: [] },
     ]);
   });
 });
