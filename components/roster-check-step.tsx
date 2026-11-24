@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Check, Monitor } from 'lucide-react';
+import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatMoney } from '@/lib/utils/event-setup';
@@ -10,13 +9,7 @@ import { cn } from '@/lib/utils/utils';
 import { KeptTeamsNotice } from '@/components/kept-teams-notice';
 import { teamSizeShortfallMessage } from '@/lib/services/team/composition';
 import type { EventWithDetails } from '@/lib/types/event';
-import {
-  formatMinutesAgo,
-  paymentSplit,
-  playersNotShown,
-  readRosterShown,
-  zoneCounts,
-} from '@/lib/utils/roster-check';
+import { paymentSplit, zoneCounts } from '@/lib/utils/roster-check';
 
 type CheckState = 'ok' | 'warn';
 
@@ -42,7 +35,7 @@ function CheckRow({ state, title, children }: { state: CheckState; title: string
 
 /**
  * Last call before teams are drawn: the roster count against payments (the cash box and
- * payment app), when the roster was last on the TV and who registered since, and zones.
+ * payment app) and zones.
  */
 export function RosterCheckStep({
   event,
@@ -54,11 +47,8 @@ export function RosterCheckStep({
   onCancel: () => void;
 }) {
   const [confirmed, setConfirmed] = useState(false);
-  const [now] = useState(() => Date.now());
-  const shown = useMemo(() => readRosterShown(event.id), [event.id]);
   const players = event.players;
   const split = paymentSplit(players, event.entry_fee_per_player);
-  const unseen = playersNotShown(players, shown);
   const shortfall = teamSizeShortfallMessage(players.length, event.team_size);
   const teams = Math.floor(players.length / event.team_size);
   const missingZone = event.handicap_enabled ? players.filter((p) => p.zone == null) : [];
@@ -90,34 +80,6 @@ export function RosterCheckStep({
               {' '}Does that match the cash box and payment app?
             </span>
             {shortfall && <span className="text-[13px] font-medium text-warning">{shortfall}.</span>}
-          </CheckRow>
-
-          <CheckRow
-            state={shown && unseen.length === 0 ? 'ok' : 'warn'}
-            title={shown ? `Roster was last shown ${formatMinutesAgo(shown.at, now)}` : 'The roster has not been shown on screen'}
-          >
-            {shown && unseen.length > 0 && (
-              <span className="text-[13px] leading-[1.45] text-muted-foreground">
-                {unseen.length === 1 ? '1 player was' : `${unseen.length} players were`} added since then and
-                {unseen.length === 1 ? " hasn't" : " haven't"} seen themselves on the screen:{' '}
-                <strong className="text-foreground">{unseen.map((p) => p.player.full_name).join(', ')}</strong>.
-              </span>
-            )}
-            {!shown && (
-              <span className="text-[13px] text-muted-foreground">
-                Put it on the TV so everyone can check their name{event.handicap_enabled ? ' and zone' : ''}.
-              </span>
-            )}
-            {(!shown || unseen.length > 0) && (
-              <span>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/admin/event/${event.id}/roster`}>
-                    <Monitor className="mr-1.5 size-4" />
-                    Show roster on screen
-                  </Link>
-                </Button>
-              </span>
-            )}
           </CheckRow>
 
           {event.handicap_enabled && (

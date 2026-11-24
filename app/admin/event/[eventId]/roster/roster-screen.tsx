@@ -9,7 +9,7 @@ import { useCoalescedRefresh } from '@/lib/hooks/use-coalesced-refresh';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { cn } from '@/lib/utils/utils';
 import type { EventWithDetails } from '@/lib/types/event';
-import { recordRosterShown, rosterLayout, rosterRows, zoneCounts } from '@/lib/utils/roster-check';
+import { rosterLayout, rosterRows, zoneCounts } from '@/lib/utils/roster-check';
 
 /** event_players isn't in the realtime publication, so the screen polls. */
 const POLL_MS = 10_000;
@@ -41,7 +41,6 @@ export function RosterScreen({ eventId }: { eventId: string }) {
     }
     setError(null);
     setEvent(data);
-    recordRosterShown(eventId, data.players.map((player) => player.id));
   }, [eventId]);
   const refresh = useCoalescedRefresh(load, eventId);
 

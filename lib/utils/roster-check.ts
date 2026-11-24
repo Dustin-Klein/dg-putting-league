@@ -95,50 +95,6 @@ export function paymentSplit(
   };
 }
 
-/**
- * When the roster was last on the screen (this device only) and who was on it. A hint
- * for the start-bracket check, so it lives in sessionStorage, not on the server.
- */
-export interface RosterShown {
-  at: number;
-  eventPlayerIds: string[];
-}
-
-function shownKey(eventId: string) {
-  return `roster-shown:${eventId}`;
-}
-
-export function recordRosterShown(eventId: string, eventPlayerIds: string[], at = Date.now()): void {
-  try {
-    sessionStorage.setItem(shownKey(eventId), JSON.stringify({ at, eventPlayerIds } satisfies RosterShown));
-  } catch {
-    // Storage disabled: the start-bracket check just says the roster wasn't shown.
-  }
-}
-
-export function readRosterShown(eventId: string): RosterShown | null {
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(shownKey(eventId)) ?? 'null');
-    if (typeof stored?.at !== 'number' || !Array.isArray(stored?.eventPlayerIds)) return null;
-    return stored as RosterShown;
-  } catch {
-    return null;
-  }
-}
-
-/** Players registered since the roster was last shown (all of them if it never was). */
-export function playersNotShown<T extends Pick<EventPlayer, 'id'>>(players: readonly T[], shown: RosterShown | null): T[] {
-  const seen = new Set(shown?.eventPlayerIds ?? []);
-  return players.filter((player) => !seen.has(player.id));
-}
-
-export function formatMinutesAgo(at: number, now: number): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60000));
-  if (minutes === 0) return 'just now';
-  if (minutes === 1) return '1 min ago';
-  return `${minutes} min ago`;
-}
-
 export interface KeptTeamsStatus {
   /** Kept teams whose members are all still registered. */
   keptCount: number;
