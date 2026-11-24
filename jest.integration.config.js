@@ -22,4 +22,17 @@ const config = {
   testTimeout: 60000,
 };
 
-module.exports = createJestConfig(config);
+module.exports = async () => {
+  const resolved = await createJestConfig(config)();
+  // postgres v4 is ESM-only and Jest's require can't load it, so let SWC compile it to CJS.
+  // next/jest only allows appending ignore patterns, so postgres is added to its node_modules allowlist.
+  const [nodeModules, ...rest] = resolved.transformIgnorePatterns;
+  if (!nodeModules.startsWith('/node_modules/(?!.pnpm)(?!(')) {
+    throw new Error(`Unexpected next/jest transformIgnorePatterns: ${nodeModules}`);
+  }
+  resolved.transformIgnorePatterns = [
+    nodeModules.replace('(?!(', '(?!(postgres|'),
+    ...rest,
+  ];
+  return resolved;
+};
