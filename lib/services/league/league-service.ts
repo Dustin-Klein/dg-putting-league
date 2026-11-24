@@ -1,6 +1,6 @@
 import 'server-only';
-import { LeagueWithRole, LeagueAdminRole } from '@/lib/types/league';
-import type { PublicLeague, PublicLeagueDetail } from '@/lib/types/public';
+import type { LeagueAdminRole, LeagueNightEvent, LeagueWithRole } from '@/lib/types/league';
+import type { PublicLeagueDetail, PublicLeagueStatus, PublicLeagueSummary } from '@/lib/types/public';
 import { BadRequestError, NotFoundError } from '@/lib/errors';
 import {
   authorizeAuthenticated,
@@ -13,7 +13,10 @@ import { withTransaction } from '@/lib/db/tx';
 import { isUuid } from '@/lib/utils/uuid';
 import * as leagueRepo from '@/lib/repositories/league-repository.db';
 import * as bracketRepo from '@/lib/repositories/bracket-repository.db';
+import * as eventRepo from '@/lib/repositories/event-repository.db';
+import * as laneRepo from '@/lib/repositories/lane-repository.db';
 import { matchProgress } from '@/lib/utils/event-progress';
+import { currentNight, groupEventsIntoNights, nightState, seasonSummary } from '@/lib/utils/league-nights';
 
 export interface LeagueAdminWithEmail {
   userId: string;
@@ -21,10 +24,59 @@ export interface LeagueAdminWithEmail {
   role: string;
 }
 
-export async function getPublicLeagues(): Promise<PublicLeague[]> {
+const PUBLIC_STATUS_ORDER: PublicLeagueStatus[] = ['live', 'qualifying', 'scheduled', 'idle'];
+
+/** Leagues with an event the viewer can see: live first, then by latest event, then name. */
+export async function getPublicLeagues(): Promise<PublicLeagueSummary[]> {
   const { pg } = authorizePublicRead();
   const viewer = await getViewer();
-  return leagueRepo.getAllLeagues(pg, viewer?.id ?? null);
+  const leagues = await leagueRepo.getAllLeagues(pg, viewer?.id ?? null);
+
+  const liveNights = new Map(leagues.map((league) => [
+    league.id,
+    groupEventsIntoNights(league.events).find((night) => nightState(night) === 'live'),
+  ]));
+  const liveEvents = [...liveNights.values()].flatMap((night) =>
+    night ? [night.main, ...night.secondChances].filter((event) => event.status === 'bracket') : []
+  );
+  const progress = await bracketRepo.getBracketProgressRows(pg, liveEvents.map((event) => event.id));
+
+  const summaries = leagues.map((league): PublicLeagueSummary => {
+    const night = liveNights.get(league.id);
+    const status: PublicLeagueStatus = night
+      ? 'live'
+      : league.events.some((event) => event.status === 'pre-bracket' && event.qualification_round_enabled)
+        ? 'qualifying'
+        : league.events.some((event) => event.status !== 'completed')
+          ? 'scheduled'
+          : 'idle';
+    return {
+      id: league.id,
+      name: league.name,
+      city: league.city,
+      event_count: league.events.length,
+      season: seasonSummary(league.events),
+      status,
+      live_events: night
+        ? [night.main, ...night.secondChances]
+            .filter((event) => event.status === 'bracket')
+            .map((event) => {
+              const rows = progress.get(event.id);
+              return {
+                id: event.id,
+                second_chance: event.link_type === 'second_chance',
+                match_progress: rows ? matchProgress(rows, event.double_grand_final) : null,
+              };
+            })
+        : [],
+    };
+  });
+
+  return summaries.sort((a, b) =>
+    PUBLIC_STATUS_ORDER.indexOf(a.status) - PUBLIC_STATUS_ORDER.indexOf(b.status)
+    || (b.season.latest_event_date ?? '').localeCompare(a.season.latest_event_date ?? '')
+    || a.name.localeCompare(b.name)
+  );
 }
 
 export async function getPublicLeagueWithEvents(leagueId: string): Promise<PublicLeagueDetail> {
@@ -61,37 +113,86 @@ export async function getLeague(leagueId: string) {
 /**
  * Get all leagues where user is an admin with enriched data
  */
+const NIGHT_KIND_ORDER = ['live', 'next', 'latest'] as const;
+
+/**
+ * The leagues the user administers, each with its season and current night: live leagues
+ * first, then the soonest next night, then the latest finished one, then leagues with no events.
+ */
 export async function getUserAdminLeagues(): Promise<LeagueWithRole[]> {
   const { user, pg } = await authorizeAuthenticated();
 
-  // Admin records
   const adminRecords = await leagueRepo.getLeagueAdminsForUser(pg, user.id);
-
   if (adminRecords.length === 0) {
     return [];
   }
 
-  const leagueIds = adminRecords.map(a => a.league_id);
-
-  // League details
-  const [leagues, stats] = await Promise.all([
+  const leagueIds = adminRecords.map((a) => a.league_id);
+  const [leagues, events] = await Promise.all([
     leagueRepo.getLeaguesByIds(pg, leagueIds),
-    leagueRepo.getLeagueEventStats(pg, leagueIds),
+    eventRepo.getEventsByLeagueIds(pg, leagueIds),
   ]);
-  const statsByLeague = new Map(stats.map((row) => [row.league_id, row]));
 
-  // Enrich leagues
-  return leagues.map((league) => {
-    const admin = adminRecords.find(a => a.league_id === league.id);
-    const leagueStats = statsByLeague.get(league.id);
+  const eventsByLeague = new Map<string, eventRepo.EventWithCounts[]>();
+  for (const event of events) {
+    eventsByLeague.set(event.league_id, [...(eventsByLeague.get(event.league_id) ?? []), event]);
+  }
+  const current = new Map(leagues.map((league) => [
+    league.id,
+    currentNight(groupEventsIntoNights(eventsByLeague.get(league.id) ?? [])),
+  ]));
+  const nightEvents = [...current.values()].flatMap((entry) =>
+    entry ? [entry.night.main, ...entry.night.secondChances] : []
+  );
+  const [progress, borrowed] = await Promise.all([
+    bracketRepo.getBracketProgressRows(pg, nightEvents.filter((event) => event.status === 'bracket').map((event) => event.id)),
+    laneRepo.getBorrowedLaneLabels(
+      pg,
+      nightEvents.filter((event) => event.link_type === 'second_chance' && event.status !== 'completed').map((event) => event.id)
+    ),
+  ]);
+  const nightEvent = (event: eventRepo.EventWithCounts): LeagueNightEvent => {
+    const rows = progress.get(event.id);
+    return {
+      id: event.id,
+      event_date: event.event_date,
+      status: event.status,
+      link_type: event.link_type,
+      qualification_round_enabled: event.qualification_round_enabled,
+      participant_count: event.participant_count,
+      paid_count: event.paid_count,
+      lane_count: event.lane_count,
+      entry_fee_per_player: event.entry_fee_per_player,
+      match_progress: rows ? matchProgress(rows, event.double_grand_final) : null,
+      borrowed_lane_labels: borrowed.get(event.id) ?? [],
+    };
+  };
 
+  const result = leagues.map((league): LeagueWithRole => {
+    const admin = adminRecords.find((a) => a.league_id === league.id);
+    const leagueEvents = eventsByLeague.get(league.id) ?? [];
+    const entry = current.get(league.id);
     return {
       ...league,
       role: (admin?.role ?? 'admin') as LeagueAdminRole,
-      eventCount: leagueStats?.event_count ?? 0,
-      activeEventCount: leagueStats?.active_event_count ?? 0,
-      lastEventDate: leagueStats?.last_event_date ?? null,
+      eventCount: leagueEvents.length,
+      activeEventCount: leagueEvents.filter((event) => event.status !== 'completed').length,
+      season: seasonSummary(leagueEvents),
+      currentNight: entry
+        ? { kind: entry.kind, main: nightEvent(entry.night.main), secondChances: entry.night.secondChances.map(nightEvent) }
+        : null,
     };
+  });
+
+  const rank = (league: LeagueWithRole) =>
+    league.currentNight ? NIGHT_KIND_ORDER.indexOf(league.currentNight.kind) : NIGHT_KIND_ORDER.length;
+  return result.sort((a, b) => {
+    const byKind = rank(a) - rank(b);
+    if (byKind !== 0) return byKind;
+    const dateA = a.currentNight?.main.event_date ?? '';
+    const dateB = b.currentNight?.main.event_date ?? '';
+    const byDate = a.currentNight?.kind === 'next' ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+    return byDate || a.name.localeCompare(b.name);
   });
 }
 

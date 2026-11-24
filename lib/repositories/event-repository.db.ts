@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, player_profiles, players, qualification_frames, qualification_rounds, team_member_substitutions, team_members, teams } from '@/lib/db/schema';
 import { toIsoTimestamp, toNumber } from '@/lib/db/mappers';
@@ -258,12 +258,18 @@ export async function getEventLeagueId(ex: Executor, eventId: string): Promise<s
   return rows[0]?.league_id ?? null;
 }
 
-export async function getEventsByLeagueId(
-  ex: Executor,
-  leagueId: string
-): Promise<Array<EventData & { participant_count: number; paid_count: number }>> {
+export type EventWithCounts = EventData & { participant_count: number; paid_count: number };
+
+export async function getEventsByLeagueId(ex: Executor, leagueId: string): Promise<EventWithCounts[]> {
+  return getEventsByLeagueIds(ex, [leagueId]);
+}
+
+/** Events of every listed league, newest first, with player and paid counts, in two queries. */
+export async function getEventsByLeagueIds(ex: Executor, leagueIds: readonly string[]): Promise<EventWithCounts[]> {
+  if (leagueIds.length === 0) return [];
+  const inLeagues = inArray(events.league_id, [...leagueIds]);
   const [eventRows, countRows] = await Promise.all([
-    ex.select(eventSelection).from(events).where(eq(events.league_id, leagueId)).orderBy(desc(events.event_date)),
+    ex.select(eventSelection).from(events).where(inLeagues).orderBy(desc(events.event_date)),
     ex.select({
       event_id: event_players.event_id,
       participant_count: count(event_players.id),
@@ -271,7 +277,7 @@ export async function getEventsByLeagueId(
     })
       .from(event_players)
       .innerJoin(events, eq(events.id, event_players.event_id))
-      .where(eq(events.league_id, leagueId))
+      .where(inLeagues)
       .groupBy(event_players.event_id),
   ]);
   const counts = new Map(countRows.map((row) => [row.event_id, row]));

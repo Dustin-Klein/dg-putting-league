@@ -1,12 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { events, league_admins } from '@/lib/db/schema';
 import { withTransaction } from '@/lib/db/tx';
+import { getEventsByLeagueIds } from '@/lib/repositories/event-repository.db';
 import {
   fetchLeague,
   getAllLeagues,
   getLeagueAdminRole,
   getLeagueAdminsWithEmails,
-  getLeagueEventStats,
   getLeagueWithEvents,
   getUserIdByEmail,
   insertLeague,
@@ -68,33 +68,25 @@ describe('league Drizzle repository', () => {
     await expect(getUserIdByEmail(db, `  ${account.email.toUpperCase()}  `)).resolves.toBe(account.id);
   });
 
-  it('gets total, active, and latest event data for all league ids in one grouped lookup', async () => {
+  it('gets the events of several leagues, newest first, with per-event player and paid counts', async () => {
     await withRollback(db, async (tx) => {
       const first = await seedLeague(tx);
       const second = await seedLeague(tx);
-      const firstCreated = await seedEvent(tx, { leagueId: first.leagueId, players: 0, status: 'created' });
-      const firstCompleted = await seedEvent(tx, { leagueId: first.leagueId, players: 0, status: 'completed' });
-      await seedEvent(tx, { leagueId: second.leagueId, players: 0, status: 'bracket' });
-      await tx.update(events).set({ event_date: '2026-10-01' }).where(eq(events.id, firstCreated.eventId));
-      await tx.update(events).set({ event_date: '2026-10-09' }).where(eq(events.id, firstCompleted.eventId));
+      const older = await seedEvent(tx, { leagueId: first.leagueId, players: 2, status: 'completed' });
+      const newer = await seedEvent(tx, { leagueId: first.leagueId, players: 3, status: 'created' });
+      const other = await seedEvent(tx, { leagueId: second.leagueId, players: 1, status: 'bracket' });
+      await seedEvent(tx, { players: 1, status: 'bracket' });
+      await tx.update(events).set({ event_date: '2026-10-01' }).where(eq(events.id, older.eventId));
+      await tx.update(events).set({ event_date: '2026-10-09' }).where(eq(events.id, newer.eventId));
+      await tx.update(events).set({ event_date: '2026-10-05' }).where(eq(events.id, other.eventId));
 
-      const stats = await getLeagueEventStats(tx, [first.leagueId, second.leagueId]);
-      expect(stats).toEqual(
-        expect.arrayContaining([
-          {
-            league_id: first.leagueId,
-            event_count: 2,
-            active_event_count: 1,
-            last_event_date: '2026-10-09',
-          },
-          {
-            league_id: second.leagueId,
-            event_count: 1,
-            active_event_count: 1,
-            last_event_date: '2026-10-08',
-          },
-        ])
-      );
+      const rows = await getEventsByLeagueIds(tx, [first.leagueId, second.leagueId]);
+      expect(rows.map((row) => [row.id, row.league_id, row.participant_count])).toEqual([
+        [newer.eventId, first.leagueId, 3],
+        [other.eventId, second.leagueId, 1],
+        [older.eventId, first.leagueId, 2],
+      ]);
+      await expect(getEventsByLeagueIds(tx, [])).resolves.toEqual([]);
     });
   });
 
@@ -111,10 +103,14 @@ describe('league Drizzle repository', () => {
       });
 
       const anonymousList = await getAllLeagues(tx, null);
-      expect(anonymousList).toContainEqual(expect.objectContaining({ id: leagueId, event_count: 1 }));
+      expect(anonymousList.find((league) => league.id === leagueId)?.events.map((event) => event.id)).toEqual([
+        publicEvent.eventId,
+      ]);
 
       const adminList = await getAllLeagues(tx, owner.id);
-      expect(adminList).toContainEqual(expect.objectContaining({ id: leagueId, event_count: 2 }));
+      expect(adminList.find((league) => league.id === leagueId)?.events.map((event) => event.id).sort()).toEqual(
+        [hidden.eventId, publicEvent.eventId].sort()
+      );
 
       const anonymousDetail = await getLeagueWithEvents(tx, leagueId, null);
       expect(anonymousDetail?.events).toEqual([
@@ -169,7 +165,7 @@ describe('league Drizzle repository', () => {
         expect.objectContaining({ id: event.leagueId })
       );
       await expect(getAllLeagues(tx, owner.id)).resolves.toContainEqual(
-        expect.objectContaining({ id: event.leagueId, event_count: 1 })
+        expect.objectContaining({ id: event.leagueId, events: [expect.objectContaining({ id: event.eventId })] })
       );
     });
   });

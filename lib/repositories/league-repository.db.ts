@@ -1,11 +1,12 @@
 import 'server-only';
-import { and, asc, count, desc, eq, inArray, max, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { user_emails } from '@/lib/db/auth-schema';
 import { toIsoTimestamp } from '@/lib/db/mappers';
 import type { Executor } from '@/lib/db/tx';
 import { event_players, events, league_admins, leagues } from '@/lib/db/schema';
 import { InternalError, NotFoundError } from '@/lib/errors';
-import type { PublicEvent, PublicLeague, PublicLeagueDetail } from '@/lib/types/public';
+import type { EventLinkType, EventStatus } from '@/lib/types/event';
+import type { PublicEvent, PublicLeagueDetail } from '@/lib/types/public';
 
 export type LeagueAdminRole = (typeof league_admins.$inferSelect)['role'];
 
@@ -25,13 +26,6 @@ export interface LeagueAdminWithEmailRecord {
   user_id: string;
   role: string;
   email: string | null;
-}
-
-export interface LeagueEventStats {
-  league_id: string;
-  event_count: number;
-  active_event_count: number;
-  last_event_date: string | null;
 }
 
 function mapLeague(row: typeof leagues.$inferSelect): LeagueData {
@@ -109,31 +103,6 @@ export async function getLeaguesByIds(ex: Executor, leagueIds: string[]): Promis
   if (leagueIds.length === 0) return [];
   const rows = await ex.select().from(leagues).where(inArray(leagues.id, leagueIds));
   return rows.map(mapLeague);
-}
-
-/** Get event totals for every requested league in one grouped query. */
-export async function getLeagueEventStats(
-  ex: Executor,
-  leagueIds: string[]
-): Promise<LeagueEventStats[]> {
-  if (leagueIds.length === 0) return [];
-
-  const rows = await ex
-    .select({
-      league_id: events.league_id,
-      event_count: count(events.id),
-      active_event_count: sql<number>`count(*) filter (where ${events.status} <> 'completed')::int`,
-      last_event_date: max(events.event_date),
-    })
-    .from(events)
-    .where(inArray(events.league_id, leagueIds))
-    .groupBy(events.league_id);
-
-  return rows.map((row) => ({
-    ...row,
-    event_count: Number(row.event_count),
-    active_event_count: Number(row.active_event_count),
-  }));
 }
 
 export async function insertLeague(
@@ -218,18 +187,53 @@ export async function deleteLeague(ex: Executor, leagueId: string): Promise<void
   if (deleted.length === 0) throw new NotFoundError('League not found');
 }
 
+export interface LeagueSummaryEvent {
+  id: string;
+  event_date: string;
+  status: EventStatus;
+  parent_event_id: string | null;
+  link_type: EventLinkType | null;
+  qualification_round_enabled: boolean;
+  double_grand_final: boolean;
+}
+
+export interface LeagueWithVisibleEvents {
+  id: string;
+  name: string;
+  city: string | null;
+  /** Newest first. */
+  events: LeagueSummaryEvent[];
+}
+
+/** Every league with at least one event the viewer can see, by name, with those events. */
 export async function getAllLeagues(
   ex: Executor,
   viewerUserId: string | null
-): Promise<PublicLeague[]> {
+): Promise<LeagueWithVisibleEvents[]> {
   const rows = await ex
-    .select({ id: leagues.id, name: leagues.name, event_count: count(events.id) })
+    .select({
+      league_id: leagues.id,
+      name: leagues.name,
+      city: leagues.city,
+      id: events.id,
+      event_date: events.event_date,
+      status: events.status,
+      parent_event_id: events.parent_event_id,
+      link_type: events.link_type,
+      qualification_round_enabled: events.qualification_round_enabled,
+      double_grand_final: events.double_grand_final,
+    })
     .from(leagues)
     .innerJoin(events, and(eq(events.league_id, leagues.id), eventVisibleTo(viewerUserId)))
-    .groupBy(leagues.id, leagues.name)
-    .orderBy(asc(leagues.name));
+    .orderBy(asc(leagues.name), asc(leagues.id), desc(events.event_date));
 
-  return rows.map((row) => ({ ...row, event_count: Number(row.event_count) }));
+  const byLeague = new Map<string, LeagueWithVisibleEvents>();
+  for (const { league_id, name, city, ...event } of rows) {
+    let league = byLeague.get(league_id);
+    if (!league) byLeague.set(league_id, (league = { id: league_id, name, city, events: [] }));
+    league.events.push(event);
+  }
+  return [...byLeague.values()];
 }
 
 export async function getLeagueWithEvents(
