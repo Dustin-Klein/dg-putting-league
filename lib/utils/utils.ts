@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 
 /**
  * Merges Tailwind CSS classes with proper precedence handling.
@@ -7,6 +7,12 @@ import { twMerge } from "tailwind-merge";
  * @param inputs - Class values to merge (strings, objects, arrays)
  * @returns Merged class string with conflicts resolved
  */
+// Components override a base `leading-*` by passing only a font size (`<Label className="text-[15px]">`),
+// which tailwind-merge stopped treating as a conflict in 3.7.1.
+const twMerge = extendTailwindMerge({
+  extend: { conflictingClassGroups: { "font-size": ["leading"] } },
+});
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
