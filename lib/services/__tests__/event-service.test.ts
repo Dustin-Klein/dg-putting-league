@@ -38,11 +38,21 @@ jest.mock('@/lib/repositories/event-player-repository.db', () => ({
   ...jest.requireActual('@/lib/repositories/event-player-repository.db'),
   getPfaScoresBulk: jest.fn(async () => new Map()),
 }));
+jest.mock('@/lib/repositories/bracket-repository.db', () => ({
+  ...jest.requireActual('@/lib/repositories/bracket-repository.db'),
+  getBracketProgressRows: jest.fn(async () => new Map()),
+}));
+jest.mock('@/lib/repositories/lane-repository.db', () => ({
+  ...jest.requireActual('@/lib/repositories/lane-repository.db'),
+  getBorrowedLaneLabels: jest.fn(async () => new Map()),
+}));
 jest.mock('@/lib/services/lane', () => ({ autoAssignLanesTx: jest.fn(), lendLanesTx: jest.fn(), returnAllLanesTx: jest.fn() }));
 
 import { authorizeEventAdmin, authorizeEventView, authorizeLeagueAdmin } from '@/lib/services/auth';
 import * as eventDb from '@/lib/repositories/event-repository.db';
 import * as handicapDb from '@/lib/repositories/handicap-repository.db';
+import * as bracketDb from '@/lib/repositories/bracket-repository.db';
+import * as laneDb from '@/lib/repositories/lane-repository.db';
 import { lockEvents, lockLeagueHandicap } from '@/lib/db/tx';
 import { returnAllLanesTx } from '@/lib/services/lane';
 import {
@@ -148,6 +158,36 @@ describe('event service Drizzle port', () => {
     await expect(getEventsByLeagueId('league-1')).resolves.toEqual([]);
     expect(authorizeLeagueAdmin).toHaveBeenCalledWith('league-1');
     expect(eventDb.getEventsByLeagueId).toHaveBeenCalledWith(pg, 'league-1');
+  });
+
+  it('adds bracket progress to live events and lent lanes to running second chances', async () => {
+    (eventDb.getEventsByLeagueId as jest.Mock).mockResolvedValue([
+      { id: 'main', status: 'bracket', link_type: null, parent_event_id: null },
+      { id: 'sc', status: 'pre-bracket', link_type: 'second_chance', parent_event_id: 'main' },
+      { id: 'old', status: 'completed', link_type: null, parent_event_id: null },
+      { id: 'old-sc', status: 'completed', link_type: 'second_chance', parent_event_id: 'old' },
+    ]);
+    (bracketDb.getBracketProgressRows as jest.Mock).mockResolvedValue(new Map([['main', {
+      groups: [{ id: 1, number: 1 }],
+      rounds: [{ id: 1, group_id: 1, number: 1 }],
+      matches: [
+        { round_id: 1, status: 4, opponent1: { id: 1 }, opponent2: { id: 2 } },
+        { round_id: 1, status: 2, opponent1: { id: 3 }, opponent2: { id: 4 } },
+        { round_id: 1, status: 0, opponent1: { id: 5 }, opponent2: null },
+      ],
+    }]]));
+    (laneDb.getBorrowedLaneLabels as jest.Mock).mockResolvedValue(new Map([['sc', ['Lane 3', 'Lane 4']]]));
+
+    const events = await getEventsByLeagueId('league-1');
+
+    expect(bracketDb.getBracketProgressRows).toHaveBeenCalledWith(pg, ['main']);
+    expect(laneDb.getBorrowedLaneLabels).toHaveBeenCalledWith(pg, ['sc']);
+    expect(events.map((event) => [event.id, event.match_progress, event.borrowed_lane_labels])).toEqual([
+      ['main', { played: 1, total: 2 }, []],
+      ['sc', null, ['Lane 3', 'Lane 4']],
+      ['old', null, []],
+      ['old-sc', null, []],
+    ]);
   });
 
   it('does not query a league event list when authorization fails', async () => {

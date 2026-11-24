@@ -1,6 +1,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
-import { EventWithDetails, PayoutPlace, type TeamAssignment } from '@/lib/types/event';
+import { EventWithDetails, PayoutPlace, type MatchProgress, type TeamAssignment } from '@/lib/types/event';
+import { matchProgress } from '@/lib/utils/event-progress';
 import {
   DEFAULT_BRACKET_FORMAT_SETTINGS,
   isGrandFinalGroup,
@@ -132,12 +133,33 @@ export async function getEventForViewer(eventId: string): Promise<EventWithDetai
   return { ...event, access_code: accessCode, viewer_is_admin: isAdmin, kept_teams };
 }
 
-/**
- * Get events by league ID (with auth check)
- */
-export async function getEventsByLeagueId(leagueId: string) {
+export type AdminLeagueEvent = eventDb.EventData & {
+  participant_count: number;
+  paid_count: number;
+  borrowed_lane_labels: string[];
+  match_progress: MatchProgress | null;
+};
+
+/** A league's events for its admins, with live bracket progress and lanes lent to second chances. */
+export async function getEventsByLeagueId(leagueId: string): Promise<AdminLeagueEvent[]> {
   const { pg } = await authorizeLeagueAdmin(leagueId);
-  return eventDb.getEventsByLeagueId(pg, leagueId);
+  const events = await eventDb.getEventsByLeagueId(pg, leagueId);
+  const live = events.filter((event) => event.status === 'bracket').map((event) => event.id);
+  const secondChances = events
+    .filter((event) => event.link_type === 'second_chance' && event.status !== 'completed')
+    .map((event) => event.id);
+  const [progress, borrowed] = await Promise.all([
+    bracketDb.getBracketProgressRows(pg, live),
+    laneDb.getBorrowedLaneLabels(pg, secondChances),
+  ]);
+  return events.map((event) => {
+    const rows = progress.get(event.id);
+    return {
+      ...event,
+      borrowed_lane_labels: borrowed.get(event.id) ?? [],
+      match_progress: rows ? matchProgress(rows) : null,
+    };
+  });
 }
 
 /** Normalize an access code for a new event and check it is unused (across all leagues). */

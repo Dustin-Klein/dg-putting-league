@@ -601,3 +601,48 @@ export async function rewriteMatches(
       .where(and(eq(bracket_match.id, row.id), eq(bracket_match.event_id, eventId)));
   }
 }
+
+export interface BracketProgressRows {
+  groups: Array<{ id: number; number: number }>;
+  rounds: Array<{ id: number; group_id: number; number: number }>;
+  matches: Array<{ round_id: number; status: number; opponent1: unknown; opponent2: unknown }>;
+}
+
+/** Groups, rounds and matches of each event's bracket, enough to count matches played. */
+export async function getBracketProgressRows(
+  ex: Executor,
+  eventIds: readonly string[]
+): Promise<Map<string, BracketProgressRows>> {
+  const byEvent = new Map<string, BracketProgressRows>();
+  if (eventIds.length === 0) return byEvent;
+  const stages = await ex
+    .select({ id: bracket_stage.id, event_id: bracket_stage.tournament_id })
+    .from(bracket_stage)
+    .where(inArray(bracket_stage.tournament_id, [...eventIds]));
+  if (stages.length === 0) return byEvent;
+  const stageIds = stages.map((stage) => stage.id);
+  const [groups, rounds, matches] = await Promise.all([
+    ex.select({ id: bracket_group.id, stage_id: bracket_group.stage_id, number: bracket_group.number })
+      .from(bracket_group).where(inArray(bracket_group.stage_id, stageIds)),
+    ex.select({ id: bracket_round.id, stage_id: bracket_round.stage_id, group_id: bracket_round.group_id, number: bracket_round.number })
+      .from(bracket_round).where(inArray(bracket_round.stage_id, stageIds)),
+    ex.select({
+      stage_id: bracket_match.stage_id,
+      round_id: bracket_match.round_id,
+      status: bracket_match.status,
+      opponent1: bracket_match.opponent1,
+      opponent2: bracket_match.opponent2,
+    }).from(bracket_match).where(inArray(bracket_match.stage_id, stageIds)),
+  ]);
+  const eventOfStage = new Map(stages.map((stage) => [stage.id, stage.event_id]));
+  const rowsFor = (stageId: number) => {
+    const eventId = eventOfStage.get(stageId)!;
+    let rows = byEvent.get(eventId);
+    if (!rows) byEvent.set(eventId, (rows = { groups: [], rounds: [], matches: [] }));
+    return rows;
+  };
+  for (const { stage_id, ...group } of groups) rowsFor(stage_id).groups.push(group);
+  for (const { stage_id, ...round } of rounds) rowsFor(stage_id).rounds.push(round);
+  for (const { stage_id, ...match } of matches) rowsFor(stage_id).matches.push(match);
+  return byEvent;
+}

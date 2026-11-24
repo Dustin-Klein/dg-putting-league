@@ -12,6 +12,8 @@ import {
 import { withTransaction } from '@/lib/db/tx';
 import { isUuid } from '@/lib/utils/uuid';
 import * as leagueRepo from '@/lib/repositories/league-repository.db';
+import * as bracketRepo from '@/lib/repositories/bracket-repository.db';
+import { matchProgress } from '@/lib/utils/event-progress';
 
 export interface LeagueAdminWithEmail {
   userId: string;
@@ -36,7 +38,15 @@ export async function getPublicLeagueWithEvents(leagueId: string): Promise<Publi
     throw new NotFoundError('League not found');
   }
 
-  return league;
+  const live = league.events.filter((event) => event.status === 'bracket').map((event) => event.id);
+  const progress = await bracketRepo.getBracketProgressRows(pg, live);
+  return {
+    ...league,
+    events: league.events.map((event) => {
+      const rows = progress.get(event.id);
+      return { ...event, match_progress: rows ? matchProgress(rows) : null };
+    }),
+  };
 }
 
 /**

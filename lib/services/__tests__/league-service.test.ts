@@ -19,6 +19,10 @@ jest.mock('@/lib/db/tx', () => ({
   withTransaction: jest.fn(),
 }));
 
+jest.mock('@/lib/repositories/bracket-repository.db', () => ({
+  getBracketProgressRows: jest.fn(async () => new Map()),
+}));
+
 jest.mock('@/lib/repositories/league-repository.db', () => ({
   getAllLeagues: jest.fn(),
   getLeagueWithEvents: jest.fn(),
@@ -46,6 +50,7 @@ import {
   getViewer,
 } from '@/lib/services/auth';
 import * as leagueRepo from '@/lib/repositories/league-repository.db';
+import * as bracketRepo from '@/lib/repositories/bracket-repository.db';
 import {
   addLeagueAdmin,
   checkIsLeagueOwner,
@@ -96,6 +101,23 @@ describe('League Service', () => {
 
       await getPublicLeagueWithEvents(leagueId);
       expect(leagueRepo.getLeagueWithEvents).toHaveBeenCalledWith(mockPg, leagueId, user.id);
+    });
+
+    it('adds match progress only to events in bracket play', async () => {
+      (leagueRepo.getLeagueWithEvents as jest.Mock).mockResolvedValue({
+        id: leagueId, name: 'League', city: null, event_count: 2,
+        events: [{ id: 'live', status: 'bracket' }, { id: 'done', status: 'completed' }],
+      });
+      (bracketRepo.getBracketProgressRows as jest.Mock).mockResolvedValue(new Map([['live', {
+        groups: [{ id: 1, number: 1 }],
+        rounds: [{ id: 1, group_id: 1, number: 1 }],
+        matches: [{ round_id: 1, status: 4, opponent1: { id: 1 }, opponent2: { id: 2 } }],
+      }]]));
+
+      const league = await getPublicLeagueWithEvents(leagueId);
+
+      expect(bracketRepo.getBracketProgressRows).toHaveBeenCalledWith(mockPg, ['live']);
+      expect(league.events.map((event) => event.match_progress)).toEqual([{ played: 1, total: 1 }, null]);
     });
 
     it('throws not found for a hidden or missing public league detail', async () => {

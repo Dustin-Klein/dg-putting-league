@@ -443,3 +443,17 @@ export async function touchLanes(ex: Executor, laneIds: string[]): Promise<void>
   if (laneIds.length === 0) return;
   await ex.update(lanes).set({ status: sql`${lanes.status}` }).where(inArray(lanes.id, laneIds));
 }
+
+/** Labels of the lanes currently lent to each event, in label order. */
+export async function getBorrowedLaneLabels(ex: Executor, eventIds: readonly string[]): Promise<Map<string, string[]>> {
+  const byEvent = new Map<string, string[]>();
+  if (eventIds.length === 0) return byEvent;
+  const rows = await ex
+    .select({ event_id: lane_loans.to_event_id, label: lanes.label })
+    .from(lane_loans)
+    .innerJoin(lanes, eq(lanes.id, lane_loans.lane_id))
+    .where(inArray(lane_loans.to_event_id, [...eventIds]));
+  rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  for (const row of rows) byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), row.label]);
+  return byEvent;
+}
