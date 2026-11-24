@@ -1,6 +1,6 @@
 import { Status } from 'brackets-model';
 import type { BracketWithTeams } from '@/lib/types/bracket';
-import { bracketProgress, headerStats } from '../event-progress';
+import { bracketProgress, headerStats, matchProgress } from '../event-progress';
 
 type MatchSpec = {
   id: number;
@@ -63,6 +63,14 @@ describe('bracketProgress', () => {
       { id: 4, round: 20, a: 1, b: 2, status: Status.Completed, winner: 'a' },
       { id: 5, round: 21, a: 1, b: 2, status: Status.Archived },
     ]))).toMatchObject({ played: 1, total: 1 });
+  });
+
+  it('never counts the reset once the event switched to a single grand final', () => {
+    const { bracket: data } = bracket([
+      { id: 4, round: 20, a: 1, b: 2, status: Status.Completed, winner: 'b' },
+      { id: 5, round: 21, a: 1, b: 2, status: Status.Archived },
+    ]);
+    expect(matchProgress(data, false)).toEqual({ played: 1, total: 1 });
   });
 
   it('orders lanes and tells in-play, open and maintenance lanes apart', () => {

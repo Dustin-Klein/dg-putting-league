@@ -132,6 +132,29 @@ describe('league Drizzle repository', () => {
     });
   });
 
+  it('does not reveal a hidden parent event through its visible linked event', async () => {
+    const owner = await users.create();
+    await withRollback(db, async (tx) => {
+      const { leagueId } = await seedLeague(tx);
+      const parent = await seedEvent(tx, { leagueId, players: 0, status: 'created' });
+      const child = await seedEvent(tx, { leagueId, players: 0, status: 'bracket' });
+      await tx.update(events)
+        .set({ parent_event_id: parent.eventId, link_type: 'second_chance' })
+        .where(eq(events.id, child.eventId));
+      await tx.insert(league_admins).values({ league_id: leagueId, user_id: owner.id, role: 'owner' });
+
+      const anonymousDetail = await getLeagueWithEvents(tx, leagueId, null);
+      expect(anonymousDetail?.events).toEqual([
+        expect.objectContaining({ id: child.eventId, parent_event_id: null, link_type: 'second_chance' }),
+      ]);
+
+      const adminDetail = await getLeagueWithEvents(tx, leagueId, owner.id);
+      expect(adminDetail?.events).toContainEqual(
+        expect.objectContaining({ id: child.eventId, parent_event_id: parent.eventId })
+      );
+    });
+  });
+
   it('hides a league whose only event is private from anonymous viewers', async () => {
     const owner = await users.create();
     await withRollback(db, async (tx) => {

@@ -157,7 +157,7 @@ export async function getEventsByLeagueId(leagueId: string): Promise<AdminLeague
     return {
       ...event,
       borrowed_lane_labels: borrowed.get(event.id) ?? [],
-      match_progress: rows ? matchProgress(rows) : null,
+      match_progress: rows ? matchProgress(rows, event.double_grand_final) : null,
     };
   });
 }

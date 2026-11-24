@@ -236,7 +236,7 @@ export async function getLeagueWithEvents(
   ex: Executor,
   leagueId: string,
   viewerUserId: string | null
-): Promise<Omit<PublicLeagueDetail, 'events'> & { events: Array<Omit<PublicEvent, 'match_progress'>> } | null> {
+): Promise<Omit<PublicLeagueDetail, 'events'> & { events: Array<Omit<PublicEvent, 'match_progress'> & { double_grand_final: boolean }> } | null> {
   const leagueRows = await ex
     .select({ id: leagues.id, name: leagues.name, city: leagues.city })
     .from(leagues)
@@ -253,6 +253,7 @@ export async function getLeagueWithEvents(
       status: events.status,
       parent_event_id: events.parent_event_id,
       link_type: events.link_type,
+      double_grand_final: events.double_grand_final,
     })
     .from(events)
     .where(and(eq(events.league_id, leagueId), eventVisibleTo(viewerUserId)))
@@ -269,8 +270,11 @@ export async function getLeagueWithEvents(
   const participantsByEvent = new Map(
     participantRows.map((row) => [row.event_id, Number(row.participant_count)])
   );
+  const visibleIds = new Set(eventIds);
   const publicEvents = eventRows.map((event) => ({
     ...event,
+    // A hidden parent's id must not leak through its visible child.
+    parent_event_id: event.parent_event_id && visibleIds.has(event.parent_event_id) ? event.parent_event_id : null,
     participant_count: participantsByEvent.get(event.id) ?? 0,
   }));
 
