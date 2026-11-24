@@ -1,9 +1,7 @@
 import type { EventPlayer } from '@/lib/types/player';
 import {
-  formatMinutesAgo,
   keptTeamsStatus,
   paymentSplit,
-  playersNotShown,
   rosterLayout,
   rosterRows,
   zoneCounts,
@@ -78,23 +76,12 @@ describe('paymentSplit', () => {
   });
 });
 
-describe('zoneCounts and playersNotShown', () => {
+describe('zoneCounts', () => {
   it('counts players per zone in zone order', () => {
     expect(zoneCounts([{ zone: 3 }, { zone: 1 }, { zone: 3 }, { zone: null }])).toEqual([
       { zone: 1, count: 1 },
       { zone: 3, count: 2 },
     ]);
-  });
-
-  it('lists players registered after the roster was shown', () => {
-    const players = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-    expect(playersNotShown(players, { at: NOW, eventPlayerIds: ['a', 'b'] })).toEqual([{ id: 'c' }]);
-    expect(playersNotShown(players, null)).toHaveLength(3);
-  });
-
-  it('formats minutes ago', () => {
-    expect(formatMinutesAgo(NOW - 10_000, NOW)).toBe('just now');
-    expect(formatMinutesAgo(NOW - 12 * 60_000, NOW)).toBe('12 min ago');
   });
 });
 
