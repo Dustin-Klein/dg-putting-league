@@ -7,9 +7,10 @@ import { cn } from '@/lib/utils/utils';
 import { formatDisplayDate } from '@/lib/utils/date-utils';
 import { StatusBadge } from '@/components/status-badge';
 import { ZoneBadge } from '@/components/zone-badge';
-import type { MatchFact, PlayerRow, PublicEventStats, StandingRow, ZoneGroup } from '@/lib/types/event-stats';
+import type { MatchFact, PublicEventStats, StandingRow, ZoneGroup } from '@/lib/types/event-stats';
 import { MarginHistogram, PuttsMixBar } from './charts';
-import { DASH, formatCount, formatFt, formatOne, formatRate, teamLabel } from './format';
+import { DASH, formatCount, formatFt, formatOne, formatRate } from './format';
+import { defaultDir, sortPlayers, type SortDir, type SortKey } from './sort-players';
 
 function SectionHeading({ id, title, caption }: { id: string; title: string; caption?: string }) {
   return (
@@ -106,21 +107,24 @@ function Tile({ label, value, sub }: { label: string; value: string; sub: string
 export function StatTiles({ stats }: { stats: PublicEventStats }) {
   const season = stats.season?.field;
   return (
-    <section aria-label="Headline stats" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Tile
-        label="Field make %"
-        value={formatRate(stats.field.make_rate)}
-        sub={stats.event.putt_counts_reliable
-          ? `Frame performance · ${stats.field.frames} frames${season ? ` · season ${formatRate(season.make_rate)}` : ''}`
-          : 'Imported scores: points only'}
-      />
-      <Tile
-        label="Field pts / match"
-        value={formatOne(stats.field.points_per_match)}
-        sub={`Frame performance · per player${season ? ` · season ${formatOne(season.points_per_match)}` : ''}`}
-      />
-      <Tile label="Matches decided by ≤ 2" value={String(stats.close_matches)} sub={`Official results · of ${stats.matches.completed} complete`} />
-      <Tile label="Overtime matches" value={String(stats.overtime_matches)} sub="Official results · sudden death" />
+    <section aria-labelledby="field-h" className="flex flex-col gap-3">
+      <SectionHeading id="field-h" title="Whole field" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Tile
+          label="Field make %"
+          value={formatRate(stats.field.make_rate)}
+          sub={stats.event.putt_counts_reliable
+            ? `Frame performance · ${stats.field.frames} frames${season ? ` · season ${formatRate(season.make_rate)}` : ''}`
+            : 'Imported scores: points only'}
+        />
+        <Tile
+          label="Field pts / match"
+          value={formatOne(stats.field.points_per_match)}
+          sub={`Frame performance · per player${season ? ` · season ${formatOne(season.points_per_match)}` : ''}`}
+        />
+        <Tile label="Matches decided by ≤ 2" value={String(stats.close_matches)} sub={`Official results · of ${stats.matches.completed} complete`} />
+        <Tile label="Overtime matches" value={String(stats.overtime_matches)} sub="Official results · sudden death" />
+      </div>
     </section>
   );
 }
@@ -132,9 +136,31 @@ function statusBadge(row: StandingRow) {
   return null;
 }
 
+function MembersWithZones({ members, zoneByEntry, stacked = false }: {
+  members: StandingRow['members'];
+  zoneByEntry: ReadonlyMap<string, number | null>;
+  stacked?: boolean;
+}) {
+  if (members.length === 0) return <>TBD</>;
+  return (
+    <span className={cn('inline-flex gap-x-1.5 gap-y-1', stacked ? 'flex-col items-start' : 'flex-wrap items-center')}>
+      {members.map((m, i) => (
+        <span key={m.entry_id} className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="whitespace-nowrap">
+            {i > 0 && !stacked && <span className="mr-1.5 font-normal text-muted-foreground">&amp;</span>}
+            {m.name}
+          </span>
+          <ZoneBadge zone={zoneByEntry.get(m.entry_id)} distanceFt={null} size="sm" />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function Standings({ stats }: { stats: PublicEventStats }) {
   const live = stats.event.status === 'bracket';
   const singles = stats.event.team_size === 1;
+  const zoneByEntry = useMemo(() => new Map(stats.players.map((p) => [p.entry_id, p.zone])), [stats.players]);
   return (
     <section aria-labelledby="standings-h" className="flex flex-col gap-3">
       <SectionHeading
@@ -146,7 +172,7 @@ export function Standings({ stats }: { stats: PublicEventStats }) {
         {stats.standings.map((row) => (
           <li key={row.team_id} className={cn('flex items-center gap-3 border-b px-3 py-2.5 last:border-0', row.status === 'out' && 'text-muted-foreground')}>
             <span className="w-6 shrink-0 font-score text-lg font-bold">{(live ? row.seed : row.placement) ?? DASH}</span>
-            <span className="min-w-0 flex-1 text-sm font-semibold">{teamLabel(row.members)}</span>
+            <span className="min-w-0 flex-1 text-sm font-semibold"><MembersWithZones members={row.members} zoneByEntry={zoneByEntry} stacked /></span>
             <span className="text-sm tabular-nums">{row.wins}–{row.losses}</span>
             {live ? statusBadge(row) : (
               <span className="text-right text-xs text-muted-foreground tabular-nums">
@@ -177,7 +203,7 @@ export function Standings({ stats }: { stats: PublicEventStats }) {
             {stats.standings.map((row) => (
               <tr key={row.team_id} className={cn('border-b last:border-0', row.status === 'out' && 'text-muted-foreground')}>
                 <td className={cn(td, 'font-score text-xl font-bold')}>{(live ? row.seed : row.placement) ?? DASH}</td>
-                <td className={cn(td, 'font-semibold whitespace-normal')}>{teamLabel(row.members)}</td>
+                <td className={cn(td, 'font-semibold whitespace-normal')}><MembersWithZones members={row.members} zoneByEntry={zoneByEntry} /></td>
                 <td className={cn(td, num)}>{row.wins}–{row.losses}</td>
                 {live ? (
                   <td className={td}>{statusBadge(row)}</td>
@@ -196,36 +222,10 @@ export function Standings({ stats }: { stats: PublicEventStats }) {
   );
 }
 
-type SortKey = 'zone' | 'name' | 'make' | 'ppm' | 'frames' | 'matches' | 'threes' | 'best' | 'season';
-
 interface Column {
   key: SortKey;
   label: string;
   right?: boolean;
-}
-
-function compareNullable(a: number | null, b: number | null): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return b - a;
-}
-
-function sortPlayers(players: readonly PlayerRow[], key: SortKey, defaultWithinZone: 'name' | 'make'): PlayerRow[] {
-  const byName = (a: PlayerRow, b: PlayerRow) => a.name.localeCompare(b.name, undefined, { numeric: true });
-  const byMake = (a: PlayerRow, b: PlayerRow) => compareNullable(a.line.make_rate, b.line.make_rate) || byName(a, b);
-  const cmp: Record<SortKey, (a: PlayerRow, b: PlayerRow) => number> = {
-    zone: (a, b) => (a.zone ?? 0) - (b.zone ?? 0) || (defaultWithinZone === 'make' ? byMake(a, b) : byName(a, b)),
-    name: byName,
-    make: byMake,
-    ppm: (a, b) => compareNullable(a.line.points_per_match, b.line.points_per_match) || byName(a, b),
-    frames: (a, b) => b.line.frames - a.line.frames || byName(a, b),
-    matches: (a, b) => b.matches - a.matches || byName(a, b),
-    threes: (a, b) => compareNullable(a.line.threes, b.line.threes) || byName(a, b),
-    best: (a, b) => compareNullable(a.best_match, b.best_match) || byName(a, b),
-    season: (a, b) => compareNullable(a.season?.make_rate ?? null, b.season?.make_rate ?? null) || byName(a, b),
-  };
-  return [...players].sort(cmp[key]);
 }
 
 export function PlayersTable({
@@ -239,8 +239,15 @@ export function PlayersTable({
   flagsFor?: (entryId: string) => React.ReactNode;
 }) {
   const handicap = stats.event.handicap_enabled;
-  const [sortKey, setSortKey] = useState<SortKey>(handicap ? 'zone' : defaultWithinZone === 'make' ? 'make' : 'name');
-  const sorted = useMemo(() => sortPlayers(stats.players, sortKey, defaultWithinZone), [stats.players, sortKey, defaultWithinZone]);
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>(() => {
+    const key: SortKey = handicap ? 'zone' : defaultWithinZone === 'make' ? 'make' : 'name';
+    return { key, dir: defaultDir(key) };
+  });
+  const sortKey = sort.key;
+  const selectSort = (key: SortKey) => setSort({ key, dir: defaultDir(key) });
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: defaultDir(key) }));
+  const sorted = useMemo(() => sortPlayers(stats.players, sort.key, sort.dir, defaultWithinZone), [stats.players, sort, defaultWithinZone]);
   const hasSeason = stats.players.some((p) => p.season?.make_rate != null);
   const columns: Column[] = [
     { key: 'name', label: 'Player' },
@@ -254,21 +261,34 @@ export function PlayersTable({
     ...(hasSeason ? [{ key: 'season' as const, label: 'Season make %', right: true }] : []),
   ];
   const label = columns.find((c) => c.key === sortKey)?.label ?? '';
-  const sortLabel = sortKey === 'zone' ? (defaultWithinZone === 'make' ? 'zone, then make %' : 'zone, then name') : label.toLowerCase();
+  const direction = sortKey === 'name' ? (sort.dir === 'asc' ? 'A–Z' : 'Z–A') : sort.dir === 'asc' ? 'low to high' : 'high to low';
+  const sortLabel = sortKey === 'zone'
+    ? `${label.toLowerCase()} (${direction}), then ${defaultWithinZone === 'make' ? 'make %' : 'name'}`
+    : `${label.toLowerCase()} (${direction})`;
 
   return (
     <section aria-labelledby="players-h" className="flex flex-col gap-3">
       <SectionHeading id="players-h" title="Players" caption={`Frame performance · sorted by ${sortLabel} · dimmed rows have fewer than 10 frames`} />
-      <label className="flex items-center gap-2 text-sm text-muted-foreground md:hidden">
-        Sort
-        <select
-          value={sortKey}
-          onChange={(event) => setSortKey(event.target.value as SortKey)}
-          className="min-h-11 flex-1 rounded-lg border bg-card px-2 text-foreground"
+      <div className="flex items-center gap-2 md:hidden">
+        <label className="flex flex-1 items-center gap-2 text-sm text-muted-foreground">
+          Sort
+          <select
+            value={sortKey}
+            onChange={(event) => selectSort(event.target.value as SortKey)}
+            className="min-h-11 flex-1 rounded-lg border bg-card px-2 text-foreground"
+          >
+            {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => toggleSort(sortKey)}
+          aria-label={`Reverse sort order (now ${direction})`}
+          className="min-h-11 min-w-11 rounded-lg border bg-card px-3 text-foreground hover:bg-muted"
         >
-          {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
-      </label>
+          {sort.dir === 'asc' ? '↑' : '↓'}
+        </button>
+      </div>
 
       <ul className="flex flex-col gap-2 md:hidden">
         {sorted.map((p) => (
@@ -295,13 +315,13 @@ export function PlayersTable({
           <thead className="border-b">
             <tr>
               {columns.map((c) => (
-                <th key={c.key} scope="col" aria-sort={sortKey === c.key ? 'descending' : undefined} className="p-0">
+                <th key={c.key} scope="col" aria-sort={sortKey === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined} className="p-0">
                   <button
                     type="button"
-                    onClick={() => setSortKey(c.key)}
+                    onClick={() => toggleSort(c.key)}
                     className={cn(th, 'block min-h-10 w-full hover:bg-muted hover:text-foreground', c.right && 'text-right', sortKey === c.key && 'text-foreground')}
                   >
-                    {c.label}{sortKey === c.key ? (c.key === 'name' || c.key === 'zone' ? ' ↑' : ' ↓') : ''}
+                    {c.label}{sortKey === c.key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
                   </button>
                 </th>
               ))}
@@ -461,9 +481,9 @@ export function ReportFooter({ stats }: { stats: PublicEventStats }) {
 export function EventStatsBody({ stats, playersTable }: { stats: PublicEventStats; playersTable?: React.ReactNode }) {
   return (
     <>
-      <StatTiles stats={stats} />
-      <Standings stats={stats} />
       {playersTable ?? <PlayersTable stats={stats} />}
+      <Standings stats={stats} />
+      <StatTiles stats={stats} />
       <ZonesSection stats={stats} />
       <MatchesSectionView stats={stats} />
     </>
