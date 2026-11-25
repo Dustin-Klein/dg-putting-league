@@ -13,6 +13,18 @@ export interface ChangelogRelease {
 /** Newest first. The first entry's version should match package.json. */
 export const changelog: ChangelogRelease[] = [
   {
+    version: '0.10.1',
+    date: '2026-11-25',
+    sections: [
+      {
+        title: 'Fixed',
+        items: [
+          'The handicap roster fits phones, iPads and computers: on narrow screens each player is a card, and the table no longer hides the Change zone button off the right edge.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.10.0',
     date: '2026-11-24',
     sections: [
