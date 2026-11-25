@@ -194,7 +194,7 @@ export function HandicapRoster({
   const flagged = roster.filter((entry) => entry.has_open_suggestion).length;
 
   return (
-    <section aria-labelledby="roster-heading" className="rounded-2xl border bg-card">
+    <section aria-labelledby="roster-heading" className="@container rounded-2xl border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4">
         <div>
           <h2 id="roster-heading" className="text-lg font-bold">
@@ -209,60 +209,68 @@ export function HandicapRoster({
       {roster.length === 0 ? (
         <p className="px-5 py-6 text-sm text-muted-foreground">No players have played in this league yet.</p>
       ) : (
-        <Table className="min-w-[620px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-5">Player</TableHead>
-              <TableHead>Zone</TableHead>
-              <TableHead>Current period</TableHead>
-              <TableHead>Eligibility</TableHead>
-              <TableHead className="pr-5 text-right"><span className="sr-only">Actions</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Sized by the section, not the viewport: the settings panel beside it decides how wide it is. */}
+          <ul className="divide-y divide-muted @2xl:hidden">
             {roster.map((entry) => (
-              <TableRow
+              <li
                 key={entry.player_id}
-                className={cn('border-muted', entry.has_open_suggestion && 'bg-warning/10 hover:bg-warning/15')}
+                className={cn('flex flex-col gap-2 px-5 py-3', entry.has_open_suggestion && 'bg-warning/10')}
               >
-                <TableCell className="py-3 pl-5">
-                  <Link href={`/player/${entry.player_number}`} className="font-semibold hover:underline">
-                    {entry.player_name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  {entry.zone !== null ? (
-                    <ZoneBadge zone={entry.zone} distanceFt={entry.distance_ft} size="sm" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No zone yet</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {entry.stats && entry.stats.putts_attempted > 0 ? (
-                    <PeriodBar stats={entry.stats} />
-                  ) : (
-                    <span className="text-muted-foreground">–</span>
-                  )}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'text-xs font-bold',
-                    entry.has_open_suggestion ? 'text-warning' : 'text-muted-foreground'
-                  )}
-                >
-                  {entry.has_open_suggestion
-                    ? 'Flagged for review'
-                    : entry.progress ? eligibilityText(entry.progress) ?? 'Eligible' : '–'}
-                </TableCell>
-                <TableCell className="pr-5 text-right">
-                  <Button size="sm" variant="outline" onClick={() => openEditor(entry)}>
-                    Change zone
-                  </Button>
-                </TableCell>
-              </TableRow>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col items-start gap-1">
+                    <PlayerLink entry={entry} />
+                    <RosterZone entry={entry} />
+                  </div>
+                  <ChangeZoneButton entry={entry} onClick={openEditor} />
+                </div>
+                {entry.stats && entry.stats.putts_attempted > 0 && <PeriodBar stats={entry.stats} />}
+                {(entry.has_open_suggestion || entry.progress) && <RosterEligibility entry={entry} />}
+              </li>
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+          <div className="hidden @2xl:block">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-5">Player</TableHead>
+                  <TableHead>Zone</TableHead>
+                  <TableHead>Current period</TableHead>
+                  <TableHead>Eligibility</TableHead>
+                  <TableHead className="pr-5 text-right"><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {roster.map((entry) => (
+                  <TableRow
+                    key={entry.player_id}
+                    className={cn('border-muted', entry.has_open_suggestion && 'bg-warning/10 hover:bg-warning/15')}
+                  >
+                    <TableCell className="py-3 pl-5 whitespace-normal">
+                      <PlayerLink entry={entry} />
+                    </TableCell>
+                    <TableCell>
+                      <RosterZone entry={entry} />
+                    </TableCell>
+                    <TableCell>
+                      {entry.stats && entry.stats.putts_attempted > 0 ? (
+                        <PeriodBar stats={entry.stats} />
+                      ) : (
+                        <span className="text-muted-foreground">–</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-40 whitespace-normal">
+                      <RosterEligibility entry={entry} />
+                    </TableCell>
+                    <TableCell className="pr-5 text-right">
+                      <ChangeZoneButton entry={entry} onClick={openEditor} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
@@ -311,17 +319,66 @@ export function HandicapRoster({
   );
 }
 
-/** Make % in the current period as a bar, with the sample size beside it. */
+function PlayerLink({ entry }: { entry: LeagueRosterEntry }) {
+  return (
+    <Link href={`/player/${entry.player_number}`} className="font-semibold hover:underline">
+      {entry.player_name}
+    </Link>
+  );
+}
+
+function RosterZone({ entry }: { entry: LeagueRosterEntry }) {
+  return entry.zone !== null ? (
+    <ZoneBadge zone={entry.zone} distanceFt={entry.distance_ft} size="sm" />
+  ) : (
+    <span className="text-xs text-muted-foreground">No zone yet</span>
+  );
+}
+
+function RosterEligibility({ entry }: { entry: LeagueRosterEntry }) {
+  return (
+    <span className={cn('text-xs font-bold', entry.has_open_suggestion ? 'text-warning' : 'text-muted-foreground')}>
+      {entry.has_open_suggestion
+        ? 'Flagged for review'
+        : entry.progress ? eligibilityText(entry.progress) ?? 'Eligible' : '–'}
+    </span>
+  );
+}
+
+function ChangeZoneButton({
+  entry,
+  onClick,
+}: {
+  entry: LeagueRosterEntry;
+  onClick: (entry: LeagueRosterEntry) => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="shrink-0"
+      aria-label={`Change zone for ${entry.player_name}`}
+      onClick={() => onClick(entry)}
+    >
+      Change zone
+    </Button>
+  );
+}
+
+/** Make % in the current period as a bar, with the sample size beneath it. */
 function PeriodBar({ stats }: { stats: PeriodStats }) {
   const pct = stats.make_pct ?? 0;
   return (
-    <div className="flex items-center gap-2.5" title={formatPeriodStats(stats)}>
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-        <div className="h-full bg-foreground" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+    <div className="flex flex-col gap-1" title={formatPeriodStats(stats)}>
+      <div className="flex items-center gap-2.5">
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <div className="h-full bg-foreground" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+        </div>
+        <span className="font-score text-lg leading-none font-bold tabular-nums">{formatPct(stats.make_pct)}</span>
       </div>
-      <span className="font-score text-lg leading-none font-bold tabular-nums">{formatPct(stats.make_pct)}</span>
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {stats.putts_made}/{stats.putts_attempted} putts · {stats.matches} {stats.matches === 1 ? 'match' : 'matches'}
+      <span className="text-xs whitespace-normal text-muted-foreground tabular-nums">
+        <span className="whitespace-nowrap">{stats.putts_made}/{stats.putts_attempted} putts ·</span>{' '}
+        <span className="whitespace-nowrap">{stats.matches} {stats.matches === 1 ? 'match' : 'matches'}</span>
       </span>
     </div>
   );
