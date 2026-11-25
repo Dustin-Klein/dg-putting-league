@@ -23,8 +23,10 @@ function createDb(
 ): Db {
   // Supavisor transaction mode (port 6543) doesn't support prepared statements.
   // Each serverless instance keeps a small pool; the pooler multiplexes them.
+  // Supavisor hangs on pipelined queries in transaction mode, so a busy pool queues instead.
   const client = postgres(url, {
     prepare: false,
+    max_pipeline: 1,
     max,
     idle_timeout: 20,
     connect_timeout: 10,
